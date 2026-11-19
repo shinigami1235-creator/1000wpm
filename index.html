@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10000wpm | Art types fast</title>
+<meta name="description" content="Race Art's typing speed, try the keyboards he types on in 3D and play typing games.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#">10000<span>wpm</span></a>
+    <nav class="nav" id="nav">
+      <a href="#keyboards">Keyboards</a>
+      <a href="#games">Games</a>
+      <a href="#videos">Videos</a>
+      <a href="#brands">For brands</a>
+    </nav>
+    <button class="sound-btn" id="sound" type="button" aria-pressed="true">Sound</button>
+    <button class="menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+    <a class="btn" href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Follow<span class="wide"> on Instagram</span></a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="race-box idle" id="race" tabindex="-1"></div>
+      <div class="hero-bar">
+        <div class="score you"><b class="num" id="you-wpm">0</b><span>you, wpm</span></div>
+        <div class="score art"><b class="num" id="art-wpm">204</b><span>Art, wpm</span></div>
+        <p class="hint" id="race-hint">Start typing to race Art. <kbd>Tab</kbd> restarts.</p>
+      </div>
+      <div class="facts">
+        <span><b>25.5K</b> followers on Instagram</span>
+        <span><b>983</b> posts</span>
+        <span>Types one word for every follower, every day</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="keyboards">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Keyboards Art types on</h2>
+        <p>Press or tap a key and it goes down on the board with that board's sound.</p>
+      </div>
+      <div class="kb-layout">
+        <div class="kb-stage" id="kb-stage">
+          <div class="kb-loading">Loading the 3D view</div>
+          <div class="kb-typed" aria-live="off"></div>
+          <div class="kb-picker" role="tablist" aria-label="Keyboards"></div>
+        </div>
+        <aside class="spec" id="kb-spec" aria-live="polite"></aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="games">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Games</h2>
+        <p>Click a game, then type. Your best scores stay on this device.</p>
+      </div>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-game="horde">Typo Horde</button>
+        <button type="button" role="tab" aria-selected="false" data-game="speed">Speed test</button>
+        <button type="button" role="tab" aria-selected="false" data-game="race-game">Race</button>
+      </div>
+
+      <div class="game on" id="horde">
+        <p class="game-note">Type the word over a typo to shoot it. The first letter locks on, <kbd>Backspace</kbd> lets go. Every third wave ends with a boss carrying a whole phrase.</p>
+        <div class="horde-box" id="horde-box" tabindex="-1"><canvas width="960" height="540"></canvas></div>
+      </div>
+
+      <div class="game" id="speed">
+        <div class="panel" id="st-panel" tabindex="-1">
+          <div class="st-top">
+            <div class="seg" aria-label="Test length">
+              <button type="button" data-s="15" aria-pressed="false">15 s</button>
+              <button type="button" data-s="30" aria-pressed="true">30 s</button>
+              <button type="button" data-s="60" aria-pressed="false">60 s</button>
+            </div>
+            <span class="game-note" style="margin:0">The timer starts on your first key. <kbd>Tab</kbd> restarts.</span>
+            <div class="st-timer">30</div>
+          </div>
+          <div class="st-window"></div>
+          <div class="result">
+            <div class="row"><span>wpm</span><div class="big" data-k="wpm">0</div></div>
+            <div class="row"><span>raw</span><b data-k="raw">0</b></div>
+            <div class="row"><span>accuracy</span><b data-k="acc">0</b></div>
+            <div class="row"><span>your best</span><b data-k="best">0</b></div>
+            <p class="verdict"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="game" id="race-game">
+        <div class="panel" id="race-panel" tabindex="-1">
+          <div class="st-top">
+            <div class="seg" aria-label="Opponent">
+              <button type="button" data-o="art" aria-pressed="true">Art</button>
+              <button type="button" data-o="best" aria-pressed="false">Your best</button>
+              <button type="button" data-o="duo" aria-pressed="false">2 players</button>
+            </div>
+            <span class="game-note race-note" style="margin:0"></span>
+          </div>
+          <div class="race-track">
+            <div class="lane you"><span class="name">You</span><div class="bar"><div class="fill"></div></div><span class="w">0 wpm</span></div>
+            <div class="lane them"><span class="name">Art</span><div class="bar"><div class="fill"></div></div><span class="w">0 wpm</span></div>
+          </div>
+          <div class="race-text"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="videos">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Videos</h2>
+        <p>New reels go up on Instagram most days.</p>
+      </div>
+      <div class="vids">
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/DQOgF1njxv7/" target="_blank" rel="noopener">
+          <span class="kind">Follower count</span>
+          <h3>1 follower = 1 word</h3>
+          <p>Art types his follower count in words, every day.</p>
+        </a>
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/DfML79wAKiM/" target="_blank" rel="noopener">
+          <span class="kind">Tip</span>
+          <h3>Easiest way to type faster</h3>
+          <p>The tip that gets most people past 150 wpm.</p>
+        </a>
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/DfwWq1ERVOS/" target="_blank" rel="noopener">
+          <span class="kind">Collab</span>
+          <h3>Womier SK61 HE</h3>
+          <p>First collab with Womier on their Hall-effect 60%.</p>
+        </a>
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/Dfm2oO9Aemm/" target="_blank" rel="noopener">
+          <span class="kind">Sound test</span>
+          <h3>AULA F99 Pro</h3>
+          <p>Speed typing on the F99 Pro with the sound up.</p>
+        </a>
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/DfwhXtSxWHB/" target="_blank" rel="noopener">
+          <span class="kind">Sound test</span>
+          <h3>LOGA Yaksa 75 Clear</h3>
+          <p>The Maiyarap edition with its clear acrylic case.</p>
+        </a>
+        <a class="vid" href="https://www.instagram.com/10000wpm/reel/Dftm1bdAdMg/" target="_blank" rel="noopener">
+          <span class="kind">Sound test</span>
+          <h3>Corsair Vanguard 96</h3>
+          <p>Typing on Corsair's wireless 96% board.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="brands">
+    <div class="wrap brands">
+      <div>
+        <div class="sec-head" style="margin-bottom:20px"><h2>Send Art a keyboard</h2></div>
+        <p>Art types on new keyboards on camera for 25.5K followers on Instagram. Each board gets its own reel with the sound and his speed on Monkeytype.</p>
+        <ol>
+          <li>Message Art on Instagram with the board and your launch date.</li>
+          <li>Art types on it and posts the reel.</li>
+          <li>The board joins the 3D showroom on this page with its specs and your link.</li>
+        </ol>
+        <div class="cta">
+          <a class="btn" href="https://ig.me/m/10000wpm" target="_blank" rel="noopener">Message on Instagram</a>
+        </div>
+      </div>
+      <div>
+        <p style="color:var(--ink);font-weight:700">Boards on the channel so far</p>
+        <div class="board-list">
+          <span>AULA F99 Pro</span><span>Womier SK61 HE</span><span>LOGA Yaksa Pro 75</span>
+          <span>Attack Shark X68 HE</span><span>Corsair Vanguard 96</span><span>Chilkey SF60</span>
+          <span>Neolution Singular Core</span><span>Solakaka A99 Pro</span><span>Kemove K98SE</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span class="counter">Art could have typed <b id="since">0</b> words since you opened this page.</span>
+    <nav>
+      <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a>
+      <span>© 2026 10000wpm</span>
+    </nav>
+  </div>
+</footer>
+
+<script src="js/core.js"></script>
+<script src="js/keyboards.js"></script>
+<script src="js/hero.js"></script>
+<script src="js/games.js"></script>
+<script src="js/horde.js"></script>
+<script src="js/kb3d.js"></script>
+<script>
+  const sb = document.getElementById('sound');
+  sb.setAttribute('aria-pressed', TT.soundOn());
+  sb.addEventListener('click', () => { const v = !TT.soundOn(); TT.setSound(v); sb.setAttribute('aria-pressed', v); });
+  const mb = document.getElementById('menu'), nav = document.getElementById('nav');
+  mb.addEventListener('click', () => { const o = nav.classList.toggle('open'); mb.setAttribute('aria-expanded', o); });
+  nav.addEventListener('click', e => { if (e.target.tagName === 'A') { nav.classList.remove('open'); mb.setAttribute('aria-expanded', false); } });
+</script>
+</body>
+</html>
