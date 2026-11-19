@@ -1,5 +1,6 @@
-// Typo Horde sound: looping music tracks and sound effects made in code.
-window.HordeAudio = (() => {
+// Breach sound: looping music tracks and sound effects made in code.
+// Music files sit in audio/ at the site root, found through window.BREACH_BASE.
+window.BreachAudio = (() => {
   let ac = null, master = null, musicGain = null, sfxGain = null;
   const LOOPS = { menu: 40, stage1: 61.935, stage2: 60, stage3: 58.182, stage4: 56.471, stage5: 54.857, boss: 51.892, ending: 36.923 };
   const buffers = {};
@@ -19,11 +20,12 @@ window.HordeAudio = (() => {
     return ac;
   }
   const on = () => TT.soundOn();
+  const url = name => (window.BREACH_BASE || '') + `audio/${name}.mp3`;
 
   // ---------- music ----------
   async function load(name) {
     if (buffers[name]) return buffers[name];
-    const res = await fetch(`audio/${name}.mp3`);
+    const res = await fetch(url(name));
     if (!res.ok) throw new Error(name);
     buffers[name] = await ctx().decodeAudioData(await res.arrayBuffer());
     return buffers[name];
@@ -43,7 +45,7 @@ window.HordeAudio = (() => {
       current = { src, g };
     } catch (e) {
       // file:// pages cannot fetch, so play through an audio element
-      fallback = new Audio(`audio/${name}.mp3`);
+      fallback = new Audio(url(name));
       fallback.loop = true; fallback.volume = musicVol;
       fallback.play().catch(() => {});
     }
@@ -108,6 +110,14 @@ window.HordeAudio = (() => {
     clear() { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.16, 0.3, i * 0.1)); },
     blip() { tone('square', 1800, 1800, 0.015, 0.05); },
     select() { tone('triangle', 700, 1100, 0.08, 0.2); },
+    warn() { [0, 0.16].forEach(w => tone('square', 880, 860, 0.1, 0.22, w)); tone('sawtooth', 110, 90, 0.4, 0.2); },
+    repel() { tone('triangle', 400, 1800, 0.18, 0.35); burst(0.25, 3000, 0.8, 0.5, 'highpass'); tone('sine', 120, 60, 0.3, 0.5); },
+    stun() { [1200, 900, 1200, 900].forEach((f, i) => tone('square', f, f * 0.98, 0.07, 0.14, i * 0.08)); },
+    rush() { tone('square', 500 + Math.random() * 300, 1400, 0.07, 0.16); burst(0.08, 2500, 1, 0.35); },
+    glitch() { for (let i = 0; i < 4; i++) tone('square', 200 + Math.random() * 2000, 100 + Math.random() * 2000, 0.03, 0.08, i * 0.025); },
+    shieldBreak() { burst(0.5, 5000, 0.6, 0.6, 'highpass'); [1600, 1200, 800, 400].forEach((f, i) => tone('triangle', f, f / 2, 0.12, 0.2, i * 0.05)); },
+    door() { tone('sawtooth', 90, 60, 0.6, 0.35); burst(0.5, 400, 0.5, 0.5, 'lowpass'); },
+    access() { [660, 990, 1320].forEach((f, i) => tone('square', f, f, 0.07, 0.16, i * 0.06)); },
   };
   function play(name) {
     if (!on()) return;

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breach test</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  body { margin: 0; background: #040806; color: #d7f5e3; font: 14px "Share Tech Mono", monospace; }
+  #box { width: 960px; height: 540px; margin: 24px auto 8px; }
+  .bar { width: 960px; margin: 0 auto; display: flex; gap: 8px; }
+  button { background: #0c1a12; color: #39ff88; border: 1px solid rgba(57,255,136,.28); padding: 6px 12px; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="box"></div>
+<div class="bar">
+  <button type="button" id="fs">Full screen</button>
+  <button type="button" id="um">Unmount</button>
+  <button type="button" id="mt">Mount</button>
+</div>
+<script src="../words.js"></script>
+<script src="../core.js"></script>
+<script src="../state.js"></script>
+<script src="load.js"></script>
+<script>
+  const box = document.getElementById('box');
+  Breach.mount(box);
+  document.getElementById('fs').onclick = () => Breach.fullscreen();
+  document.getElementById('um').onclick = () => Breach.unmount();
+  document.getElementById('mt').onclick = () => Breach.mount(box);
+</script>
+</body>
+</html>

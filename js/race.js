@@ -3,12 +3,14 @@
 window.RaceView = (() => {
   const W = 960, H = 400;
   const SEG = 200, ROAD = 2000, CAM_H = 1000, DEPTH = 0.84, DRAW = 160, LANES = 3;
+  // Night courses in the site's terminal colours. The grid city comes first and shows up most.
   const THEMES = [
-    { name: 'City at night', sky: ['#0b1020', '#27304d'], ground: ['#14171c', '#181b21'], rumble: ['#e7e6e1', '#c4473d'], road: ['#2a2c31', '#2d2f34'], lane: '#d9d6cf', far: '#1a2033', near: '#121620', props: 'lamp', sun: '#f2f0e6', sunY: 0.25, hills: 'city' },
-    { name: 'Coast road', sky: ['#f2a65a', '#f6d6a3'], ground: ['#d9c38f', '#d1ba86'], rumble: ['#e7e6e1', '#2f7a6b'], road: ['#5a5550', '#5f5a55'], lane: '#f2f0e6', far: '#6f90a8', near: '#4f7a72', props: 'palm', sun: '#fff1c9', sunY: 0.55, hills: 'hills' },
-    { name: 'Desert highway', sky: ['#5a8fd1', '#bfe0f2'], ground: ['#d7a86e', '#cf9f65'], rumble: ['#e7e6e1', '#c44f3d'], road: ['#55504a', '#59544e'], lane: '#f2f0e6', far: '#c98b5a', near: '#b0744a', props: 'cactus', sun: '#fffbe6', sunY: 0.2, hills: 'mesa' },
-    { name: 'Snow pass', sky: ['#6f86a8', '#c9d6e6'], ground: ['#eef3f7', '#e3eaf0'], rumble: ['#c4473d', '#e7e6e1'], road: ['#4a4e55', '#4e5259'], lane: '#f2f0e6', far: '#8ea3bf', near: '#6c8099', props: 'pine', sun: '#ffffff', sunY: 0.3, hills: 'peaks' },
-    { name: 'Forest road', sky: ['#4b7d6a', '#a9cbb0'], ground: ['#2f5a3a', '#2b5436'], rumble: ['#e7e6e1', '#d49a2a'], road: ['#3e403f', '#424443'], lane: '#e9e6d6', far: '#3d6650', near: '#2a4a38', props: 'tree', sun: '#fdf6d8', sunY: 0.35, hills: 'hills' },
+    { name: 'Grid city', sky: ['#010402', '#062014'], ground: ['#020805', '#030a06'], rumble: ['#1f9e57', '#06301a'], road: ['#04100a', '#04120b'], lane: '#39ff88', far: '#041a0e', near: '#062615', props: 'neon', sun: '#39ff88', sunY: 0.44, hills: 'city', grid: true, win: 'rgba(57,255,136,.75)' },
+    { name: 'Grid city', sky: ['#010402', '#062014'], ground: ['#020805', '#030a06'], rumble: ['#1d8fa0', '#06222a'], road: ['#04100a', '#04120b'], lane: '#3ee6ff', far: '#041a0e', near: '#062615', props: 'neon', sun: '#3ee6ff', sunY: 0.44, hills: 'city', grid: true, win: 'rgba(62,230,255,.7)' },
+    { name: 'City at night', sky: ['#020604', '#0b2418'], ground: ['#060c09', '#08100c'], rumble: ['#d7f5e3', '#1f9e57'], road: ['#141a17', '#161d19'], lane: '#d7f5e3', far: '#0a1a12', near: '#07120c', props: 'lamp', sun: '#d7f5e3', sunY: 0.25, hills: 'city', win: 'rgba(57,255,136,.6)' },
+    { name: 'Coast road at night', sky: ['#01060a', '#0a2a2e'], ground: ['#1a1a12', '#1d1d14'], rumble: ['#d7f5e3', '#1f9e57'], road: ['#191b19', '#1c1e1c'], lane: '#d7f5e3', far: '#0c2a30', near: '#0a221c', props: 'palm', sun: '#d7f5e3', sunY: 0.5, hills: 'hills' },
+    { name: 'Desert at night', sky: ['#010508', '#102530'], ground: ['#231c12', '#261f14'], rumble: ['#d7f5e3', '#ff4d5e'], road: ['#1c1a17', '#1f1d1a'], lane: '#d7f5e3', far: '#2a2018', near: '#201810', props: 'cactus', sun: '#f6f3e0', sunY: 0.2, hills: 'mesa' },
+    { name: 'Snow pass at night', sky: ['#02060c', '#14243a'], ground: ['#9aa9b5', '#909fab'], rumble: ['#ff4d5e', '#d7f5e3'], road: ['#1d2126', '#20242a'], lane: '#d7f5e3', far: '#1d2c40', near: '#16222f', props: 'pine', sun: '#ffffff', sunY: 0.3, hills: 'peaks' },
   ];
   const BOARDS = ['AULA', 'WOMIER', 'LOGA', 'ATTACK SHARK', 'CORSAIR', 'CHILKEY', '10000WPM'];
 
@@ -17,18 +19,20 @@ window.RaceView = (() => {
   class View {
     constructor(canvas) {
       this.cv = canvas; this.ctx = canvas.getContext('2d');
-      this.fit(); addEventListener('resize', () => this.fit());
+      this.onResize = () => this.fit();
+      this.fit(); addEventListener('resize', this.onResize);
       this.newCourse();
     }
     fit() {
       const dpr = Math.min(2, devicePixelRatio || 1), w = this.cv.clientWidth || W;
       this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(w * H / W * dpr);
     }
-    newCourse(seed) {
+    destroy() { removeEventListener('resize', this.onResize); }
+    newCourse(seed, first) {
       let s = seed || Math.floor(Math.random() * 1e9);
       this.seed = s;
       const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-      this.theme = THEMES[Math.floor(r() * THEMES.length)];
+      this.theme = first ? THEMES[0] : THEMES[Math.floor(r() * THEMES.length)];
       const segs = [];
       let y = 0;
       const add = (n, curve, hill) => {
@@ -125,7 +129,10 @@ window.RaceView = (() => {
           if (c.wz >= P.z1 && c.wz < P.z1 + SEG) {
             const k = (c.wz - P.z1) / SEG;
             const cp = project(0, P.seg.y, c.wz, P.camX1 + (P.camX2 - P.camX1) * k);
-            if (cp.y <= P.clip + 6) this.car(ctx, cp.x, cp.y, cp.sc * 3000, c.color, c.boost, 0, c.name);
+            // a car level with yours is drawn beside you at most full size, never over the HUD
+            const sc = Math.min(1.05, cp.sc * 3000);
+            const cy = Math.min(cp.y, H - 30);
+            if (cp.y <= P.clip + 6) this.car(ctx, Math.min(cp.x, W - 260), cy, sc, c.color, c.boost, 0, c.name);
           }
         }
       }
@@ -133,7 +140,7 @@ window.RaceView = (() => {
       for (const c of cars) {
         const gap = c.wz - this.camZ;
         if (gap <= SEG * 1.5 && state.you.progress > 0.02) {
-          ctx.font = '700 14px Archivo, sans-serif'; ctx.textAlign = 'right';
+          ctx.font = '15px "Share Tech Mono", monospace'; ctx.textAlign = 'right';
           ctx.fillStyle = c.color; ctx.textAlign = 'left'; ctx.fillText(`${c.name} is behind you`, 24, 64);
         }
       }
@@ -174,8 +181,12 @@ window.RaceView = (() => {
       ctx.lineTo(W, H); ctx.fill();
       if (T.hills === 'city' && par > 0.5) {
         for (let xx = 0; xx < W; xx += 14) {
-          if (Math.sin((xx + off) * 0.37) > 0.6) { ctx.fillStyle = 'rgba(255,211,107,.6)'; ctx.fillRect(xx, H * base - amp * 0.3 - (xx % 3) * 6, 3, 3); }
+          if (Math.sin((xx + off) * 0.37) > 0.6) { ctx.fillStyle = T.win || 'rgba(57,255,136,.6)'; ctx.fillRect(xx, H * base - amp * 0.3 - (xx % 3) * 6, 3, 3); }
         }
+      }
+      if (T.grid && par > 0.5) {
+        // glowing horizon line
+        ctx.fillStyle = T.lane; ctx.globalAlpha = 0.5; ctx.fillRect(0, H * base - 1, W, 2); ctx.globalAlpha = 1;
       }
     }
 
@@ -185,7 +196,21 @@ window.RaceView = (() => {
       const quad = (x1, y1, w1, x2, y2, w2, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x1 - w1, y1 + 0.5); ctx.lineTo(x2 - w2, y2 - 0.5); ctx.lineTo(x2 + w2, y2 - 0.5); ctx.lineTo(x1 + w1, y1 + 0.5); ctx.fill(); };
       const r1 = p1.w / 8, r2 = p2.w / 8;
       quad(p1.x, p1.y, p1.w + r1, p2.x, p2.y, p2.w + r2, T.rumble[alt]);
-      quad(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, finish ? (alt ? '#f2f0e6' : '#1b1c1e') : T.road[alt]);
+      quad(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, finish ? (alt ? '#d7f5e3' : '#040806') : T.road[alt]);
+      if (T.grid) {
+        // a floor of grid lines that run toward the horizon
+        ctx.fillStyle = T.lane;
+        ctx.globalAlpha = i % 4 === 0 ? 0.35 : 0;
+        ctx.fillRect(0, p2.y, W, Math.max(1, (p1.y - p2.y) * 0.08));
+        ctx.globalAlpha = 0.22;
+        for (let k = 2; k <= 14; k += 1.5) {
+          for (const sgn of [-1, 1]) quad(p1.x + sgn * p1.w * k * 0.5, p1.y, Math.max(0.4, p1.w / 160), p2.x + sgn * p2.w * k * 0.5, p2.y, Math.max(0.4, p2.w / 160), T.lane);
+        }
+        ctx.globalAlpha = 1;
+        // road edges glow
+        quad(p1.x - p1.w, p1.y, p1.w / 50, p2.x - p2.w, p2.y, p2.w / 50, T.lane);
+        quad(p1.x + p1.w, p1.y, p1.w / 50, p2.x + p2.w, p2.y, p2.w / 50, T.lane);
+      }
       if (!alt && !finish) {
         const l1 = p1.w / 40, l2 = p2.w / 40;
         for (let k = 1; k < LANES; k++) {
@@ -202,12 +227,19 @@ window.RaceView = (() => {
       ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
       const k = pr.kind;
       if (k === 'board') {
-        ctx.fillStyle = '#333'; ctx.fillRect(-4, -160, 8, 160); ctx.fillRect(-90 * pr.side + (pr.side > 0 ? 0 : 0), -160, 8, 160);
-        ctx.fillStyle = '#1b1c1e'; ctx.fillRect(-110, -230, 220, 80);
-        ctx.fillStyle = '#f2c230'; ctx.font = '900 40px Archivo, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(pr.text, 0, -175);
+        ctx.fillStyle = '#0c1a12'; ctx.fillRect(-4, -160, 8, 160);
+        ctx.fillStyle = '#040806'; ctx.fillRect(-110, -230, 220, 80);
+        ctx.strokeStyle = '#39ff88'; ctx.lineWidth = 4; ctx.strokeRect(-110, -230, 220, 80);
+        ctx.fillStyle = '#39ff88'; ctx.font = '700 40px "Chakra Petch", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(pr.text, 0, -175);
+      } else if (k === 'neon') {
+        const hgt = 260 + (pr.text.length * 37) % 140;
+        ctx.fillStyle = '#020a06'; ctx.fillRect(-55, -hgt, 110, hgt);
+        ctx.strokeStyle = this.theme.lane; ctx.globalAlpha = 0.8; ctx.lineWidth = 3; ctx.strokeRect(-55, -hgt, 110, hgt); ctx.globalAlpha = 1;
+        ctx.fillStyle = this.theme.win;
+        for (let wy = -hgt + 20; wy < -20; wy += 26) for (let wx = -40; wx < 40; wx += 22) if (((wx * 7 + wy * 13 + pr.text.length) & 3) !== 0) ctx.fillRect(wx, wy, 10, 12);
       } else if (k === 'lamp') {
-        ctx.fillStyle = '#3a3d44'; ctx.fillRect(-3, -170, 6, 170); ctx.fillRect(-3, -170, 40 * -pr.side, 6);
-        ctx.fillStyle = 'rgba(255,220,150,.9)'; ctx.beginPath(); ctx.arc(40 * -pr.side, -160, 9, 0, 7); ctx.fill();
+        ctx.fillStyle = '#1a2a21'; ctx.fillRect(-3, -170, 6, 170); ctx.fillRect(-3, -170, 40 * -pr.side, 6);
+        ctx.fillStyle = 'rgba(180,255,210,.9)'; ctx.beginPath(); ctx.arc(40 * -pr.side, -160, 9, 0, 7); ctx.fill();
       } else if (k === 'palm') {
         ctx.strokeStyle = '#6b4f2f'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(14, -80, 6, -170); ctx.stroke();
         ctx.strokeStyle = '#2f7a4f'; ctx.lineWidth = 9; ctx.lineCap = 'round';
@@ -247,8 +279,8 @@ window.RaceView = (() => {
       ctx.fillStyle = '#ddd'; ctx.fillRect(-16, -28, 32, 9);
       ctx.restore();
       if (label && s > 0.2) {
-        ctx.font = '700 13px Archivo, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(14,15,16,.85)'; const tw = ctx.measureText(label).width;
+        ctx.font = '14px "Share Tech Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(4,8,6,.88)'; const tw = ctx.measureText(label).width;
         ctx.beginPath(); ctx.roundRect(x - tw / 2 - 6, y - 100 * s - 22, tw + 12, 20, 4); ctx.fill();
         ctx.fillStyle = col; ctx.fillText(label, x, y - 100 * s - 7);
       }
@@ -256,29 +288,39 @@ window.RaceView = (() => {
 
     hud(ctx, st) {
       const you = st.you;
+      const G = '#39ff88', DIM = '#1f9e57', INK = '#d7f5e3', CY = '#3ee6ff';
       // speedometer
       const cx = W - 92, cy = H - 64, r = 52;
-      ctx.fillStyle = 'rgba(14,15,16,.82)'; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#2d2e32'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2); ctx.stroke();
+      ctx.fillStyle = 'rgba(4,8,6,.85)'; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(57,255,136,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.stroke();
+      ctx.strokeStyle = 'rgba(57,255,136,.15)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2); ctx.stroke();
       const f = Math.min(1, this.speedShown / 400);
-      ctx.strokeStyle = you.boost > 0 ? '#e07a3a' : '#f2c230'; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * (0.8 + 1.4 * f)); ctx.stroke();
-      ctx.fillStyle = '#ecebe6'; ctx.font = '600 26px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+      ctx.strokeStyle = you.boost > 0 ? CY : G; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * (0.8 + 1.4 * f)); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.fillStyle = INK; ctx.font = '600 26px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
       ctx.fillText(String(Math.round(this.speedShown)), cx, cy + 6);
-      ctx.fillStyle = '#a3a29c'; ctx.font = '600 12px Archivo, sans-serif'; ctx.fillText('km/h', cx, cy + 24);
-      if (you.boost > 0) { ctx.fillStyle = '#e07a3a'; ctx.font = '800 15px Archivo, sans-serif'; ctx.fillText('BOOST', cx, cy - r - 16); }
+      ctx.fillStyle = DIM; ctx.font = '13px "Share Tech Mono", monospace'; ctx.fillText('KM/H', cx, cy + 24);
+      if (you.boost > 0) { ctx.fillStyle = CY; ctx.font = '16px "Share Tech Mono", monospace'; ctx.fillText('BOOST', cx, cy - r - 16); }
       // map of the course with each car on it
       const mx = 24, my = 22, mw = W - 48;
-      ctx.fillStyle = 'rgba(14,15,16,.7)'; ctx.fillRect(mx, my - 4, mw, 8);
-      ctx.fillStyle = '#ecebe6'; ctx.fillRect(mx + mw - 3, my - 10, 3, 20);
-      const dot = (p, col, lbl) => {
+      ctx.fillStyle = 'rgba(4,8,6,.8)'; ctx.fillRect(mx, my - 4, mw, 8);
+      ctx.strokeStyle = 'rgba(57,255,136,.4)'; ctx.lineWidth = 1; ctx.strokeRect(mx + .5, my - 3.5, mw - 1, 7);
+      ctx.fillStyle = G; ctx.fillRect(mx + mw - 3, my - 10, 3, 20);
+      let lastX = -99;
+      const dot = (p, col, lbl, below) => {
         const xx = mx + mw * Math.min(1, p);
-        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(xx, my, 7, 0, 7); ctx.fill();
-        ctx.font = '700 12px Archivo, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(lbl, xx, my + 22);
+        ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(xx, my, 6, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.font = '13px "Share Tech Mono", monospace'; ctx.textAlign = 'center';
+        // labels that would overlap go on the other side of the bar
+        const flip = Math.abs(xx - lastX) < 60;
+        ctx.fillText(lbl, xx, flip ? my - 12 : my + 22);
+        lastX = xx;
       };
       st.others.forEach(o => dot(o.progress, o.color, o.name));
       dot(you.progress, you.color, you.name);
-      ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(236,235,230,.85)'; ctx.font = '600 13px Archivo, sans-serif';
-      ctx.fillText(this.theme.name, 24, H - 16);
+      ctx.textAlign = 'left'; ctx.fillStyle = DIM; ctx.font = '13px "Share Tech Mono", monospace';
+      ctx.fillText('// ' + this.theme.name.toUpperCase(), 24, H - 16);
     }
   }
   return View;

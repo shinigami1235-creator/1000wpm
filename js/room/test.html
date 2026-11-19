@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My room test</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../css/site.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #040806; }
+  #room { position: fixed; inset: 0; }
+  .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; color: #d7f5e3; font: 12px "Share Tech Mono", monospace; }
+  .sheet figure { margin: 0; background: #07100b; border: 1px solid rgba(57,255,136,.28); padding: 6px; }
+  .sheet img { width: 100%; display: block; }
+  .sheet figcaption { margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="room"></div>
+<script src="../state.js"></script>
+<script src="load.js"></script>
+<script>
+  // Test page only: ?all gives the test player every item, ?some gives 15. ?fresh clears the saved room. ?sheet shows every thumbnail.
+  const q = new URLSearchParams(location.search);
+  addEventListener('load', async () => {
+    if (q.has('all')) for (const it of RoomItems.catalog) if (!WPM.owns(it.id)) { WPM.addCoins(it.price); WPM.buy(it); }
+    if (q.has('some')) for (const id of ['desk-command', 'chair-gaming', 'monitor-ultra', 'kb-aula-f99', 'pc-tower', 'desk-lamp', 'neon-sign', 'led-strip', 'monstera', 'rug-laurel', 'bookshelf', 'beanbag', 'cat', 'poster-logo', 'lava-lamp']) { const it = RoomItems.get(id); if (!WPM.owns(id)) { WPM.addCoins(it.price); WPM.buy(it); } }
+    if (q.has('fresh')) WPM.setRoom(null);
+    if (q.has('sheet')) {
+      const box = document.getElementById('room');
+      box.style.position = 'static';
+      box.className = "sheet"; if (q.has("big")) box.style.gridTemplateColumns = "repeat(6, 1fr)";
+      for (const it of RoomItems.catalog) {
+        const f = document.createElement('figure');
+        f.innerHTML = `<img alt=""><figcaption>${it.name}<br>${it.id} · ${it.price}</figcaption>`;
+        box.appendChild(f);
+        f.querySelector('img').src = await RoomItems.thumbnail(it.id);
+      }
+      document.body.dataset.ready = '1';
+      return;
+    }
+    await Room.mount(document.getElementById('room'));
+    document.body.dataset.ready = '1';
+  });
+</script>
+</body>
+</html>

@@ -1,23 +1,39 @@
 // 3D keyboards. Each board is built from its layout in keyboards.js so a new
 // sponsor board needs one data entry. GLB models from the makers can replace them later.
-(async () => {
-  const stage = document.getElementById('kb-stage');
-  const loading = stage.querySelector('.kb-loading');
+// KB3D.mount(stage, card) builds the showroom in stage and returns a function that
+// stops the render loop and frees the WebGL context.
+window.KB3D = (() => {
+  let libs = null;
+  async function load() {
+    if (!libs) libs = Promise.all([
+      import('three'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
+      import('three/addons/controls/OrbitControls.js'),
+      import('three/addons/environments/RoomEnvironment.js'),
+    ]);
+    return libs;
+  }
+
+  function mount(stage, card) {
+    let dispose = null, gone = false;
+    const loading = stage.querySelector('.kb-loading');
+    load().then(([T, R, O, E]) => {
+      if (gone) return;
+      loading.remove();
+      dispose = build3d(stage, card, T, R.RoundedBoxGeometry, O.OrbitControls, E.RoomEnvironment);
+    }).catch(e => {
+      libs = null;
+      console.warn(e);
+      loading.textContent = 'The 3D keyboards need an internet connection.';
+    });
+    return () => { gone = true; if (dispose) dispose(); };
+  }
+
+  function build3d(stage, card, THREE, RoundedBoxGeometry, OrbitControls, RoomEnvironment) {
   const picker = stage.querySelector('.kb-picker');
   const typedEl = stage.querySelector('.kb-typed');
-  const card = document.getElementById('kb-spec');
-
-  let THREE, RoundedBoxGeometry, OrbitControls, RoomEnvironment;
-  try {
-    THREE = await import('three');
-    ({ RoundedBoxGeometry } = await import('three/addons/geometries/RoundedBoxGeometry.js'));
-    ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
-    ({ RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js'));
-  } catch (e) {
-    loading.textContent = 'The 3D keyboards need an internet connection.';
-    return;
-  }
-  loading.remove();
+  const offs = [];
+  const on = (t, ev, fn, o) => { t.addEventListener(ev, fn, o); offs.push(() => t.removeEventListener(ev, fn, o)); };
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio));
@@ -28,8 +44,8 @@
   stage.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#1e1f22');
-  scene.fog = new THREE.Fog('#1e1f22', 40, 90);
+  scene.background = new THREE.Color('#040a07');
+  scene.fog = new THREE.Fog('#040a07', 30, 70);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environmentIntensity = 0.55;
@@ -56,18 +72,23 @@
   key.shadow.bias = -0.0004;
   key.shadow.radius = 4;
   scene.add(key);
-  const fill = new THREE.DirectionalLight('#9fb7d9', 0.5);
+  const fill = new THREE.DirectionalLight('#39ff88', 0.7);
   fill.position.set(8, 5, -6);
   scene.add(fill);
 
   // desk mat
   const mat = new THREE.Mesh(
     new THREE.BoxGeometry(400, 0.12, 400),
-    new THREE.MeshStandardMaterial({ color: '#1e1f22', roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: '#06110b', roughness: 1 })
   );
   mat.position.y = -0.06;
   mat.receiveShadow = true;
   scene.add(mat);
+  const grid = new THREE.GridHelper(80, 40, '#1f9e57', '#0f3a24');
+  grid.position.y = 0.005;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.55;
+  scene.add(grid);
 
   // ---------- board builder ----------
   const geoCache = new Map();
@@ -90,7 +111,7 @@
     labels.forEach((l, i) => {
       const x = (i % N) * cell, y = Math.floor(i / N) * cell;
       const size = l.length === 1 ? 58 : l.length <= 3 ? 36 : 28;
-      c.font = `600 ${size}px Archivo, system-ui, sans-serif`;
+      c.font = `600 ${size}px "Chakra Petch", system-ui, sans-serif`;
       c.fillText(l, x + cell / 2, y + cell / 2 + 2);
       uv.set(l, { u0: x / cv.width, v0: 1 - (y + cell) / cv.height, s: cell / cv.width });
     });
@@ -107,8 +128,8 @@
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.draw = text => {
-      c.fillStyle = '#0d0e10'; c.fillRect(0, 0, 256, 128);
-      c.fillStyle = '#c9a24a'; c.font = '600 54px "JetBrains Mono", monospace';
+      c.fillStyle = '#04100a'; c.fillRect(0, 0, 256, 128);
+      c.fillStyle = '#39ff88'; c.font = '600 54px "JetBrains Mono", monospace';
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(text, 128, 66);
       tex.needsUpdate = true;
@@ -283,14 +304,15 @@
   function renderSpec(kb) {
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     card.innerHTML = `
+      <div class="ph">&gt; SPECS_<span class="meta">${esc(kb.layout)}%</span></div>
       <div class="tag">${esc(kb.tag)}</div>
-      <h3>${esc(kb.name)}${kb.sub ? `<br><span style="font-weight:500;font-size:18px;color:var(--ink-2)">${esc(kb.sub)}</span>` : ''}</h3>
+      <h3>${esc(kb.name)}${kb.sub ? `<small>${esc(kb.sub)}</small>` : ''}</h3>
       <p class="standout">${esc(kb.standout)}</p>
       <dl>${kb.specs.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
-      <div class="price num">${esc(kb.price)}</div>
+      <div class="price">${esc(kb.price)}</div>
       <div class="links">
         <a class="btn" href="${esc(kb.video)}" target="_blank" rel="noopener">Watch Art type on it</a>
-        <a class="btn btn-out" href="${esc(kb.src[0])}" target="_blank" rel="noopener">Maker page</a>
+        <a class="btn out" href="${esc(kb.src[0])}" target="_blank" rel="noopener">Maker page</a>
       </div>`;
   }
 
@@ -300,7 +322,7 @@
     b.textContent = kb.name.replace(' Wireless', '');
     b.dataset.id = kb.id;
     b.setAttribute('role', 'tab');
-    b.addEventListener('click', () => select(kb));
+    on(b, 'click', () => select(kb));
     picker.appendChild(b);
   }
 
@@ -332,7 +354,7 @@
     const r = stage.getBoundingClientRect();
     return r.top < innerHeight * 0.6 && r.bottom > innerHeight * 0.4;
   }
-  addEventListener('keydown', e => {
+  on(window, 'keydown', e => {
     if (!visible || e.repeat) return;
     const inBox = document.activeElement && document.activeElement.classList.contains('sr-input');
     if (!inBox && !inView()) return;
@@ -340,7 +362,7 @@
     press(e.code, !inBox && e.key.length === 1 ? e.key : null);
     if (!inBox && !e.ctrlKey && !e.metaKey) TT.click(e.code === 'Space' || e.code === 'Enter');
   }, true);
-  addEventListener('keyup', e => {
+  on(window, 'keyup', e => {
     release(e.code);
     const inBox = document.activeElement && document.activeElement.classList.contains('sr-input');
     if (!inBox && visible && inView()) TT.click(false, true);
@@ -349,8 +371,8 @@
   // tap a key on the model
   const ray = new THREE.Raycaster();
   let downAt = null;
-  renderer.domElement.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
-  renderer.domElement.addEventListener('pointerup', e => {
+  on(renderer.domElement, 'pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
+  on(renderer.domElement, 'pointerup', e => {
     if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) return;
     const r = renderer.domElement.getBoundingClientRect();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
@@ -368,8 +390,11 @@
 
   // ---------- loop ----------
   let visible = false;
-  new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(stage);
-  new ResizeObserver(fit).observe(stage);
+  const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; });
+  io.observe(stage);
+  const ro = new ResizeObserver(fit);
+  ro.observe(stage);
+  on(document, 'visibilitychange', () => { if (document.hidden) visible = false; else visible = stage.getBoundingClientRect().bottom > 0; });
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduce) controls.autoRotate = false;
 
@@ -407,4 +432,24 @@
   // start on a front three-quarter view
   camera.position.set(0, 9, 13);
   select(window.KEYBOARDS[0]);
+
+  return () => {
+    renderer.setAnimationLoop(null);
+    offs.forEach(f => f());
+    io.disconnect(); ro.disconnect();
+    controls.dispose();
+    scene.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      const ms = o.material ? [].concat(o.material) : [];
+      ms.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+    });
+    if (scene.environment) scene.environment.dispose();
+    pmrem.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+    renderer.domElement.remove();
+  };
+  }
+
+  return { mount };
 })();
