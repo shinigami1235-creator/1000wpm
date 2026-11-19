@@ -80,7 +80,10 @@
       </div>
 
       <div class="game on" id="horde">
-        <p class="game-note">Type the word over a typo to shoot it. The first letter you type picks the target and <kbd>Backspace</kbd> drops it. Every third wave ends with a boss that takes a whole phrase to kill.</p>
+        <div class="game-bar">
+          <p class="game-note">Five chapters of typos with a boss at the end of each. Type the word over a typo to shoot it. <kbd>Backspace</kbd> drops your target and <kbd>Esc</kbd> pauses.</p>
+          <button class="btn btn-out" id="horde-full" type="button">Full screen</button>
+        </div>
         <div class="horde-box" id="horde-box" tabindex="-1"><canvas width="960" height="540"></canvas></div>
       </div>
 
@@ -116,10 +119,7 @@
             </div>
             <span class="game-note race-note" style="margin:0"></span>
           </div>
-          <div class="race-track">
-            <div class="lane you"><span class="name">You</span><div class="bar"><div class="fill"></div></div><span class="w">0 wpm</span></div>
-            <div class="lane them"><span class="name">Art</span><div class="bar"><div class="fill"></div></div><span class="w">0 wpm</span></div>
-          </div>
+          <canvas class="race-canvas" width="960" height="400"></canvas>
           <div class="race-text"></div>
         </div>
       </div>
@@ -202,16 +202,21 @@
   </div>
 </footer>
 
+<script src="js/words.js"></script>
 <script src="js/core.js"></script>
 <script src="js/keyboards.js"></script>
 <script src="js/hero.js"></script>
+<script src="js/race.js"></script>
 <script src="js/games.js"></script>
+<script src="js/horde-audio.js"></script>
+<script src="js/horde-data.js"></script>
+<script src="js/horde-art.js"></script>
 <script src="js/horde.js"></script>
 <script src="js/kb3d.js"></script>
 <script>
   const sb = document.getElementById('sound');
   sb.setAttribute('aria-pressed', TT.soundOn());
-  sb.addEventListener('click', () => { const v = !TT.soundOn(); TT.setSound(v); sb.setAttribute('aria-pressed', v); });
+  sb.addEventListener('click', () => { const v = !TT.soundOn(); TT.setSound(v); sb.setAttribute('aria-pressed', v); if (!v) HordeAudio.stopMusic(); });
   const mb = document.getElementById('menu'), nav = document.getElementById('nav');
   mb.addEventListener('click', () => { const o = nav.classList.toggle('open'); mb.setAttribute('aria-expanded', o); });
   nav.addEventListener('click', e => { if (e.target.tagName === 'A') { nav.classList.remove('open'); mb.setAttribute('aria-expanded', false); } });

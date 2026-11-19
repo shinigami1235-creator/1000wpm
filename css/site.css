@@ -195,6 +195,12 @@ section { scroll-margin-top: 80px; }
 .horde-box { position: relative; outline: none; border-radius: var(--r); overflow: hidden; background: #111214; }
 .horde-box canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
 .horde-box.focused { box-shadow: 0 0 0 2px var(--accent); }
+.horde-box:fullscreen { display: grid; place-items: center; background: #000; border-radius: 0; }
+.horde-box:fullscreen canvas { width: min(100vw, calc(100vh * 16 / 9)); }
+.game-bar { display: flex; gap: 16px; align-items: start; justify-content: space-between; margin-bottom: var(--gap-m); }
+.game-bar .game-note { margin: 0; }
+.game-bar .btn { flex: none; }
+.race-canvas { display: block; width: 100%; aspect-ratio: 960 / 400; border-radius: var(--r); margin-bottom: 20px; background: #111214; }
 
 .panel { background: var(--mat-2); border-radius: var(--r); padding: 28px; outline: none; position: relative; }
 .panel.focused { box-shadow: 0 0 0 2px var(--accent); }
@@ -216,14 +222,6 @@ section { scroll-margin-top: 80px; }
 .result .row b { font: 600 22px/1.2 var(--f-type); font-variant-numeric: tabular-nums; }
 .verdict { color: var(--ink); font-size: 17px; flex-basis: 100%; }
 
-.race-track { display: grid; gap: 10px; margin-bottom: 24px; }
-.lane { display: grid; grid-template-columns: 120px 1fr 90px; gap: 12px; align-items: center; font-size: 14px; }
-.lane .name { color: var(--ink-2); font-weight: 600; }
-.lane .bar { height: 10px; background: var(--mat-3); border-radius: 5px; position: relative; overflow: hidden; }
-.lane .fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 5px; transition: width 80ms linear; }
-.lane.you .fill { background: var(--accent); }
-.lane.them .fill { background: var(--ghost); }
-.lane .w { text-align: right; font: 600 15px/1 var(--f-type); font-variant-numeric: tabular-nums; }
 .race-text { font-size: clamp(20px, 2.2vw, 26px); }
 .race-text .typetext { font-size: inherit; line-height: 1.6; }
 
@@ -284,7 +282,6 @@ section { scroll-margin-top: 80px; }
   .score b { font-size: 36px; }
   .hint { margin-left: 0; }
   .vids { grid-template-columns: 1fr; }
-  .lane { grid-template-columns: 70px 1fr 64px; }
   .sec { padding-top: 72px; }
   .panel { padding: 18px; }
   .foot nav { margin-left: 0; }

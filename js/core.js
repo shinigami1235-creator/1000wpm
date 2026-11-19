@@ -7,18 +7,34 @@ window.TT = (() => {
   for (const w of ALL) (byLen[w.length] ||= []).push(w);
 
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  function randomWords(n) {
+
+  // Big lists from words.js when loaded. Each list is dealt from a shuffled bag
+  // so a word only comes back after the whole list has gone by.
+  const BIG = window.WORDS || { common: ALL, long: ALL.filter(w => w.length >= 8) };
+  const pool = {};
+  for (const w of [...BIG.common, ...BIG.long, ...KEYB]) (pool[w.length] ||= new Set()).add(w);
+  const bags = {};
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function deal(key, src) {
+    if (!bags[key] || !bags[key].length) bags[key] = shuffle([...src]);
+    return bags[key].pop();
+  }
+  // n words, with roughly longShare of them 8 letters or more
+  function randomWords(n, longShare = 0.18) {
     const out = [];
     while (out.length < n) {
-      const w = pick(COMMON);
+      const w = Math.random() < longShare ? deal('long', BIG.long) : deal('common', BIG.common);
       if (w !== out[out.length - 1]) out.push(w);
     }
     return out;
   }
   function wordOfLength(min, max) {
-    const pool = [];
-    for (let l = min; l <= max; l++) if (byLen[l]) pool.push(...byLen[l]);
-    return pick(pool);
+    const src = [];
+    for (let l = min; l <= max; l++) if (pool[l]) src.push(...pool[l]);
+    return deal(`len${min}-${max}`, src);
   }
 
   // ---- key capture ----
@@ -224,5 +240,5 @@ window.TT = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
-  return { randomWords, wordOfLength, pick, captureKeys, TypeText, paceTimes, click, setProfile, setSound, soundOn: () => on, store, ART_WPM: 204 };
+  return { randomWords, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, setSound, soundOn: () => on, store, ART_WPM: 204 };
 })();

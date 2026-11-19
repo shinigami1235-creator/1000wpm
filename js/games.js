@@ -96,52 +96,40 @@
     const host = panel.querySelector('.race-text');
     const note = panel.querySelector('.race-note');
     const segBtns = panel.querySelectorAll('.seg button');
-    const youLane = panel.querySelector('.lane.you');
-    const themLane = panel.querySelector('.lane.them');
-    const PASSAGES = [
-      'the best way to get faster is to slow down first and type every word right then add speed a little at a time once your fingers know where to go',
-      'every keyboard sounds different and the sound changes with the switches the plate the foam and even the keycaps so i try each one on camera before i say anything about it',
-      'a hall effect switch uses a magnet so you can set how far down a key has to go before it counts and rapid trigger lets it reset the moment you lift',
-      'warm up with a few easy tests then do your real runs and stop when your hands get tired since tired hands make more mistakes than they save time',
-    ];
+    const view = new RaceView(panel.querySelector('.race-canvas'));
     const tt = new TT.TypeText(host);
+    const YOU = '#f2c230', ART_C = '#9fb7d9', P1_C = '#e07a3a', BEST_C = '#c9c9c6';
     let opp = 'art';          // art | best | duo
     let phase = 'p1';         // duo: p1 then p2
-    let p1Times = null;
-    let ghost = null;         // { times, name }
-    let running = false, finished = false, raf = 0, text = '';
+    let p1 = null;            // player 1's run for the duo
+    let ghost = null;         // { times, name, color }
+    let running = false, finished = false, text = '', seed = 0;
+    let stamps = [], streak = 0, skid = 0;
 
-    function setLane(lane, name, frac, wpm) {
-      lane.querySelector('.name').textContent = name;
-      lane.querySelector('.fill').style.width = Math.min(100, frac * 100) + '%';
-      lane.querySelector('.w').textContent = wpm + ' wpm';
-    }
-    function prepare(keepText) {
-      cancelAnimationFrame(raf);
+    const newText = () => TT.randomWords(26, 0.22).join(' ');
+    function prepare(keepCourse) {
       running = false; finished = false;
-      if (!keepText) text = TT.pick(PASSAGES);
-      tt.set(text);
+      if (!keepCourse) { text = newText(); seed = Math.floor(Math.random() * 1e9); }
       ghost = null;
       if (opp === 'art') {
-        ghost = { times: TT.paceTimes(text, ART), name: 'Art' };
-        note.innerHTML = `Art types at ${ART} wpm. Start typing to race him.`;
+        ghost = { times: TT.paceTimes(text, ART), name: 'Art', color: ART_C };
+        note.innerHTML = `Art drives at ${ART} wpm. Start typing to race him.`;
       } else if (opp === 'best') {
-        const b = TT.store.get('wpm-race-best', null);
+        const b = TT.store.get('wpm-race-best2', null);
         if (b) {
-          text = b.text; tt.set(text);
-          ghost = { times: b.times, name: 'Your best' };
+          text = b.text; seed = b.seed;
+          ghost = { times: b.times, name: 'Your best', color: BEST_C };
           note.innerHTML = `Your best run is ${b.wpm} wpm. Start typing to beat it.`;
-        } else {
-          note.innerHTML = 'Finish a race first to save your best run.';
-        }
+        } else note.innerHTML = 'Finish a race first to save your best run.';
+      } else if (phase === 'p1') {
+        note.innerHTML = 'Player 1, start typing. Player 2 races your run next on the same course.';
       } else {
-        if (phase === 'p1') note.innerHTML = 'Player 1, start typing. Player 2 races your run next.';
-        else { ghost = { times: p1Times, name: 'Player 1' }; note.innerHTML = 'Player 2, start typing to race Player 1.'; }
+        ghost = { times: p1.times, name: 'Player 1', color: P1_C };
+        note.innerHTML = 'Player 2, start typing to race Player 1.';
       }
-      const youName = opp === 'duo' ? (phase === 'p1' ? 'Player 1' : 'Player 2') : 'You';
-      setLane(youLane, youName, 0, 0);
-      themLane.hidden = !ghost;
-      if (ghost) setLane(themLane, ghost.name, 0, 0);
+      tt.set(text);
+      view.newCourse(seed);
+      stamps = []; streak = 0; skid = 0;
       tt.ghost.hidden = !ghost;
       if (ghost) tt.showGhost(0, ghost.name);
     }
@@ -150,44 +138,56 @@
       while (i < ghost.times.length && ghost.times[i] <= ms) i++;
       return i;
     }
+    let last = performance.now();
     function loop(now) {
-      if (!running) return;
-      const ms = now - tt.startT;
-      setLane(youLane, youLane.querySelector('.name').textContent, tt.pos / text.length, tt.wpm(now));
+      requestAnimationFrame(loop);
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (!panel.offsetParent) return;
+      const ms = running ? now - tt.startT : finished ? Infinity : 0;
+      while (stamps.length && now - stamps[0] > 2500) stamps.shift();
+      const wpm = running && stamps.length > 1 ? (stamps.length / 5) / ((now - stamps[0]) / 60000 || 1) : 0;
+      skid = Math.max(0, skid - dt);
+      const boost = running && streak >= 12 ? Math.min(1, 0.4 + (streak - 12) / 20) : 0;
+      const others = [];
       if (ghost) {
         const gi = ghostAt(ms);
-        tt.showGhost(gi, ghost.name);
-        const gms = Math.min(ms, ghost.times[ghost.times.length - 1]);
-        setLane(themLane, ghost.name, gi / text.length, gms > 300 ? Math.round((gi / 5) / (gms / 60000)) : 0);
+        if (running) tt.showGhost(gi, ghost.name);
+        const gWpm = gi > 0 && gi < text.length ? ghostWpmAt(gi) : 0;
+        others.push({ progress: gi / text.length, name: ghost.name, color: ghost.color, boost: gWpm > 150 ? 0.6 : 0 });
       }
-      raf = requestAnimationFrame(loop);
+      const youName = opp === 'duo' ? (phase === 'p1' ? 'Player 1' : 'Player 2') : 'You';
+      view.draw({
+        you: { progress: tt.pos / text.length, kmh: Math.min(400, wpm * 1.6 * (1 + boost * 0.25)), boost, skid, color: YOU, name: youName },
+        others,
+      }, dt);
     }
+    function ghostWpmAt(gi) {
+      const a = Math.max(0, gi - 10), ta = a ? ghost.times[a - 1] : 0, tb = ghost.times[gi - 1];
+      return ((gi - a) / 5) / (((tb - ta) || 1) / 60000);
+    }
+    requestAnimationFrame(loop);
+
     function finish() {
       running = false; finished = true;
-      cancelAnimationFrame(raf);
       const now = performance.now();
       const myMs = now - tt.startT;
       const wpm = tt.wpm(now);
-      setLane(youLane, youLane.querySelector('.name').textContent, 1, wpm);
       const times = tt.times.slice();
-      const best = TT.store.get('wpm-race-best', null);
-      if (!best || wpm > best.wpm) TT.store.set('wpm-race-best', { text, times, wpm });
-
+      const best = TT.store.get('wpm-race-best2', null);
+      if (!best || wpm > best.wpm) TT.store.set('wpm-race-best2', { text, seed, times, wpm });
       if (opp === 'duo' && phase === 'p1') {
-        p1Times = times;
+        p1 = { times, wpm };
         phase = 'p2';
         note.innerHTML = `Player 1 typed ${wpm} wpm. Player 2, press <kbd>Enter</kbd> when ready.`;
         return;
       }
       if (ghost) {
         const gMs = ghost.times[ghost.times.length - 1];
-        const gW = Math.round((text.length / 5) / (gMs / 60000));
-        setLane(themLane, ghost.name, 1, gW);
         const me = opp === 'duo' ? 'Player 2' : 'You';
         const diff = Math.abs((myMs - gMs) / 1000).toFixed(1);
         note.innerHTML = myMs < gMs
-          ? `${me} won by ${diff} seconds with ${wpm} wpm. Press <kbd>Enter</kbd> for a new race.`
-          : `${ghost.name} won by ${diff} seconds. Press <kbd>Enter</kbd> for a new race.`;
+          ? `${me} won by ${diff} seconds with ${wpm} wpm. Press <kbd>Enter</kbd> for a new course.`
+          : `${ghost.name} won by ${diff} seconds. Press <kbd>Enter</kbd> for a new course.`;
         if (opp === 'duo') phase = 'p1';
       } else {
         note.innerHTML = `You typed ${wpm} wpm with ${tt.accuracy()}% accuracy. Press <kbd>Enter</kbd> to race this run.`;
@@ -208,13 +208,14 @@
         if (!running) {
           if (opp === 'best' && !ghost) return;
           running = true;
-          raf = requestAnimationFrame(loop);
         }
-        tt.input(ch);
+        const ok = tt.input(ch);
+        if (ok) { stamps.push(performance.now()); streak++; }
+        else { streak = 0; skid = 0.4; }
         TT.click(ch === ' ');
         if (tt.done()) finish();
       },
-      onBack(word) { if (running) word ? tt.backWord() : tt.back(); },
+      onBack(word) { if (running) { word ? tt.backWord() : tt.back(); streak = 0; } },
       onKey(k) {
         if (k === 'Enter' && finished) prepare(opp === 'duo' && phase === 'p2');
         else if (k === 'Tab' || k === 'Escape') { phase = 'p1'; prepare(); }
@@ -222,6 +223,6 @@
     });
     prepare();
     document.fonts.ready.then(() => { if (!running) prepare(true); });
-    document.getElementById('race-game').addEventListener('shown', () => { if (!running) prepare(true); });
+    document.getElementById('race-game').addEventListener('shown', () => { if (!running) { view.fit(); prepare(true); } });
   }
 })();
