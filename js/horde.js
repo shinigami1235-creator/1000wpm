@@ -1,6 +1,6 @@
-// Typo Horde: typos walk toward you, type the word over one to shoot it.
-// Typing of the Dead is the reference for the feel: lock on with the first letter,
-// every correct letter is a shot, bosses carry a whole phrase.
+// Typo Horde plays like Typing of the Dead. Typos walk toward the player and the
+// word over each one shoots it. The first letter picks the target and each
+// correct letter after it fires a shot.
 (() => {
   const box = document.getElementById('horde-box');
   const cv = box.querySelector('canvas');
@@ -336,7 +336,7 @@
       centerText([
         ['Typo Horde', `900 48px ${SANS}`, C.ink],
         ['Type the word over a typo to shoot it.', `500 20px ${SANS}`, C.ink2],
-        ['Three typos reach you and the game ends.', `500 20px ${SANS}`, C.ink2],
+        ['The game ends when three typos reach you.', `500 20px ${SANS}`, C.ink2],
         [focused ? 'Press Enter to start' : 'Click here to start', `700 20px ${SANS}`, C.accent],
       ]);
     } else if (state === 'over') {
@@ -356,7 +356,8 @@
       ]);
     } else if (state === 'wave') {
       ctx.textAlign = 'center'; ctx.font = `900 44px ${SANS}`; ctx.fillStyle = C.ink;
-      ctx.fillText(wave % 3 === 0 ? `Wave ${wave}, boss at the end` : `Wave ${wave}`, W / 2, H / 2 - 40);
+      ctx.fillText(`Wave ${wave}`, W / 2, H / 2 - 40);
+      if (wave % 3 === 0) { ctx.font = `700 20px ${SANS}`; ctx.fillStyle = C.accent; ctx.fillText('A boss comes at the end of this wave.', W / 2, H / 2); }
       ctx.textAlign = 'left';
     }
     requestAnimationFrame(frame);

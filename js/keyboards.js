@@ -1,6 +1,6 @@
 // Boards Art has typed on in his reels (Instagram, Nov 2026).
-// Specs come from the maker pages where possible. "src" lists where each value came from.
-// Colours are close to the boards in his videos and should be checked against real photos.
+// Specs come from the maker pages where possible and "src" lists the pages used.
+// Colours were matched to his videos by eye. Check them against real photos.
 window.KEYBOARDS = [
   {
     id: 'aula-f99', name: 'AULA F99 Pro', tag: 'Typed on', layout: '96', knob: true,
@@ -16,7 +16,7 @@ window.KEYBOARDS = [
       ['Battery', '8000 mAh'],
     ],
     price: '$85.99',
-    standout: 'Full 96% board with a gasket mount and an 8000 mAh battery.',
+    standout: 'The F99 Pro has a gasket mount and an 8000 mAh battery.',
     video: 'https://www.instagram.com/10000wpm/reel/Dfm2oO9Aemm/',
     src: ['https://aulagear.com/collections/types/products/aula-f99-copy'],
   },
@@ -35,7 +35,7 @@ window.KEYBOARDS = [
       ['Weight', '825 g'],
     ],
     price: '$89.99',
-    standout: 'Wireless Hall-effect 60% with 8000 Hz wired polling.',
+    standout: 'The SK61 HE is a wireless Hall-effect 60% that polls at 8000 Hz over USB.',
     video: 'https://www.instagram.com/10000wpm/reel/DfwWq1ERVOS/',
     src: ['https://womierkeyboard.com/products/womier-sk61-he-wireless-magnetic-keyboard'],
   },
@@ -54,7 +54,7 @@ window.KEYBOARDS = [
       ['Weight', '1.17 kg'],
     ],
     price: '฿4,290',
-    standout: 'Clear acrylic case with a knob and a small screen.',
+    standout: 'The Yaksa has a clear acrylic case with a knob and a small screen.',
     video: 'https://www.instagram.com/10000wpm/reel/DfwhXtSxWHB/',
     src: ['https://logaworld.com/products/loga-yaksa-pro-75-clear-maiyarap-edition-tri-mode-wireless-mechanical-keyboard', 'https://shop.line.me/@keypro/product/1005589305'],
   },
@@ -72,7 +72,7 @@ window.KEYBOARDS = [
       ['Weight', '855 g'],
     ],
     price: '$59.99',
-    standout: 'Hall-effect board with 8000 Hz polling under $60.',
+    standout: 'The X68 HE has rapid trigger and 8000 Hz polling for under $60.',
     video: 'https://www.instagram.com/10000wpm/',
     src: ['https://attackshark.com/products/attack-shark-x68-he-rapid-trigger-keyboard-magnetic-switch'],
   },
@@ -89,7 +89,7 @@ window.KEYBOARDS = [
       ['Weight', '1.17 kg'],
     ],
     price: '$199.99',
-    standout: '8000 Hz wireless polling with hot-swap MLX switches.',
+    standout: 'The Vanguard 96 polls at 8000 Hz over wireless and takes hot-swap MLX switches.',
     video: 'https://www.instagram.com/10000wpm/reel/Dftm1bdAdMg/',
     src: ['https://www.corsair.com/us/en/p/keyboards/ch-91f901e-na/vanguard-96-wireless-mechanical-gaming-keyboard-ch-91f901e-na'],
   },
@@ -107,7 +107,7 @@ window.KEYBOARDS = [
       ['Keycaps', 'Clear PC, ASA profile'],
     ],
     price: '$179.99',
-    standout: 'Clear crystal keycaps on an aluminum Hall-effect 60%.',
+    standout: 'The SF60 has clear crystal keycaps on an aluminum Hall-effect 60%.',
     video: 'https://www.instagram.com/10000wpm/',
     src: ['https://mkbguide.com/blog/chilkey-sf60-diamond-review', 'https://us.maxgaming.com/us/gaming-keyboard/chilkey-sf60-he-gaming-keyboard-ansi-star-diamond-pink-ws-poseidon'],
   },

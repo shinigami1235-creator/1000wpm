@@ -1,5 +1,4 @@
-/* 10000wpm sample site
-   Tokens first. Every colour, size and radius below comes from here. */
+/* 10000wpm sample site. Every colour, size and radius comes from the tokens below. */
 :root {
   --mat: #1b1c1e;          /* desk mat */
   --mat-2: #232427;        /* raised panel */
@@ -258,7 +257,7 @@ section { scroll-margin-top: 80px; }
 .foot .counter b { color: var(--accent); font-family: var(--f-type); font-variant-numeric: tabular-nums; }
 .foot nav { margin-left: auto; display: flex; gap: 20px; }
 
-/* hidden input that catches keys, also opens the phone keyboard */
+/* hidden input that catches keys and opens the phone keyboard */
 .sr-input {
   position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0;
   border: 0; padding: 0; resize: none; overflow: hidden; font-size: 16px;

@@ -1,11 +1,11 @@
-// Hero: the text types itself at Art's pace until the visitor starts typing,
-// then it becomes a race against Art's caret.
+// The hero text types itself at Art's pace until the visitor starts typing.
+// The first key starts a race against Art's caret.
 (() => {
   const box = document.getElementById('race');
   const youEl = document.getElementById('you-wpm');
   const artEl = document.getElementById('art-wpm');
   const hint = document.getElementById('race-hint');
-  const TEXT = 'hi im art and i type fast sometimes every day i type out my follower count with one word for each follower so every new follow means more typing for me';
+  const TEXT = 'hi im art and i type fast sometimes every day i type my follower count with one word for each follower so today i type twenty five thousand words';
   const tt = new TT.TypeText(box);
   const ART = TT.ART_WPM;
   const HINT = hint.innerHTML;
@@ -65,8 +65,8 @@
     const youMs = performance.now() - tt.startT;
     const behind = ((youMs - artMs) / 1000).toFixed(1);
     hint.innerHTML = w >= ART
-      ? `You beat Art at ${w} wpm with ${tt.accuracy()}% accuracy. Send him a screenshot. <kbd>Tab</kbd> to go again`
-      : `You finished ${behind} s after Art at ${w} wpm with ${tt.accuracy()}% accuracy. <kbd>Tab</kbd> to go again`;
+      ? `You beat Art with ${w} wpm and ${tt.accuracy()}% accuracy. Press <kbd>Tab</kbd> to race again.`
+      : `You typed ${w} wpm with ${tt.accuracy()}% accuracy and finished ${behind} seconds after Art. Press <kbd>Tab</kbd> to race again.`;
     const best = TT.store.get('wpm-hero-best', 0);
     if (w > best) TT.store.set('wpm-hero-best', w);
   }

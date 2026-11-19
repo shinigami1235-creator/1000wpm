@@ -1,5 +1,5 @@
-// 3D keyboard showroom. Boards are built from the layout tables in keyboards.js,
-// so a new sponsor board only needs a data entry. Real GLB models can replace them later.
+// 3D keyboards. Each board is built from its layout in keyboards.js so a new
+// sponsor board needs one data entry. GLB models from the makers can replace them later.
 (async () => {
   const stage = document.getElementById('kb-stage');
   const loading = stage.querySelector('.kb-loading');
@@ -14,7 +14,7 @@
     ({ OrbitControls } = await import('three/addons/controls/OrbitControls.js'));
     ({ RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js'));
   } catch (e) {
-    loading.textContent = 'The 3D view needs an internet connection.';
+    loading.textContent = 'The 3D keyboards need an internet connection.';
     return;
   }
   loading.remove();
@@ -219,7 +219,7 @@
       }
     }
 
-    // knob, and a screen on boards that have one
+    // knob and screen on the boards that have them
     if (kb.knob) {
       const kx = knobSpot ? knobSpot.x - ox : maxX / 2 - 0.7;
       const kz = knobSpot ? knobSpot.z - oz : -oz - 0.55;
@@ -379,7 +379,7 @@
     const dt = Math.min(0.05, clock.getDelta());
     if (!visible || !board) return;
     idleT += dt;
-    // while typing, ease the camera to a front view and stop spinning
+    // while someone types, stop spinning and turn the camera to the front
     if (idleT < 3) {
       controls.autoRotate = false;
       const dist = camera.position.distanceTo(controls.target);

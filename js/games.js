@@ -53,8 +53,8 @@
       res.querySelector('[data-k=best]').textContent = best;
       const pct = Math.round((wpm / ART) * 100);
       res.querySelector('.verdict').innerHTML = wpm >= ART
-        ? `That beats Art's ${ART} wpm. Press <kbd>Tab</kbd> to try again.`
-        : `That is ${pct}% of Art's ${ART} wpm. Press <kbd>Tab</kbd> to try again.`;
+        ? `You beat Art's ${ART} wpm. Press <kbd>Tab</kbd> to try again.`
+        : `You typed ${pct}% as fast as Art. Press <kbd>Tab</kbd> to try again.`;
       res.classList.add('on');
       win.style.display = 'none';
       timerEl.textContent = 0;
@@ -132,7 +132,7 @@
           ghost = { times: b.times, name: 'Your best' };
           note.innerHTML = `Your best run is ${b.wpm} wpm. Start typing to beat it.`;
         } else {
-          note.innerHTML = 'Finish one race first to save a best run.';
+          note.innerHTML = 'Finish a race first to save your best run.';
         }
       } else {
         if (phase === 'p1') note.innerHTML = 'Player 1, start typing. Player 2 races your run next.';
@@ -186,11 +186,11 @@
         const me = opp === 'duo' ? 'Player 2' : 'You';
         const diff = Math.abs((myMs - gMs) / 1000).toFixed(1);
         note.innerHTML = myMs < gMs
-          ? `${me} won by ${diff} s at ${wpm} wpm. Press <kbd>Enter</kbd> for a new race.`
-          : `${ghost.name} won by ${diff} s. ${me} typed ${wpm} wpm. Press <kbd>Enter</kbd> for a new race.`;
+          ? `${me} won by ${diff} seconds with ${wpm} wpm. Press <kbd>Enter</kbd> for a new race.`
+          : `${ghost.name} won by ${diff} seconds. Press <kbd>Enter</kbd> for a new race.`;
         if (opp === 'duo') phase = 'p1';
       } else {
-        note.innerHTML = `${wpm} wpm with ${tt.accuracy()}% accuracy. Press <kbd>Enter</kbd> to race this run.`;
+        note.innerHTML = `You typed ${wpm} wpm with ${tt.accuracy()}% accuracy. Press <kbd>Enter</kbd> to race this run.`;
         opp = 'best';
         segBtns.forEach(x => x.setAttribute('aria-pressed', x.dataset.o === 'best'));
       }

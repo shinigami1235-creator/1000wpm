@@ -22,8 +22,8 @@ window.TT = (() => {
   }
 
   // ---- key capture ----
-  // A hidden textarea inside a focusable box. Desktop keys come through keydown,
-  // phone keyboards come through input, since Android sends "Unidentified" keys.
+  // A hidden textarea inside a focusable box catches the keys. Desktop keys come
+  // through keydown and phone keys through input since Android sends "Unidentified".
   const SENT = '##';
   function captureKeys(box, { onChar, onBack, onKey, label }) {
     const ta = document.createElement('textarea');
@@ -155,7 +155,8 @@ window.TT = (() => {
     }
   }
 
-  // Per-char delays for a pace in WPM, with human wobble. Total time matches the pace.
+  // Delay for each letter at a given wpm. The delays vary like a real typist's
+  // and add up to the exact pace.
   function paceTimes(text, wpm) {
     const per = 60000 / (wpm * 5);
     const raw = [...text].map((ch, i) => {
@@ -171,7 +172,8 @@ window.TT = (() => {
   }
 
   // ---- key sounds ----
-  // Short filtered noise plus a low knock. Each board passes its own profile.
+  // Each key sound is a short burst of filtered noise with a low knock under it.
+  // Each board sets its own profile.
   let ac = null;
   let on = true;
   try { on = localStorage.getItem('wpm-sound') !== 'off'; } catch (e) {}
