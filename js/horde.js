@@ -3,7 +3,10 @@
 // correct letter after it fires a shot. Five chapters, each ending in a boss.
 (() => {
   const box = document.getElementById('horde-box');
-  const cv = box.querySelector('canvas');
+  const cv = box.querySelector('canvas.hud');
+  const gl = box.querySelector('canvas.gl');
+  let use3D = false;
+  if (window.Horde3D && gl) Horde3D.init(gl).then(ok => { use3D = ok; if (ok) { gl.hidden = false; fit(); } });
   const ctx = cv.getContext('2d');
   const A = HordeArt, D = HordeData, S = HordeAudio;
   const { W, H, HZ, VX } = A;
@@ -17,6 +20,7 @@
     const w = cv.clientWidth || W;
     cv.width = Math.round(w * dpr);
     cv.height = Math.round(w * 9 / 16 * dpr);
+    if (use3D) Horde3D.resize(gl);
   }
   fit();
   addEventListener('resize', fit);
@@ -180,6 +184,7 @@
     for (let i = 0; i < 12 * big; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * 400, vy: -Math.random() * 300, t: 0.6, size: 2 + Math.random() * 4, col: '#7d8f80' });
   }
   function screenPos(o) {
+    if (use3D) return Horde3D.project(o, projs.includes(o) ? 'proj' : pickups.includes(o) ? 'pickup' : null);
     const p = A.proj(o.z);
     const lift = o.type === 'flyer' ? 0.55 + Math.sin(o.phase * 0.7) * 0.1 : 0;
     return { p, x: VX + o.x * W * 0.55 * (0.4 + 0.6 * p), y: A.floorY(p) - lift * 300 * p, h: 360 * p * (o.def ? o.def.h : 1) };
@@ -221,6 +226,7 @@
   // ---------- typing ----------
   function shoot(x, y) {
     shots.push({ x, y, t: 0.08 });
+    if (use3D) Horde3D.shot();
     S.play('shot');
   }
   function onChar(chh) {
@@ -236,7 +242,7 @@
       const sp = boss.spell, next = sp.typed + chh;
       if (sp.options.some(o => o.startsWith(next))) {
         sp.typed = next; stats.good++; stats.chars++; combo++; maxCombo = Math.max(maxCombo, combo);
-        shoot(VX, HZ - 40);
+        shoot(use3D ? Horde3D.bossPoint().x : VX, use3D ? Horde3D.bossPoint().y : HZ - 40);
         if (sp.options.includes(next)) {
           if (next === sp.correct) bossHit();
           else { S.play('wrongAnswer'); hurt(); sp.typed = ''; }
@@ -258,7 +264,7 @@
       target.typed++; stats.good++; stats.chars++;
       combo++; maxCombo = Math.max(maxCombo, combo);
       if (target !== boss) target.flash = 0.06;
-      const s = target === boss ? { x: VX, y: HZ - 40 } : (() => { const q = screenPos(target); return { x: q.x, y: q.y - q.h * 0.6 }; })();
+      const s = target === boss ? (use3D ? Horde3D.bossPoint() : { x: VX, y: HZ - 40 }) : (() => { const q = screenPos(target); return { x: q.x, y: q.y - q.h * 0.6 }; })();
       shoot(s.x, s.y);
       if (target.words) target.z = Math.min(1.05, target.z + 0.004);
       if (target.typed >= word.length) complete(target);
@@ -509,12 +515,14 @@
   }
 
   function drawWorld() {
-    A.drawScene(ctx, ch.scene, travel, t, boss && boss.charge > 0.8);
-    if (boss) A.drawBoss(ctx, boss, t);
+    if (!use3D) {
+      A.drawScene(ctx, ch.scene, travel, t, boss && boss.charge > 0.8);
+      if (boss) A.drawBoss(ctx, boss, t);
+    }
     const order = foes.slice().sort((a, b) => b.z - a.z);
     for (const f of order) {
       const s = screenPos(f);
-      A.drawTypo(ctx, { ...f, x: f.x }, s.x, s.y, s.h, Math.min(0.85, f.z * 0.85), t);
+      if (!use3D) A.drawTypo(ctx, { ...f, x: f.x }, s.x, s.y, s.h, Math.min(0.85, f.z * 0.85), t);
       if (f === target && !f.dying) {
         ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
         const cy = s.y - s.h * 0.6, r = Math.max(14, s.h * 0.2) + Math.sin(t * 10) * 2;
@@ -522,13 +530,9 @@
         for (const a of [0, 1.57, 3.14, 4.71]) { ctx.beginPath(); ctx.moveTo(s.x + Math.cos(a) * r * 0.6, cy + Math.sin(a) * r * 0.6); ctx.lineTo(s.x + Math.cos(a) * r * 1.3, cy + Math.sin(a) * r * 1.3); ctx.stroke(); }
       }
     }
-    for (const p of pickups) {
-      const s = screenPos(p);
-      A.drawPickup(ctx, p, s.x, s.y - 160 * s.p, 1.1, t);
-    }
-    for (const p of projs) {
-      const s = screenPos(p);
-      A.drawProjectile(ctx, p, s.x, s.y - 200 * s.p, 0.6 + s.p * 1.4, t);
+    if (!use3D) {
+      for (const p of pickups) { const s = screenPos(p); A.drawPickup(ctx, p, s.x, s.y - 160 * s.p, 1.1, t); }
+      for (const p of projs) { const s = screenPos(p); A.drawProjectile(ctx, p, s.x, s.y - 200 * s.p, 0.6 + s.p * 1.4, t); }
     }
     A.drawParticles(ctx, parts);
     for (const s of shots) {
@@ -546,11 +550,12 @@
       drawTag(f.words[f.wi], f.typed, s.x, s.y - s.h - 16, f === target, size);
       if (f.words.length > 1 && f.wi === 0) text('Armoured: 2 words', s.x, s.y - s.h + 4, `600 12px ${SANS}`, C.ink2, 'center');
     }
-    for (const p of projs) { const s = screenPos(p); drawTag(p.word, p.typed, s.x, s.y - 200 * s.p - 30 * (0.6 + s.p), p === target, 20); }
+    for (const p of projs) { const s = screenPos(p); drawTag(p.word, p.typed, s.x, use3D ? s.y - s.h - 10 : s.y - 200 * s.p - 30 * (0.6 + s.p), p === target, 20); }
     for (const p of pickups) {
       const s = screenPos(p);
-      drawTag(p.word, p.typed, s.x, s.y - 160 * s.p - 44, p === target, 18);
-      text(D.PICKUPS[p.kind].label, s.x, s.y - 160 * s.p + 44, `700 13px ${SANS}`, D.PICKUPS[p.kind].color, 'center');
+      const top = use3D ? s.y - s.h - 14 : s.y - 160 * s.p - 44, bottom = use3D ? s.y + 22 : s.y - 160 * s.p + 44;
+      drawTag(p.word, p.typed, s.x, top, p === target, 18);
+      text(D.PICKUPS[p.kind].label, s.x, bottom, `700 13px ${SANS}`, D.PICKUPS[p.kind].color, 'center');
     }
     for (const p of pops) {
       ctx.globalAlpha = Math.min(1, p.t * 2);
@@ -655,7 +660,7 @@
   }
 
   function drawTitle() {
-    A.drawScene(ctx, 'room', t * 0.08, t, false);
+    if (!use3D) A.drawScene(ctx, 'room', t * 0.08, t, false);
     overlay(0.55);
     // loose letters drifting up
     for (let i = 0; i < 40; i++) {
@@ -669,7 +674,7 @@
   }
 
   function drawSelect() {
-    A.drawScene(ctx, D.CHAPTERS[sel].scene, t * 0.1, t, false);
+    if (!use3D) A.drawScene(ctx, D.CHAPTERS[sel].scene, t * 0.1, t, false);
     overlay(0.6);
     text('Chapters', VX, 110, `900 44px ${SANS}`, C.ink, 'center');
     text('Pick a chapter with the arrow keys or 1 to 5 and press Enter.', VX, 145, `500 16px ${SANS}`, C.ink2, 'center');
@@ -694,7 +699,7 @@
   function drawStory() {
     const c = ch || D.CHAPTERS[sel];
     if (story.letter) {
-      A.drawStoryArt(ctx, c, t);
+      if (use3D) overlay(0.55); else A.drawStoryArt(ctx, c, t);
       ctx.fillStyle = '#e9e3d3'; ctx.beginPath(); ctx.roundRect(VX - 330, 40, 660, 460, 4); ctx.fill();
       let y = 84;
       story.pages.forEach(p => {
@@ -704,7 +709,7 @@
       text('Press Enter', VX, 530, `700 15px ${SANS}`, C.accent, 'center');
       return;
     }
-    A.drawStoryArt(ctx, c, t);
+    if (use3D) overlay(0.55); else A.drawStoryArt(ctx, c, t);
     text(`Chapter ${chIndex + 1}`, 80, 120, `700 16px ${SANS}`, C.accent);
     text(c.title, 80, 168, `900 46px ${SANS}`, C.ink);
     text(c.place, 80, 198, `500 17px ${SANS}`, C.ink2);
@@ -719,7 +724,7 @@
   }
 
   function drawResult() {
-    A.drawScene(ctx, ch.scene, travel, t, false);
+    if (!use3D) A.drawScene(ctx, ch.scene, travel, t, false);
     overlay(0.75);
     text(`${ch.title} cleared`, VX, 110, `900 44px ${SANS}`, C.ink, 'center');
     text(result.rank, VX, 260, `900 130px ${SANS}`, C.accent, 'center');
@@ -740,7 +745,7 @@
   }
 
   function drawEnding() {
-    A.drawScene(ctx, 'room', t * 0.05, t, false);
+    if (!use3D) A.drawScene(ctx, 'room', t * 0.05, t, false);
     overlay(0.65);
     text('The end', VX, 200, `900 64px ${SANS}`, C.ink, 'center');
     const total = Object.values(save.best).reduce((a, b) => a + b.score, 0);
@@ -757,6 +762,20 @@
     if (!visible) return;
     update(dt);
     ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    if (use3D) {
+      ctx.clearRect(0, 0, W, H);
+      const sceneName = mode === 'title' || mode === 'ending' ? 'room' : mode === 'select' ? D.CHAPTERS[sel].scene : (ch || D.CHAPTERS[sel]).scene;
+      const inPlay = mode === 'play' || mode === 'over';
+      const st = steps[stepI];
+      Horde3D.frame({
+        scene: sceneName, t, dt: paused ? 0 : dt,
+        travel: inPlay || mode === 'result' ? travel : t * 0.04,
+        moving: mode === 'play' && !paused && st && st.kind === 'move',
+        foes: inPlay ? foes : [], pickups: inPlay ? pickups : [], projs: inPlay ? projs : [],
+        boss: inPlay ? boss : null, shake: shakeT, hurt: hurtT, slow: slowT > 0,
+        alarm: boss && boss.charge > 0.8, lookAt: target && target.words ? target : null,
+      });
+    }
     ctx.save();
     if (shakeT > 0) ctx.translate((Math.random() - 0.5) * 22 * shakeT, (Math.random() - 0.5) * 22 * shakeT);
     if (mode === 'title') drawTitle();

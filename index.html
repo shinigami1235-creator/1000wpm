@@ -84,7 +84,7 @@
           <p class="game-note">Five chapters of typos with a boss at the end of each. Type the word over a typo to shoot it. <kbd>Backspace</kbd> drops your target and <kbd>Esc</kbd> pauses.</p>
           <button class="btn btn-out" id="horde-full" type="button">Full screen</button>
         </div>
-        <div class="horde-box" id="horde-box" tabindex="-1"><canvas width="960" height="540"></canvas></div>
+        <div class="horde-box" id="horde-box" tabindex="-1"><canvas class="gl" hidden></canvas><canvas class="hud" width="960" height="540"></canvas></div>
       </div>
 
       <div class="game" id="speed">
@@ -211,6 +211,7 @@
 <script src="js/horde-audio.js"></script>
 <script src="js/horde-data.js"></script>
 <script src="js/horde-art.js"></script>
+<script src="js/horde3d.js"></script>
 <script src="js/horde.js"></script>
 <script src="js/kb3d.js"></script>
 <script>
