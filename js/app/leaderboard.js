@@ -10,9 +10,16 @@ Router.register('leaderboard', (() => {
     { id: 'quote', name: 'Quote', modes: ['quote', 'custom'], art: true },
     { id: 'breach', name: 'Breach', modes: ['horde-1', 'horde-2', 'horde-3', 'horde-4', 'horde-5'], score: true },
     { id: 'race', name: 'Race', modes: ['race-art', 'race-best', 'race-duo'], art: true },
+    { id: 'boss', name: 'World boss', modes: ['world-boss'], score: true, label: 'Damage' },
+    { id: 'endless', name: 'Breach endless', custom: true },
+    { id: 'rooms', name: 'Rooms', custom: true },
   ];
   const LOGO = `<svg class="green" viewBox="0 0 64 64" style="width:34px;height:34px;border:1px solid var(--line);padding:3px;background:var(--bg)" aria-hidden="true"><use href="#i-logo"/></svg>`;
-  let el, tab = '60', chapter = 0, off = [];
+  let el, tab = '60', chapter = 0, diff = 'all', endKind = 'endless', off = [], poll = 0;
+  const DIFFS = [['all', 'All'], ['easy', 'Easy x0.6'], ['normal', 'Normal x1.0'], ['hard', 'Hard x1.5']];
+  const diffSeg = (cur, opts = DIFFS) => `<div class="seg" style="margin-bottom:10px" role="group" aria-label="Difficulty">${opts.map(([k, n]) => `<button type="button" data-d="${k}" aria-pressed="${k === cur}">${n}</button>`).join('')}</div>`;
+  // runs saved before difficulty existed count as Normal
+  const diffOf = s => s.difficulty || 'normal';
 
   function mount(root) {
     el = root;
@@ -72,15 +79,26 @@ Router.register('leaderboard', (() => {
     const T = TABS.find(t => t.id === tab) || TABS[0];
     el.querySelectorAll('.lb-tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === T.id));
     const sub = el.querySelector('[data-sub]');
-    sub.innerHTML = T.id === 'breach'
-      ? `<div class="seg" style="margin-bottom:10px" role="group" aria-label="Chapter">${[0, 1, 2, 3, 4, 5].map(c => `<button type="button" data-c="${c}" aria-pressed="${c === chapter}">${c ? 'Ch. ' + c : 'All chapters'}</button>`).join('')}</div>`
+    clearInterval(poll); poll = 0;
+    if (T.id === 'rooms') return rooms(sub, el.querySelector('[data-board]'));
+    if (T.id === 'endless') return endless(sub, el.querySelector('[data-board]'));
+    if (T.id === 'boss') {
+      const runs = WPM.sessions().filter(s => s.mode === 'world-boss');
+      const total = runs.reduce((a, s) => a + (s.score || 0), 0);
+      const bestD = runs.reduce((a, s) => Math.max(a, s.score || 0), 0);
+      sub.innerHTML = `<div class="lb-boss"><div><span class="label">Best damage in one session</span><b class="mid">${UI.fmt(bestD)}</b></div>
+        <div><span class="label">Total damage</span><b class="mid">${UI.fmt(total)}</b></div>
+        <div><span class="label">Sessions</span><b class="mid">${runs.length}</b></div></div>`;
+    } else sub.innerHTML = T.id === 'breach'
+      ? `<div class="seg" style="margin-bottom:10px" role="group" aria-label="Chapter">${[0, 1, 2, 3, 4, 5].map(c => `<button type="button" data-c="${c}" aria-pressed="${c === chapter}">${c ? 'Ch. ' + c : 'All chapters'}</button>`).join('')}</div>${diffSeg(diff)}`
       : '';
-    sub.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { chapter = +b.dataset.c; paint(); }));
+    sub.querySelectorAll('button[data-c]').forEach(b => b.addEventListener('click', () => { chapter = +b.dataset.c; paint(); }));
+    sub.querySelectorAll('button[data-d]').forEach(b => b.addEventListener('click', () => { diff = b.dataset.d; paint(); }));
 
     const modes = T.id === 'breach' && chapter ? [`horde-${chapter}`] : T.modes;
     const metric = s => T.score ? (s.score || 0) : (s.wpm || 0);
     const p = WPM.profile();
-    const runs = WPM.sessions().filter(s => modes.includes(s.mode)).sort((a, b) => metric(b) - metric(a)).slice(0, 20)
+    const runs = WPM.sessions().filter(s => modes.includes(s.mode) && (T.id !== 'breach' || diff === 'all' || diffOf(s) === diff)).sort((a, b) => metric(b) - metric(a)).slice(0, 20)
       .map(s => ({ kind: 'me', s, v: metric(s) }));
     const rows = [...runs];
     if (T.art) rows.push({ kind: 'art', v: TT.ART_WPM });
@@ -97,18 +115,85 @@ Router.register('leaderboard', (() => {
       const extra = s.mode.startsWith('race') && s.won !== undefined ? (s.won ? ', won' : ', lost') : s.mode.startsWith('horde') && s.cleared ? ', cleared' : '';
       return `<td class="who-td"><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
         <td class="w num-col">${UI.fmt(r.v)}</td><td class="n num-col hide-sm">${s.acc != null ? s.acc + '%' : ''}</td>
-        <td class="hide-sm">${UI.esc(UI.modeName(s.mode) + extra)}</td><td class="n hide-sm">${UI.esc(UI.date(s.at))}</td>`;
+        <td class="hide-sm">${UI.esc(UI.modeName(s.mode, s.mode.startsWith('horde') ? diffOf(s) : null) + extra)}</td><td class="n hide-sm">${UI.esc(UI.date(s.at))}</td>`;
     };
     el.querySelector('[data-board]').innerHTML = `
       <table class="board">
-        <thead><tr><th>#</th><th>Typist</th><th class="num-col">${T.score ? 'Score' : 'WPM'}</th><th class="num-col hide-sm">Accuracy</th><th class="hide-sm">Mode</th><th class="hide-sm">Date</th></tr></thead>
+        <thead><tr><th>#</th><th>Typist</th><th class="num-col">${T.label || (T.score ? 'Score' : 'WPM')}</th><th class="num-col hide-sm">Accuracy</th><th class="hide-sm">Mode</th><th class="hide-sm">Date</th></tr></thead>
         <tbody>${rows.map((r, i) => `<tr class="${r.kind === 'art' ? 'art' : r === bestMine ? 'mine-best' : ''}">
           <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>${cell(r)}</tr>`).join('')}</tbody>
       </table>
-      ${runs.length ? '' : `<p class="empty">No runs in this mode yet. ${T.id === 'breach' ? '<a class="green" href="#/play/breach">Play Breach</a>' : T.id === 'race' ? '<a class="green" href="#/play/race">Start a race</a>' : '<a class="green" href="#/type">Take a typing test</a>'} to get on the board.</p>`}`;
+      ${runs.length ? '' : `<p class="empty">No runs in this mode yet. ${T.id === 'boss' ? '<a class="green" href="#/boss">Attack the world boss</a>' : T.id === 'breach' ? '<a class="green" href="#/play/breach">Play Breach</a>' : T.id === 'race' ? '<a class="green" href="#/play/race">Start a race</a>' : '<a class="green" href="#/type">Take a typing test</a>'} to get on the board.</p>`}`;
   }
 
-  function unmount() { off.forEach(f => f()); off = []; el = null; }
+  // Waits for another agent's script to finish loading, then draws.
+  function when(test, draw, board) {
+    if (test()) return draw();
+    board.innerHTML = '<div class="loading-state">Loading</div>';
+    let n = 0;
+    poll = setInterval(() => {
+      if (test()) { clearInterval(poll); poll = 0; draw(); }
+      else if (++n > 40) { clearInterval(poll); poll = 0; draw(); }
+    }, 250);
+  }
+
+  function rooms(sub, board) {
+    sub.innerHTML = '<p class="dim lb-note">Rooms from other players show here once the server is live.</p>';
+    when(() => window.Room && typeof window.Room.summary === 'function' && window.RoomItems, () => {
+      if (!el) return;
+      let r = null;
+      try { r = window.Room && window.Room.summary ? window.Room.summary() : null; } catch (e) { console.warn(e); }
+      if (!r) { board.innerHTML = '<p class="empty">My Room did not load.</p>'; return; }
+      const p = WPM.profile();
+      // a floor plan drawn to scale against the largest room size
+      const k = 34 / 8;
+      const plan = `<svg class="room-plan" viewBox="0 0 40 34" aria-hidden="true"><rect x="${(40 - r.w * k) / 2}" y="${(34 - r.d * k) / 2}" width="${r.w * k}" height="${r.d * k}" fill="rgba(57,255,136,.12)" stroke="#39ff88" stroke-width="1"/></svg>`;
+      board.innerHTML = `
+        <table class="board">
+          <thead><tr><th>#</th><th>Owner</th><th>Room</th><th class="num-col">Floor</th><th class="num-col hide-sm">Items placed</th><th class="num-col">Value</th></tr></thead>
+          <tbody><tr class="mine-best">
+            <td class="rank top">1</td>
+            <td><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
+            <td><div class="who">${plan}<span>Size ${UI.esc(r.label)}<span class="hide-sm">, ${r.w} × ${r.d} m</span></span></div></td>
+            <td class="n num-col">${r.area} m²</td>
+            <td class="n num-col hide-sm">${UI.fmt(r.items)}</td>
+            <td class="num-col"><span class="price">${UI.coin()}${UI.fmt(r.value)}</span></td>
+          </tr></tbody>
+        </table>
+        <p class="empty"><a class="green" href="#/room">Open My Room</a> to add items or change its size.</p>`;
+    }, board);
+  }
+
+  function endless(sub, board) {
+    const d = diff === 'all' ? 'normal' : diff;
+    sub.innerHTML = `<div class="seg" style="margin-bottom:10px" role="group" aria-label="Run type">${[['endless', 'Endless'], ['daily', 'Daily run']].map(([k, n]) => `<button type="button" data-k="${k}" aria-pressed="${k === endKind}">${n}</button>`).join('')}</div>${diffSeg(d, DIFFS.slice(1))}`;
+    sub.querySelectorAll('button[data-k]').forEach(b => b.addEventListener('click', () => { endKind = b.dataset.k; paint(); }));
+    sub.querySelectorAll('button[data-d]').forEach(b => b.addEventListener('click', () => { diff = b.dataset.d; paint(); }));
+    const has = () => window.Breach && typeof window.Breach.endlessScores === 'function';
+    when(has, () => {
+      if (!el) return;
+      let list = [];
+      try {
+        if (has()) list = endKind === 'daily'
+          ? Object.values((window.Breach.dailyScores && window.Breach.dailyScores(d)) || {})
+          : (window.Breach.endlessScores(d) || []);
+      } catch (e) { console.warn(e); }
+      list = list.slice().sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10);
+      const p = WPM.profile();
+      board.innerHTML = list.length ? `
+        <table class="board">
+          <thead><tr><th>#</th><th>Typist</th><th class="num-col">Score</th><th class="num-col">Level</th><th class="num-col hide-sm">WPM</th><th class="hide-sm">Date</th></tr></thead>
+          <tbody>${list.map((r, i) => `<tr class="${i === 0 ? 'mine-best' : ''}">
+            <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
+            <td><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span></div></td>
+            <td class="w num-col">${UI.fmt(r.score)}</td><td class="n num-col">${UI.fmt(r.level)}</td>
+            <td class="n num-col hide-sm">${r.wpm != null ? UI.fmt(r.wpm) : ''}</td><td class="n hide-sm">${UI.esc(UI.date(/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date + 'T12:00' : r.date, false))}</td></tr>`).join('')}</tbody>
+        </table>`
+        : `<p class="empty">No ${endKind === 'daily' ? 'daily' : 'endless'} runs on ${d === 'easy' ? 'Easy' : d === 'hard' ? 'Hard' : 'Normal'} on this device yet. <a class="green" href="#/play/breach">Play Breach</a> and pick ${endKind === 'daily' ? 'Daily run' : 'Endless'} to get on the board.</p>`;
+    }, board);
+  }
+
+  function unmount() { clearInterval(poll); poll = 0; off.forEach(f => f()); off = []; el = null; }
 
   return { title: 'Leaderboard', mount, unmount };
 })());

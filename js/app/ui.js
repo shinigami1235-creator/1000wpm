@@ -35,11 +35,13 @@ window.UI = (() => {
     'words-25': '25 words', 'words-50': '50 words', 'words-100': '100 words',
     quote: 'Quote', custom: 'Custom',
     'race-art': 'Race vs Art', 'race-best': 'Race vs best', 'race-duo': 'Race, 2 players',
+    'world-boss': 'World boss', 'breach-endless': 'Breach endless', 'breach-daily': 'Breach daily',
   };
-  function modeName(m) {
-    if (MODES[m]) return MODES[m];
+  const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  function modeName(m, difficulty) {
     const h = /^horde-(\d)$/.exec(m);
-    return h ? `Breach ch. ${h[1]}` : m;
+    const base = MODES[m] || (h ? `Breach ch. ${h[1]}` : m);
+    return difficulty && DIFF[difficulty] ? `${base}, ${DIFF[difficulty]}` : base;
   }
 
   // ---------- avatars ----------

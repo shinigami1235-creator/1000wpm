@@ -128,6 +128,16 @@
 .rm-sm { min-height: 36px; min-width: 76px; padding: 0 12px; border: 1px solid rgba(57, 255, 136, .2); background: none; font: 12px var(--rmono); color: var(--rink2); }
 .rm-go { color: var(--rg); border-color: var(--rline); background: rgba(57, 255, 136, .1); }
 .rm-go:hover { background: rgba(57, 255, 136, .2); }
+.rm-sizes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rm-sizes li { display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .12); }
+.rm-sizes li.on { border-color: var(--rg); box-shadow: inset 0 0 14px rgba(57, 255, 136, .12); }
+.rm-sizes li.locked .rm-inv-txt { opacity: .6; }
+.rm-plan { flex: none; width: 56px; height: 46px; display: flex; align-items: flex-end; justify-content: flex-start; padding: 3px; background: #050b08; }
+.rm-plan i { display: block; border: 1px solid var(--rg); border-top-width: 3px; border-left-width: 3px; background: rgba(57, 255, 136, .14); }
+.rm-sizes li.locked .rm-plan i { border-color: var(--rink2); background: none; }
+.rm-cur { display: inline-grid; place-items: center; color: var(--rg); border-color: transparent; }
+.rm-buy { display: inline-grid; place-items: center; text-decoration: none; color: var(--gold, #f2c230); border-color: rgba(242, 194, 48, .35); white-space: nowrap; }
+.rm-buy:hover { background: rgba(242, 194, 48, .1); }
 .rm-presets li { padding: 12px; background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .12); }
 .rm-presets b { font-weight: 600; }
 .rm-presets p { margin: 4px 0 10px; font-size: 13px; color: var(--rink2); }

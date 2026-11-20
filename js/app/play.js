@@ -10,7 +10,7 @@ Router.register('play', (() => {
         <div class="title-block"><h1>Play_</h1><p>// GAMES</p></div>
       </div>
       <nav class="game-tabs" aria-label="Games">
-        <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3><p>Five chapters with a boss at the end of each.</p></a>
+        <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3><p>Five chapters with a boss at the end of each, plus endless and a daily run.</p></a>
         <a class="panel game-tab" href="#/play/race" data-g="race"><span class="label">&gt; GAME 02</span><h3>Race</h3><p>Your car's speed comes from your typing speed. Race Art, your best run or a friend.</p></a>
       </nav>
       <div data-game></div>`;

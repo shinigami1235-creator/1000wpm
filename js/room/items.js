@@ -5,7 +5,15 @@
 (() => {
   const CELL = 0.25;
   const TAU = Math.PI * 2;
-  const CATEGORIES = ['Desks', 'Chairs', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs'];
+  const CATEGORIES = ['Desks', 'Chairs', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs', 'Room size'];
+  // Room sizes in metres. room-s is free and every player has it; the others are shop items.
+  const SIZES = [
+    { id: 'room-s', label: 'S', w: 4.2, d: 3.8, h: 2.6, price: 0 },
+    { id: 'room-m', label: 'M', w: 5.25, d: 4.5, h: 2.7, price: 3000 },
+    { id: 'room-l', label: 'L', w: 6.5, d: 5.25, h: 2.8, price: 8000 },
+    { id: 'room-xl', label: 'XL', w: 8, d: 6.5, h: 3, price: 20000 },
+  ];
+  SIZES.forEach(z => { z.name = 'Room size ' + z.label; z.area = Math.round(z.w * z.d * 10) / 10; });
 
   // Sponsor boards, copied from js/keyboards.js so the room works on pages without it.
   // When window.KEYBOARDS is on the page its entry wins.
@@ -1033,6 +1041,37 @@
     return g;
   }
 
+  // An empty cut-away room at true size with a 1 m floor grid and its size written on the floor
+  function roomShell(K, z) {
+    const THREE = K.THREE, T = 0.12;
+    const g = K.group();
+    const ftex = K.floorTex().clone(); ftex.wrapS = ftex.wrapT = THREE.RepeatWrapping; ftex.repeat.set(z.w / 2, z.d / 2); ftex.needsUpdate = true;
+    const slabM = K.std('#0b100d', 0.85);
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(z.w, 0.012, z.d), [slabM, slabM, new THREE.MeshStandardMaterial({ map: ftex, roughness: 0.5 }), slabM, slabM, slabM]);
+    floor.position.set(0, -0.006, 0); g.add(floor);
+    const slab = K.box(z.w + T, 0.24, z.d + T, slabM); slab.position.set(-T / 2, -0.132, -T / 2); g.add(slab);
+    const wallM = K.std('#222b26', 0.92);
+    const back = K.box(z.w + T, z.h, T, wallM); back.position.set(-T / 2, z.h / 2, -z.d / 2 - T / 2); g.add(back);
+    const left = K.box(T, z.h, z.d, wallM); left.position.set(-z.w / 2 - T / 2, z.h / 2, 0); g.add(left);
+    const win = K.mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshStandardMaterial({ color: '#000', emissive: '#fff', emissiveMap: K.canvasTex('city', 512, 384, (c, w, h) => K.drawCity(c, w, h, 14)), emissiveIntensity: 1.1 }));
+    win.rotation.y = Math.PI / 2; win.position.set(-z.w / 2 + 0.002, 1.55, z.d * (1.8 / 3.8) - z.d / 2); g.add(win);
+    const lineM = K.glow('#39ff88', 1.8);
+    for (let x = 1; x < z.w; x++) { const l = K.box(0.012, 0.002, z.d, lineM); l.position.set(-z.w / 2 + x, 0.002, 0); g.add(l); }
+    for (let d = 1; d < z.d; d++) { const l = K.box(z.w, 0.002, 0.012, lineM); l.position.set(0, 0.002, -z.d / 2 + d); g.add(l); }
+    const label = K.canvasTex('sizelabel|' + z.id, 512, 256, (c, w, h) => {
+      c.fillStyle = 'rgba(4,8,6,.72)'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = '#39ff88'; c.lineWidth = 6; c.strokeRect(3, 3, w - 6, h - 6);
+      c.fillStyle = '#39ff88'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `700 130px ${K.MONO}`; c.fillText(z.label, w / 2, h * 0.4);
+      c.fillStyle = '#d7f5e3'; c.font = `44px ${K.MONO}`; c.fillText(`${z.w} × ${z.d} m`, w / 2, h * 0.8);
+    });
+    const lw = Math.min(z.w * 0.7, z.d * 1.3);
+    const lm = new THREE.Mesh(new THREE.PlaneGeometry(lw, lw / 2), new THREE.MeshStandardMaterial({ color: '#000', map: label, emissive: '#fff', emissiveMap: label, emissiveIntensity: 1.6, transparent: true, depthWrite: false }));
+    lm.rotation.x = -Math.PI / 2; lm.position.set(0.15, 0.004, 0.2); g.add(lm);
+    const glow = new THREE.PointLight('#39ff88', 3, 6, 1.6); glow.position.set(-z.w / 2 + 0.3, z.h - 0.2, -z.d / 2 + 0.3); g.add(glow);
+    return g;
+  }
+
   // ---------------------------------------------------------------- catalog
   const kbItem = (key, name, price, desc, size) => ({ id: 'kb-' + key, name, category: 'Keyboards', price, desc, size, wall: false, surface: true, build: (THREE, RB) => RoomKit(THREE, RB).keyboard(board(key)) });
   const K_ = fn => (THREE, RB) => fn(RoomKit(THREE, RB));
@@ -1097,6 +1136,11 @@
     { id: 'rug-round', name: 'Round rug', category: 'Floor & Rugs', price: 700, size: [6.8, 6.8], rug: true, desc: 'A 1.7 m round rug in sage green.', build: K_(rugRound) },
     { id: 'rug-shag', name: 'Shag rug', category: 'Floor & Rugs', price: 600, size: [7, 4.6], rug: true, desc: 'A cream shag rug with tasselled ends.', build: K_(rugShag) },
   ];
+  for (const z of SIZES.slice(1)) {
+    catalog.push({ id: z.id, name: z.name, category: 'Room size', price: z.price, size: [0, 0], wall: false, roomSize: z,
+      desc: `A ${z.w} by ${z.d} m room with ${z.h} m walls.`,
+      thumb: { dir: [0.75, 0.95, 1] }, build: K_(K => roomShell(K, z)) });
+  }
   catalog.forEach(it => { it.wall = !!it.wall; });
   const byId = new Map(catalog.map(it => [it.id, it]));
 
@@ -1192,7 +1236,7 @@
     const obj = create(id, L);
     R.scene.add(obj);
     obj.updateMatrixWorld(true);
-    const box = it.thumb ? new THREE.Box3(new THREE.Vector3(...it.thumb.box.slice(0, 3)), new THREE.Vector3(...it.thumb.box.slice(3))) : new THREE.Box3().setFromObject(obj);
+    const box = it.thumb && it.thumb.box ? new THREE.Box3(new THREE.Vector3(...it.thumb.box.slice(0, 3)), new THREE.Vector3(...it.thumb.box.slice(3))) : new THREE.Box3().setFromObject(obj);
     const ctr = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
     const dir = it.thumb ? new THREE.Vector3(...it.thumb.dir) : it.wall ? new THREE.Vector3(0.45, 0.2, 1) : it.rug ? new THREE.Vector3(0.5, 1.15, 1) : new THREE.Vector3(0.85, 0.55, 1.15);
     dir.normalize();
@@ -1241,5 +1285,15 @@
     get: id => byId.get(id) || null,
     load, create, thumbnail,
     dims: id => dims.get(id) || null,
+    sizes: SIZES,
+    // The size a layout uses. Layouts saved before sizes existed use room-s.
+    sizeOf(layout = window.WPM && WPM.getRoom()) {
+      return SIZES.find(z => layout && z.id === layout.size) || SIZES[0];
+    },
+    // Total shop price of the items placed in a layout, room size not included
+    roomValue(layout = window.WPM && WPM.getRoom()) {
+      if (!layout || !Array.isArray(layout.items)) return 0;
+      return layout.items.reduce((sum, p) => { const it = byId.get(p.id); return sum + (it && !it.roomSize ? it.price : 0); }, 0);
+    },
   };
 })();

@@ -117,6 +117,7 @@ window.BreachAudio = (() => {
     glitch() { for (let i = 0; i < 4; i++) tone('square', 200 + Math.random() * 2000, 100 + Math.random() * 2000, 0.03, 0.08, i * 0.025); },
     shieldBreak() { burst(0.5, 5000, 0.6, 0.6, 'highpass'); [1600, 1200, 800, 400].forEach((f, i) => tone('triangle', f, f / 2, 0.12, 0.2, i * 0.05)); },
     door() { tone('sawtooth', 90, 60, 0.6, 0.35); burst(0.5, 400, 0.5, 0.5, 'lowpass'); },
+    danger() { tone('square', 1320, 1320, 0.06, 0.13); tone('square', 990, 990, 0.08, 0.13, 0.08); },
     access() { [660, 990, 1320].forEach((f, i) => tone('square', f, f, 0.07, 0.16, i * 0.06)); },
   };
   function play(name) {

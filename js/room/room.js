@@ -2,8 +2,18 @@
 // window.Room.mount(el) builds the page inside el and Room.unmount() tears it down.
 // Layouts are saved with WPM.setRoom({ v: 1, items: [{ id, x, y, z, rot, wall }] }).
 window.Room = (() => {
-  const W = 4.2, D = 3.8, H = 2.6, T = 0.14;        // room size in metres, wall thickness
-  const WIN = { z0: 1.0, z1: 2.6, y0: 0.95, y1: 2.15 };    // window in the left wall
+  const T = 0.14;                                    // wall thickness in metres
+  // Room size and the window in the left wall. They change when the player picks another room size.
+  let W, D, H, WIN;
+  const SMALL = { id: 'room-s', w: 4.2, d: 3.8, h: 2.6 };
+  function setDims(z) {
+    W = z.w; D = z.d; H = z.h;
+    const c = D * (1.8 / 3.8);
+    WIN = { z0: c - 0.8, z1: c + 0.8, y0: 0.95, y1: Math.min(H - 0.3, 2.15 + (H - 2.6) / 2) };
+  }
+  setDims(SMALL);
+  const sizes = () => RoomItems.sizes;
+  const sizeOwned = z => z.price === 0 || WPM.owns(z.id);
   const STARTERS = ['desk-basic', 'chair-basic', 'monitor-basic', 'keyboard-basic'];
   const GREEN = '#39ff88';
   let S = null;
@@ -23,6 +33,7 @@ window.Room = (() => {
     right: 'M9 5l7 7-7 7',
     cart: 'M3 4h2.5l2.2 11h10.6l2-8H6.4M9 20h.01M17 20h.01',
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    size: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z',
   };
   const svg = n => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -121,9 +132,9 @@ window.Room = (() => {
     pc: ['pc-tower', 'pc-white'],
     rug: ['rug-laurel', 'rug-round', 'rug-shag'],
   };
-  function layoutBuilder(owned) {
-    const items = [];
-    const used = new Set();
+  function layoutBuilder(owned, start = []) {
+    const items = [...start];
+    const used = new Set(start.map(p => p.id));
     const pick = list => [].concat(list).find(id => owned.has(id) && !used.has(id) && def(id));
     const add = (id, p) => {
       if (!id) return null;
@@ -270,10 +281,72 @@ window.Room = (() => {
       },
     },
   ];
+  // Move a layout from room size a to room size b (the current size). Items against a wall stay
+  // against it, chairs and PCs follow their desk, items on a desk move with it and the rest spread
+  // out or close in. Items that no longer fit are left out.
+  function mapLayout(items, a, b) {
+    const out = [], delta = new Map();
+    const axis = (c, half, L0, L1) => c - half < 0.06 ? c : c + half > L0 - 0.06 ? c + (L1 - L0) : c * L1 / L0;
+    const gap = (p, q) => { const x = box(p), y = box(q); return Math.max(x.x0 - y.x1, y.x0 - x.x1, x.z0 - y.z1, y.z0 - x.z1); };
+    for (const p of [...items].sort((x, y) => (x.wall ? 1 : 0) - (y.wall ? 1 : 0) || x.y - y.y)) {
+      const d = def(p.id), q = { id: p.id, x: p.x, y: p.y, z: p.z, rot: p.rot || 0, wall: p.wall || null };
+      const sup = supportOf(p, items);
+      const desk = !sup && !p.wall && /^(Chairs|PC & Tech)$/.test(d.category) && items.find(o => o !== p && delta.has(o) && def(o.id).category === 'Desks' && gap(p, o) < 0.6);
+      if (sup || desk) {
+        const m = delta.get(sup || desk);
+        if (!m) continue;
+        q.x += m.x; q.y += m.y; q.z += m.z;
+      } else if (p.wall) {
+        const h = height(p.id), w = d.size[0] * CELL() / 2;
+        if (p.wall === 'back') q.x = axis(p.x, w, a.w, b.w); else q.z = axis(p.z, w, a.d, b.d);
+        if (p.y + h > a.h - 0.3) q.y = p.y + (b.h - a.h);
+        snap(q);
+      } else {
+        const [sw, sd] = foot(p);
+        q.x = axis(p.x, sw / 2, a.w, b.w); q.z = axis(p.z, sd / 2, a.d, b.d);
+        snap(q);
+      }
+      if (!fits(q, out)) continue;
+      out.push(q);
+      delta.set(p, { x: q.x - p.x, y: q.y - p.y, z: q.z - p.z });
+    }
+    return out;
+  }
+
+  // Presets are written for the free room and stretched to bigger ones. Bigger rooms then get a
+  // second desk and the spare rugs, plants and lights in the free space.
   function presetLayout(preset, owned) {
+    const real = { w: W, d: D, h: H };
+    setDims(SMALL);
     const B = layoutBuilder(owned);
     preset.build(B);
-    return B.items;
+    setDims(real);
+    if (real.w === SMALL.w && real.d === SMALL.d) return B.items;
+    const F = layoutBuilder(owned, mapLayout(B.items, SMALL, real));
+    const scan = (id, spots) => { if (!id) return null; for (const [x, z, rot] of spots) { const p = F.floor(id, x, z, rot); if (p) return p; } return null; };
+    const steps = (from, to, step = CELL()) => { const r = []; for (let v = from; step > 0 ? v <= to : v >= to; v += step) r.push(v); return r; };
+    // second desk along the back wall, from the right
+    const did = F.pick(PICK.desk);
+    if (did) {
+      const [dw, dd] = F.size(did, 0);
+      const desk = scan(did, steps(W - dw / 2 - 0.05, dw / 2, -CELL()).map(x => [x, dd / 2, 0]));
+      if (desk) {
+        F.on(desk, F.pick(PICK.monitor), 0, -1);
+        F.on(desk, F.pick(PICK.keyboard), 0, 0.5);
+        F.on(desk, F.pick(['laptop', 'cactus', 'keycap-jar']), 1, -1);
+        const ch = F.pick(PICK.chair);
+        if (ch) F.floor(ch, desk.x, dd + F.size(ch, 2)[1] / 2 + 0.1, 2);
+        const pc = F.pick(PICK.pc);
+        if (pc) F.floor(pc, desk.x - dw / 2 - 0.2, 0.3) || F.floor(pc, desk.x + dw / 2 + 0.2, 0.3);
+      }
+    }
+    // spare rugs and plants in the open floor and the front corners
+    for (const id of PICK.rug) if (F.has(id)) scan(id, [[W * 0.72, D * 0.72], [W * 0.3, D * 0.75], [W * 0.75, D * 0.4]]);
+    for (const id of ['monstera', 'snake-plant', 'lantern', 'beanbag', 'chair-ergo', 'chair-basic']) if (F.has(id)) scan(id, [[W - 0.45, D - 0.45], [0.45, D - 0.45], [W - 0.45, D * 0.5], [W * 0.5, D - 0.45]]);
+    for (const id of ['hex-panels', 'pegboard', 'poster-mountain', 'poster-logo', 'wall-shelf', 'pothos']) if (F.has(id)) {
+      for (const x of steps(W - 0.8, 0.8, -0.5)) if (F.wall(id, 'back', x, 1.35)) break;
+    }
+    return F.items;
   }
 
   // ---------------------------------------------------------------- mount
@@ -298,6 +371,7 @@ window.Room = (() => {
               <button type="button" data-tool="move">${svg('move')}<span>Move</span></button>
               <button type="button" data-tool="rotate">${svg('rotate')}<span>Rotate</span></button>
               <button type="button" data-tool="delete">${svg('trash')}<span>Delete</span></button>
+              <button type="button" data-tool="size" aria-expanded="false">${svg('size')}<span>Room size</span></button>
               <button type="button" data-tool="place" hidden>${svg('check')}<span>Place</span></button>
               <button type="button" data-tool="cancel" hidden>${svg('x')}<span>Cancel</span></button>
             </div>
@@ -358,7 +432,7 @@ window.Room = (() => {
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.16;
 
-    const camera = s.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 60);
+    const camera = s.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 90);
     const controls = s.controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(W / 2, 0.85, D / 2);
     controls.enableDamping = true;
@@ -377,15 +451,20 @@ window.Room = (() => {
     composer.addPass(s.bloom);
     composer.addPass(new OutputPass());
 
+    // ---------- load the saved room or lay out the starter items ----------
+    const saved = WPM.getRoom();
+    const z = RoomItems.sizeOf(saved);
+    s.size = sizeOwned(z) ? z : sizes()[0];
+    setDims(s.size);
     buildShell(s, phone);
     s.itemsRoot = new THREE.Group();
     scene.add(s.itemsRoot);
     buildHelpers(s);
+    buildGrids(s);
+    controls.target.set(W / 2, 0.85, D / 2);
 
-    // ---------- load the saved room or lay out the starter items ----------
-    const owned = new Set(WPM.owned().filter(id => def(id)));
+    const owned = new Set(WPM.owned().filter(id => def(id) && !def(id).roomSize));
     for (const id of owned) RoomItems.create(id);   // fills in heights
-    const saved = WPM.getRoom();
     let list;
     if (saved && Array.isArray(saved.items)) {
       list = [];
@@ -447,11 +526,11 @@ window.Room = (() => {
   // ---------------------------------------------------------------- the room shell
   function buildShell(s, phone) {
     const { THREE, K, scene } = s;
-    const shell = new THREE.Group();
+    const shell = s.shell = new THREE.Group();
     scene.add(shell);
 
     // floor
-    const ftex = K.floorTex(); ftex.wrapS = ftex.wrapT = THREE.RepeatWrapping; ftex.repeat.set(W / 2, D / 2);
+    const ftex = K.floorTex(); ftex.needsUpdate = true; ftex.wrapS = ftex.wrapT = THREE.RepeatWrapping; ftex.repeat.set(W / 2, D / 2);
     const fb = K.floorBump(); fb.wrapS = fb.wrapT = THREE.RepeatWrapping; fb.repeat.set(W / 2, D / 2);
     const wood = new THREE.MeshStandardMaterial({ map: ftex, bumpMap: fb, bumpScale: 1.2, roughness: 0.48, metalness: 0 });
     const slabM = K.std('#0b100d', 0.85);
@@ -529,36 +608,51 @@ window.Room = (() => {
     for (const dz of [-ww * 0.3, ww * 0.3]) { const cord = K.box(0.002, slats * 0.042 + 0.04, 0.002, K.std('#d9d4c9', 0.8)); cord.position.set(0.04, WIN.y1 - 0.04 - slats * 0.021, wz + dz); shell.add(cord); }
 
     // ---------- lights ----------
-    const hemi = new THREE.HemisphereLight('#bfe8d0', '#24180f', 0.32); scene.add(hemi);
+    const hemi = new THREE.HemisphereLight('#bfe8d0', '#24180f', 0.32); shell.add(hemi);
     const key = new THREE.DirectionalLight('#ffd7a8', 0.95);
-    key.position.set(W * 0.95, 6.5, D * 1.45); key.target.position.set(W / 2, 0, D / 2);
+    const k = Math.sqrt(W * D / (4.2 * 3.8)), span = Math.max(4.2, Math.max(W, D));
+    key.position.set(W / 2 + 1.9 * k, 6.5 * k, D / 2 + 3.6 * k); key.target.position.set(W / 2, 0, D / 2);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    Object.assign(key.shadow.camera, { left: -4.2, right: 4.2, top: 4.2, bottom: -4.2, near: 2, far: 14 });
-    key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03;
-    scene.add(key, key.target);
+    Object.assign(key.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 14 * k + 6 });
+    key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03 * k;
+    shell.add(key, key.target);
     const moon = new THREE.DirectionalLight('#7f9cff', 0.45);
-    moon.position.set(-5, 3, wz); moon.target.position.set(W / 2, 0.5, wz); scene.add(moon, moon.target);
-    const green = new THREE.PointLight(GREEN, 5, 5.5, 1.6); green.position.set(0.3, H - 0.15, 0.3); scene.add(green);
-    const warm = new THREE.PointLight('#ffbf86', 7, 8, 1.6); warm.position.set(W * 0.62, H - 0.2, D * 0.62); scene.add(warm);
-    const cityGlow = new THREE.PointLight('#8a6bff', 1.6, 3, 2); cityGlow.position.set(0.35, wy, wz); scene.add(cityGlow);
+    moon.position.set(-5, 3, wz); moon.target.position.set(W / 2, 0.5, wz); shell.add(moon, moon.target);
+    const green = new THREE.PointLight(GREEN, 5 * Math.min(k, 1.6), 5.5 * k, 1.6); green.position.set(0.3, H - 0.15, 0.3); shell.add(green);
+    // one warm ceiling light per 4 by 4 m or so
+    const nx = Math.max(1, Math.round(W / 4.5)), nz = Math.max(1, Math.round(D / 4.5));
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const warm = new THREE.PointLight('#ffbf86', 7, 8, 1.6);
+      warm.position.set(nx === 1 ? W * 0.62 : W * (i + 0.5) / nx, H - 0.2, nz === 1 ? D * 0.62 : D * (j + 0.5) / nz);
+      shell.add(warm);
+    }
+    const cityGlow = new THREE.PointLight('#8a6bff', 1.6, 3, 2); cityGlow.position.set(0.35, wy, wz); shell.add(cityGlow);
   }
 
   // Grid, footprint marker and selection brackets
-  function buildHelpers(s) {
-    const { THREE, K, scene } = s;
+  // Floor and wall grids for the current room size
+  function buildGrids(s) {
+    const { THREE, scene } = s;
+    const vis = s.grid ? [s.grid.visible, s.wallGrid.visible] : [false, false];
+    for (const o of [s.grid, s.wallGrid]) if (o) { scene.remove(o); o.geometry.dispose(); }
     const lm = new THREE.LineBasicMaterial({ color: GREEN, transparent: true, opacity: 0.09, depthWrite: false, toneMapped: false });
     const pts = [];
     for (let x = 0; x <= W + 1e-6; x += CELL()) pts.push(x, 0.003, 0, x, 0.003, D);
     for (let z = 0; z <= D + 1e-6; z += CELL()) pts.push(0, 0.003, z, W, 0.003, z);
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    s.grid = new THREE.LineSegments(g, lm); s.grid.visible = false; scene.add(s.grid);
+    s.grid = new THREE.LineSegments(g, lm); scene.add(s.grid);
     const wp = [];
     for (let x = 0; x <= W + 1e-6; x += CELL()) wp.push(x, 0, 0.003, x, H, 0.003);
     for (let y = 0; y <= H + 1e-6; y += CELL()) wp.push(0, y, 0.003, W, y, 0.003, 0.003, y, 0, 0.003, y, D);
     for (let z = 0; z <= D + 1e-6; z += CELL()) wp.push(0.003, 0, z, 0.003, H, z);
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
     s.wallGrid = new THREE.LineSegments(wg, lm.clone()); s.wallGrid.material.opacity = 0.1; s.wallGrid.visible = false; scene.add(s.wallGrid);
+    [s.grid.visible, s.wallGrid.visible] = vis;
+  }
+
+  function buildHelpers(s) {
+    const { THREE, K, scene } = s;
 
     const ftex = K.canvasTex('footprint', 128, 128, (c, w, h) => {
       c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(0, 0, w, h);
@@ -633,7 +727,7 @@ window.Room = (() => {
     lights.sort((a, b) => b.intensity - a.intensity);
     lights.forEach((l, i) => { l.visible = i < (s.phone ? 4 : 8); });
   }
-  const serialize = s => ({ v: 1, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
+  const serialize = s => ({ v: 1, size: s.size.id, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
 
   function markDirty(s) {
     s.dirty = true;
@@ -790,6 +884,7 @@ window.Room = (() => {
   // ---------------------------------------------------------------- placing and moving
   // s.placing = { id, rot, p (existing placement or null), ghost, cand, ok, group, orig }
   function startPlace(s, id) {
+    if (def(id).roomSize) return;
     if (s.placing) cancelPlacing(s);
     if (s.mode !== 'edit') setMode(s, 'edit');
     select(s, null);
@@ -979,15 +1074,15 @@ window.Room = (() => {
     t('move').classList.toggle('on', !!(P && P.p));
   }
   function buildTabs(s) {
-    const cats = ['All', ...RoomItems.categories];
+    const cats = ['All', ...RoomItems.categories.filter(c => c !== 'Room size')];
     s.ui.tabs.innerHTML = cats.map(c => `<button type="button" role="tab" data-cat="${esc(c)}" aria-selected="${c === s.cat}">${c === 'All' ? svg('grid') : ''}<span>${esc(c)}</span></button>`).join('');
   }
   function renderStrip(s) {
     if (!s.ui) return;
-    const owned = WPM.owned().map(def).filter(Boolean);
+    const owned = WPM.owned().map(def).filter(d => d && !d.roomSize);
     const inRoom = new Set(s.items.map(p => p.id));
     const list = owned.filter(d => s.cat === 'All' || d.category === s.cat);
-    const more = RoomItems.catalog.filter(d => !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
+    const more = RoomItems.catalog.filter(d => !d.roomSize && !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
     s.ui.strip.innerHTML = list.map(d => `
       <button type="button" class="rm-card${s.sel && s.sel.id === d.id ? ' on' : ''}" data-id="${d.id}" aria-label="${esc(d.name)}${inRoom.has(d.id) ? ', in room' : ''}">
         <span class="rm-thumb"><img alt="" data-thumb="${d.id}"></span>
@@ -1010,11 +1105,27 @@ window.Room = (() => {
     s.popKind = kind;
     const pop = s.ui.pop;
     pop.hidden = false;
-    s.root.querySelectorAll('[data-act="inventory"],[data-act="presets"]').forEach(b => b.setAttribute('aria-expanded', b.dataset.act === kind));
-    const owned = WPM.owned().map(def).filter(Boolean);
+    s.root.querySelectorAll('[data-act="inventory"],[data-act="presets"],[data-tool="size"]').forEach(b => b.setAttribute('aria-expanded', (b.dataset.act || b.dataset.tool) === kind));
+    const owned = WPM.owned().map(def).filter(d => d && !d.roomSize);
     const inRoom = new Set(s.items.map(p => p.id));
+    if (kind === 'size') {
+      const big = sizes()[sizes().length - 1];
+      pop.innerHTML = `
+        <header><h3>// ROOM SIZE</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
+        <p class="rm-hint">Items that don't fit a smaller size go back to your inventory.</p>
+        <ul class="rm-sizes">${sizes().map(z => {
+          const own = sizeOwned(z), cur = z.id === s.size.id;
+          const btn = cur ? '<span class="rm-sm rm-cur">In use</span>'
+            : own ? `<button type="button" class="rm-sm rm-go" data-size="${z.id}">Use</button>`
+            : `<a class="rm-sm rm-buy" href="#/shop">${z.price.toLocaleString('en-US')} coins</a>`;
+          return `<li class="${cur ? 'on' : ''}${own ? '' : ' locked'}">
+            <span class="rm-plan" aria-hidden="true"><i style="width:${Math.round(z.w / big.w * 100)}%;height:${Math.round(z.d / big.d * 100)}%"></i></span>
+            <span class="rm-inv-txt"><b>${esc(z.name)}</b><small>${z.w} × ${z.d} m, ${z.area} m²</small></span>${btn}</li>`;
+        }).join('')}</ul>`;
+      return;
+    }
     if (kind === 'inventory') {
-      const more = RoomItems.catalog.length - owned.length;
+      const more = RoomItems.catalog.filter(d => !d.roomSize).length - owned.length;
       pop.innerHTML = `
         <header><h3>// INVENTORY</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
         <p class="rm-hint">You own ${owned.length} item${owned.length > 1 ? 's' : ''} and ${owned.filter(d => inRoom.has(d.id)).length} are in the room.</p>
@@ -1059,6 +1170,8 @@ window.Room = (() => {
       else if (tool === 'move') { if (s.sel) startMove(s, s.sel); }
       else if (tool === 'rotate') rotate(s);
       else if (tool === 'delete') del(s);
+      else if (tool === 'size') { if (s.placing) cancelPlacing(s, true); if (s.popKind === 'size') closePop(s); else openPop(s, 'size'); }
+      else if (b.dataset.size) { setRoomSize(s, b.dataset.size); openPop(s, 'size'); }
       else if (tool === 'place') commit(s);
       else if (tool === 'cancel') { cancelPlacing(s); }
       else if (b.dataset.cat) {
@@ -1084,6 +1197,29 @@ window.Room = (() => {
         say(s, `${pr.name} applied. Press Save room to keep it.`);
       }
     });
+  }
+
+  // ---------------------------------------------------------------- room size
+  function setRoomSize(s, id) {
+    const z = sizes().find(q => q.id === id);
+    if (!z || z.id === s.size.id || !sizeOwned(z)) return;
+    if (s.placing) cancelPlacing(s, true);
+    select(s, null);
+    const before = s.items.map(p => ({ id: p.id, x: p.x, y: p.y, z: p.z, rot: p.rot, wall: p.wall }));
+    const old = { w: W, d: D, h: H };
+    s.size = z;
+    setDims(z);
+    s.scene.remove(s.shell);
+    s.shell.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    buildShell(s, s.phone);
+    buildGrids(s);
+    s.controls.target.set(W / 2, 0.85, D / 2);
+    const keep = mapLayout(before, old, z);
+    setLayout(s, keep);
+    resize(s, true);
+    markDirty(s);
+    const lost = before.length - keep.length;
+    say(s, lost ? `${z.name}. ${lost} item${lost > 1 ? 's' : ''} didn't fit and went back to your inventory.` : `${z.name}. Press Save room to keep it.`);
   }
 
   // ---------------------------------------------------------------- sizing
@@ -1113,6 +1249,7 @@ window.Room = (() => {
     s.controls.minDistance = dist * 0.45;
     s.controls.maxDistance = dist * 1.25;
     s.fit = dist;
+    cam.near = Math.max(0.3, dist * 0.03); cam.far = dist * 3; cam.updateProjectionMatrix();
     if (first) {
       cam.position.copy(s.controls.target).addScaledVector(dir, dist);
     } else {
@@ -1138,10 +1275,17 @@ window.Room = (() => {
       }
       return true;
     };
-    let lo = 2, hi = 40;
+    let lo = 2, hi = 160;
     for (let i = 0; i < 28; i++) { const m = (lo + hi) / 2; if (inside(m)) hi = m; else lo = m; }
     return hi;
   }
 
-  return { mount, unmount };
+  // For the leaderboard: the size a saved layout uses and what its placed items cost
+  const sizeOf = layout => RoomItems.sizeOf(layout);
+  function summary(layout = WPM.getRoom()) {
+    const z = RoomItems.sizeOf(layout);
+    return { size: z.id, label: z.label, w: z.w, d: z.d, area: z.area, value: RoomItems.roomValue(layout), items: layout && Array.isArray(layout.items) ? layout.items.length : 0 };
+  }
+
+  return { mount, unmount, sizeOf, summary };
 })();

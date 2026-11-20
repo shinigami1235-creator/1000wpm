@@ -62,7 +62,7 @@ window.WPM = (() => {
 
   // ---------- sessions ----------
   // Call once at the end of any typing run.
-  // run: { mode: 'time-60' | 'words-50' | 'quote' | 'race' | 'horde-3' | ..., wpm, acc (0-100), correct (chars), keys, ms, score? }
+  // run: { mode: 'time-60' | 'words-50' | 'quote' | 'race' | 'horde-3' | ..., wpm, acc (0-100), correct (chars), keys, ms, score?, difficulty? }
   // Returns { coins, xp, newBest, unlocked: [achievement ids] }.
   function record(run) {
     const today = day();
@@ -76,8 +76,10 @@ window.WPM = (() => {
     data.totals.ms += run.ms || 0;
     if (!data.days.includes(today)) data.days.push(today);
     const metric = run.score !== undefined ? run.score : run.wpm;
-    const newBest = !(data.best[run.mode] >= metric);
-    if (newBest) data.best[run.mode] = metric;
+    // Breach runs on Easy or Hard keep their own best, so Normal keeps the plain mode key
+    const bestKey = run.difficulty && run.difficulty !== 'normal' ? `${run.mode}:${run.difficulty}` : run.mode;
+    const newBest = !(data.best[bestKey] >= metric);
+    if (newBest) data.best[bestKey] = metric;
     // rewards: 1 coin per 2 correct words, scaled by accuracy, plus a bonus for a new best
     const accF = Math.max(0, (run.acc - 50) / 50);
     const coins = Math.round(words / 2 * accF) + (newBest ? 25 : 0);
