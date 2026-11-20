@@ -168,7 +168,7 @@ window.BuddyArt = (() => {
     function frame(now) {
       raf = 0; let busy = false;
       if (to) {
-        const x = Math.min(1, (now - t0) / dur), e = ease(x), lin = Math.min(1, x * 1.4);
+        const x = Math.max(0, Math.min(1, (now - t0) / dur)), e = ease(x), lin = Math.min(1, x * 1.4);
         cur.arm = lerpArm(from.arm, to.arm, e);
         cur.n = { tilt: lerp(from.n.tilt, to.n.tilt, e), lift: lerp(from.n.lift, to.n.lift, e), pool: lerp(from.n.pool, to.n.pool, lin),
           kb: lerp(from.n.kb, to.n.kb, lin), thrust: lerp(from.n.thrust, to.n.thrust, lin) };

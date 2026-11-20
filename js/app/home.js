@@ -1,5 +1,6 @@
-// #/home: the race against Art, his facts, links to the other pages, the 3D
-// keyboards, his videos and the section for brands.
+// #/home: the race against Art, his numbers, a line pointing to the rest of the site,
+// the 3D keyboards, his videos and the section for brands.
+// The layout follows the calm rules in css/site.css under .page-home.
 Router.register('home', (() => {
   const VIDEOS = [
     ['https://www.instagram.com/10000wpm/reel/DQOgF1njxv7/', 'Follower count', '1 follower = 1 word', 'Art types one word for each follower he has.'],
@@ -16,75 +17,73 @@ Router.register('home', (() => {
   function mount(el) {
     const e = UI.esc;
     el.innerHTML = `
-      <section class="hero">
-        <div class="panel hot hero-race">
-          <div class="ph">&gt; RACE ART_<span class="meta">${TT.ART_WPM} WPM PACE</span></div>
+      <div class="home">
+        <section class="hero-race" aria-labelledby="race-h">
+          <h1 id="race-h">Race Art</h1>
           <div class="typebox idle" data-race tabindex="-1"></div>
-          <div class="hero-bar">
-            <div class="score you"><b data-you>0</b><span class="label">Your wpm</span></div>
-            <div class="score art"><b data-art>${TT.ART_WPM}</b><span class="label">Art's wpm</span></div>
-            <p class="hint" data-hint>Start typing to race Art. Press <kbd>Tab</kbd> to start over.</p>
+          <div class="hr-bar">
+            <div class="hr-pace">
+              <div class="score you"><b data-you>0</b><span>Your wpm</span></div>
+              <div class="score art"><b data-art>${TT.ART_WPM}</b><span>Art's wpm</span></div>
+            </div>
+            <p class="hint" data-hint>Start typing to race. Press <kbd>Tab</kbd> to start over.</p>
           </div>
-        </div>
-        <aside class="panel facts">
-          <div class="ph">// ART</div>
-          <div class="fact"><b>${TT.ART_WPM}</b><p>Best wpm in his reels</p></div>
-          <div class="fact"><b>25.5K</b><p>Followers on <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a></p></div>
-          <div class="fact"><b>983</b><p>Posts</p></div>
-          <div class="fact"><p>Art types his follower count on Monkeytype with one word for each follower and runs sound tests on the keyboards brands send him.</p></div>
-        </aside>
-      </section>
+        </section>
 
-      <nav class="go" aria-label="Pages">
-        <a class="panel" href="#/type"><h3>Type</h3><p>Typing test in words, time, quote and custom modes.</p><span class="arrow">&gt; OPEN TYPE TEST</span></a>
-        <a class="panel" href="#/play"><h3>Play</h3><p>Breach and the race. Every run pays coins and XP.</p><span class="arrow">&gt; OPEN GAMES</span></a>
-        <a class="panel" href="#/room"><h3>My Room</h3><p>Decorate your room with items from the shop.</p><span class="arrow">&gt; OPEN MY ROOM</span></a>
-      </nav>
+        <section class="home-art" aria-label="Art">
+          <p class="ha-stats">
+            <span><b>${TT.ART_WPM}</b> best wpm in his reels</span>
+            <span><b>25.5K</b> followers on <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a></span>
+            <span><b>983</b> posts</span>
+          </p>
+          <p class="ha-bio">Art types his follower count on Monkeytype with one word for each follower and runs sound tests on the keyboards brands send him.</p>
+          <p class="ha-more">Every run in the <a href="#/type">typing test</a>, <a href="#/play/breach">Breach</a> or the <a href="#/play/race">race</a> pays coins and XP. Spend the coins in the <a href="#/shop">shop</a> on <a href="#/room">your room</a>.</p>
+        </section>
 
-      <section class="sec" id="keyboards">
-        <div class="sec-head">
-          <h2>Keyboards Art types on</h2>
-          <p>Press or tap a key to type on the board and hear how it sounds.</p>
-        </div>
-        <div class="kb-layout">
-          <div class="panel kb-stage" data-stage>
-            <div class="kb-loading">Loading</div>
-            <div class="kb-typed" aria-live="off"></div>
-            <div class="kb-picker" role="tablist" aria-label="Keyboards"></div>
+        <section class="sec" id="keyboards">
+          <div class="sec-head">
+            <h2>Keyboards Art types on</h2>
+            <p>Press or tap a key to type on the board and hear how it sounds.</p>
           </div>
-          <aside class="panel spec" data-spec aria-live="polite"></aside>
-        </div>
-      </section>
-
-      <section class="sec" id="videos">
-        <div class="sec-head"><h2>Videos</h2><p>Reels from his Instagram.</p></div>
-        <div class="vids">
-          ${VIDEOS.map(([u, k, t, p]) => `<a class="panel vid" href="${e(u)}" target="_blank" rel="noopener">
-            <span class="kind">${e(k)}</span><h3>${e(t)}</h3><p>${e(p)}</p><span class="open">&gt; WATCH ON INSTAGRAM</span></a>`).join('')}
-        </div>
-      </section>
-
-      <section class="sec" id="brands">
-        <div class="sec-head"><h2>Send Art a keyboard</h2></div>
-        <div class="brands">
-          <div class="panel">
-            <div class="ph">// FOR BRANDS</div>
-            <p>Art types on new keyboards on camera for his 25.5K followers on Instagram. Each board gets its own reel of him typing on Monkeytype with the sound up.</p>
-            <ol>
-              <li>Message Art on Instagram with the board and your launch date.</li>
-              <li>Art types on it and posts the reel.</li>
-              <li>Your board is added to the 3D keyboards on this site with its specs and a link to your store.</li>
-            </ol>
-            <a class="btn" href="https://ig.me/m/10000wpm" target="_blank" rel="noopener">Message Art on Instagram</a>
+          <div class="kb-layout">
+            <div class="kb-stage" data-stage>
+              <div class="kb-loading">Loading</div>
+              <div class="kb-typed" aria-live="off"></div>
+              <div class="kb-picker" role="tablist" aria-label="Keyboards"></div>
+            </div>
+            <aside class="spec" data-spec aria-live="polite"></aside>
           </div>
-          <div class="panel">
-            <div class="ph">// BOARDS ART HAS TYPED ON</div>
-            <div class="board-list">${BOARDS.map(b => `<span>${e(b)}</span>`).join('')}</div>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <p class="since">Art could have typed <b data-since>0</b> words since you opened this page.</p>`;
+        <section class="sec" id="videos">
+          <div class="sec-head"><h2>Videos</h2><p>Reels from his Instagram.</p></div>
+          <ul class="vids">
+            ${VIDEOS.map(([u, k, t, p]) => `<li><a class="vid" href="${e(u)}" target="_blank" rel="noopener">
+              <span class="kind">${e(k)}</span><b>${e(t)}</b><span class="what">${e(p)}</span></a></li>`).join('')}
+          </ul>
+        </section>
+
+        <section class="sec" id="brands">
+          <div class="sec-head"><h2>Send Art a keyboard</h2></div>
+          <div class="brands">
+            <div class="br-how">
+              <p>Art types on new keyboards on camera for his 25.5K followers on Instagram. Each board gets its own reel of him typing on Monkeytype with the sound up.</p>
+              <ol>
+                <li>Message Art on Instagram with the board and your launch date.</li>
+                <li>Art types on it and posts the reel.</li>
+                <li>Your board is added to the 3D keyboards on this site with its specs and a link to your store.</li>
+              </ol>
+              <a class="btn" href="https://ig.me/m/10000wpm" target="_blank" rel="noopener">Message Art on Instagram</a>
+            </div>
+            <div class="br-list">
+              <h3>Boards Art has typed on</h3>
+              <ul class="board-list">${BOARDS.map(b => `<li>${e(b)}</li>`).join('')}</ul>
+            </div>
+          </div>
+        </section>
+
+        <p class="since">Art could have typed <b data-since>0</b> words since you opened this page.</p>
+      </div>`;
 
     stops.push(HeroRace.mount(el.querySelector('.hero-race')));
     stops.push(KB3D.mount(el.querySelector('[data-stage]'), el.querySelector('[data-spec]')));

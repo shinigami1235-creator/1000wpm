@@ -57,8 +57,8 @@
   // corner, below = under its left edge, text = right after a heading's text.
   // face: which way it turns when it lands. bonus pulls it toward the perches that matter.
   const PERCHES = [
-    { route: 'home', sel: '.hero-race .score.art', at: 'out-r', dx: 34, dy: 2, face: 'left', bonus: 90, arrive: ['point', 'curious'] },
-    { route: 'home', sel: '.facts .fact b', at: 'out-r', dx: 30, dy: 10, face: 'left', bonus: 10 },
+    { route: 'home', sel: '.hero-race .hr-pace', at: 'out-r', dx: 26, dy: 14, face: 'left', bonus: 90, arrive: ['point', 'curious'] },
+    { route: 'home', sel: '.home-art .ha-stats', at: 'out-r', dx: 24, dy: 18, face: 'left', bonus: 10 },
     { route: 'home', sel: '#keyboards .sec-head h2', at: 'text', dx: 20, dy: 4, face: 'right', bonus: 60, arrive: ['point', 'happy'] },
     { route: 'home', sel: '#videos .sec-head h2, #brands .sec-head h2', at: 'text', dx: 20, dy: 4, face: 'right', all: true },
     { route: 'type', sel: '.type-top .title-block', at: 'in-br', dx: -26, dy: -8, face: 'left', bonus: 90, arrive: ['lean', 'curious'] },
@@ -426,8 +426,9 @@
       const s = CORNER();
       const cs = corners(vh);
       if (cur && cur.corner != null) cs.unshift(cs.splice(cur.corner, 1)[0]);
-      // a phone tries for a corner with no text first, then settles for one with no controls
-      const pick = cs.find(c => !blocked(c.x, c.y, s, s, true)) || (desk ? null : cs.find(c => !blocked(c.x, c.y, s, s, false)));
+      // a phone tries for a corner with no text first, then settles for one with no controls.
+      // Home never lets it sit over text, so there it drops out of sight instead.
+      const pick = cs.find(c => !blocked(c.x, c.y, s, s, true)) || (desk || route() === 'home' ? null : cs.find(c => !blocked(c.x, c.y, s, s, false)));
       if (pick) best = { corner: corners(vh).findIndex(c => c.x === pick.x), size: s, face: pick.face };
     }
     cur = best;
