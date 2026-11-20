@@ -1375,5 +1375,5 @@ window.Breach3D = (() => {
     voxData = []; letters = []; rings = []; beams = [];
   }
 
-  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; }, get _scene() { return scene; }, get _camera() { return camera; }, get _THREE() { return THREE; } };
+  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; } };
 })();
