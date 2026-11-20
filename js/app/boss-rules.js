@@ -7,8 +7,8 @@
 // id, the phase and the cycle number, so every client sees the same attacks
 // with the same words at the same time without any extra messages.
 window.WorldBossRules = (() => {
-  // The boss and phase names are placeholders. Change them here.
-  const BOSS = { name: 'Overflow', maxHp: 1000000 };
+  // The boss and phase names. Change them here.
+  const BOSS = { name: 'Syntax Error', maxHp: 1000000 };
 
   // at:      the phase starts when HP left drops to this share
   // cycle:   ms between attacks
@@ -20,18 +20,18 @@ window.WorldBossRules = (() => {
   // phrase:  block words are two words long
   // heal:    HP a second each add heals while it lives
   const PHASES = [
-    { at: 1.00, name: 'Shell intact',  cycle: 12000, wind: 5600, flight: 6500, shots: 3, adds: 0, heal: 0,
+    { at: 1.00, name: 'Online',        cycle: 12000, wind: 5600, flight: 6500, shots: 3, adds: 0, heal: 0,
       pool: { slam: 1 }, intro: ['slam'], kinds: ['slam'], phrase: false, weakMult: 2 },
-    { at: 0.75, name: 'Shell cracked', cycle: 11000, wind: 5000, flight: 6000, shots: 3, adds: 0, heal: 0,
+    { at: 0.75, name: 'Corrupted',     cycle: 11000, wind: 5000, flight: 6000, shots: 3, adds: 0, heal: 0,
       pool: { slam: 4, volley: 4, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2 },
-    { at: 0.50, name: 'Rings broken',  cycle: 10000, wind: 4700, flight: 5600, shots: 4, adds: 3, heal: 60,
+    { at: 0.50, name: 'Memory leak',   cycle: 10000, wind: 4700, flight: 5600, shots: 4, adds: 3, heal: 60,
       pool: { slam: 3, volley: 3, adds: 3, shield: 1 }, intro: ['adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2 },
-    { at: 0.25, name: 'Core exposed',  cycle: 9000,  wind: 5200, flight: 5000, shots: 4, adds: 3, heal: 80,
+    { at: 0.25, name: 'Kernel exposed', cycle: 9000,  wind: 5200, flight: 5000, shots: 4, adds: 3, heal: 80,
       pool: { slam: 4, volley: 3, adds: 2, shield: 2 }, intro: ['slam'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2 },
-    { at: 0.10, name: 'Core critical', cycle: 7500,  wind: 4600, flight: 4400, shots: 5, adds: 4, heal: 100,
+    { at: 0.10, name: 'Kernel panic',  cycle: 7500,  wind: 4600, flight: 4400, shots: 5, adds: 4, heal: 100,
       pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true },
   ];
-  const ATTACK_NAME = { slam: 'slam', sweep: 'sweep', lunge: 'lunge', beam: 'beam' };
+  const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload' };
 
   const FIRST_LEAD = 4000;      // ms from the fight starting to the first attack
   const LEAD = 3500;            // ms from a phase change to its first attack, for the roar

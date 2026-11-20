@@ -8,22 +8,22 @@ Router.register('boss', (() => {
   let R, B, A, NAME, TIPS;
   const BANNER = [
     '',
-    'It raises shields and throws words at you now.',
-    'It sends adds that heal it.',
+    'It puts up a firewall and fires packets at you now.',
+    'It spawns bugs that patch it.',
     'Block words are two words long now.',
     'It is enraged and attacks twice as often.',
   ];
   const tipsFor = name => ({
     slam: 'Type the red word before its timer runs out to block the attack.',
     phrase: 'Type both words with the space between them to block.',
-    volley: 'Type a cyan word before it reaches you to send it back for triple damage.',
-    shield: 'Hits go into the shield until the raid breaks it, then the core opens.',
-    adds: `Type an amber word to destroy that add since each one heals ${name}.`,
-    weak: 'Hits on the open core deal double damage.',
-    weak3: 'Hits on the open core deal triple damage.',
+    volley: 'Type a cyan packet before it reaches you to send it back for triple damage.',
+    shield: 'Hits go into the firewall until the raid breaks it, then the kernel opens.',
+    adds: `Type an amber word to delete that bug since each one patches ${name}.`,
+    weak: 'Hits on the open kernel deal double damage.',
+    weak3: 'Hits on the open kernel deal triple damage.',
     stagger: `Six quick words in a row stagger ${name} and make your next three hits crits.`,
   });
-  const KIND = { block: 'BLOCK', return: 'SEND BACK', add: 'DESTROY' };
+  const KIND = { block: 'BLOCK', return: 'SEND BACK', add: 'DEBUG' };
   const STREAK_N = 6, STREAK_MS = 4500, STAGGER_CD = 8000, CRITS = 3, JAM_MS = 5000, ACTIVE_MS = 20000, LOCK_MS = 1200;
   const DMG_MILESTONES = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05];
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
@@ -126,8 +126,8 @@ Router.register('boss', (() => {
               <div><span class="label">WPM</span><b class="mid" data-k="wpm">0</b></div>
               <div><span class="label">Accuracy</span><b class="mid" data-k="acc">100%</b></div>
               <div><span class="label">Blocks</span><b class="mid" data-k="blocks">0</b></div>
-              <div><span class="label">Words sent back</span><b class="mid" data-k="returns">0</b></div>
-              <div><span class="label">Adds destroyed</span><b class="mid" data-k="adds">0</b></div>
+              <div><span class="label">Packets sent back</span><b class="mid" data-k="returns">0</b></div>
+              <div><span class="label">Bugs deleted</span><b class="mid" data-k="adds">0</b></div>
               <div><span class="label">Best combo</span><b class="mid" data-k="best">0</b></div>
             </div>
           </section>
@@ -395,7 +395,7 @@ Router.register('boss', (() => {
           if (t >= s.arrive && !done.has(s.id)) {
             done.add(s.id);
             if (!mine.has(s.id) && active()) {
-              if (combo > 0) pushFeed({ text: 'A thrown word hit you and broke your combo', cls: 'alert' });
+              if (combo > 0) pushFeed({ text: 'A packet hit you and broke your combo', cls: 'alert' });
               combo = 0;
               if (scene) scene.hurt();
               sfx('projHit');
@@ -421,11 +421,11 @@ Router.register('boss', (() => {
     if (weak !== weakWas) {
       weakWas = weak;
       if (scene) scene.setWeak(weak);
-      if (weak) { sfx('weakOpen'); pop(`CORE OPEN x${st.weak.mult}`, 'amber'); tip(st.weak.mult > 2 ? 'weak3' : 'weak'); }
+      if (weak) { sfx('weakOpen'); pop(`KERNEL OPEN x${st.weak.mult}`, 'amber'); tip(st.weak.mult > 2 ? 'weak3' : 'weak'); }
     }
     const wf = q('weak');
     wf.hidden = !weak;
-    if (weak) wf.textContent = `CORE OPEN x${st.weak.mult} · ${Math.ceil((st.weak.until - t) / 1000)}s`;
+    if (weak) wf.textContent = `KERNEL OPEN x${st.weak.mult} · ${Math.ceil((st.weak.until - t) / 1000)}s`;
     if (now() >= lockUntil && q('box').classList.contains('locked')) renderQueue();
     paintChips(false);
     paintMe(t);
@@ -543,7 +543,7 @@ Router.register('boss', (() => {
     const sb = q('sbar'), sf = q('shield');
     if (s.shield) {
       sb.hidden = false; sb.style.width = (100 * f) + '%'; sb.style.setProperty('--s', s.shield.hp / s.shield.max);
-      sf.hidden = false; sf.textContent = `SHIELD ${fmt(s.shield.hp)} / ${fmt(s.shield.max)}`;
+      sf.hidden = false; sf.textContent = `FIREWALL ${fmt(s.shield.hp)} / ${fmt(s.shield.max)}`;
     } else { sb.hidden = true; sf.hidden = true; }
     if (scene) {
       scene.setFrac(f, first || lastStage < 0);
@@ -585,9 +585,9 @@ Router.register('boss', (() => {
     const t = performance.now();
     if (h.you) {
       sess.dmg += h.dmg;
-      if (h.kind === 'return') pushFeed({ text: `You sent back a word for ${h.dmg}`, cls: 'you' });
+      if (h.kind === 'return') pushFeed({ text: `You sent back a packet for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'block') pushFeed({ text: `You hit back for ${h.dmg}`, cls: 'you' });
-      else if (h.kind === 'add') pushFeed({ text: `You destroyed an add and hit for ${h.dmg}`, cls: 'you' });
+      else if (h.kind === 'add') pushFeed({ text: `You deleted a bug and hit for ${h.dmg}`, cls: 'you' });
       else pushFeed(h);
       if (scene) scene.hit(h); else onImpact(h, null, null);
       milestone('dmg', meDamage());
@@ -616,15 +616,15 @@ Router.register('boss', (() => {
 
   function onEvent(e) {
     if (!el) return;
-    if (e.type === 'shieldUp') { sfx('shieldUp'); pushFeed({ sys: true, text: `${NAME} raised a shield` }); }
+    if (e.type === 'shieldUp') { sfx('shieldUp'); pushFeed({ sys: true, text: `${NAME} put up a firewall` }); }
     if (e.type === 'shieldBreak') {
-      sfx('shieldBreak'); pop('SHIELD BROKEN', 'cyan');
-      pushFeed({ text: `${e.you ? 'You' : e.by} broke the shield`, cls: e.you ? 'you' : 'shield' });
+      sfx('shieldBreak'); pop('FIREWALL DOWN', 'cyan');
+      pushFeed({ text: `${e.you ? 'You' : e.by} broke the firewall`, cls: e.you ? 'you' : 'shield' });
     }
-    if (e.type === 'adds') { sfx('addSpawn'); pushFeed({ sys: true, text: `${NAME} sent ${e.n} adds` }); }
-    if (e.type === 'addDown') pushFeed({ text: `${e.you ? 'You' : e.by} destroyed an add`, cls: e.you ? 'you' : 'add' });
+    if (e.type === 'adds') { sfx('addSpawn'); pushFeed({ sys: true, text: `${NAME} spawned ${e.n} bugs` }); }
+    if (e.type === 'addDown') pushFeed({ text: `${e.you ? 'You' : e.by} deleted a bug`, cls: e.you ? 'you' : 'add' });
     if (e.type === 'impact') {
-      pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Core open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
+      pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Kernel open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
     }
     if (e.type === 'defeat') pushFeed({ sys: true, text: `${NAME} is down. Last hit by ${e.you ? 'you' : e.by}` });
   }
@@ -712,7 +712,7 @@ Router.register('boss', (() => {
       if (h.sys) return `<li class="sys">${tm}${esc(h.text)}</li>`;
       if (h.text) return `<li class="${h.cls || ''}">${tm}${esc(h.text)}</li>`;
       const tag = h.weak ? ` x${st && st.weak ? st.weak.mult : 2}` : h.crit ? ' crit' : '';
-      return `<li class="${h.you ? 'you' : ''}">${tm}${esc(h.you ? 'You' : h.name)} hit ${h.shield ? 'the shield ' : ''}for <b>${h.dmg}</b>${h.you ? tag : ''}</li>`;
+      return `<li class="${h.you ? 'you' : ''}">${tm}${esc(h.you ? 'You' : h.name)} hit ${h.shield ? 'the firewall ' : ''}for <b>${h.dmg}</b>${h.you ? tag : ''}</li>`;
     }).join('');
   }
 
@@ -792,7 +792,7 @@ Router.register('boss', (() => {
           <div><span class="label">Your rank</span><b class="mid">#${me + 1}</b></div>
           <div><span class="label">Blocks</span><b class="mid">${sess.blocks}</b></div>
           <div><span class="label">Sent back</span><b class="mid">${sess.returns}</b></div>
-          <div><span class="label">Adds destroyed</span><b class="mid">${sess.adds}</b></div>
+          <div><span class="label">Bugs deleted</span><b class="mid">${sess.adds}</b></div>
           <div><span class="label">Best combo</span><b class="mid">${best}</b></div>
           ${r ? `<div><span class="label">Coins</span><b class="mid gold">+${fmt(r.coins + bonus)}</b></div>
           <div><span class="label">XP</span><b class="mid">+${fmt(r.xp + r.bonusXp)}</b></div>` : ''}
