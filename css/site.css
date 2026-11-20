@@ -275,8 +275,8 @@ main { min-height: calc(100vh - 140px); }
 @keyframes blink { 50% { opacity: 0; } }
 .focus-note {
   position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
-  font: 400 15px/1 var(--f-label); letter-spacing: .08em; color: var(--green);
-  background: rgba(4,8,6,.85); opacity: 0; transition: opacity 150ms; text-align: center; padding: 8px;
+  font: 400 15px/1.4 var(--f-label); letter-spacing: .08em; color: var(--green); z-index: 3;
+  background: rgba(4,8,6,.9); opacity: 0; transition: opacity 150ms; text-align: center; padding: 8px;
 }
 .typebox:not(.focused) .focus-note { opacity: 1; }
 
@@ -863,4 +863,33 @@ table.boss-board { width: 100%; border-collapse: collapse; font: 400 14px/1.2 va
   .sessions .hide-sm { display: none; }
   .toasts { left: 12px; right: 12px; bottom: 12px; justify-items: stretch; }
   .toast { max-width: none; }
+}
+
+/* ---------- entrance (js/app/intro.js) ----------
+   The <head> script adds .intro and .intro-cover on a first visit to #/home. The cover hides
+   the page until the intro canvas has drawn its first frame. */
+html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199; background: var(--bg); }
+.intro-ov { position: fixed; inset: 0; z-index: 200; cursor: pointer; touch-action: none; }
+.intro-ov canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.intro-ov.out { opacity: 0; transition: opacity .34s ease-out; }
+.intro-ov.out-fast { opacity: 0; transition: opacity .25s ease-out; }
+.intro-ov.calm.out { transition: opacity .65s ease; }
+.intro-skip {
+  position: absolute; right: 22px; bottom: 20px; z-index: 1;
+  font: 400 15px/1 var(--f-label); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-2); background: rgba(4,8,6,.7); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 10px 14px; cursor: pointer;
+}
+.intro-skip::before { content: "[ "; color: var(--green); }
+.intro-skip::after { content: " ]"; color: var(--green); }
+.intro-skip:hover, .intro-skip:focus-visible { color: var(--ink); border-color: var(--green); }
+.foot-replay { background: none; border: 0; padding: 0; font: inherit; color: var(--ink-2); cursor: pointer; text-decoration: none; }
+.foot-replay:hover { color: var(--green); }
+@media print { .intro-ov { display: none; } }
+
+/* the click-to-type note says tap on touch screens */
+.focus-note .fn-tap { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .focus-note .fn-key { display: none; }
+  .focus-note .fn-tap { display: inline; }
 }

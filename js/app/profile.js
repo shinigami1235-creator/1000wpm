@@ -114,6 +114,10 @@ Router.register('profile', (() => {
             <p class="dim" style="margin-bottom:12px">Coins, XP, runs and items are saved in this browser.</p>
             <button class="btn danger" type="button" data-reset>Reset progress</button>
           </section>
+          ${window.Buddy ? `<section class="panel">
+            <div class="ph">// ${e(Buddy.NAME.toUpperCase())}</div>
+            <button class="btn out" type="button" data-buddy-toggle>${Buddy.hidden() ? 'Show' : 'Hide'} ${e(Buddy.NAME)}</button>
+          </section>` : ''}
         </div>
       </div>
       <dialog class="confirm" data-dialog aria-labelledby="reset-title">
@@ -134,6 +138,8 @@ Router.register('profile', (() => {
     });
     const dlg = el.querySelector('[data-dialog]');
     el.querySelector('[data-reset]').addEventListener('click', () => dlg.showModal());
+    const bt = el.querySelector('[data-buddy-toggle]');
+    if (bt) bt.addEventListener('click', () => { Buddy.setHidden(!Buddy.hidden()); paint(); });
     dlg.addEventListener('close', () => { if (dlg.returnValue === 'reset') WPM.reset(); });
     drawChart(typed);
   }

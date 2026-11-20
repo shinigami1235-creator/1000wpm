@@ -165,7 +165,7 @@ Router.register('type', (() => {
     keys = null; tt = null;
     const text = textFor().replace(/\s+/g, ' ').trim();
     if (opt.mode === 'custom' && !text) return customForm(stage);
-    const win = UI.el(`<div class="type-window typebox idle" tabindex="-1"><div class="focus-note">CLICK HERE OR PRESS ANY KEY TO TYPE</div></div>`);
+    const win = UI.el(`<div class="type-window typebox idle" tabindex="-1"><div class="focus-note"><span class="fn-key">CLICK HERE OR PRESS ANY KEY TO TYPE</span><span class="fn-tap">TAP HERE TO TYPE</span></div></div>`);
     stage.append(win);
     tt = new TT.TypeText(win);
     tt.set(text);

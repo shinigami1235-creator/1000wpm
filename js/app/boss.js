@@ -108,7 +108,7 @@ Router.register('boss', (() => {
             <p class="wb-tip" data-k="tip" aria-live="polite"></p>
             <div class="typebox boss-words" data-k="box" tabindex="-1">
               <div class="boss-queue" data-k="queue"></div>
-              <div class="focus-note">CLICK HERE OR PRESS ANY KEY TO TYPE</div>
+              <div class="focus-note"><span class="fn-key">CLICK HERE OR PRESS ANY KEY TO TYPE</span><span class="fn-tap">TAP HERE TO TYPE</span></div>
             </div>
             <p class="type-help">Type the highlighted word and press <kbd>Space</kbd>. Each correct word deals one damage per letter.</p>
             <div class="wb-over" data-k="over">
@@ -570,6 +570,7 @@ Router.register('boss', (() => {
     if (target && target.kind) { typed = ''; target = null; }
     if (scene) scene.setPhase(ph, false);
     sfx('roar');
+    document.dispatchEvent(new CustomEvent('buddy', { detail: 'phase' }));
     const b = q('banner');
     b.hidden = false;
     b.innerHTML = `<div class="in"><small>PHASE ${ph + 1} / ${R.PHASES.length}</small><b>${esc(R.PHASES[ph].name)}</b>${BANNER[ph] ? `<span>${esc(BANNER[ph])}</span>` : ''}</div>`;
@@ -758,6 +759,7 @@ Router.register('boss', (() => {
     if (scene) { scene.setWeak(false); scene.defeat(instant); }
     if (!instant) { sfx('defeat'); A.victory(); }
     else A.stop();
+    if (!instant) document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-kill' }));
     clearTimeout(downTimer);
     downTimer = setTimeout(() => showResult(instant), instant ? 0 : 3200);
   }

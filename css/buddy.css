@@ -1,0 +1,91 @@
+/* Tilde, the buddy (js/app/buddy.js, drawn by js/app/buddy-art.js).
+   The element is sized by --s and moved with a transform every frame; the drawing inside is
+   always 80px and scaled to fit. */
+.buddy {
+  position: fixed; left: 0; top: 0; z-index: 45; width: var(--s, 76px); height: var(--s, 76px);
+  pointer-events: none; will-change: transform; transform-origin: 50% 100%;
+}
+.buddy.waiting, .buddy.away, .buddy.stowed { opacity: 0; visibility: hidden; }
+.buddy.away, .buddy.stowed { transition: opacity .25s, visibility .25s; }
+.buddy-scale { position: absolute; left: 0; top: 0; width: 80px; height: 80px; transform-origin: 0 0; }
+.buddy-body-wrap { animation: bd-float 3.4s ease-in-out infinite; }
+.buddy.napping .buddy-body-wrap { animation: none; }
+.buddy-body {
+  pointer-events: auto; display: block; padding: 0; border: 0; background: none; color: inherit;
+  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent; transform-origin: 50% 85%;
+}
+.buddy-body:active { cursor: grabbing; }
+.buddy-body:focus { outline: none; }
+.buddy-body:focus-visible .buddy-art { filter: drop-shadow(0 0 3px var(--green)); }
+.buddy-art, .buddy-art svg { display: block; overflow: visible; }
+.buddy .bd-caret { animation: bd-caret 1.1s steps(1) infinite; }
+.buddy.napping .bd-caret { animation: none; opacity: .3; }
+
+.buddy-body.m-hop { animation: bd-hop .6s cubic-bezier(.3,.7,.4,1); }
+.buddy-body.m-wiggle { animation: bd-wiggle .7s ease-in-out 2; }
+.buddy-body.m-bob { animation: bd-bob .9s ease-in-out 2; }
+.buddy-body.m-wobble { animation: bd-wobble .5s ease-in-out 3; }
+.buddy-body.m-startle { animation: bd-startle .5s cubic-bezier(.2,.9,.3,1.2); }
+.buddy-body.m-glide { animation: bd-glide .5s ease-in-out infinite; }
+@keyframes bd-float { 50% { transform: translateY(-3px); } }
+@keyframes bd-caret { 50% { opacity: .25; } }
+@keyframes bd-hop { 28% { transform: translateY(-14px) scale(.96,1.05); } 60% { transform: translateY(0) scale(1.05,.95); } 80% { transform: translateY(-2px); } }
+@keyframes bd-wiggle { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes bd-bob { 50% { transform: translateY(-7px) scale(1.03); } }
+@keyframes bd-wobble { 25% { transform: rotate(-9deg) translateX(-3px); } 75% { transform: rotate(9deg) translateX(3px); } }
+@keyframes bd-startle { 25% { transform: translateY(-18px) scale(.92,1.1); } 55% { transform: translateY(0) scale(1.07,.93); } }
+@keyframes bd-glide { 0%, 100% { transform: translateY(-4px) rotate(3deg); } 50% { transform: translateY(-9px) rotate(5deg); } }
+
+/* z's while it sleeps */
+.buddy-nap { position: absolute; left: 0; top: 0; width: 80px; height: 80px; pointer-events: none; opacity: 0; transition: opacity .4s; }
+.buddy.napping .buddy-nap { opacity: 1; }
+.buddy-nap b { position: absolute; left: 70%; top: 8%; font: 600 15px/1 var(--f-mono); color: var(--green); opacity: 0; animation: bd-z 3s ease-out infinite; }
+.buddy-nap b:nth-child(2) { animation-delay: 1s; font-size: 12px; }
+.buddy-nap b:nth-child(3) { animation-delay: 2s; font-size: 18px; }
+@keyframes bd-z { 0% { opacity: 0; transform: translate(0, 6px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(16px, -28px); } }
+
+/* speech: printed like a terminal line */
+.buddy-say {
+  position: absolute; left: calc(var(--s) - 8px); bottom: calc(var(--s) - 12px); margin: 0;
+  width: max-content; max-width: 240px; padding: 8px 12px;
+  background: var(--bg-3); border: 1px solid rgba(57,255,136,.55); border-radius: var(--r);
+  box-shadow: 0 0 18px rgba(57,255,136,.18), 0 6px 18px rgba(0,0,0,.5);
+  font: 600 15px/1.35 var(--f-head); color: var(--ink);
+  opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .3s; pointer-events: none;
+}
+.buddy-say::before { content: "> "; color: var(--green); font-family: var(--f-label); }
+.buddy.say-left .buddy-say { left: auto; right: calc(var(--s) - 8px); }
+.buddy.say-mid .buddy-say { bottom: auto; top: calc(var(--s) * .12); left: calc(var(--s) + 4px); }
+.buddy.say-left.say-mid .buddy-say { left: auto; right: calc(var(--s) + 4px); }
+.buddy.talking .buddy-say { opacity: 1; transform: none; }
+
+/* hide button on hover, and the tab that brings it back */
+.buddy-x {
+  position: absolute; left: -8px; top: -2px; width: 22px; height: 22px; padding: 0; pointer-events: auto;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: var(--r); color: var(--ink-2);
+  opacity: 0; transition: opacity .2s;
+}
+.buddy-x svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.buddy-x:hover { color: var(--green); border-color: var(--green); }
+.buddy:hover .buddy-x, .buddy-x:focus-visible { opacity: 1; }
+.buddy-peek {
+  position: fixed; left: 16px; bottom: 0; z-index: 45; width: 46px; height: 22px; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--bg-3); border: 1px solid var(--line); border-bottom: 0; border-radius: 4px 4px 0 0;
+  transform: translateY(100%); transition: transform .3s;
+}
+.buddy-peek i { width: 4px; height: 12px; border-radius: 1px; background: var(--green); box-shadow: 0 0 6px rgba(57,255,136,.6); }
+.buddy-peek:hover { border-color: var(--green); }
+.buddy-peek.on { transform: none; }
+
+@media (max-width: 759px) {
+  .buddy-say { max-width: 190px; font-size: 14px; }
+  .buddy-x { opacity: .75; width: 20px; height: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buddy-body-wrap, .buddy-body, .buddy-body[class*="m-"], .buddy .bd-caret, .buddy-nap b { animation: none !important; }
+  .buddy-nap b { opacity: 1; }
+  .buddy-say, .buddy-peek { transition: none; }
+}
+@media print { .buddy, .buddy-peek { display: none; } }

@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/site.css">
+<link rel="stylesheet" href="css/buddy.css">
+<script>/* the entrance plays once per session on #/home or no hash; js/app/intro.js runs it */(function(){var d=document.documentElement;try{if(/^(#\/?(home)?\/?)?$/.test(location.hash)&&!sessionStorage.getItem('wpm-intro-seen')){d.classList.add('intro','intro-cover');window.__introFS=setTimeout(function(){d.classList.remove('intro','intro-cover')},2500)}}catch(e){}})()</script>
+<script src="js/app/intro.js" async></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -107,6 +110,7 @@
   <footer class="foot">
     <div class="foot-in">
       <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">@10000wpm on Instagram</a>
+      <a class="foot-replay" href="#/home" data-replay-intro>Replay intro</a>
       <span>© 2026 10000wpm</span>
     </div>
   </footer>
@@ -137,6 +141,8 @@
 <script src="js/app/shop.js"></script>
 <script src="js/app/room.js"></script>
 <script src="js/app/profile.js"></script>
+<script src="js/app/buddy-art.js"></script>
+<script src="js/app/buddy.js"></script>
 <script src="js/breach/load.js"></script>
 <script src="js/room/load.js"></script>
 <script>Router.start(document.getElementById('view'));</script>

@@ -645,6 +645,7 @@
     target = null;
     S.play('kill'); S.play('bomb');
     shakeT = 1; glitchT = 1;
+    document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-down' }));
     if (use3D) R3.burst(corePos(), b.name.replace(/ /g, '').toLowerCase() + 'xxxxxxxx', '#ffffff', 3);
   }
   const corePos = () => boss ? add(boss.pos, v3(0, CORE_Y[boss.art], 0)) : cam.pos;
@@ -1354,6 +1355,7 @@
   }
   function chapterClear() {
     S.play('clear');
+    document.dispatchEvent(new CustomEvent('buddy', { detail: 'chapter-clear' }));
     const { wpm, acc } = runStats();
     const rank = rankOf(wpm, acc, stats.hits);
     const bk = runDiff === 'normal' ? ch.id : ch.id + ':' + runDiff, prev = save.best[bk];

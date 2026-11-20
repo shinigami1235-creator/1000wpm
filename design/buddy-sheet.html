@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tilde, the 10000WPM buddy</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #040806; --bg-2: #07100b; --bg-3: #0c1a12; --line: rgba(57,255,136,.28); --line-2: rgba(57,255,136,.12);
+    --green: #39ff88; --ink: #d7f5e3; --ink-2: #7fa892; --gold: #f2c230; --cyan: #3ee6ff;
+    --f-head: "Chakra Petch", "Segoe UI", system-ui, sans-serif; --f-label: "Share Tech Mono", ui-monospace, monospace; --f-mono: "JetBrains Mono", ui-monospace, monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--f-head); }
+  main { max-width: 1240px; margin: 0 auto; padding: 36px 24px 60px; }
+  h1 { font: 700 40px/1.1 var(--f-head); margin: 0 0 10px; text-transform: uppercase; }
+  h1 span { color: var(--green); }
+  h2 { font: 400 15px/1 var(--f-label); color: var(--green); letter-spacing: .06em; text-transform: uppercase; margin: 40px 0 14px; }
+  p { margin: 0 0 8px; color: var(--ink-2); max-width: 70ch; }
+  .names { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .name { border: 1px solid var(--line); background: var(--bg-2); padding: 14px 16px; }
+  .name b { font: 700 22px/1.2 var(--f-head); display: block; }
+  .name.pick { border-color: var(--green); }
+  .name small { font: 400 13px/1.4 var(--f-label); color: var(--ink-2); letter-spacing: .04em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .cell { border: 1px solid var(--line-2); background: var(--bg-2); padding: 10px 8px 12px; text-align: center; }
+  .cell svg { display: block; margin: 0 auto; overflow: visible; }
+  .cell span { font: 400 14px/1 var(--f-label); color: var(--ink-2); letter-spacing: .05em; text-transform: uppercase; }
+  .sizes { display: flex; align-items: end; gap: 34px; padding: 22px 24px; border: 1px solid var(--line-2); background: var(--bg); }
+  .sizes div { text-align: center; }
+  .sizes span { display: block; margin-top: 6px; font: 400 13px/1 var(--f-label); color: var(--ink-2); }
+  .sizes svg { display: block; overflow: visible; }
+  .sw { display: flex; gap: 10px; flex-wrap: wrap; }
+  .sw div { display: flex; align-items: center; gap: 8px; font: 400 14px/1 var(--f-mono); color: var(--ink-2); }
+  .sw i { width: 22px; height: 22px; border: 1px solid var(--line-2); }
+  .lines { border-collapse: collapse; width: 100%; font-size: 15px; }
+  .lines th, .lines td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  .lines th { font: 400 13px/1 var(--f-label); color: var(--ink-2); letter-spacing: .05em; text-transform: uppercase; }
+  .lines td:first-child { font-family: var(--f-mono); color: var(--green); white-space: nowrap; }
+  @media (max-width: 700px) { .names { grid-template-columns: 1fr; } .sizes { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>&gt;</span> Tilde</h1>
+  <p>The buddy for 10000WPM is a small floating keycap with a screen for a face and a text caret for an antenna. It lives beside the page, follows the part you are reading and reacts to your typing.</p>
+  <p>Every expression and pose below is drawn from the same parts and they blend into each other on the site instead of cutting.</p>
+
+  <h2>// Name options</h2>
+  <div class="names">
+    <div class="name pick"><b>Tilde</b><small>WORKING NAME. THE ~ KEY. ITS MOUTH TURNS INTO A TILDE WHEN IT THINKS.</small></div>
+    <div class="name"><b>Caps</b><small>THE CAPS LOCK KEY.</small></div>
+    <div class="name"><b>Backtick</b><small>THE ` KEY ABOVE TAB.</small></div>
+  </div>
+
+  <h2>// Expressions</h2>
+  <div class="grid" id="expr"></div>
+
+  <h2>// Poses</h2>
+  <div class="grid" id="pose"></div>
+
+  <h2>// Sizes on the site</h2>
+  <div class="sizes" id="sizes"></div>
+
+  <h2>// Colours</h2>
+  <div class="sw">
+    <div><i style="background:#39ff88"></i>#39ff88 glow, face, arms</div>
+    <div><i style="background:#2e8a58"></i>#2e8a58 cap</div>
+    <div><i style="background:#0c2c1c"></i>#0c2c1c cap shadow</div>
+    <div><i style="background:#03140b"></i>#03140b screen</div>
+    <div><i style="background:#d7f5e3"></i>#d7f5e3 hands</div>
+    <div><i style="background:#ff4d5e"></i>#ff4d5e hearts</div>
+    <div><i style="background:#3ee6ff"></i>#3ee6ff sweat drop</div>
+  </div>
+
+  <h2>// What it reacts to</h2>
+  <table class="lines">
+    <thead><tr><th>Event</th><th>Face and move</th><th>Line, said once per visit</th></tr></thead>
+    <tbody id="lines"></tbody>
+  </table>
+</main>
+<script src="../js/app/buddy-art.js"></script>
+<script>
+  const A = window.BuddyArt;
+  const cell = (html, label) => `<div class="cell">${html}<span>${label}</span></div>`;
+  document.getElementById('expr').innerHTML = A.EXPRESSIONS.map(e => cell(A.svg({ expr: e, size: 120 }), e)).join('');
+  const poseFace = { idle: 'happy', wave: 'happy', point: 'curious', cheer: 'excited', type: 'focused', think: 'thinking', lean: 'focused', hop: 'wink', sleep: 'sleepy' };
+  document.getElementById('pose').innerHTML = A.POSES.map(p => cell(A.svg({ pose: p, expr: poseFace[p], size: 120 }), p)).join('');
+  document.getElementById('sizes').innerHTML = [[56, 'Phone'], [62, 'Game pages'], [76, 'Desktop']].map(([s, l]) => `<div>${A.svg({ size: s })}<span>${s} px, ${l}</span></div>`).join('');
+  const rows = [
+    ['Arrives with the intro', 'Hop, excited', 'Hi, I\'m Tilde.'],
+    ['New personal best', 'Cheer, excited', 'New best. 112 wpm.'],
+    ['New best above Art\'s 204', 'Cheer, love', '212 wpm. You beat Art\'s 204.'],
+    ['Level up', 'Cheer, proud', 'You\'re level 4 now.'],
+    ['Achievement', 'Wave, love', 'You unlocked Clean run.'],
+    ['Coins from a run', 'Hop, happy', 'None'],
+    ['Typing test, typing', 'Lean, focused, eyes on the text', 'None'],
+    ['Typing test, 100 wpm and up', 'Hop, excited', 'None'],
+    ['Typing test, three typos in a row', 'Oops', 'None'],
+    ['World boss phase change', 'Surprised, then focused', 'None, games get faces only'],
+    ['World boss down, Breach boss down, chapter clear', 'Cheer, excited or proud', 'None, games get faces only'],
+    ['60 seconds with no input', 'Sleep, sleepy', 'None'],
+    ['Click or tap', 'Hop or wink, dizzy after four quick taps', 'None'],
+  ];
+  document.getElementById('lines').innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+</script>
+</body>
+</html>
