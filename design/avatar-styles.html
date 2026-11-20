@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar styles · 10000WPM</title>
+<meta name="theme-color" content="#040806">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<style>
+:root {
+  --bg: #040806; --bg-2: #07100b; --bg-3: #0c1a12;
+  --line: rgba(57,255,136,.28); --line-2: rgba(57,255,136,.12);
+  --green: #39ff88; --green-dim: #1f9e57; --ink: #d7f5e3; --ink-2: #7fa892; --ink-3: #4c6e5b;
+  --gold: #f2c230; --red: #ff4d5e; --cyan: #3ee6ff;
+  --cut: 10px;
+  --f-head: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --f-label: "Share Tech Mono", ui-monospace, Consolas, monospace;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--f-head); }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 0 28px; }
+header.top { display: flex; align-items: center; gap: 12px; padding: 18px 28px; border-bottom: 1px solid var(--line-2); }
+header.top svg { width: 34px; height: 34px; color: var(--green); }
+header.top b { font: 700 20px/1 var(--f-head); letter-spacing: .04em; }
+header.top small { display: block; font: 12px/1.2 var(--f-label); color: var(--ink-2); letter-spacing: .08em; margin-top: 3px; }
+h1 { font: 700 30px/1.2 var(--f-head); margin: 34px 0 8px; text-wrap: balance; }
+.intro p { max-width: 70ch; color: var(--ink-2); margin: 0 0 8px; text-wrap: pretty; }
+
+.style { margin-top: 38px; }
+.label-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.label-row .key { font: 700 15px/1 var(--f-mono); color: var(--bg); background: var(--green); padding: 5px 8px 4px; }
+.label-row h2 { font: 600 22px/1.2 var(--f-head); margin: 0; }
+.label-row p { margin: 0; color: var(--ink-2); flex: 1 1 320px; }
+.label-row .tris { font: 13px/1 var(--f-label); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.card { margin: 0; background: var(--bg-2); border: 1px solid var(--line-2);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+.card canvas.big { display: block; width: 100%; aspect-ratio: 300 / 340; }
+.minis { display: flex; align-items: center; gap: 12px; padding: 10px 12px 12px; border-top: 1px solid var(--line-2); }
+.minis canvas { display: block; background: var(--bg-3); border: 1px solid var(--line); }
+.t64 { width: 64px; height: 64px; } .t32 { width: 32px; height: 32px; }
+.minis figcaption { font: 12px/1.35 var(--f-label); color: var(--ink-2); }
+.minis figcaption b { display: block; color: var(--ink); font-weight: 400; }
+
+.strip { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.strip figure { margin: 0; text-align: center; }
+.strip canvas { display: block; width: 64px; height: 64px; background: var(--bg-3); border: 1px solid var(--line); }
+.strip figcaption { font: 11px/1.4 var(--f-label); color: var(--ink-3); margin-top: 4px; }
+.strip .gap { width: 14px; }
+
+.editor { display: grid; grid-template-columns: 480px 1fr; gap: 24px; background: var(--bg-2); border: 1px solid var(--line); padding: 18px;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
+#ed-canvas canvas { display: block; width: 480px; height: 540px; background: var(--bg); }
+.editor .view .minis { border: 0; padding: 12px 0 0; }
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; align-content: start; }
+.controls .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; margin-top: 6px; }
+.controls .full { grid-column: 1 / -1; }
+.ctl { display: grid; grid-template-columns: 110px 1fr 34px; align-items: center; gap: 10px; font: 13px/1.2 var(--f-label); color: var(--ink-2); }
+.ctl output { font-family: var(--f-mono); color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { accent-color: var(--green); width: 100%; }
+.pick { margin-top: 10px; }
+.pick > span { display: block; font: 13px/1.2 var(--f-label); color: var(--ink-2); margin-bottom: 6px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: 13px/1 var(--f-label); color: var(--ink-2); background: var(--bg-3); border: 1px solid var(--line-2); padding: 7px 10px; cursor: pointer; border-radius: 2px; }
+.seg button:hover { color: var(--ink); border-color: var(--line); }
+.seg button[aria-pressed=true] { color: var(--bg); background: var(--green); border-color: var(--green); }
+.seg button.sw { display: inline-flex; align-items: center; gap: 6px; }
+.seg button.sw i { width: 10px; height: 10px; display: inline-block; outline: 1px solid var(--bg); }
+.row-btns { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+.btn { font: 600 14px/1 var(--f-head); color: var(--green); background: transparent; border: 1px solid var(--green); padding: 9px 14px; cursor: pointer; border-radius: 2px; }
+.btn:hover { background: rgba(57,255,136,.1); }
+.stat { font: 13px/1 var(--f-label); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+footer { margin: 40px 0 60px; color: var(--ink-3); font: 12px/1.5 var(--f-label); }
+
+@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, 1fr); } .editor { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .cards { grid-template-columns: 1fr; } #ed-canvas canvas { width: 100%; height: auto; aspect-ratio: 480 / 540; } .controls { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 47 L32 13 L44 47"/><path d="M27 41 L32 28 L37 41"/><path d="M29 58 C17 54 9 44 10 20" stroke-width="1.6"/><path d="M35 58 C47 54 55 44 54 20" stroke-width="1.6"/></g></svg>
+  <div><b>10000WPM</b><small>// AVATAR STYLE TEST</small></div>
+</header>
+<main class="wrap">
+  <section class="intro">
+    <h1>Player avatar styles</h1>
+    <p>Three looks for the 3D player avatar, each built in code from the same set of parts. Every card shows one player at full size, then at 64 px for the leaderboard and 32 px for the header. The editor at the bottom changes the parts live. Pick one look and the full avatar creator gets built in it.</p>
+  </section>
+  <div id="styles"></div>
+  <section class="style" id="thumbs">
+    <div class="label-row"><h2>All 12 at 64 px</h2><p>Leaderboard size, side by side.</p></div>
+    <div class="strip" id="strip"></div>
+  </section>
+  <section class="style" id="edit">
+    <div class="label-row"><h2>Editor</h2><p>Drag a slider or pick a part to rebuild the avatar.</p><span class="tris" id="ed-stat"></span></div>
+    <div class="editor">
+      <div class="view">
+        <div id="ed-canvas"></div>
+        <div class="minis"><canvas class="t64" id="ed-64"></canvas><canvas class="t32" id="ed-32"></canvas><figcaption><b>64 px and 32 px</b>Same avatar at small sizes.</figcaption></div>
+      </div>
+      <div class="controls" id="controls"></div>
+    </div>
+  </section>
+  <footer>Test page only. Nothing here is linked from the site.</footer>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { buildAvatar, makeStage, STYLES, PARTS, SLIDERS, DEFAULT, GLOW, holoTime } from './avatar-kit.js';
+
+const PLAYERS = {
+  A: [
+    { who: 'Woman', hair: 'bob', gear: 'implant', glow: 'cyan', eyes: 'sharp', headW: .3, jaw: .2, chin: .35, cheek: .9, brow: .15, nose: .25, lips: .75, browArch: .75, browThick: .3, neck: .15, shoulders: .2, tone: .3, outfit: 'collar' },
+    { who: 'Man', hair: 'buzz', gear: 'respirator', glow: 'red', eyes: 'narrow', facial: 'beard', headW: .8, jaw: 1, chin: .75, cheek: .35, brow: .95, nose: .7, lips: .3, browArch: .05, browThick: .95, neck: 1, shoulders: 1, tone: .72, outfit: 'plates' },
+    { who: 'Woman', hair: 'long', gear: 'headset', glow: 'green', eyes: 'round', hairTone: 'ash', headW: .45, jaw: .35, chin: .45, cheek: .6, brow: .25, nose: .4, lips: .65, browArch: .55, browThick: .4, neck: .25, shoulders: .3, tone: .5, outfit: 'crew' },
+    { who: 'Man', hair: 'mohawk', gear: 'goggles', glow: 'gold', eyes: 'almond', facial: 'goatee', headW: .55, jaw: .7, chin: .9, cheek: .5, brow: .7, nose: .9, lips: .4, browArch: .2, browThick: .8, neck: .7, shoulders: .75, tone: .88, outfit: 'collar' },
+  ],
+  B: [
+    { who: 'Man', hair: 'hood', gear: 'bandana', glow: 'green', eyes: 'narrow', headW: .6, jaw: .8, chin: .6, cheek: .4, brow: .85, nose: .6, lips: .4, browArch: .1, browThick: .9, neck: .7, shoulders: .8, tone: .4, outfit: 'crew' },
+    { who: 'Woman', hair: 'undercut', gear: 'visor', glow: 'cyan', eyes: 'almond', hairTone: 'white', headW: .35, jaw: .25, chin: .4, cheek: .85, brow: .2, nose: .3, lips: .7, browArch: .6, browThick: .35, neck: .2, shoulders: .25, tone: .2, outfit: 'collar' },
+    { who: 'Man', hair: 'long', gear: 'implant', glow: 'gold', eyes: 'sharp', facial: 'beard', headW: .6, jaw: .65, chin: .6, cheek: .55, brow: .7, nose: .85, lips: .4, browArch: .3, browThick: .85, neck: .75, shoulders: .85, tone: .92, outfit: 'plates' },
+    { who: 'Woman', hair: 'bob', gear: 'goggles', glow: 'red', eyes: 'round', hairTone: 'black', headW: .5, jaw: .35, chin: .4, cheek: .6, brow: .3, nose: .35, lips: .7, browArch: .5, browThick: .4, neck: .2, shoulders: .3, tone: .6, outfit: 'crew' },
+  ],
+  C: [
+    { who: 'Man', hair: 'undercut', gear: 'headset', glow: 'gold', eyes: 'almond', facial: 'moustache', headW: .65, jaw: .9, chin: .55, cheek: .45, brow: .75, nose: .65, lips: .35, browArch: .25, browThick: .85, neck: .8, shoulders: .85, tone: .55, outfit: 'collar' },
+    { who: 'Woman', hair: 'hood', gear: 'visor', glow: 'cyan', eyes: 'round', headW: .35, jaw: .25, chin: .4, cheek: .75, brow: .2, nose: .3, lips: .7, browArch: .6, browThick: .35, neck: .2, shoulders: .3, tone: .12, outfit: 'collar' },
+    { who: 'Woman', hair: 'mohawk', gear: 'respirator', glow: 'red', eyes: 'sharp', hairTone: 'white', headW: .4, jaw: .4, chin: .45, cheek: .95, brow: .3, nose: .4, lips: .6, browArch: .7, browThick: .4, neck: .3, shoulders: .4, tone: .45, outfit: 'plates' },
+    { who: 'Man', hair: 'buzz', gear: 'bandana', glow: 'green', eyes: 'narrow', facial: 'stubble', headW: .7, jaw: .85, chin: .7, cheek: .5, brow: .9, nose: .7, lips: .35, browArch: .05, browThick: .95, neck: .9, shoulders: .9, tone: .95, outfit: 'crew' },
+  ],
+};
+const DESC = {
+  A: 'Grid lines and vertex points over a see-through shell, floating above a base ring.',
+  B: 'Small cubes with lit edges and dark faces.',
+  C: 'Flat-shaded triangles with lit lines on the creases of the jaw, brow and cheekbones.',
+};
+const label = (list, v) => (list.find(p => p[0] === v) || [, v])[1];
+const caption = p => [label(PARTS.hair, p.hair), label(PARTS.gear, p.gear).toLowerCase(), p.facial && p.facial !== 'none' ? label(PARTS.facial, p.facial).toLowerCase() : null].filter(Boolean).join(', ');
+
+// ---------- renderers ----------
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+function makeView(w, h, dpr, frame, canvas) {
+  canvas = canvas || document.createElement('canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(dpr); renderer.setSize(w, h, false);
+  renderer.toneMapping = THREE.NoToneMapping;
+  const rt = new THREE.WebGLRenderTarget(w * dpr, h * dpr, { type: THREE.HalfFloatType, samples: 4 });
+  const composer = new EffectComposer(renderer, rt);
+  composer.setPixelRatio(dpr); composer.setSize(w, h);
+  const camera = new THREE.PerspectiveCamera(frame.fov, w / h, .1, 60);
+  camera.position.set(0, frame.target + frame.lift, frame.dist);
+  camera.lookAt(0, frame.target, 0);
+  const pass = new RenderPass(new THREE.Scene(), camera);
+  composer.addPass(pass);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w * dpr / 2, h * dpr / 2), .6, .4, .5);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  const bg = new THREE.Color();
+  return {
+    canvas,
+    render(stage, av, yaw, small) {
+      const st = STYLES[av.style];
+      bg.set(st.bg); stage.scene.background = bg;
+      [bloom.strength, bloom.radius, bloom.threshold] = st.bloom;
+      if (small) bloom.strength *= .7;
+      stage.set(av);
+      av.small(!!small);
+      av.group.rotation.y = yaw;
+      pass.scene = stage.scene;
+      stage.scene.add(av.group);
+      composer.render();
+      stage.scene.remove(av.group);
+    },
+  };
+}
+const BIG = { fov: 27, target: -.47, lift: .3, dist: 5.05 };
+const SMALL = { fov: 27, target: -.1, lift: .12, dist: 3.15 };
+const bigView = makeView(300, 340, DPR, BIG);
+const thumbView = makeView(128, 128, 1, SMALL);
+const stages = { A: makeStage('A'), B: makeStage('B'), C: makeStage('C') };
+const blit = (src, dst) => { const c = dst.getContext('2d'); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(src, 0, 0, dst.width, dst.height); };
+const sizeCanvas = (c, w, h) => { c.width = Math.round(w * DPR); c.height = Math.round(h * DPR); };
+const THUMB_YAW = .3;
+function drawThumbs(av, ...targets) {
+  thumbView.render(stages[av.style], av, THUMB_YAW, true);
+  for (const t of targets) blit(thumbView.canvas, t);
+}
+
+// ---------- cards ----------
+const host = document.getElementById('styles');
+const strip = document.getElementById('strip');
+const cards = [];
+for (const key of ['A', 'B', 'C']) {
+  const sec = document.createElement('section');
+  sec.className = 'style'; sec.id = 'style-' + key;
+  sec.innerHTML = `<div class="label-row"><span class="key">${key}</span><h2>${STYLES[key].name}</h2><p>${DESC[key]}</p><span class="tris"></span></div><div class="cards"></div>`;
+  host.append(sec);
+  const grid = sec.querySelector('.cards');
+  const tris = [];
+  PLAYERS[key].forEach((p, i) => {
+    const av = buildAvatar(p, key);
+    tris.push(av.tris);
+    const fig = document.createElement('figure');
+    fig.className = 'card';
+    fig.innerHTML = `<canvas class="big"></canvas><div class="minis"><canvas class="t64"></canvas><canvas class="t32"></canvas><figcaption><b>${p.who}</b>${caption(p)}</figcaption></div>`;
+    grid.append(fig);
+    const big = fig.querySelector('.big'), c64 = fig.querySelector('.t64'), c32 = fig.querySelector('.t32');
+    sizeCanvas(big, 300, 340); sizeCanvas(c64, 64, 64); sizeCanvas(c32, 32, 32);
+    const s64 = document.createElement('canvas'); sizeCanvas(s64, 64, 64);
+    const sf = document.createElement('figure'); sf.append(s64); const cap = document.createElement('figcaption'); cap.textContent = key + (i + 1); sf.append(cap);
+    strip.append(sf);
+    drawThumbs(av, c64, c32, s64);
+    cards.push({ av, big, phase: i * 1.7 + key.charCodeAt(0), visible: true });
+  });
+  if (key !== 'C') { const g = document.createElement('div'); g.className = 'gap'; strip.append(g); }
+  sec.querySelector('.tris').textContent = `${Math.min(...tris).toLocaleString('en')} to ${Math.max(...tris).toLocaleString('en')} triangles`;
+}
+
+// only cards on screen get redrawn
+const io = new IntersectionObserver(es => { for (const e of es) { const c = cards.find(c => c.big === e.target); if (c) c.visible = e.isIntersecting; } });
+for (const c of cards) io.observe(c.big);
+
+// ---------- editor ----------
+const edHost = document.getElementById('ed-canvas');
+const edCanvas = document.createElement('canvas'); edHost.append(edCanvas);
+const edView = makeView(480, 540, DPR, { fov: 27, target: -.38, lift: .3, dist: 4.55 }, edCanvas);
+const ed64 = document.getElementById('ed-64'), ed32 = document.getElementById('ed-32');
+sizeCanvas(ed64, 64, 64); sizeCanvas(ed32, 32, 32);
+let edSpec = { ...DEFAULT, ...PLAYERS.A[2] }, edStyle = 'A', edAv = null, edDirty = true;
+const controls = document.getElementById('controls');
+const seg = (name, key, list, full) => {
+  const box = document.createElement('div'); box.className = 'pick' + (full ? ' full' : '');
+  box.innerHTML = `<span>${name}</span><div class="seg" role="group" aria-label="${name}"></div>`;
+  const row = box.querySelector('.seg');
+  for (const [v, l] of list) {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.v = v;
+    if (key === 'glow') { b.className = 'sw'; b.innerHTML = `<i style="background:${GLOW[v]}"></i>${l}`; } else b.textContent = l;
+    b.addEventListener('click', () => { if (key === 'style') edStyle = v; else edSpec[key] = v; sync(); edDirty = true; });
+    row.append(b);
+  }
+  controls.append(box);
+  return { key, row };
+};
+const segs = [];
+segs.push(seg('Look', 'style', [['A', 'A. Hologram'], ['B', 'B. Voxel'], ['C', 'C. Low-poly']], true));
+const sliders = [];
+const sliderBox = document.createElement('div'); sliderBox.className = 'sliders full'; controls.append(sliderBox);
+for (const [k, l] of SLIDERS) {
+  const lab = document.createElement('label'); lab.className = 'ctl';
+  lab.innerHTML = `<span>${l}</span><input type="range" min="0" max="100" step="1"><output></output>`;
+  const inp = lab.querySelector('input'), out = lab.querySelector('output');
+  inp.addEventListener('input', () => { edSpec[k] = inp.value / 100; out.textContent = inp.value; edDirty = true; });
+  sliderBox.append(lab); sliders.push({ k, inp, out });
+}
+segs.push(seg('Hair', 'hair', PARTS.hair, true));
+segs.push(seg('Hair colour', 'hairTone', PARTS.hairTone));
+segs.push(seg('Facial hair', 'facial', PARTS.facial));
+segs.push(seg('Eyes', 'eyes', PARTS.eyes));
+segs.push(seg('Glow', 'glow', PARTS.glow));
+segs.push(seg('Gear', 'gear', PARTS.gear, true));
+segs.push(seg('Outfit', 'outfit', PARTS.outfit, true));
+const btns = document.createElement('div'); btns.className = 'row-btns full';
+btns.innerHTML = '<button class="btn" type="button" id="rand">Random player</button>';
+controls.append(btns);
+function sync() {
+  for (const { key, row } of segs) for (const b of row.children) b.setAttribute('aria-pressed', String((key === 'style' ? edStyle : edSpec[key]) === b.dataset.v));
+  for (const s of sliders) { s.inp.value = Math.round(edSpec[s.k] * 100); s.out.textContent = s.inp.value; }
+}
+const pick = l => l[Math.floor(Math.random() * l.length)][0];
+document.getElementById('rand').addEventListener('click', () => {
+  for (const [k] of SLIDERS) edSpec[k] = Math.round(Math.random() * 100) / 100;
+  for (const k of ['eyes', 'hair', 'hairTone', 'gear', 'facial', 'outfit', 'glow']) edSpec[k] = pick(PARTS[k]);
+  if (Math.random() < .5) edSpec.facial = 'none';
+  sync(); edDirty = true;
+});
+sync();
+const edStat = document.getElementById('ed-stat');
+function rebuildEditor() {
+  edAv = buildAvatar(edSpec, edStyle);
+  edStat.textContent = `${edAv.tris.toLocaleString('en')} triangles, built in ${edAv.ms} ms`;
+  drawThumbs(edAv, ed64, ed32);
+  edDirty = false;
+}
+
+// ---------- drawing ----------
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+const STILL_YAW = .38;
+let lastT = 0;
+function drawAll(t) {
+  holoTime.value = reduce.matches ? 0 : t / 1000;
+  for (const c of cards) {
+    if (!c.visible && t) continue;
+    const yaw = reduce.matches ? STILL_YAW : .55 * Math.sin(t / 1000 * .32 + c.phase);
+    bigView.render(stages[c.av.style], c.av, yaw, false);
+    blit(bigView.canvas, c.big);
+  }
+  if (edDirty) rebuildEditor();
+  edView.render(stages[edAv.style], edAv, reduce.matches ? STILL_YAW : .55 * Math.sin(t / 1000 * .32), false);
+}
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (reduce.matches) { if (edDirty) { rebuildEditor(); edView.render(stages[edAv.style], edAv, STILL_YAW, false); } return; }
+  if (t - lastT < 33) return;
+  lastT = t;
+  drawAll(t);
+}
+drawAll(0);
+requestAnimationFrame(loop);
+reduce.addEventListener('change', () => drawAll(0));
+window.__avatars = { cards, ready: true };
+</script>
+</body>
+</html>

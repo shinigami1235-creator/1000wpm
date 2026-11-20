@@ -7,7 +7,8 @@
   const me = document.getElementById('nav-me');
   function paintMe() {
     const p = WPM.profile();
-    me.querySelector('img').src = UI.avatar(p.avatar, 68);
+    const im = me.querySelector('img');
+    if (window.Avatar) Avatar.apply(im, Avatar.mine(), 68); else im.src = UI.avatar(p.avatar, 68);
     me.querySelector('span').textContent = p.name;
   }
   function paintCoins(bump) {

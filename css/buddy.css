@@ -78,6 +78,7 @@
 .buddy-peek i { width: 4px; height: 12px; border-radius: 1px; background: var(--green); box-shadow: 0 0 6px rgba(57,255,136,.6); }
 .buddy-peek:hover { border-color: var(--green); }
 .buddy-peek.on { transform: none; }
+.buddy-peek:not(.on) { visibility: hidden; transition: transform .3s, visibility 0s .3s; }
 
 @media (max-width: 759px) {
   .buddy-say { max-width: 190px; font-size: 14px; }

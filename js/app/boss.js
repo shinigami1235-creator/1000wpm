@@ -728,7 +728,7 @@ Router.register('boss', (() => {
       if (!x) return `<tr class="gap"><td colspan="${cols}">…</td></tr>`;
       const [r, i] = x;
       return `<tr class="${r.you ? 'you' : ''}"><td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
-        <td class="who">${r.you ? `<img src="${UI.avatar(WPM.profile().avatar, 48)}" alt="" width="20" height="20">` : ''}${esc(r.name)}${r.you ? ' <span class="tag">You</span>' : ''}</td>
+        <td class="who">${window.Avatar ? Avatar.img(r.you ? Avatar.mine() : Avatar.bot(r.name), 48, 20) : r.you ? `<img src="${UI.avatar(WPM.profile().avatar, 48)}" alt="" width="20" height="20">` : ''}${esc(r.name)}${r.you ? ' <span class="tag">You</span>' : ''}</td>
         <td class="r num">${fmt(r.damage)}</td><td class="r num dim">${fmt(r.blocks || 0)}</td><td class="r num dim">${share(r.damage, total)}</td></tr>`;
     }).join('');
   }

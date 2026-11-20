@@ -113,7 +113,7 @@ Router.register('leaderboard', (() => {
       }
       const s = r.s;
       const extra = s.mode.startsWith('race') && s.won !== undefined ? (s.won ? ', won' : ', lost') : s.mode.startsWith('horde') && s.cleared ? ', cleared' : '';
-      return `<td class="who-td"><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
+      return `<td class="who-td"><div class="who">${UI.meImg(68, 34)}<span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
         <td class="w num-col">${UI.fmt(r.v)}</td><td class="n num-col hide-sm">${s.acc != null ? s.acc + '%' : ''}</td>
         <td class="hide-sm">${UI.esc(UI.modeName(s.mode, s.mode.startsWith('horde') ? diffOf(s) : null) + extra)}</td><td class="n hide-sm">${UI.esc(UI.date(s.at))}</td>`;
     };
@@ -153,7 +153,7 @@ Router.register('leaderboard', (() => {
           <thead><tr><th>#</th><th>Owner</th><th>Room</th><th class="num-col">Floor</th><th class="num-col hide-sm">Items placed</th><th class="num-col">Value</th></tr></thead>
           <tbody><tr class="mine-best">
             <td class="rank top">1</td>
-            <td><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
+            <td><div class="who">${UI.meImg(68, 34)}<span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
             <td><div class="who">${plan}<span>Size ${UI.esc(r.label)}<span class="hide-sm">, ${r.w} × ${r.d} m</span></span></div></td>
             <td class="n num-col">${r.area} m²</td>
             <td class="n num-col hide-sm">${UI.fmt(r.items)}</td>
@@ -185,7 +185,7 @@ Router.register('leaderboard', (() => {
           <thead><tr><th>#</th><th>Typist</th><th class="num-col">Score</th><th class="num-col">Level</th><th class="num-col hide-sm">WPM</th><th class="hide-sm">Date</th></tr></thead>
           <tbody>${list.map((r, i) => `<tr class="${i === 0 ? 'mine-best' : ''}">
             <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
-            <td><div class="who"><img src="${UI.avatar(p.avatar, 68)}" alt="" width="34" height="34"><span>${UI.esc(p.name)}</span></div></td>
+            <td><div class="who">${UI.meImg(68, 34)}<span>${UI.esc(p.name)}</span></div></td>
             <td class="w num-col">${UI.fmt(r.score)}</td><td class="n num-col">${UI.fmt(r.level)}</td>
             <td class="n num-col hide-sm">${r.wpm != null ? UI.fmt(r.wpm) : ''}</td><td class="n hide-sm">${UI.esc(UI.date(/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date + 'T12:00' : r.date, false))}</td></tr>`).join('')}</tbody>
         </table>`

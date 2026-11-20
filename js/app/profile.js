@@ -7,10 +7,11 @@ Router.register('profile', (() => {
     racewin: 'flag', collector: 'cube', level10: 'crown',
   };
   const DAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  let el, off = [], span = 30, onResize = null;
+  let el, off = [], span = 30, onResize = null, host = null, creator = false;
 
-  function mount(root) {
-    el = root;
+  function mount(root, params) {
+    el = root; host = root;
+    if (window.AvatarCreator && params && params[0] === 'avatar') { creator = true; AvatarCreator.mount(el); return; }
     paint();
     off.push(WPM.on('profile', paint), WPM.on('session', paint), WPM.on('coins', paint));
     onResize = () => drawChart();
@@ -31,7 +32,7 @@ Router.register('profile', (() => {
           <section class="panel hot">
             <div class="ph">// PROFILE</div>
             <div class="who-card">
-              <img class="av" src="${UI.avatar(p.avatar, 280)}" alt="Your avatar" width="140" height="140">
+              ${UI.meImg(280, 140, 'class="av" alt="Your avatar"')}
               <div>
                 <div class="name-row" data-name>
                   <h2>${e(p.name)}</h2>
@@ -56,9 +57,9 @@ Router.register('profile', (() => {
           </section>
           <section class="panel">
             <div class="ph">// AVATAR</div>
-            <div class="avatars" role="group" aria-label="Avatar">
+            ${window.AvatarCreator ? `<a class="btn out" href="#/profile/avatar" style="width:100%">Edit avatar</a>` : `<div class="avatars" role="group" aria-label="Avatar">
               ${UI.AVATARS.map((a, i) => `<button type="button" data-av="${i}" aria-pressed="${i === p.avatar}" aria-label="${e(a.name)} avatar"><img src="${UI.avatar(i, 120)}" alt="" width="60" height="60"></button>`).join('')}
-            </div>
+            </div>`}
           </section>
         </div>
 
@@ -175,10 +176,13 @@ Router.register('profile', (() => {
   }
 
   function unmount() {
+    if (creator) { AvatarCreator.unmount(); creator = false; }
     off.forEach(f => f()); off = [];
     removeEventListener('resize', onResize);
     el = null;
   }
+  // #/profile and #/profile/avatar share this page
+  function update(params) { const h = host; unmount(); h.innerHTML = ''; scrollTo(0, 0); mount(h, params); }
 
-  return { title: 'Profile', mount, unmount };
+  return { title: 'Profile', mount, unmount, update };
 })());

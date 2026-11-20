@@ -67,6 +67,7 @@
     { route: 'shop', sel: '.shop-hero .coin-box', at: 'out-l', dx: -30, dy: 2, face: 'right', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'shop', sel: '.shop-bar .seg', at: 'out-r', dx: 40, dy: 6, face: 'right', bonus: -100 },
     { route: 'room', sel: '.rm-menu', at: 'below', dx: 18, dy: 24, face: 'right', bonus: 90, arrive: ['point', 'happy'] },
+    { route: 'profile', sel: '.avc-head h1', at: 'text', dx: 34, dy: 4, face: 'left', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'profile', sel: '.streak-top b', at: 'text', dx: 34, dy: 6, face: 'left', bonus: 90, arrive: ['point', 'proud'] },
     { route: 'profile', sel: '[data-buddy-toggle]', at: 'out-r', dx: 22, dy: 10, face: 'left', bonus: 20 },
     { route: 'play', sel: '.page-play [data-game] > .panel', at: 'out-l', dx: -26, dy: 0, face: 'right', bonus: 90 },
@@ -77,7 +78,7 @@
     { route: 'boss', sel: '.boss-top h1', at: 'text', dx: 22, dy: 8, face: 'right', bonus: 60 },
   ];
   // what it must never cover. Text is checked line by line on desktop.
-  const SOLID = 'a[href],button,input,select,textarea:not(.sr-input),[role=tab],.typebox,.breach-box,.boss-stage,.boss-type,.boss-hpbox,.boss-side,.boss-demo,.race-panel,.rm-menu,.rm-dock,.rm-pop,.kb-picker,dialog';
+  const SOLID = 'a[href],button,input,select,textarea:not(.sr-input),[role=tab],.avc-stage,.avc-ctrl,.typebox,.breach-box,.boss-stage,.boss-type,.boss-hpbox,.boss-side,.boss-demo,.race-panel,.rm-menu,.rm-dock,.rm-pop,.kb-picker,dialog';
   const TEXTY = /^(H1|H2|H3|H4|P|LI|DT|DD|LABEL|TH|TD|B|SPAN|SMALL|STRONG|EM|KBD|DIV)$/;
 
   // ---------- build ----------
@@ -447,7 +448,8 @@
     const dt = Math.min(0.05, (nowT - lastT) / 1000); lastT = nowT;
     if (document.hidden || mode === 'wait') return;
     const vh = viewH();
-    hiddenNow = away || (phone() && (kbOpen || (nav && nav.classList.contains('open'))));
+    // on a phone the avatar creator needs the whole screen
+    hiddenNow = away || (phone() && (kbOpen || (nav && nav.classList.contains('open')) || !!document.querySelector('.avc')));
     root.classList.toggle('stowed', hiddenNow && !away);
     if (away) return;
     if (mode === 'drag') { paint(); return; }

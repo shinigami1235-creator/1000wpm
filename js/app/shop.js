@@ -8,7 +8,7 @@ Router.register('shop', (() => {
     el = root;
     el.innerHTML = `
       <div class="panel shop-hero">
-        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR MY ROOM</p></div>
+        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR MY ROOM AND AVATAR</p></div>
         <div class="panel coin-box hot">${UI.coin()}<b data-coins>${UI.fmt(WPM.coins())}</b></div>
       </div>
       <div data-body></div>`;
@@ -22,7 +22,8 @@ Router.register('shop', (() => {
     const c = window.RoomItems.catalog;
     const list = Array.isArray(c) ? c : Array.isArray(c && c.items) ? c.items
       : Object.entries(c || {}).flatMap(([k, v]) => Array.isArray(v) ? v.map(i => ({ category: k, ...i })) : [{ id: k, ...v }]);
-    return list.filter(i => i && i.id).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
+    const av = window.AvatarData ? AvatarData.items() : [];
+    return [...list, ...av].filter(i => i && i.id).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
     const named = window.RoomItems.categories;
@@ -92,7 +93,7 @@ Router.register('shop', (() => {
     const card = queue.shift(), id = card.dataset.id;
     if (thumbs.has(id)) { setThumb(card, thumbs.get(id)); return pump(); }
     busy = true;
-    Promise.resolve().then(() => window.RoomItems.thumbnail(id)).then(url => {
+    Promise.resolve().then(() => card._item.slot && window.Avatar ? Avatar.itemThumb(card._item) : window.RoomItems.thumbnail(id)).then(url => {
       if (url) { thumbs.set(id, url); setThumb(card, url); }
     }).catch(e => console.warn('thumbnail', id, e)).finally(() => { busy = false; pump(); });
   }
@@ -120,7 +121,7 @@ Router.register('shop', (() => {
     if (io) io.disconnect();
     box.innerHTML = list.length ? '' : `<p class="empty">No items match.</p>`;
     for (const { item } of list) {
-      const card = UI.el(`<article class="panel item" data-id="${UI.esc(item.id)}"${item.desc ? ` title="${UI.esc(item.desc)}"` : ''}>
+      const card = UI.el(`<article class="panel item${item.slot ? ' av-item' : ''}" data-id="${UI.esc(item.id)}"${item.desc ? ` title="${UI.esc(item.desc)}"` : ''}>
         <div class="thumb"><span class="ph-text">LOADING</span></div>
         <div class="body"><h3>${UI.esc(item.name || item.id)}</h3><div class="row" data-row></div><p class="msg" data-msg></p></div>
       </article>`);
@@ -138,7 +139,7 @@ Router.register('shop', (() => {
     card.classList.toggle('is-owned', owned);
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
-      row.innerHTML = `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
+      row.innerHTML = item.slot ? `<span class="owned">Owned</span><a class="btn out sm" href="#/profile/avatar">Avatar</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
       card.querySelector('[data-msg]').textContent = '';
       return;
     }

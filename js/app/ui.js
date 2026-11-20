@@ -123,6 +123,13 @@ window.UI = (() => {
     return url;
   }
 
+  // The player's avatar as an <img>: the 3D thumbnail from js/app/avatar.js when it is
+  // loaded, otherwise the hooded figure above.
+  function meImg(size, show = size, attrs = '') {
+    if (window.Avatar) return Avatar.img(Avatar.mine(), size, show, attrs);
+    return `<img src="${avatar(WPM.profile().avatar, size)}" width="${show}" height="${show}"${/\balt=/.test(attrs) ? '' : ' alt=""'} ${attrs}>`;
+  }
+
   // ---------- line chart ----------
   // values: numbers; labels: x labels (same length, optional). Draws to the canvas's CSS size.
   function lineChart(cv, values, { labels = [], min, max, empty = 'No runs yet', tag } = {}) {
@@ -214,5 +221,5 @@ window.UI = (() => {
     return () => { stop = true; clearInterval(iv); };
   }
 
-  return { day, esc, fmt, icon, coin, el, time, clock, date, modeName, AVATARS, avatar, lineChart, waitFor };
+  return { day, esc, fmt, icon, coin, el, time, clock, date, modeName, AVATARS, avatar, meImg, lineChart, waitFor };
 })();
