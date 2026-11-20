@@ -22,8 +22,9 @@ Router.register('boss', (() => {
     weak: 'Hits on the open kernel deal double damage.',
     weak3: 'Hits on the open kernel deal triple damage.',
     stagger: `Six quick words in a row stagger ${name} and make your next three hits crits.`,
+    start: 'Type the highlighted word and press Space. Each correct word deals one damage per letter.',
   });
-  const KIND = { block: 'BLOCK', return: 'SEND BACK', add: 'DEBUG' };
+  const KIND = { block: 'Block', return: 'Send back', add: 'Debug' };
   const STREAK_N = 6, STREAK_MS = 4500, STAGGER_CD = 8000, CRITS = 3, JAM_MS = 5000, ACTIVE_MS = 20000, LOCK_MS = 1200;
   const DMG_MILESTONES = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05];
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
@@ -63,86 +64,88 @@ Router.register('boss', (() => {
     resetFight();
     try { seenTips = new Set(JSON.parse(localStorage.getItem('wpm-boss-tips') || '[]')); } catch (e) { seenTips = new Set(); }
     stack = TT.randomWords(80);
+    // One centred column: HP, the arena, the attack slots, the word stack and a slim
+    // strip with your numbers. The scoreboard, the live feed and the rest of your
+    // stats sit in a drawer that Tab or the Scoreboard button opens.
     el.innerHTML = `
-      <div class="boss-top">
-        <div class="title-block"><h1><span class="pre">&gt;</span>World boss_</h1><p>// ${esc(NAME.toUpperCase())} · ${fmt(B.maxHp)} HP</p></div>
-        <div class="boss-demo" role="note" data-k="demo">
-          <span>DEMO: other raiders are simulated until the server is live.</span>
-          <span class="wb-skip" data-k="skip"><span>Skip to phase</span>${[2, 3, 4, 5].map(n => `<button type="button" data-p="${n - 1}">${n}</button>`).join('')}</span>
+      <div class="wb" data-k="wb">
+        <section class="boss-hpbox" aria-label="Boss HP" data-k="hpbox">
+          <div class="wb-hp-row">
+            <h1 class="wb-name">${esc(NAME)}</h1>
+            <span class="boss-state" data-k="state"></span>
+            <span class="wb-phase" data-k="phase"></span>
+            <span class="wb-hpnum"><b data-k="hp">0</b><span class="wb-left"><span data-k="left">0%</span> left</span></span>
+          </div>
+          <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" aria-valuemax="${B.maxHp}" data-k="meter">
+            <i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
+            ${R.PHASES.slice(1).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
+          </div>
+        </section>
+        <section class="boss-stage" data-k="stage" aria-label="The boss">
+          <div class="kb-loading" data-k="loading">Loading</div>
+          <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
+          <div class="wb-labels" data-k="labels" aria-hidden="true"></div>
+          <div class="dmg-layer" data-k="nums" aria-hidden="true"></div>
+          <div class="wb-status">
+            <span class="wb-flag shield" data-k="shield" hidden></span>
+            <span class="wb-flag weak" data-k="weak" hidden></span>
+            <span class="wb-me" data-k="mestat"></span>
+          </div>
+          <ol class="wb-mini" data-k="mini" aria-label="Top raiders"></ol>
+          <p class="wb-tip" data-k="tip" aria-live="polite"></p>
+          <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
+          <div class="wb-banner" data-k="banner" hidden></div>
+          <div class="boss-down" data-k="down" hidden></div>
+        </section>
+        <section class="boss-type" aria-label="Your word stack">
+          <div class="wb-mech" data-k="mechrow"><div class="wb-chips" data-k="chips"></div></div>
+          <div class="typebox boss-words" data-k="box" tabindex="-1">
+            <div class="boss-queue" data-k="queue"></div>
+            <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
+          </div>
+          <div class="wb-over" data-k="over"><button class="btn" type="button" data-k="again">New demo boss</button></div>
+        </section>
+        <div class="wb-strip">
+          <span class="wb-stat mine"><b data-k="s-dmg">0</b> damage</span>
+          <span class="wb-stat"><b data-k="s-rank">-</b><span data-k="s-of"></span></span>
+          <span class="wb-stat"><b data-k="s-wpm">0</b> wpm</span>
+          <span class="wb-stat"><b data-k="s-blocks">0</b> blocked</span>
+          <button class="wb-boardbtn" type="button" data-k="boardbtn" aria-expanded="false" aria-controls="wb-drawer">Scoreboard <kbd>Tab</kbd></button>
         </div>
+        <p class="wb-demo" data-k="demo">Demo: the other raiders are simulated until the server is live.
+          <span class="wb-skip" data-k="skip">Skip to phase ${[2, 3, 4, 5].map(n => `<button type="button" data-p="${n - 1}">${n}</button>`).join('')}</span></p>
       </div>
-      <div class="boss-grid">
-        <div class="boss-main">
-          <section class="panel hot boss-hpbox" aria-label="Boss HP" data-k="hpbox">
-            <div class="boss-hp-row">
-              <span class="label">&gt; ${esc(NAME.toUpperCase())}<span class="wb-phase" data-k="phase"></span></span>
-              <b class="num" data-k="hp">0 / 0 HP</b>
-            </div>
-            <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" aria-valuemax="${B.maxHp}" data-k="meter">
-              <i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
-              ${R.PHASES.slice(1).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
-            </div>
-            <div class="boss-hp-sub">
-              <span><b data-k="left">0%</b> left</span>
-              <span><b data-k="dealt">0</b> damage dealt</span>
-              <span class="wb-flag shield" data-k="shield" hidden></span>
-              <span class="wb-flag weak" data-k="weak" hidden></span>
-              <span class="boss-state" data-k="state"></span>
-            </div>
-          </section>
-          <section class="panel boss-stage" data-k="stage" aria-label="The boss">
-            <div class="kb-loading" data-k="loading">Loading</div>
-            <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
-            <div class="wb-labels" data-k="labels" aria-hidden="true"></div>
-            <div class="dmg-layer" data-k="nums" aria-hidden="true"></div>
-            <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
-            <div class="wb-banner" data-k="banner" hidden></div>
-            <div class="boss-down" data-k="down" hidden></div>
-          </section>
-          <section class="panel hot boss-type" aria-label="Your word stack">
-            <div class="ph">&gt; YOUR WORD STACK<span class="meta" data-k="combo">COMBO 0</span></div>
-            <div class="wb-mech" data-k="mechrow">
-              <div class="wb-chips" data-k="chips"></div>
-              <div class="wb-me" data-k="mestat"></div>
-            </div>
-            <p class="wb-tip" data-k="tip" aria-live="polite"></p>
-            <div class="typebox boss-words" data-k="box" tabindex="-1">
-              <div class="boss-queue" data-k="queue"></div>
-              <div class="focus-note"><span class="fn-key">CLICK HERE OR PRESS ANY KEY TO TYPE</span><span class="fn-tap">TAP HERE TO TYPE</span></div>
-            </div>
-            <p class="type-help">Type the highlighted word and press <kbd>Space</kbd>. Each correct word deals one damage per letter.</p>
-            <div class="wb-over" data-k="over">
-              <span class="ph">&gt; NEXT FIGHT</span>
-              <button class="btn" type="button" data-k="again">New demo boss</button>
-            </div>
-          </section>
+      <aside class="wb-drawer" id="wb-drawer" data-k="drawer" aria-label="Scoreboard" inert>
+        <div class="wb-dhead">
+          <h2>Scoreboard</h2><span data-k="count"></span>
+          <button class="wb-x" type="button" data-k="close" aria-label="Close the scoreboard"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
         </div>
-        <aside class="boss-side">
-          <section class="panel boss-you">
-            <div class="ph">// YOU</div>
-            <div class="boss-you-grid">
-              <div><span class="label">Your damage</span><b class="mid green" data-k="mydmg">0</b></div>
-              <div><span class="label">Rank</span><b class="mid" data-k="rank">-</b></div>
-              <div><span class="label">WPM</span><b class="mid" data-k="wpm">0</b></div>
-              <div><span class="label">Accuracy</span><b class="mid" data-k="acc">100%</b></div>
-              <div><span class="label">Blocks</span><b class="mid" data-k="blocks">0</b></div>
-              <div><span class="label">Packets sent back</span><b class="mid" data-k="returns">0</b></div>
-              <div><span class="label">Bugs deleted</span><b class="mid" data-k="adds">0</b></div>
-              <div><span class="label">Best combo</span><b class="mid" data-k="best">0</b></div>
-            </div>
-          </section>
-          <section class="panel">
-            <div class="ph">// DAMAGE SCOREBOARD<span class="meta" data-k="count"></span></div>
-            <table class="boss-board"><thead><tr><th>#</th><th>Raider</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody data-k="board"></tbody></table>
-          </section>
-          <section class="panel">
-            <div class="ph">// LIVE FEED</div>
-            <ol class="boss-feed" data-k="feed"></ol>
-          </section>
-        </aside>
-      </div>`;
+        <section class="boss-you">
+          <h3>You</h3>
+          <div class="wb-you">
+            <div><span>Damage</span><b class="green" data-k="mydmg">0</b></div>
+            <div><span>Rank</span><b data-k="rank">-</b></div>
+            <div><span>wpm</span><b data-k="wpm">0</b></div>
+            <div><span>Accuracy</span><b data-k="acc">100%</b></div>
+            <div><span>Combo</span><b data-k="combo">0</b></div>
+            <div><span>Best combo</span><b data-k="best">0</b></div>
+            <div><span>Blocks</span><b data-k="blocks">0</b></div>
+            <div><span>Packets sent back</span><b data-k="returns">0</b></div>
+            <div><span>Bugs deleted</span><b data-k="adds">0</b></div>
+          </div>
+        </section>
+        <section>
+          <h3>Damage</h3>
+          <table class="boss-board"><thead><tr><th>#</th><th>Raider</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody data-k="board"></tbody></table>
+        </section>
+        <section>
+          <h3>Live feed</h3>
+          <ol class="boss-feed" data-k="feed"></ol>
+        </section>
+      </aside>`;
 
     renderQueue();
+    tip('start');
     scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = 'The boss needs an internet connection to draw.'; });
@@ -158,12 +161,19 @@ Router.register('boss', (() => {
       if (b && d) { d.jumpTo(+b.dataset.p); if (keys) keys.focus(); }
     });
     q('again').addEventListener('click', again);
+    q('boardbtn').addEventListener('click', () => { drawer(); if (keys) keys.focus(); });
+    q('close').addEventListener('click', () => { drawer(false); if (keys) keys.focus(); });
+    q('drawer').addEventListener('keydown', e => { if (e.key === 'Escape') { drawer(false); if (keys) keys.focus(); } });
 
     const box = q('box');
     keys = TT.captureKeys(box, {
-      label: 'Type the words to attack the boss',
+      label: 'Type the words to attack the boss. Tab opens the scoreboard.',
       onChar, onBack,
-      onKey(k) { if (k === 'Enter') submit(); },
+      onKey(k) {
+        if (k === 'Enter') submit();
+        else if (k === 'Tab') drawer();
+        else if (k === 'Escape') drawer(false);
+      },
     });
     if (matchMedia('(pointer: fine)').matches) keys.focus();
     const forward = e => {
@@ -338,13 +348,22 @@ Router.register('boss', (() => {
       else cur += `<span class="c ${a === c ? 'ok' : 'bad'}">${esc(c)}</span>`;
     }
     if (mineNow && t.length >= w.length) cur += '<span class="c at">&nbsp;</span>';
+    // The current word sits alone on the first line and the word just typed fades
+    // out beside it. The fade keeps its own clock since the page redraws on every key.
+    const last = hist[hist.length - 1];
+    let ghost = '';
+    if (last) {
+      if (!ghostAt.has(last)) { ghostAt.clear(); ghostAt.set(last, performance.now()); }
+      const age = performance.now() - ghostAt.get(last);
+      if (age < GHOST_MS) ghost = `<span class="bw done ${last.ok ? 'hit' : 'miss'}" style="animation-delay:-${Math.round(age)}ms">${esc(last.word)}</span>`;
+    }
     box.innerHTML =
-      hist.map(h => `<span class="bw done ${h.ok ? 'hit' : 'miss'}">${esc(h.word)}${h.ok ? `<small>-${h.word.length}</small>` : ''}</span>`).join('') +
-      `<span class="bw cur${mineNow ? '' : ' wait'}" aria-current="${mineNow}">${cur}</span>` +
-      stack.slice(1, 13).map((x, i) => `<span class="bw next" style="opacity:${Math.max(0.3, 1 - i * 0.06).toFixed(2)}">${esc(x)}</span>`).join('');
-    q('combo').textContent = `COMBO ${combo}${best > 1 ? ` · BEST ${best}` : ''}`;
+      `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mineNow ? '' : ' wait'}" aria-current="${mineNow}">${cur}</span></span></div>` +
+      `<div class="bq-next">${stack.slice(1, 13).map((x, i) => `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`).join('')}</div>`;
+    q('combo').textContent = combo;
     q('box').classList.toggle('locked', now() < lockUntil);
   }
+  const GHOST_MS = 700, ghostAt = new Map();
   function lettersHtml(word, t, caret) {
     let s = '';
     for (let i = 0; i < word.length; i++) {
@@ -425,7 +444,10 @@ Router.register('boss', (() => {
     }
     const wf = q('weak');
     wf.hidden = !weak;
-    if (weak) wf.textContent = `KERNEL OPEN x${st.weak.mult} · ${Math.ceil((st.weak.until - t) / 1000)}s`;
+    if (weak) {
+      const html = `Kernel open x${st.weak.mult} <b>${Math.ceil((st.weak.until - t) / 1000)}s</b>`;
+      if (wf.innerHTML !== html) wf.innerHTML = html;
+    }
     if (now() >= lockUntil && q('box').classList.contains('locked')) renderQueue();
     paintChips(false);
     paintMe(t);
@@ -469,8 +491,8 @@ Router.register('boss', (() => {
   function paintMe(t) {
     const box = q('mestat'); if (!box) return;
     const bits = [];
-    if (t < jamUntil) bits.push(`<span class="wb-flag jam">DAMAGE HALVED · ${Math.ceil((jamUntil - t) / 1000)}s</span>`);
-    if (critLeft > 0) bits.push(`<span class="wb-flag crit">CRIT x2 · ${critLeft} ${critLeft === 1 ? 'HIT' : 'HITS'}</span>`);
+    if (t < jamUntil) bits.push(`<span class="wb-flag jam">Damage halved <b>${Math.ceil((jamUntil - t) / 1000)}s</b></span>`);
+    if (critLeft > 0) bits.push(`<span class="wb-flag crit">Crit x2 on the next <b>${critLeft}</b> ${critLeft === 1 ? 'hit' : 'hits'}</span>`);
     const html = bits.join('');
     if (box.innerHTML !== html) box.innerHTML = html;
   }
@@ -527,15 +549,14 @@ Router.register('boss', (() => {
     const wasDown = st && st.defeatedAt;
     st = s;
     const f = s.hp / s.maxHp;
-    q('hp').textContent = `${fmt(Math.ceil(s.hp))} / ${fmt(s.maxHp)} HP`;
+    q('hp').innerHTML = `${fmt(Math.ceil(s.hp))}<small> / ${fmt(s.maxHp)} HP</small>`;
     q('fill').style.width = (100 * f) + '%';
     q('meter').setAttribute('aria-valuenow', Math.ceil(s.hp));
     q('left').textContent = (f > 0 && f < 0.01 ? (100 * f).toFixed(2) : (100 * f).toFixed(1)) + '%';
-    q('dealt').textContent = fmt(s.dealt);
     const ph = s.phase || 0;
     q('state').textContent = s.defeatedAt ? 'Down' : R.PHASES[ph].name;
     q('state').dataset.s = s.defeatedAt ? 5 : ph + 1;
-    q('phase').textContent = ` · PHASE ${ph + 1}/${R.PHASES.length}`;
+    q('phase').textContent = `Phase ${ph + 1} of ${R.PHASES.length}`;
     q('phase').dataset.p = ph;
     q('demo').hidden = !s.demo;
     el.querySelectorAll('[data-p]').forEach(b => { if (b.tagName === 'BUTTON') b.disabled = +b.dataset.p <= ph || !!s.defeatedAt; });
@@ -543,7 +564,7 @@ Router.register('boss', (() => {
     const sb = q('sbar'), sf = q('shield');
     if (s.shield) {
       sb.hidden = false; sb.style.width = (100 * f) + '%'; sb.style.setProperty('--s', s.shield.hp / s.shield.max);
-      sf.hidden = false; sf.textContent = `FIREWALL ${fmt(s.shield.hp)} / ${fmt(s.shield.max)}`;
+      sf.hidden = false; sf.innerHTML = `Firewall <b>${fmt(s.shield.hp)}</b><small> / ${fmt(s.shield.max)}</small>`;
     } else { sb.hidden = true; sf.hidden = true; }
     if (scene) {
       scene.setFrac(f, first || lastStage < 0);
@@ -559,7 +580,7 @@ Router.register('boss', (() => {
       lastPhase = ph;
       sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     }
-    q('count').textContent = `${s.raiders.length} RAIDERS`;
+    q('count').textContent = `${s.raiders.length} raiders`;
     paintBoard();
     paintYou();
     if (s.defeatedAt && !wasDown) down(first);
@@ -573,7 +594,7 @@ Router.register('boss', (() => {
     document.dispatchEvent(new CustomEvent('buddy', { detail: 'phase' }));
     const b = q('banner');
     b.hidden = false;
-    b.innerHTML = `<div class="in"><small>PHASE ${ph + 1} / ${R.PHASES.length}</small><b>${esc(R.PHASES[ph].name)}</b>${BANNER[ph] ? `<span>${esc(BANNER[ph])}</span>` : ''}</div>`;
+    b.innerHTML = `<div class="in"><small>Phase ${ph + 1} of ${R.PHASES.length}</small><b>${esc(R.PHASES[ph].name)}</b>${BANNER[ph] ? `<span>${esc(BANNER[ph])}</span>` : ''}</div>`;
     b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
     clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 2800);
     pushFeed({ sys: true, text: `Phase ${ph + 1}: ${R.PHASES[ph].name}` });
@@ -705,8 +726,8 @@ Router.register('boss', (() => {
     if (feed.length > 30) feed.length = 30;
     feedDirty = true;
   }
-  function paintFeed() {
-    if (!feedDirty || !el) return;
+  function paintFeed(force) {
+    if ((!feedDirty && force !== true) || !el) return;
     feedDirty = false;
     q('feed').innerHTML = feed.slice(0, 10).map(h => {
       const tm = `<span class="t">[${h.time}]</span> `;
@@ -732,21 +753,45 @@ Router.register('boss', (() => {
         <td class="r num">${fmt(r.damage)}</td><td class="r num dim">${fmt(r.blocks || 0)}</td><td class="r num dim">${share(r.damage, total)}</td></tr>`;
     }).join('');
   }
-  function paintBoard() { q('board').innerHTML = rows(st.raiders, 10); }
+  function paintBoard() {
+    q('board').innerHTML = rows(st.raiders, 10);
+    // the corner board in the arena: the top three and you
+    const me = st.raiders.findIndex(r => r.you);
+    const list = st.raiders.slice(0, 3).map((r, i) => [r, i]);
+    if (me >= 3) list.push([st.raiders[me], me]);
+    q('mini').innerHTML = list.map(([r, i]) => `<li class="${i < 3 ? 'top' : ''}${r.you ? ' you' : ''}"><span class="r">${i + 1}</span><span class="n">${r.you ? 'You' : esc(r.name)}</span><b>${fmt(r.damage)}</b></li>`).join('');
+  }
+  // the scoreboard drawer: no argument toggles it
+  function drawer(open) {
+    const d = q('drawer'); if (!d) return;
+    const on = open === undefined ? !d.classList.contains('open') : !!open;
+    d.classList.toggle('open', on);
+    d.inert = !on;
+    q('boardbtn').setAttribute('aria-expanded', on);
+    if (on) paintFeed(true);
+  }
 
   function paintYou() {
     if (!st || !el) return;
     const i = st.raiders.findIndex(r => r.you);
     const me = st.raiders[i];
-    q('mydmg').textContent = fmt(me ? me.damage : 0);
-    q('rank').innerHTML = me && me.damage ? `#${i + 1}<small class="dim"> / ${st.raiders.length}</small>` : '-';
+    const dmg = fmt(me ? me.damage : 0), ranked = me && me.damage;
+    q('mydmg').textContent = dmg;
+    q('rank').innerHTML = ranked ? `#${i + 1}<small> of ${st.raiders.length}</small>` : '-';
     const min = sess.active / 60000;
-    q('wpm').textContent = min > 0.05 ? Math.round(((sess.letters + sess.words) / 5) / min) : 0;
+    const wpm = min > 0.05 ? Math.round(((sess.letters + sess.words) / 5) / min) : 0;
+    q('wpm').textContent = wpm;
     q('acc').textContent = (sess.keys ? Math.round(100 * sess.good / sess.keys) : 100) + '%';
     q('blocks').textContent = sess.blocks;
     q('returns').textContent = sess.returns;
     q('adds').textContent = sess.adds;
     q('best').textContent = best;
+    // the slim strip under the stack
+    q('s-dmg').textContent = dmg;
+    q('s-rank').textContent = ranked ? `#${i + 1}` : '-';
+    q('s-of').textContent = ranked ? ` of ${st.raiders.length}` : ' rank';
+    q('s-wpm').textContent = wpm;
+    q('s-blocks').textContent = sess.blocks;
   }
 
   // ---------- defeat ----------
@@ -785,23 +830,25 @@ Router.register('boss', (() => {
     q('stage').classList.add('is-down');
     const bonus = r ? r.bonus : 0;
     box.innerHTML = `
-      <div class="panel hot boss-down-in" data-k="result">
-        <h2>&gt; ${esc(NAME)} is down</h2>
-        <p class="dim">${line}</p>
-        <div class="boss-share">
-          <div><span class="label">Your damage</span><b class="mid green">${fmt(mineR ? mineR.damage : 0)}</b></div>
-          <div><span class="label">Your share</span><b class="mid">${share(mineR ? mineR.damage : 0, raidTotal())}</b></div>
-          <div><span class="label">Your rank</span><b class="mid">#${me + 1}</b></div>
-          <div><span class="label">Blocks</span><b class="mid">${sess.blocks}</b></div>
-          <div><span class="label">Sent back</span><b class="mid">${sess.returns}</b></div>
-          <div><span class="label">Bugs deleted</span><b class="mid">${sess.adds}</b></div>
-          <div><span class="label">Best combo</span><b class="mid">${best}</b></div>
-          ${r ? `<div><span class="label">Coins</span><b class="mid gold">+${fmt(r.coins + bonus)}</b></div>
-          <div><span class="label">XP</span><b class="mid">+${fmt(r.xp + r.bonusXp)}</b></div>` : ''}
+      <div class="boss-down-in" data-k="result">
+        <h2>${esc(NAME)} is down</h2>
+        <p class="wb-res-line">${line}</p>
+        <div class="wb-res-main">
+          <div><span>Your damage</span><b class="green">${fmt(mineR ? mineR.damage : 0)}</b></div>
+          <div><span>Share</span><b>${share(mineR ? mineR.damage : 0, raidTotal())}</b></div>
+          <div><span>Rank</span><b>#${me + 1}<small> of ${st.raiders.length}</small></b></div>
+          ${r ? `<div><span>Coins</span><b class="gold">+${fmt(r.coins + bonus)}</b></div>
+          <div><span>XP</span><b>+${fmt(r.xp + r.bonusXp)}</b></div>` : ''}
         </div>
-        ${r && bonus ? `<p class="dim wb-bonus">Includes ${[
-          r.blockCoins ? `${r.blockCoins} coins for ${sess.blocks} ${sess.blocks === 1 ? 'block' : 'blocks'}` : '',
-          r.killCoins ? `${r.killCoins}${r.blockCoins ? '' : ' coins'} for being there at the end` : '',
+        <div class="wb-res-more">
+          <span><b>${sess.blocks}</b> blocked</span>
+          <span><b>${sess.returns}</b> sent back</span>
+          <span><b>${sess.adds}</b> bugs deleted</span>
+          <span><b>${best}</b> best combo</span>
+        </div>
+        ${r && bonus ? `<p class="wb-bonus">Coins include ${[
+          r.blockCoins ? `${r.blockCoins} for ${sess.blocks} ${sess.blocks === 1 ? 'block' : 'blocks'}` : '',
+          r.killCoins ? `${r.killCoins} for being there at the end` : '',
         ].filter(Boolean).join(' and ')}.</p>` : ''}
         <table class="boss-board"><thead><tr><th>#</th><th>Raider</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
       </div>`;
@@ -809,8 +856,8 @@ Router.register('boss', (() => {
     requestAnimationFrame(showWhole);
   }
   // The result and the New demo boss button below it must both be on screen.
-  // If they aren't, the page lines the HP panel up under the site header, or
-  // the result itself on a phone, so nothing is left half under the header.
+  // If they aren't, the page scrolls the top of the fight, or the result itself
+  // on a phone, to just under the site header.
   function showWhole() {
     if (!el) return;
     const res = q('result'), btn = q('over');
@@ -819,7 +866,7 @@ Router.register('boss', (() => {
     const hb = head ? head.getBoundingClientRect().bottom : 0;
     const top = res.getBoundingClientRect().top, bottom = btn.getBoundingClientRect().bottom;
     if (top >= hb && bottom <= innerHeight) return;
-    const hp = q('hpbox').getBoundingClientRect().top;
+    const hp = Math.min(q('hpbox').getBoundingClientRect().top, q('stage').getBoundingClientRect().top);
     const to = bottom - (hp - hb - 8) <= innerHeight ? hp : top;
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
     scrollTo({ top: scrollY + to - hb - 8, behavior: smooth ? 'smooth' : 'auto' });

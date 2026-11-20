@@ -74,11 +74,11 @@
     { route: 'play', sel: '.page-play [data-game] > .panel', at: 'below', dx: 6, dy: 2, face: 'right', bonus: 50 },
     { route: 'play', sel: '.game-bar .btn', at: 'out-l', dx: -28, dy: 10, face: 'right', bonus: 60 },
     { route: 'play', sel: '.play-head h1', at: 'text', dx: 24, dy: 4, face: 'right' },
-    { route: 'boss', sel: '.boss-stage', at: 'out-l', dx: -26, dy: 0, face: 'right', bonus: 90 },
-    { route: 'boss', sel: '.boss-top h1', at: 'text', dx: 22, dy: 8, face: 'right', bonus: 60 },
+    { route: 'boss', sel: '.boss-stage', at: 'out-l', dx: -18, dy: 0, face: 'right', bonus: 90 },
+    { route: 'boss', sel: '.boss-stage', at: 'out-r', dx: 18, dy: 0, face: 'left', bonus: 60 },
   ];
   // what it must never cover. Text is checked line by line on desktop.
-  const SOLID = 'a[href],button,input,select,textarea:not(.sr-input),[role=tab],.avc-stage,.avc-ctrl,.typebox,.breach-box,.boss-stage,.boss-type,.boss-hpbox,.boss-side,.boss-demo,.race-panel,.rm-menu,.rm-dock,.rm-pop,.kb-picker,dialog';
+  const SOLID = 'a[href],button,input,select,textarea:not(.sr-input),[role=tab],.avc-stage,.avc-ctrl,.typebox,.breach-box,.boss-stage,.boss-type,.boss-hpbox,.wb-strip,.wb-demo,.wb-drawer,.race-panel,.rm-menu,.rm-dock,.rm-pop,.kb-picker,dialog';
   const TEXTY = /^(H1|H2|H3|H4|P|LI|DT|DD|LABEL|TH|TD|B|SPAN|SMALL|STRONG|EM|KBD|DIV)$/;
 
   // ---------- build ----------

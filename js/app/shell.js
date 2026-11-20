@@ -63,6 +63,7 @@
   window.Toast = toast;
 
   // ---------- falling code ----------
+  // It stops on the world boss page so the margins stay calm around the fight.
   const cv = document.getElementById('rain');
   const c = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)');
@@ -101,11 +102,18 @@
       if (d.y > innerHeight && Math.random() > .96) d.y = -COL * Math.random() * 20;
     }
   }
+  const calm = () => window.Router && Router.current() === 'boss';
+  let wasCalm = false;
   function run() {
     cancelAnimationFrame(raf); raf = 0;
-    if (!document.hidden && !reduce.matches) raf = requestAnimationFrame(frame);
+    const now = calm();
+    if (now) { c.fillStyle = '#040806'; c.fillRect(0, 0, innerWidth, innerHeight); }
+    else if (wasCalm && reduce.matches) still();
+    wasCalm = now;
+    if (!document.hidden && !reduce.matches && !now) raf = requestAnimationFrame(frame);
   }
-  addEventListener('resize', size);
+  addEventListener('resize', () => { size(); run(); });
+  addEventListener('wpm-route', run);
   document.addEventListener('visibilitychange', run);
   reduce.addEventListener('change', () => { size(); run(); });
   size(); run();
