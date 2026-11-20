@@ -8,6 +8,9 @@ Um=T('macrodetails/universal-male-young-averagemuscle-averageweight'); Uf=T('mac
 E={f'{e}-{g}':T(f'macrodetails/{e}-{g}-young') for e in ['african','asian','caucasian'] for g in ['male','female']}
 male=V+Um+sum(E[f'{e}-male'] for e in ['african','asian','caucasian'])/3
 fem=V+Uf+sum(E[f'{e}-female'] for e in ['african','asian','caucasian'])/3
+# open the eyes a little: the neutral lids sit low and read as slits at avatar sizes
+OPEN=sum(T(f'eyes/{s}-eye-{t}')*g for s in 'lr' for t,g in [('height2-incr',.8),('height1-incr',.4),('height3-incr',.4),('scale-incr',.35)])
+male=male+OPEN; fem=fem+OPEN
 neu=(male+fem)/2
 np.save(os.path.join(HERE, 'neu.npy'), neu); np.save(os.path.join(HERE, 'male.npy'), male); np.save(os.path.join(HERE, 'fem.npy'), fem)
 def joint(name, X):

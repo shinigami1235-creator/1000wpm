@@ -23,12 +23,25 @@ def table(t, x):
 
 
 class Part:
-    """One prop part: vertices, triangles, a material name and the edges that glow."""
+    """One prop part: vertices, triangles, a material name and the edges that glow.
+    col: per-vertex colour multiplier (baked shading), dens: per-vertex hair density
+    (stubble fades to skin where it is low), morph: extra shape deltas such as brow
+    thickness. Glow lines are only the ones listed in extra_lines unless crease is set."""
     def __init__(self, mat, crease=None):
         self.v, self.t, self.mat, self.crease, self.extra_lines = [], [], mat, crease, []
+        self.col, self.dens, self.morph, self.uv, self.strand = [], [], {}, [], []
+        self.bound = None        # optional surface the part binds to instead of the default
 
-    def add(self, p):
-        self.v.append(np.asarray(p, float)); return len(self.v) - 1
+    def add(self, p, col=1.0, dens=1.0, uv=(0.0, 0.0), strand=(0.0, 0.0, 0.0)):
+        self.v.append(np.asarray(p, float)); self.col.append(col); self.dens.append(dens)
+        self.uv.append(tuple(uv)); self.strand.append(tuple(strand)); return len(self.v) - 1
+
+    def line(self, pts, closed=False):
+        """A glow polyline through pts (its own vertices, bound like the rest of the part)."""
+        ids = [self.add(p) for p in pts]
+        self.extra_lines += list(zip(ids, ids[1:]))
+        if closed: self.extra_lines.append((ids[-1], ids[0]))
+        return ids
 
     def tri(self, a, b, c):
         if a != b and b != c and a != c: self.t.append((a, b, c))
@@ -37,8 +50,14 @@ class Part:
         self.tri(a, b, c); self.tri(a, c, d)
 
     def merge(self, o):
-        k = len(self.v); self.v += o.v; self.t += [(a + k, b + k, c + k) for a, b, c in o.t]
+        k = len(self.v); n0 = len(self.v)
+        self.v += o.v; self.t += [(a + k, b + k, c + k) for a, b, c in o.t]
+        self.col += o.col or [1.0] * len(o.v); self.dens += o.dens or [1.0] * len(o.v)
+        self.uv += o.uv or [(0.0, 0.0)] * len(o.v); self.strand += o.strand or [(0.0, 0.0, 0.0)] * len(o.v)
         self.extra_lines += [(a + k, b + k) for a, b in o.extra_lines]
+        for name in set(self.morph) | set(o.morph):
+            a = self.morph.get(name, np.zeros((n0, 3))); b = o.morph.get(name, np.zeros((len(o.v), 3)))
+            self.morph[name] = np.concatenate([np.asarray(a).reshape(-1, 3), np.asarray(b).reshape(-1, 3)])
         return self
 
 
@@ -284,3 +303,184 @@ def cylinder(c, axis, r, length, sides, mat, cap_mat=None, crease=30):
         ids = [capp.add(part.v[i]) for i in ring]
         for k in range(sides): capp.tri(cc, ids[k], ids[(k + 1) % sides])
     return part, capp
+
+
+def torus(c, axis, R, r, n_major, n_minor, mat, phase=0.0):
+    """A faceted ring, for hoops, padding and rims."""
+    part = Part(mat)
+    axis = np.asarray(axis, float); axis /= np.linalg.norm(axis)
+    a = np.cross(axis, [0, 1.0, 0])
+    if np.linalg.norm(a) < 1e-4: a = np.cross(axis, [1.0, 0, 0])
+    a /= np.linalg.norm(a); b = np.cross(axis, a)
+    grid = []
+    for i in range(n_major):
+        u = 2 * math.pi * i / n_major
+        radial = a * math.cos(u) + b * math.sin(u)
+        grid.append([part.add(c + radial * (R + r * math.cos(2 * math.pi * k / n_minor + phase)) + axis * r * math.sin(2 * math.pi * k / n_minor + phase)) for k in range(n_minor)])
+    for i in range(n_major):
+        j = (i + 1) % n_major
+        for k in range(n_minor):
+            l = (k + 1) % n_minor
+            part.quad(grid[i][k], grid[j][k], grid[j][l], grid[i][l])
+    return part
+
+
+def ring_pts(c, axis, r, n, start=None):
+    """n points on a circle (for glow lines around round parts)."""
+    axis = np.asarray(axis, float); axis /= np.linalg.norm(axis)
+    a = np.cross(axis, [0, 1.0, 0])
+    if np.linalg.norm(a) < 1e-4: a = np.cross(axis, [1.0, 0, 0])
+    a /= np.linalg.norm(a); b = np.cross(axis, a)
+    return [c + (a * math.cos(2 * math.pi * k / n) + b * math.sin(2 * math.pi * k / n)) * r for k in range(n)]
+
+
+def lathe(c, axis, profile, sides, mat, phase=0.0, cap0=False, cap1=False):
+    """Revolve profile [(height, radius), ...] around axis: canisters, cups, buttons."""
+    part = Part(mat)
+    axis = np.asarray(axis, float); axis /= np.linalg.norm(axis)
+    a = np.cross(axis, [0, 1.0, 0])
+    if np.linalg.norm(a) < 1e-4: a = np.cross(axis, [1.0, 0, 0])
+    a /= np.linalg.norm(a); b = np.cross(axis, a)
+    rings = []
+    for h, r in profile:
+        rings.append([part.add(c + axis * h + (a * math.cos(2 * math.pi * k / sides + phase) + b * math.sin(2 * math.pi * k / sides + phase)) * r) for k in range(sides)])
+    for i in range(len(rings) - 1):
+        for k in range(sides):
+            l = (k + 1) % sides
+            part.quad(rings[i][k], rings[i][l], rings[i + 1][l], rings[i + 1][k])
+    for flag, ring, h in ((cap0, rings[0], profile[0][0]), (cap1, rings[-1], profile[-1][0])):
+        if flag:
+            cc = part.add(c + axis * h)
+            for k in range(sides):
+                if ring is rings[0]: part.tri(cc, ring[(k + 1) % sides], ring[k])
+                else: part.tri(cc, ring[k], ring[(k + 1) % sides])
+    return part
+
+
+class Scalp:
+    """The skull's radius from a centre point on a theta/phi grid, with the ears left
+    out, so hair can follow the head without catching on the ears. theta 0 is the
+    front, 90 the character's left; phi 90 is straight up."""
+    def __init__(self, S, ear_box, centre=C, th_step=2.0, ph_step=1.5):
+        self.c = np.asarray(centre, float)
+        self.ths = np.arange(0, 360 + th_step / 2, th_step); self.phs = np.arange(-70, 90 + ph_step / 2, ph_step)
+        self.tstep, self.pstep = th_step, ph_step
+        R = np.full((len(self.ths), len(self.phs)), np.nan)
+        for i, th in enumerate(self.ths):
+            for j, ph in enumerate(self.phs):
+                h = S.ray(self.c, dir_tp(th, ph), 30)
+                if h is None: continue
+                p = h[0]
+                if ear_box(p): continue
+                R[i, j] = h[2]
+        for i in range(len(self.ths)):              # fill the ear holes up and down each meridian
+            row = R[i]; ok = ~np.isnan(row)
+            if ok.sum() >= 2: R[i] = np.interp(np.arange(len(row)), np.nonzero(ok)[0], row[ok])
+        sm = R.copy()
+        for _ in range(2):
+            sm = (np.roll(sm, 1, 0) + np.roll(sm, -1, 0) + sm * 2) / 4
+            sm[:, 1:-1] = (sm[:, :-2] + sm[:, 2:] + sm[:, 1:-1] * 2) / 4
+        self.R = np.maximum(sm, R)                # never inside the real skin
+
+    def r(self, th, ph):
+        th = th % 360; ph = min(max(ph, self.phs[0]), self.phs[-1])
+        x = th / self.tstep; y = (ph - self.phs[0]) / self.pstep
+        i0, j0 = int(x), int(y); i1, j1 = min(i0 + 1, len(self.ths) - 1), min(j0 + 1, len(self.phs) - 1)
+        fx, fy = x - i0, y - j0
+        R = self.R
+        return (R[i0, j0] * (1 - fx) * (1 - fy) + R[i1, j0] * fx * (1 - fy) + R[i0, j1] * (1 - fx) * fy + R[i1, j1] * fx * fy)
+
+    def point(self, th, ph, off=0.0):
+        d = dir_tp(th, ph)
+        return self.c + d * (self.r(th, ph) + off)
+
+    def phi_at_y(self, th, y):
+        lo, hi = self.phs[0], 89.5
+        for _ in range(36):
+            mid = (lo + hi) / 2
+            if self.point(th, mid)[1] > y: hi = mid
+            else: lo = mid
+        return (lo + hi) / 2
+
+
+def hair_shell(SC, edge_y, thick, *, n_mer=72, rings=16, mat='hair', theta_range=None, fade=0.2, edge_off=0.012,
+               sink=0.035, hang_y=None, flare=0.0, clear=None, dens=None, clumps=0, clump_amp=None, tips=None,
+               u_tiles=6.0, tip_wall=0.05, v_root=1.0, wave=None, extra=None, v_hairline=0.18):
+    """Smooth hair over the scalp with UVs for a strand texture. Meridians run from the
+    crown to edge_y(theta); u runs round the head, v from the root (1) to the tip (0),
+    so the ragged tip rows of the texture land on the hairline and the hanging ends.
+    clumps > 0 swells the surface in that many soft chunks round the head; tips(theta)
+    lets the chunk centres hang lower than the gaps. With fade the hair thins down to
+    edge_off at the hairline and a wall runs under the skin, so no gap shows."""
+    part = Part(mat)
+    full = theta_range is None
+    thetas = [360.0 * j / n_mer for j in range(n_mer + 1)] if full else list(np.linspace(theta_range[0], theta_range[1], n_mer))
+    m = len(thetas)
+    grid = []
+    for j, th in enumerate(thetas):
+        a = ((th + 180) % 360) - 180
+        cl = 0.5 - 0.5 * math.cos(2 * math.pi * clumps * th / 360.0) if clumps else 0.0
+        fd = fade(abs(a)) if callable(fade) else fade
+        ey = edge_y(abs(a))
+        if tips is not None: ey -= tips(abs(a)) * cl
+        pe = SC.phi_at_y(a, ey)
+        col, hang_r, pts = [], None, []
+        hanging = hang_y is not None and ey < hang_y - 0.05
+        if hanging:
+            ph_h = SC.phi_at_y(a, hang_y)
+            n_s = max(5, int(rings * 0.45)); n_h = rings - n_s
+        for i in range(0, rings + 1):
+            t = max(i / rings, 0.04)
+            if hanging and i > n_s:
+                y = hang_y - (hang_y - ey) * (i - n_s) / n_h
+                ph = ph_h
+            elif hanging:
+                ph = 89.5 - max(i / n_s, 0.04) * (89.5 - ph_h); y = None
+            else:
+                ph = 89.5 - t * (89.5 - pe); y = None
+            off = thick(abs(a), t)
+            if clump_amp is not None: off += clump_amp(abs(a), t) * cl
+            if wave is not None: off += wave(abs(a), t)
+            if extra is not None: off += extra(SC.point(a, ph, 0.0))
+            if fd:
+                k = smooth(1 - fd, 1.0, t)
+                off = off * (1 - k) + edge_off * k
+            if y is None:
+                q = SC.point(a, ph, off)
+                if hang_y is not None:
+                    rr = math.hypot(q[0] - SC.c[0], q[2] - SC.c[2])
+                    if q[1] >= hang_y or hang_r is None: hang_r = rr
+                    else:
+                        r_need = hang_r * (1 + flare * (hang_y - q[1]))
+                        if clear is not None: r_need = max(r_need, clear(a, q[1]) + off)
+                        q = np.array([SC.c[0] + math.sin(math.radians(a)) * r_need, q[1], SC.c[2] + math.cos(math.radians(a)) * r_need])
+            else:
+                if hang_r is None: hang_r = math.hypot(*(SC.point(a, ph_h, off)[[0, 2]] - SC.c[[0, 2]]))
+                r_need = hang_r * (1 + flare * (hang_y - y))
+                if clear is not None: r_need = max(r_need, clear(a, y) + off)
+                q = np.array([SC.c[0] + math.sin(math.radians(a)) * r_need, y, SC.c[2] + math.cos(math.radians(a)) * r_need])
+            pts.append(q)
+        for i, q in enumerate(pts):
+            nxt = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]; nxt = nxt / (np.linalg.norm(nxt) + 1e-9)
+            t = i / rings
+            dv = dens(abs(a), t) if dens else 1.0
+            v_end = v_hairline if fd else 0.0       # hairlines stop above the ragged tip rows
+            col.append(part.add(q, 0.96 + 0.08 * cl, dv, (u_tiles * j / max(1, m - 1), v_end + (v_root - v_end) * (1 - t)), nxt))
+        if fd:
+            q = SC.point(a, pe, -sink)
+            col.append(part.add(q, 0.6, 0.0, (u_tiles * j / max(1, m - 1), v_hairline), (0, -1.0, 0)))
+        else:
+            qe = pts[-1]; inward = np.array([qe[0] - SC.c[0], 0, qe[2] - SC.c[2]]); inward /= (np.linalg.norm(inward) + 1e-9)
+            col.append(part.add(qe - inward * tip_wall + np.array([0, 0.03, 0]), 0.6, 0.0, (u_tiles * j / max(1, m - 1), 0.0), (0, -1.0, 0)))
+        grid.append(col)
+    pairs = range(m - 1)
+    rows = len(grid[0])
+    for j in pairs:
+        k = j + 1
+        for i in range(rows - 1):
+            part.quad(grid[j][i], grid[k][i], grid[k][i + 1], grid[j][i + 1])
+    # the crown: a small fan closing the hole at the top
+    top = part.add(SC.point(0, 89.9, thick(0, 0)), 1.0, dens(0, 0) if dens else 1.0, (u_tiles * 0.5, v_root), (0, 0, -1.0))
+    if full:
+        for j in pairs: part.tri(top, grid[j + 1][0], grid[j][0])
+    return part

@@ -1,7 +1,8 @@
-"""Cut the head and bust out of the MakeHuman hm08 neutral mesh, decimate it to a
-faceted low-poly mesh in Blender and bind every low-poly vertex to the dense mesh,
-so any MakeHuman target can be carried across by barycentric interpolation.
-Usage: python3 build_head.py OUT_PREFIX [ratio]"""
+"""Cut the head and bust out of the MakeHuman hm08 mesh (with its UVs), subdivide the head
+and neck once for a smooth surface, and bind every vertex
+to the dense MakeHuman mesh so any MakeHuman target can be carried across.
+UV islands are repacked so the face gets most of the texture.
+Usage: python3 build_head.py OUT_PREFIX"""
 import os, sys, json, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import bpy, bmesh
@@ -9,76 +10,118 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from mhlib import load_obj
 
-out = sys.argv[1]; ratio = float(sys.argv[2]) if len(sys.argv) > 2 else 0.2
-CUT_Y, SIDE_X, MARGIN = 4.62, 1.72, 0.35          # decimetres, MakeHuman space
-V, F, G = load_obj()
+out = sys.argv[1]
+CUT_Y, SIDE_X, MARGIN = 4.62, 1.72, 0.35
+V, F, G, VT, FT = load_obj(uv=True)
 neu = np.load(os.path.join(HERE, 'neu.npy'))
 
 def region(margin):
-    out = []
-    for f, g in zip(F, G):
-        if g != 'body': continue
-        p = neu[f]
-        if (p[:, 1] > CUT_Y - margin).all() and (np.abs(p[:, 0]) < SIDE_X + margin).all():
-            out.append(f)
-    return out
-
-def to_b(p):   # MakeHuman dm (Y up, +Z front) -> Blender m (Z up, -Y front)
-    return Vector((p[0] * .1, -p[2] * .1, p[1] * .1))
-
-def make(name, faces):
-    used = sorted({i for f in faces for i in f}); remap = {o: k for k, o in enumerate(used)}
+    return [k for k, (f, g) in enumerate(zip(F, G)) if g == 'body' and (neu[f][:, 1] > CUT_Y - margin).all() and (np.abs(neu[f][:, 0]) < SIDE_X + margin).all()]
+def to_b(p): return Vector((p[0] * .1, -p[2] * .1, p[1] * .1))
+def make(name, fids, with_uv):
+    used = sorted({i for k in fids for i in F[k]}); remap = {o: j for j, o in enumerate(used)}
     me = bpy.data.meshes.new(name)
-    me.from_pydata([to_b(neu[i]) for i in used], [], [[remap[i] for i in f] for f in faces])
+    me.from_pydata([to_b(neu[i]) for i in used], [], [[remap[i] for i in F[k]] for k in fids])
+    if with_uv:
+        uvl = me.uv_layers.new(name='UV')
+        li = 0
+        for k in fids:
+            for t in FT[k]: uvl.data[li].uv = (VT[t][0], VT[t][1]); li += 1
     ob = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(ob)
     return ob, np.array(used)
 
-bpy.ops.wm.read_factory_settings(use_empty=True)
-dense_faces = region(MARGIN)
-dense, dense_idx = make('Dense', dense_faces)
-low, _ = make('Head', region(MARGIN))
+def detail(x, y, z):
+    eye = ((abs(x) - 0.33) / 0.32) ** 2 + ((y - 7.42) / 0.22) ** 2 < 1 and z > 0.7
+    nose = abs(x) < 0.3 and 6.85 < y < 7.5 and z > 1.0
+    mouth = abs(x) < 0.45 and 6.42 < y < 6.92 and z > 0.85
+    face = (z > 0.35) and (6.15 < y < 7.9) and abs(x) < 0.85
+    ear = (0.6 < abs(x) < 0.98) and (6.75 < y < 7.7) and (-0.3 < z < 0.7)
+    return eye or nose or mouth
 
-# cut: flat bottom across the upper chest, straight cuts through the shoulders
+bpy.ops.wm.read_factory_settings(use_empty=True)
+fids = region(MARGIN)
+dense, dense_idx = make('Dense', fids, False)
+low, _ = make('Head', fids, True)
+for p in low.data.polygons: p.use_smooth = True
+bpy.context.view_layer.objects.active = low; low.select_set(True)
 bm = bmesh.new(); bm.from_mesh(low.data)
 for co, no in [((0, 0, CUT_Y * .1), (0, 0, -1)), ((SIDE_X * .1, 0, 0), (1, 0, 0)), ((-SIDE_X * .1, 0, 0), (-1, 0, 0))]:
-    geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
-    bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co, plane_no=no, clear_outer=True)
+    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=co, plane_no=no, clear_outer=True)
+# one smoothed subdivision of the head and neck only; the bust stays at base resolution
+sel = [e for e in bm.edges if all(detail(v.co.x / .1, v.co.z / .1, -v.co.y / .1) for v in e.verts)]
+bmesh.ops.subdivide_edges(bm, edges=sel, cuts=1, smooth=1.0, use_grid_fill=True, use_smooth_even=True)
+bmesh.ops.triangulate(bm, faces=bm.faces[:])
+for v in bm.verts:
+    if not v.is_boundary: continue
+    if abs(v.co.z - CUT_Y * .1) < 0.003: v.co.z = CUT_Y * .1
+    for sx in (1, -1):
+        if abs(v.co.x - sx * SIDE_X * .1) < 0.003: v.co.x = sx * SIDE_X * .1
 bm.to_mesh(low.data); bm.free()
 
-# detail weight: the face keeps more triangles than the back of the head and the shoulders
-vg = low.vertex_groups.new(name='detail')
-for v in low.data.vertices:
-    x, y, z = v.co.x / .1, -v.co.y / .1, v.co.z / .1   # back to MakeHuman dm
-    face = (z > 0.55) and (6.25 < y < 7.85) and abs(x) < 0.85
-    ear = (0.62 < abs(x) < 0.9) and (6.85 < y < 7.6) and (-0.2 < z < 0.6)
-    w = 1.0 if face else 0.55 if ear else (0.25 if y > 6.0 else 0.0)
-    vg.add([v.index], w, 'REPLACE')
-m = low.modifiers.new('dec', 'DECIMATE'); m.decimate_type = 'COLLAPSE'; m.ratio = ratio
-m.use_symmetry = True; m.symmetry_axis = 'X'; m.vertex_group = 'detail'; m.vertex_group_factor = 4.0; m.invert_vertex_group = True
-m.use_collapse_triangulate = True
-bpy.context.view_layer.objects.active = low; low.select_set(True)
-bpy.ops.object.modifier_apply(modifier='dec')
-bm = bmesh.new(); bm.from_mesh(low.data); bmesh.ops.triangulate(bm, faces=bm.faces[:]); bm.to_mesh(low.data); bm.free()
+# split vertices at UV seams: one output vertex per (position, uv) pair, plus a weld id
+me = low.data; uvl = me.uv_layers.active.data
+key2out, out_pos, out_uv, weld, tris = {}, [], [], [], []
+for p in me.polygons:
+    tri = []
+    for li, vi in zip(p.loop_indices, p.vertices):
+        u = tuple(np.round(uvl[li].uv, 5))
+        k = (vi, u)
+        if k not in key2out:
+            key2out[k] = len(out_pos); co = me.vertices[vi].co
+            out_pos.append([co.x / .1, co.z / .1, -co.y / .1]); out_uv.append(u); weld.append(vi)
+        tri.append(key2out[k])
+    tris.append(tri)
+out_pos, out_uv, weld, tris = np.array(out_pos), np.array(out_uv), np.array(weld), np.array(tris)
 
-# bind low verts to dense triangles (original MakeHuman vertex indices)
+# repack the UV islands: face big on the left, bust top right, ears and the rest below it
+from collections import defaultdict
+parent = list(range(len(out_uv)))
+def find(a):
+    while parent[a] != a: parent[a] = parent[parent[a]]; a = parent[a]
+    return a
+for t in tris:
+    for a, b in ((t[0], t[1]), (t[1], t[2])): parent[find(a)] = find(b)
+isl = defaultdict(list)
+for i in range(len(out_uv)): isl[find(i)].append(i)
+new_uv = out_uv.copy(); info = []
+islands = sorted(isl.values(), key=len, reverse=True)
+slots = {'face': (0.005, 0.005, 0.6, 0.99), 'bust': (0.61, 0.62, 0.385, 0.37)}
+small_x = 0.61
+for ids in islands:
+    uv = out_uv[ids]; lo, hi = uv.min(0), uv.max(0); y3 = out_pos[ids][:, 1].mean()
+    if len(ids) < 12:                 # slivers left at the cuts: park them in a corner
+        new_uv[ids] = 0.995; info.append(('sliver', len(ids))); continue
+    if lo[0] > 0.6 and hi[1] - lo[1] > 0.5: slot = 'face'
+    elif lo[1] > 0.6: slot = 'bust'
+    else: slot = None
+    if slot:
+        x0, y0, w, h = slots[slot]
+    else:
+        sc = 1.5 if (hi - lo).max() < 0.2 else 1.0
+        w, h = (hi - lo) * sc
+        if (hi - lo).max() < 0.2:        # ears, side by side along the bottom
+            x0, y0 = small_x, 0.01; small_x += w + 0.02
+        else:                            # under the chin and the neck
+            x0, y0 = 0.61, 0.24
+    s = min(w / (hi[0] - lo[0]), h / (hi[1] - lo[1]))
+    new_uv[ids] = (uv - lo) * s + [x0, y0]
+    info.append((slot, len(ids), round(float(y3), 2), round(float(s), 2)))
+print('islands', info)
+
+# bind to the dense MakeHuman triangles
 bm = bmesh.new(); bm.from_mesh(dense.data); bmesh.ops.triangulate(bm, faces=bm.faces[:]); bm.verts.ensure_lookup_table()
-tris = [[v.index for v in f.verts] for f in bm.faces]
+dtris = [[v.index for v in f.verts] for f in bm.faces]
 dv = [v.co.copy() for v in bm.verts]
-tree = BVHTree.FromPolygons(dv, tris)
+tree = BVHTree.FromPolygons(dv, dtris)
 bidx, bw = [], []
-for v in low.data.vertices:
-    loc, no, fi, d = tree.find_nearest(v.co)
-    a, b, c = (dv[i] for i in tris[fi])
-    from mathutils.geometry import barycentric_transform
-    # barycentric weights of loc in triangle abc
+for p in out_pos:
+    loc, no, fi, d = tree.find_nearest(to_b(p))
+    a, b, c = (dv[i] for i in dtris[fi])
     v0, v1, v2 = b - a, c - a, loc - a
     d00, d01, d11, d20, d21 = v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1)
     den = d00 * d11 - d01 * d01
-    wv = (d11 * d20 - d01 * d21) / den; ww = (d00 * d21 - d01 * d20) / den; wu = 1 - wv - ww
-    bidx.append([int(dense_idx[i]) for i in tris[fi]]); bw.append([wu, wv, ww])
-lv = np.array([[v.co.x / .1, v.co.z / .1, -v.co.y / .1] for v in low.data.vertices])
-lf = np.array([[i for i in p.vertices] for p in low.data.polygons])
-np.savez(out + '.npz', verts=lv, faces=lf, bidx=np.array(bidx), bw=np.array(bw))
-dense.hide_render = True
-bpy.ops.wm.save_as_mainfile(filepath=out + '.blend')
-print(json.dumps({'tris': len(lf), 'verts': len(lv), 'dense_tris': len(tris)}))
+    wv = (d11 * d20 - d01 * d21) / den; ww = (d00 * d21 - d01 * d20) / den
+    bidx.append([int(dense_idx[i]) for i in dtris[fi]]); bw.append([1 - wv - ww, wv, ww])
+dvm = np.array([[p.x / .1, p.z / .1, -p.y / .1] for p in dv])
+np.savez(out + '.npz', verts=out_pos, faces=tris, uv=new_uv, weld=weld, bidx=np.array(bidx), bw=np.array(bw), dense_verts=dvm, dense_faces=np.array(dtris))
+print(json.dumps({'tris': len(tris), 'verts': len(out_pos), 'welded': int(weld.max() + 1), 'dense_tris': len(dtris)}))

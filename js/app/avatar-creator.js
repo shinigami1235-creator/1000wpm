@@ -1,9 +1,11 @@
 // #/profile/avatar: the avatar creator. A large 3D view you turn by dragging, sliders for
-// the face and cards for hair, gear, outfit and glow. Free parts are ready to use; the rest
-// show their price and can be tried on, then bought here or in the shop.
+// the face, and a grid of options for brows, makeup, hair, outfits and accessories, each
+// shown on your own avatar. Free parts are ready to use; the rest show their price and can
+// be tried on, then bought here or in the shop.
 window.AvatarCreator = (() => {
   const D = window.AvatarData;
-  const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['hair', 'Hair'], ['gear', 'Gear'], ['outfit', 'Outfit']];
+  const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['brows', 'Brows'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['makeup', 'Makeup'],
+    ['hair', 'Hair'], ['outfit', 'Outfit'], ['gear', 'Accessories']];
   let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0;
   const e = s => UI.esc(s);
   const fmt = n => UI.fmt(n);
@@ -52,6 +54,7 @@ window.AvatarCreator = (() => {
     pane.addEventListener('input', onSlider);
     pane.addEventListener('change', onSliderDone);
     pane.addEventListener('click', onPick);
+    el.querySelector('[data-note]').addEventListener('click', ev => { const b = ev.target.closest('[data-buy]'); if (b) doBuy(b.dataset.buy); });
     off.push(WPM.on('coins', () => { if (!el) return; el.querySelector('[data-coins]').textContent = fmt(WPM.coins()); paintPane(); }));
     off.push(WPM.on('inventory', () => el && paintPane()));
     paintPane();
@@ -105,6 +108,11 @@ window.AvatarCreator = (() => {
     const slot = b.dataset.slot, id = b.dataset.id;
     if (slot === 'sk') return set({ ...look, sk: +id });
     if (slot === 'hc') return set({ ...look, hc: +id });
+    if (slot === 'ec') return set({ ...look, ec: +id });
+    if (slot === 'bc') return set({ ...look, bc: +id });
+    if (slot === 'oc') return set({ ...look, oc: +id });
+    if (slot === 'mk') { const [layer, style] = id.split(':'); return set({ ...look, mk: { ...look.mk, [layer]: style } }); }
+    if (slot === 'mkc') { const [layer, i] = id.split('-'); return set({ ...look, mk: { ...look.mk, [layer + 'C']: +i, [layer]: look.mk[layer] === 'none' ? D.MAKEUP[layer].styles[1][0] : look.mk[layer] } }); }
     if (slot === 'gl') { if (D.lockOf('gl', id) && D.part('gl', id).lock) return; return set({ ...look, gl: id }); }
     if (slot === 'g') {
       if (id === 'none') return set({ ...look, g: [] });
@@ -136,17 +144,14 @@ window.AvatarCreator = (() => {
     if (D.lockOf('o', L.o)) L.o = pickUsable('o', D.PARTS.o, 'crew');
     if (D.lockOf('hc', L.hc)) L.hc = Math.floor(Math.random() * 6);
     if (D.lockOf('gl', L.gl)) L.gl = pickUsable('gl', D.GLOWS, 'green');
+    if (D.lockOf('bs', L.bs)) L.bs = (L.f.sex || 0) > 25 ? 'soft' : 'straight';
+    if (D.lockOf('ec', L.ec)) L.ec = Math.floor(Math.random() * 6);
+    for (const layer of Object.keys(D.MAKEUP)) if (D.lockOf('mkc', `${layer}-${L.mk[layer + 'C']}`)) L.mk = { ...L.mk, [layer + 'C']: 0 };
     L.g = L.g.filter(id => !D.lockOf('g', id));
     set(L);
   }
 
-  function unowned() {
-    const out = [];
-    const chk = (slot, id) => { const l = D.lockOf(slot, id); if (l) out.push({ slot, id, name: D.part(slot, id).name, l }); };
-    chk('h', look.h); chk('fh', look.fh); chk('o', look.o); chk('hc', look.hc); chk('gl', look.gl);
-    look.g.forEach(id => chk('g', id));
-    return out;
-  }
+  const unowned = () => D.unownedParts(look);
   const list = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
   function save() {
@@ -168,8 +173,8 @@ window.AvatarCreator = (() => {
     const save = el.querySelector('[data-save]');
     el.querySelector('[data-undo]').disabled = !hist.length;
     if (bad.some(x => x.l.price)) {
-      const names = bad.filter(x => x.l.price).map(x => x.name);
-      note.textContent = `Buy ${list(names)} or take ${names.length > 1 ? 'them' : 'it'} off to save.`;
+      const paid = bad.filter(x => x.l.price), names = paid.map(x => x.name);
+      note.innerHTML = `${e(`Buy ${list(names)} or take ${names.length > 1 ? 'them' : 'it'} off to save.`)} ${paid.map(x => `<button class="btn sm" type="button" data-buy="${D.itemId(x.slot, x.id)}">Buy ${e(x.name)} for ${fmt(x.l.price)}</button>`).join(' ')}`;
       note.className = 'avc-note bad';
       save.disabled = true;
     } else {
@@ -179,18 +184,31 @@ window.AvatarCreator = (() => {
     }
   }
 
+  // makeup styles and outfit colours are free; brow colours use the hair colour prices
+  const lockFor = (slot, id) => slot === 'mk' || slot === 'oc' ? null : D.lockOf(slot === 'bc' ? 'hc' : slot, id);
   function priceTag(slot, id) {
-    const l = D.lockOf(slot, id);
+    const l = lockFor(slot, id);
     if (!l) return '';
     if (!l.price) return `<span class="avo-lock">${UI.icon('lock')}${e(l.why)}</span>`;
     return `<span class="price">${UI.coin()}${fmt(l.price)}</span>`;
   }
-  function card(slot, p, pressed, extra = '', disabled = '') {
-    const l = D.lockOf(slot, p.id);
-    const buy = l && l.price && pressed ? `<button class="btn sm avo-buy" type="button" data-buy="${D.itemId(slot, p.id)}">Buy</button>` : '';
+  function card(slot, p, pressed, extra = '', disabled = '', lockSlot = slot, lockId = p.id) {
+    const l = lockFor(lockSlot, lockId);
+    const buy = l && l.price && pressed ? `<button class="btn sm avo-buy" type="button" data-buy="${D.itemId(lockSlot, lockId)}">Buy</button>` : '';
     return `<div class="avo${pressed ? ' on' : ''}${l ? ' locked' : ''}">
-      <button type="button" data-slot="${slot}" data-id="${e(p.id)}" aria-pressed="${pressed}"${disabled ? ' disabled' : ''}>${extra}<span class="n">${e(p.name)}</span>${disabled ? `<span class="avo-why">${e(disabled)}</span>` : priceTag(slot, p.id)}</button>${buy}
+      <button type="button" data-slot="${slot}" data-id="${e(p.id)}" aria-pressed="${pressed}"${disabled ? ' disabled' : ''}>${extra}<span class="n">${e(p.name)}</span>${disabled ? `<span class="avo-why">${e(disabled)}</span>` : priceTag(lockSlot, lockId)}</button>${buy}
     </div>`;
+  }
+  // a tile that shows the option on the player's own avatar; the picture fills in when rendered
+  function tile(slot, p, pressed, withLook, disabled = '', lockSlot = slot, lockId = p.id) {
+    const L = D.normalize(withLook);
+    return card(slot, p, pressed, Avatar.img(L, 64, 64, 'class="avo-pic" loading="lazy"'), disabled, lockSlot, lockId);
+  }
+  function swatches(slot, list, current, label, extraFirst = '') {
+    return `<div class="avc-sw" role="group" aria-label="${e(label)}">${extraFirst}${list.map(c => {
+      const l = c.id === -1 ? null : lockFor(slot, c.id);
+      return `<button type="button" class="dot${l ? ' locked' : ''}" data-slot="${slot}" data-id="${c.id}" aria-pressed="${current === c.id}" title="${e(c.name)}${l && l.price ? ` (${fmt(l.price)} coins)` : ''}" style="--c:${c.hex}"></button>`;
+    }).join('')}</div>`;
   }
   function sliders(group) {
     return `<div class="avs-list">${D.SLIDERS.filter(s => s.group === group).map(s => `
@@ -207,27 +225,45 @@ window.AvatarCreator = (() => {
       h = `${sliders('face')}
         <div class="label avc-sub">Skin tone</div>
         <div class="avc-skins" role="group" aria-label="Skin tone">${D.SKIN.map((c, i) => `<button type="button" class="skin" data-slot="sk" data-id="${i}" aria-pressed="${look.sk === i}" aria-label="Skin tone ${i + 1} of ${D.SKIN.length}" style="--c:${c}"></button>`).join('')}</div>`;
-    } else if (tab === 'eyes' || tab === 'nose' || tab === 'mouth') {
+    } else if (tab === 'eyes') {
+      h = `${sliders('eyes')}
+        <div class="label avc-sub">Eye colour</div>
+        ${swatches('ec', D.EYE_COLORS, look.ec, 'Eye colour')}`;
+    } else if (tab === 'brows') {
+      const match = `<button type="button" class="dot match" data-slot="bc" data-id="-1" aria-pressed="${look.bc < 0}" title="Match hair" style="--c:${D.HAIR_COLORS[look.hc].hex}"><span>Match hair</span></button>`;
+      h = `<div class="label avc-sub">Shape</div>
+        <div class="avc-tiles">${D.PARTS.bs.map(p => tile('bs', p, look.bs === p.id, { ...look, bs: p.id, g: [] })).join('')}</div>
+        <div class="label avc-sub">Brow colour</div>
+        ${swatches('bc', D.HAIR_COLORS.filter(c => !c.price), look.bc, 'Brow colour', match)}
+        ${sliders('brows')}`;
+    } else if (tab === 'nose' || tab === 'mouth') {
       h = sliders(tab);
+    } else if (tab === 'makeup') {
+      h = Object.entries(D.MAKEUP).map(([layer, m]) => `
+        <div class="label avc-sub">${e(m.name)}</div>
+        <div class="avc-tiles">${m.styles.map(([id, name]) => tile('mk', { id: `${layer}:${id}`, name }, look.mk[layer] === id, { ...look, mk: { ...look.mk, [layer]: id } }, '', 'mk', null)).join('')}</div>
+        ${swatches('mkc', m.colors.map((c, i) => ({ ...c, id: `${layer}-${i}` })), `${layer}-${look.mk[layer + 'C']}`, `${m.name} colour`)}`).join('');
     } else if (tab === 'hair') {
       h = `<div class="label avc-sub">Style</div>
-        <div class="avc-cards">${D.PARTS.h.map(p => card('h', p, look.h === p.id)).join('')}</div>
+        <div class="avc-tiles">${D.PARTS.h.map(p => tile('h', p, look.h === p.id, D.withGear({ ...look, h: p.id }, null))).join('')}</div>
         <div class="label avc-sub">Hair colour</div>
-        <div class="avc-cards">${D.HAIR_COLORS.map(c => card('hc', { ...c, id: String(c.id) }, look.hc === c.id, sw(c.hex))).join('')}</div>
+        ${swatches('hc', D.HAIR_COLORS, look.hc, 'Hair colour')}
         <div class="label avc-sub">Facial hair</div>
-        <div class="avc-cards">${D.PARTS.fh.map(p => card('fh', p, look.fh === p.id)).join('')}</div>`;
+        <div class="avc-tiles">${D.PARTS.fh.map(p => tile('fh', p, look.fh === p.id, { ...look, fh: p.id })).join('')}</div>`;
     } else if (tab === 'gear') {
       const hood = look.h === 'hood';
-      h = `<div class="label avc-sub">Gear</div>
-        <div class="avc-cards">${card('g', { id: 'none', name: 'None' }, !look.g.length)}${D.PARTS.g.map(p => {
+      h = `<div class="label avc-sub">Accessories</div>
+        <div class="avc-tiles">${card('g', { id: 'none', name: 'None' }, !look.g.length)}${D.PARTS.g.map(p => {
           const blocked = hood && p.zones.some(z => D.HOOD_BLOCKS.includes(z));
-          return card('g', p, look.g.includes(p.id), '', blocked ? 'Not with Hood up' : '');
+          return tile('g', p, look.g.includes(p.id), D.withGear(look, p.id), blocked ? 'Not with Hood up' : '');
         }).join('')}</div>
-        <p class="dim avc-tip">Each spot takes one item: eyes, mouth and head. Earrings go with any of them.</p>`;
+        <p class="dim avc-tip">Each spot takes one item: eyes, mouth, head, neck and chest. Earrings go with any of them.</p>`;
     } else if (tab === 'outfit') {
       const lv = WPM.levelInfo().level;
       h = `<div class="label avc-sub">Outfit</div>
-        <div class="avc-cards">${D.PARTS.o.map(p => card('o', p, look.o === p.id)).join('')}</div>
+        <div class="avc-tiles">${D.PARTS.o.map(p => tile('o', p, look.o === p.id, { ...look, o: p.id })).join('')}</div>
+        <div class="label avc-sub">Outfit colour</div>
+        ${swatches('oc', D.OUTFIT_COLORS, look.oc, 'Outfit colour')}
         <div class="label avc-sub">Glow</div>
         <div class="avc-cards">${D.GLOWS.map(g => card('gl', g, look.gl === g.id, sw(g.hex), g.lock && lv < D.GOLD_LEVEL ? `Level ${D.GOLD_LEVEL}` : '')).join('')}</div>
         ${lv < D.GOLD_LEVEL ? `<p class="dim avc-tip">Gold glow unlocks at level ${D.GOLD_LEVEL}. You are level ${lv}.</p>` : ''}`;

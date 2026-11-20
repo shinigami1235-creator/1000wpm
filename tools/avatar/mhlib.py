@@ -3,17 +3,21 @@ import gzip, json, os
 import numpy as np
 MH = '/home/claude/mh/mpfb2/src/mpfb/data'
 
-def load_obj(path=MH + '/3dobjs/base.obj'):
-    V, F, G = [], [], []
+def load_obj(path=MH + '/3dobjs/base.obj', uv=False):
+    V, F, G, VT, FT = [], [], [], [], []
     g = None
     for line in open(path):
         if line.startswith('v '):
             V.append([float(x) for x in line.split()[1:4]])
+        elif line.startswith('vt '):
+            VT.append([float(x) for x in line.split()[1:3]])
         elif line.startswith('g '):
             g = line.split()[1]
         elif line.startswith('f '):
             F.append([int(t.split('/')[0]) - 1 for t in line.split()[1:]])
+            FT.append([int(t.split('/')[1]) - 1 for t in line.split()[1:]])
             G.append(g)
+    if uv: return np.array(V, np.float64), F, G, np.array(VT), FT
     return np.array(V, np.float64), F, G
 
 def load_target(rel, n):

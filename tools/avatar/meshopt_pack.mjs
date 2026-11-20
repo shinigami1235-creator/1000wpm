@@ -9,7 +9,7 @@ const jl = b.readUInt32LE(12);
 const j = JSON.parse(b.subarray(20, 20 + jl).toString());
 const binStart = 20 + jl + 8;
 const bin = b.subarray(binStart, binStart + j.buffers[0].byteLength);
-const SIZE = { 5126: 4, 5123: 2, 5121: 1, 5125: 4 }, N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+const SIZE = { 5126: 4, 5123: 2, 5121: 1, 5125: 4, 5122: 2, 5120: 1 }, N = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
 // how each view is read: element size and mode
 const use = new Map();
 const meshIdx = new Set();
@@ -27,8 +27,10 @@ const chunks = []; let off = 0;
 j.bufferViews.forEach((bv, i) => {
   const u = use.get(i);
   const src = new Uint8Array(bin.buffer, bin.byteOffset + (bv.byteOffset || 0), bv.byteLength);
-  let mode = u.mode, size = u.size;
-  if (mode === 'ATTRIBUTES' && size % 4) throw new Error('view ' + i + ' size ' + size);
+  let mode = u.mode, size = bv.byteStride || u.size;
+  // tightly packed views with an odd element size (int16 VEC3 sparse values) are
+  // compressed as 4-byte words; the decoded bytes are the same
+  if (mode === 'ATTRIBUTES' && size % 4) { if (bv.byteLength % 4) throw new Error('view ' + i + ' size ' + size); size = 4; }
   const count = bv.byteLength / size;
   const enc = MeshoptEncoder.encodeGltfBuffer(src, count, size, mode, 0);
   while (off % 4) { chunks.push(new Uint8Array(1)); off++; }

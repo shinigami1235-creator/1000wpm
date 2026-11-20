@@ -4,8 +4,9 @@
 .avc-main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
 .avc-stage { position: relative; padding-bottom: 12px; }
 .avc-view {
+  --av-glow: #39ff88;
   position: relative; height: min(68vh, 720px); min-height: 420px;
-  background: radial-gradient(ellipse at 50% 38%, rgba(57,255,136,.1), transparent 62%), var(--bg);
+  background: radial-gradient(ellipse 60% 70% at 50% 40%, color-mix(in srgb, var(--av-glow) 9%, #0b120e), var(--bg) 72%);
   border: 1px solid var(--line-2); overflow: hidden; touch-action: none;
 }
 .avc-view .loading-state { height: 100%; }
@@ -52,6 +53,30 @@
 .avo .sw { display: block; width: 100%; height: 10px; background: var(--c); border: 1px solid rgba(255,255,255,.12); }
 .avo-buy { width: 100%; }
 
+/* options shown on the player's own avatar: a picture and a name, no frame inside the panel */
+.avc-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px 8px; }
+.avc-tiles .avo > button[data-slot] {
+  justify-items: center; text-align: center; min-height: 0; padding: 0 0 4px; gap: 4px;
+  background: none; border: 0; box-shadow: none; font-size: 14px;
+}
+.avc-tiles .avo-pic { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: var(--r); border: 1px solid transparent; background: var(--bg-3); }
+.avc-tiles .avo > button[data-slot]:hover:not(:disabled) .avo-pic { border-color: var(--line); }
+.avc-tiles .avo > button[data-slot][aria-pressed="true"] { background: none; box-shadow: none; }
+.avc-tiles .avo > button[data-slot][aria-pressed="true"] .avo-pic { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+.avc-tiles .avo > button[data-slot]:not(:has(.avo-pic)) { min-height: 88px; align-content: center; border: 1px dashed var(--line-2); border-radius: var(--r); }
+.avc-tiles .price, .avc-tiles .avo-lock, .avc-tiles .avo-why { font-size: 13px; }
+
+/* colour swatches */
+.avc-sw { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.avc-sw .dot {
+  width: 30px; height: 30px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: var(--c); border: 2px solid rgba(255,255,255,.14);
+}
+.avc-sw .dot[aria-pressed="true"] { outline: 2px solid var(--green); outline-offset: 2px; }
+.avc-sw .dot.locked { opacity: .55; }
+.avc-sw .dot.match { width: auto; border-radius: 15px; padding: 0 12px 0 34px; background: linear-gradient(90deg, var(--c) 0 26px, transparent 26px); color: var(--ink); font: 400 13px/1 var(--f-label); }
+.avc-note .btn { margin: 6px 6px 0 0; }
+
 /* shop cards for avatar items show the whole bust */
 .item.av-item .thumb img { object-fit: contain; }
 
@@ -70,6 +95,8 @@
   .avs span { font-size: 14px; }
   .avc-skins { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .avc-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .avc-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .avc-tabs { flex-wrap: wrap; }
   .avc-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .avc-bar > a { grid-column: 1 / -1; }
   .avc-bar .grow { display: none; }
