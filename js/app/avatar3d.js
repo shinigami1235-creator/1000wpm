@@ -1,5 +1,5 @@
 // 3D avatars: a smooth, textured head built from the MakeHuman base mesh, with slider morphs
-// applied on the CPU, a face texture painted per look in a canvas (skin tone, stubble and
+// applied on the CPU, a face texture painted per look in a canvas (skin tone, facial hair and
 // makeup), and hair, clothes and accessories bound to the head surface so they follow every
 // slider. The base file loads after first paint; each hairstyle, outfit and accessory is its
 // own small file, loaded the first time someone wears it. One shared WebGL renderer draws
@@ -15,6 +15,13 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 const D = window.AvatarData;
 const ROOT = new URL('../../assets/avatar/', import.meta.url).href;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+// hairstyles live in avatar-hair.js (cards, scalp layer, hair shader)
+if (!window.AvatarHair) await import('./avatar-hair.js');
+const H = window.AvatarHair.create({ THREE, loader, root: ROOT, prep });
+// outfits (fit-*) and jewellery (acc-*) live in avatar-cloth.js (MakeHuman garments, fabric shader)
+if (!window.AvatarCloth) await import('./avatar-cloth.js');
+const CL = window.AvatarCloth.create({ THREE, loader, root: ROOT, prep });
+const isCloth = pid => pid.startsWith('fit-') || pid.startsWith('acc-');
 
 // ---------- reading the files ----------
 function vec3Array(attr, off, sc) {
@@ -104,19 +111,21 @@ async function loadAssets() {
     A.headPrims[m.material.name] = g.index.array.slice();
   }
   for (const [pid, parts] of readProps(gltf.scene)) A.props.set(pid, parts);
+  window.AvatarFace.init(THREE, ROOT, A.meta.face);
   gltf.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   A.tex = {
-    skin: await img('skin.webp'), ao: tex('ao.webp', { srgb: false }), iris: await img('iris.webp'),
-    brow: tex('brow.webp'), lash: tex('lash.webp'), straight: tex('hair-straight.webp', { repeat: true }), curly: tex('hair-curly.webp', { repeat: true }), sparse: tex('hair-sparse.webp', { repeat: true }),
+    // ao: the skin ORM map (R ambient occlusion, G roughness), from avatar-face.js's list
+    ao: tex('skin_orm.webp', { srgb: false }), sparse: tex('hair-sparse.webp', { repeat: true }),
     knit: tex('knit.webp', { repeat: true }), weave: tex('weave.webp', { repeat: true }), leather: tex('leather.webp', { repeat: true }),
   };
-  A.masks = {};
-  await Promise.all(['liner-thin', 'liner-winged', 'liner-heavy', 'shadow', 'blush', 'lips', 'stubble'].map(async k => { A.masks[k] = await img(`m-${k}.webp`); }));
+  await window.AvatarMakeup.load(ROOT);
   return A;
 }
 
 // one item file (a hairstyle, outfit or accessory), loaded once
 function loadItem(pid) {
+  if (pid.startsWith('hair-')) return H.load(pid);
+  if (isCloth(pid)) return CL.load(pid);
   if (assets.items.has(pid)) return assets.items.get(pid);
   const p = loader.loadAsync(`${ROOT}items/${pid}.glb`).then(g => {
     const m = readProps(g.scene);
@@ -129,26 +138,27 @@ function loadItem(pid) {
 }
 
 // ---------- which files a look needs ----------
-const TIER = { buzz: '', undercut: '', mohawk: '', hood: '', long: '-mid', braids: '-mid', ponytail: '-mid', bun: '-mid', sidepart: '-mid',
-  slick: '-loose', bob: '-loose', longstraight: '-loose', longlayered: '-loose', curly: '-loose', afro: '-xl' };
 const TIERED = ['visor', 'goggles', 'headset', 'cap', 'bandana'];
-const TOP_PARTS = { 'hair-mohawk': [1], 'hair-undercut': [1] };    // hidden under a cap
 function wanted(L, bare) {
   const out = ['brow-' + L.bs, L.f.sex > 25 || L.lash === 'long' ? 'lash-long' : 'lash'];
   if (bare) return out;
   out.push('hair-' + L.h, 'fit-' + L.o);
-  if (L.fh !== 'none' && L.fh !== 'stubble') out.push('fh-' + L.fh);
-  const tier = TIER[L.h] ?? '';
+  // facial hair is painted on the face (avatar-face.js), with no strand cards: the jaw fringe
+  // cards (items/fh-beard.glb) read as dots at the jaw line, so the painted edge does that work
+  const tier = H.tier(L.h);
   for (const g of L.g) {
     if (TIERED.includes(g)) out.push(`gear-${g}${tier}`);
+    else if (JEWEL.includes(g)) out.push('acc-' + g);
     else out.push('gear-' + g);
-    if (g === 'glasses') out.push('gear-glasses-fit' + tier);
   }
   return out;
 }
+// jewellery and glasses: MakeHuman pieces drawn by avatar-cloth.js
+const JEWEL = ['glasses', 'roundglasses', 'earrings', 'studs', 'chain', 'pendant', 'choker'];
 function ensure(L, bare) {
-  const need = wanted(L, bare).filter(p => !assets.props.has(p));
-  return need.length ? Promise.all(need.map(loadItem)) : null;
+  const need = wanted(L, bare).filter(p => !(p.startsWith('hair-') ? H.has(p) : isCloth(p) ? CL.has(p) : assets.props.has(p)));
+  const face = window.AvatarFace.need(L);
+  return need.length || face ? Promise.all([...need.map(loadItem), face]) : null;
 }
 
 // ---------- materials ----------
@@ -165,9 +175,17 @@ vec3 avAces(vec3 c) {
   const mat3 OM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
   c *= 1.0 / 0.6; c = OM * avRRT(IM * c); return clamp(c, 0.0, 1.0);
 }`;
-function prep(mat, { rim = 1, hair = false, tone = true } = {}) {
+// bottom of the bust (y 4.62) and its sides (x 1.72) go to nothing, a soft fade up to the chest
+const FADE = `
+float avFade(vec3 p) {
+  float b = smoothstep(4.64, 5.15, p.y - 0.16 * smoothstep(0.5, 1.7, abs(p.x)));
+  float s = 1.0 - smoothstep(1.46, 1.71, abs(p.x));
+  return b * s;
+}`;
+function prep(mat, { rim = 1, hair = false, tone = true, hook = null, name = '' } = {}) {
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
+    if (hook) hook(sh);   // avatar-face.js: skin and eye shading
     let v = sh.vertexShader, f = sh.fragmentShader;
     f = f.replace('#include <common>', '#include <common>\nuniform vec3 uRim; uniform float uRimStr; uniform float uExposure; uniform vec3 uKeyDir; uniform vec3 uKeyCol;' + ACES + (hair ? '\nvarying vec3 vStrand;' : ''));
     if (rim) f = f.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -191,9 +209,14 @@ function prep(mat, { rim = 1, hair = false, tone = true } = {}) {
       #include <opaque_fragment>`);
     }
     if (tone) f = f.replace('#include <tonemapping_fragment>', 'gl_FragColor.rgb = avAces(gl_FragColor.rgb * uExposure);');
+    // the bust fades into the background at the bottom and the sides, like a portrait
+    v = v.replace('#include <common>', '#include <common>\nvarying vec3 vAvObj;').replace('#include <project_vertex>', 'vAvObj = transformed;\n#include <project_vertex>');
+    f = f.replace('#include <common>', '#include <common>\nvarying vec3 vAvObj;' + FADE)
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        ${mat.blending === THREE.AdditiveBlending ? 'gl_FragColor.rgb' : mat.transparent ? 'gl_FragColor.a' : 'gl_FragColor'} *= avFade(vAvObj);`);
     sh.vertexShader = v; sh.fragmentShader = f;
   };
-  mat.customProgramCacheKey = () => `av-${rim}-${hair}-${tone}`;
+  mat.customProgramCacheKey = () => `av-${rim}-${hair}-${tone}-${name}`;
   return mat;
 }
 let ENV = null;
@@ -206,27 +229,26 @@ function makeMats(r) {
   const shiny = (o, p) => std({ envMap: ENV, ...o }, p);
   const hairMat = map => std({ map, alphaTest: 0.42, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.55, vertexColors: true, envMapIntensity: 0.2 }, { hair: true, rim: 0.6 });
   const M = {
-    skin: std({ roughness: 0.58, aoMap: T.ao, aoMapIntensity: 1.0, envMapIntensity: 0.3 }, { rim: 0.6 }),
-    lips: shiny({ roughness: 0.45, aoMap: T.ao, aoMapIntensity: 1.0 }, { rim: 0.6 }),
-    cut: new THREE.MeshBasicMaterial({ color: '#0a0f0c' }),
-    eye: std({ roughness: 0.4, vertexColors: true, envMapIntensity: 0.05 }, { rim: 0 }),
-    // the cornea only adds its reflections: a wet highlight from the key light and the room
-    cornea: prep(new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.08, metalness: 0, envMap: ENV, envMapIntensity: 0.1, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), { rim: 0 }),
-    brow: std({ map: T.brow, alphaTest: 0.38, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.8, envMapIntensity: 0 }, { rim: 0 }),
-    lash: std({ map: T.lash, alphaTest: 0.35, alphaToCoverage: true, side: THREE.DoubleSide, color: '#120c0a', roughness: 0.7, envMapIntensity: 0 }, { rim: 0 }),
-    hair: hairMat(T.straight), 'hair-curly': hairMat(T.curly), beard: hairMat(T.sparse),
+    // skin, lips (skin too; gloss comes from the makeup's roughness map), eyes, corneas, brows
+    // and lashes: avatar-face.js
+    ...window.AvatarFace.materials(prep, ENV),
+    // the caps over the bust cut sit where the fade reaches nothing: they show the background
+    // and hide the inside of the bust and the clothes
+    cut: prep(new THREE.MeshBasicMaterial({ color: '#0a0f0c' }), { rim: 0, name: 'cut' }),
+    beard: hairMat(T.sparse),
     knit: std({ map: T.knit, roughness: 0.9, vertexColors: true, envMapIntensity: 0.15 }, { rim: 0.7 }),
     weave: std({ map: T.weave, roughness: 0.85, vertexColors: true, envMapIntensity: 0.15 }, { rim: 0.7 }),
     leather: shiny({ map: T.leather, roughness: 0.36, vertexColors: true, envMapIntensity: 0.7 }, { rim: 0.7 }),
     under: std({ map: T.knit, color: '#17191b', roughness: 0.9, vertexColors: true, envMapIntensity: 0.1 }, { rim: 1 }),
-    gear: shiny({ color: '#2b3236', roughness: 0.42, metalness: 0.35, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
-    pad: std({ color: '#1c2124', roughness: 0.85, vertexColors: true }, { rim: 1 }),
-    metal: shiny({ color: '#7d878c', roughness: 0.32, metalness: 0.85, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
+    // cyber gear: satin anodised shells, soft pads and brushed metal, with a light rim of glow
+    gear: shiny({ color: '#262c30', roughness: 0.36, metalness: 0.55, vertexColors: true, side: THREE.DoubleSide, envMapIntensity: 0.7 }, { rim: 0.5, name: 'gear' }),
+    pad: std({ color: '#1c2124', roughness: 0.9, vertexColors: true }, { rim: 0.35, name: 'pad' }),
+    metal: shiny({ color: '#8a939a', roughness: 0.3, metalness: 0.9, vertexColors: true, side: THREE.DoubleSide, envMapIntensity: 0.9 }, { rim: 0.4, name: 'metal' }),
     silver: shiny({ color: '#c9ced3', roughness: 0.22, metalness: 1, vertexColors: true, envMapIntensity: 1.2 }, { rim: 0.5 }),
     gold: shiny({ color: '#e1b04a', roughness: 0.24, metalness: 1, vertexColors: true, envMapIntensity: 1.2 }, { rim: 0.5 }),
     cloth2: std({ map: T.knit, color: '#2a3330', roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
     band: std({ map: T.weave, color: '#7a1f2b', roughness: 0.8, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
-    glow: new THREE.MeshBasicMaterial({ color: '#39ff88', side: THREE.DoubleSide }),
+    glow: prep(new THREE.MeshBasicMaterial({ color: '#39ff88', side: THREE.DoubleSide }), { rim: 0, tone: false, name: 'glow' }),
     lens: shiny({ color: '#39ff88', transparent: true, opacity: 0.42, roughness: 0.08, metalness: 0.2, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false }, { rim: 0 }),
     'lens-clear': shiny({ color: '#cfe8f0', transparent: true, opacity: 0.12, roughness: 0.04, envMapIntensity: 1.6, side: THREE.DoubleSide, depthWrite: false }, { rim: 0 }),
   };
@@ -234,55 +256,32 @@ function makeMats(r) {
   return M;
 }
 
-// ---------- face texture: skin tone, stubble and makeup painted in a canvas ----------
+// ---------- face texture: skin, facial hair (avatar-face.js) and makeup painted in a canvas ----------
 const faceCache = new Map();
-function tinted(mask, color, size) {
-  const c = document.createElement('canvas'); c.width = c.height = size;
-  const x = c.getContext('2d');
-  x.fillStyle = color; x.fillRect(0, 0, size, size);
-  x.globalCompositeOperation = 'destination-in'; x.drawImage(mask, 0, 0, size, size);
-  return c;
-}
 function faceTexture(L, size) {
-  const mk = L.mk;
-  const key = [size, L.sk, L.fh !== 'none' && L.fh !== 'moustache' ? L.fh + L.hc : '-', JSON.stringify(mk)].join('|');
+  const key = [size, window.AvatarFace.key(L), window.AvatarMakeup.key(L)].join('|');
   if (faceCache.has(key)) { const t = faceCache.get(key); faceCache.delete(key); faceCache.set(key, t); return t; }
   const c = document.createElement('canvas'); c.width = c.height = size;
   const x = c.getContext('2d');
-  x.fillStyle = D.SKIN[L.sk]; x.fillRect(0, 0, size, size);
-  x.globalCompositeOperation = 'multiply'; x.drawImage(assets.tex.skin, 0, 0, size, size);
-  x.globalCompositeOperation = 'source-over';
-  const M = assets.masks;
-  const layer = (mask, color, alpha) => { x.globalAlpha = alpha; x.drawImage(tinted(mask, color, size), 0, 0); x.globalAlpha = 1; };
-  if (L.fh === 'stubble') layer(M.stubble, D.HAIR_COLORS[L.hc].hex, 0.6);
-  else if (L.fh === 'shortbeard' || L.fh === 'beard' || L.fh === 'goatee') layer(M.stubble, D.HAIR_COLORS[L.hc].hex, 0.3);
-  if (mk.shadow !== 'none') layer(M.shadow, D.MAKEUP.shadow.colors[mk.shadowC].hex, mk.shadow === 'smoky' ? 0.85 : 0.55);
-  if (mk.blush !== 'none') layer(M.blush, D.MAKEUP.blush.colors[mk.blushC].hex, 0.38);
-  if (mk.lip !== 'none') {
-    // nude follows the skin: a little deeper and rosier than the skin itself
-    const c = mk.lipC === 0 ? '#' + new THREE.Color(D.SKIN[L.sk]).lerp(new THREE.Color('#7a2e30'), 0.32).getHexString() : D.MAKEUP.lip.colors[mk.lipC].hex;
-    layer(M.lips, c, 0.86);
-  }
-  if (mk.liner !== 'none') layer(M['liner-' + mk.liner], D.MAKEUP.liner.colors[mk.linerC].hex, 0.95);
+  window.AvatarFace.paintSkin(x, L, size);
+  window.AvatarMakeup.paint(x, size, L);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   faceCache.set(key, t);
   while (faceCache.size > 8) { const [k0, t0] = faceCache.entries().next().value; faceCache.delete(k0); t0.dispose(); }
   return t;
 }
-const irisCache = new Map();
-function irisTexture(hex) {
-  if (irisCache.has(hex)) return irisCache.get(hex);
-  const I = assets.tex.iris, s = I.width;
-  const c = document.createElement('canvas'); c.width = c.height = s;
-  const x = c.getContext('2d');
-  x.fillStyle = '#f2efea'; x.fillRect(0, 0, s, s);
-  x.drawImage(I, 0, 0);
-  x.globalCompositeOperation = 'multiply'; x.drawImage(tinted(I, hex, s), 0, 0);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  irisCache.set(hex, t);
-  return t;
+// lip gloss: a roughness map from the makeup painter, null when there is no gloss
+const glossTex = new Map();
+function glossTexture(L, size) {
+  const c = window.AvatarMakeup.gloss(L, size >> 1);
+  if (!c) return null;
+  if (!glossTex.has(c)) {
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace;
+    glossTex.set(c, t);
+    while (glossTex.size > 6) { const [k0, t0] = glossTex.entries().next().value; glossTex.delete(k0); t0.dispose(); }
+  }
+  return glossTex.get(c);
 }
-
 // ---------- normals ----------
 let ACC = new Float32Array(0);
 function computeNormals(pos, index, canon, nrm) {
@@ -327,6 +326,8 @@ export class Rig {
       this.group.add(m);
     }
     this.props = new Map(); this.look = null;
+    this.hair = H.attach(this);
+    this.cloth = CL.attach(this, { env: ENV });
   }
 
   lines(index, pos, mat) {
@@ -397,10 +398,15 @@ export class Rig {
       this.shapeKey = shapeKey; this.shapeStamp = (this.shapeStamp || 0) + 1;
       const pos = this.pos, base = this.A.base, dl = this.delta;
       pos.set(base);
+      // 'base+' is always on: the shape every face starts from (tools/avatar/morphs.py BASE)
+      const b0 = this.A.morphs.get('base+');
+      if (b0) for (let i = 0; i < b0.idx.length; i++) { const k = b0.idx[i] * 3; pos[k] += b0.d[i * 3]; pos[k + 1] += b0.d[i * 3 + 1]; pos[k + 2] += b0.d[i * 3 + 2]; }
       for (const s of D.SLIDERS) {
-        const v = (L.f[s.id] || 0) / 100; if (!v) continue;
+        const v = D.fv(L.f, s.id) / 100; if (!v) continue;
         const m = this.A.morphs.get(s.id + (v < 0 ? '-' : '+')); if (!m) continue;
-        const w = Math.abs(v), idx = m.idx, d = m.d;
+        // the masculine end already tapers the jaw: V-shape goes on at up to 35% less there, so
+        // the two together never make a pointed chin
+        const w = Math.abs(v) * (s.id === 'vline' ? 1 - 0.35 * Math.max(0, -(L.f.sex || 0)) / 100 : 1), idx = m.idx, d = m.d;
         for (let i = 0; i < idx.length; i++) { const k = idx[i] * 3; pos[k] += w * d[i * 3]; pos[k + 1] += w * d[i * 3 + 1]; pos[k + 2] += w * d[i * 3 + 2]; }
       }
       for (let i = 0; i < pos.length; i++) dl[i] = pos[i] - base[i];
@@ -414,19 +420,18 @@ export class Rig {
       if (!this.A.props.has(pid)) continue;
       const pr = this.prop(pid);
       pr.grp.visible = true;
-      for (const r of pr.recs) r.sub.visible = !(capOn && (TOP_PARTS[pid] || []).includes(r.k));
       if (pr.stamp !== this.shapeStamp || pr.browKey !== `${L.f.browT}|${L.f.browA}`) { this.updateProp(pr, L); pr.browKey = `${L.f.browT}|${L.f.browA}`; }
     }
     // colours and textures
     const M = this.M, glow = D.part('gl', L.gl).hex, hair = D.HAIR_COLORS[L.hc].hex;
     const ft = faceTexture(L, this.faceSize);
     for (const k of ['skin', 'lips']) if (M[k].map !== ft) { M[k].map = ft; M[k].needsUpdate = true; }
-    const lipGloss = L.mk.lip === 'gloss';
-    M.lips.roughness = lipGloss ? 0.24 : L.mk.lip === 'matte' ? 0.7 : 0.42; M.lips.envMapIntensity = lipGloss ? 0.55 : 0.3;
-    const it = irisTexture(D.EYE_COLORS[L.ec].hex);
-    if (M.eye.map !== it) { M.eye.map = it; M.eye.needsUpdate = true; }
-    M.hair.color.set(hair); M['hair-curly'].color.set(hair); M.beard.color.set(hair);
-    M.brow.color.set(L.bc < 0 ? hair : D.HAIR_COLORS[L.bc].hex);
+    const gloss = glossTexture(L, this.faceSize);
+    for (const k of ['skin', 'lips']) if (M[k].roughnessMap !== gloss) { M[k].roughnessMap = gloss; M[k].needsUpdate = true; }
+    window.AvatarFace.apply(M, L);   // eye texture, brow and lash colour
+    M.beard.color.set(hair);
+    this.hair.set(L, { bare, hat: capOn ? 'cap' : !bare && L.g.includes('bandana') ? 'bandana' : null });
+    this.cloth.set(L, [...want].filter(isCloth));
     const oc = D.OUTFIT_COLORS[L.oc].hex;
     for (const k of ['knit', 'weave', 'leather']) M[k].color.set(oc);
     M.glow.color.set(glow); M.lens.color.set(glow); M.line.color.set(glow);
@@ -444,13 +449,15 @@ export function turn(group, yaw) {
   group.position.set(-Math.sin(yaw) * c, 0, c - Math.cos(yaw) * c);
 }
 
-// ---------- scene: a warm key, a soft cool fill and two rims in the glow colour ----------
-const KEY_DIR = new THREE.Vector3(-1.1, 1.2, 1.4).normalize();
+// ---------- scene: a soft warm key, a cool fill, a warm bounce from below and two rims in
+// the glow colour; skin and eyes also see the room environment (avatar-face.js) ----------
+const KEY_DIR = new THREE.Vector3(-0.9, 0.65, 1.6).normalize();
 function makeScene(rig) {
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight('#dfe6f0', '#3a302a', 0.55));
-  const key = new THREE.DirectionalLight('#fff1e0', 2.6); key.position.copy(KEY_DIR); scene.add(key);
-  const fill = new THREE.DirectionalLight('#cfdcff', 0.55); fill.position.set(1.3, 0.1, 0.9); scene.add(fill);
+  scene.add(new THREE.HemisphereLight('#e8ecf2', '#6a5040', 0.6));
+  const key = new THREE.DirectionalLight('#fff0e0', 1.85); key.position.copy(KEY_DIR); scene.add(key);
+  const fill = new THREE.DirectionalLight('#e0e6ff', 0.8); fill.position.set(1.4, 0.3, 1.0); scene.add(fill);
+  const bounce = new THREE.DirectionalLight('#ffd9bf', 0.35); bounce.position.set(0, -1, 0.8); scene.add(bounce);
   const rimL = new THREE.DirectionalLight('#39ff88', 0.45); rimL.position.set(-1.0, 0.6, -1.0); scene.add(rimL);
   const rimR = new THREE.DirectionalLight('#39ff88', 0.4); rimR.position.set(1.0, 0.4, -1.0); scene.add(rimR);
   scene.add(rig.group);
@@ -503,10 +510,13 @@ async function thumb(look, size = 96, { yaw = 0.32, bare = false, frame = 'bust'
   const small = show <= 64;
   thumbRig.setLineScale(small ? 2.4 * rpx / px : 1.6 * rpx / Math.max(px, 160), rpx, rpx);
   U.uRimStr.value = small ? 0.22 : 0.1;
-  const tall = (L.h === 'mohawk' || L.h === 'afro' || L.h === 'bun' || L.h === 'ponytail') && !L.g.includes('cap') ? 0.3 : 0;
-  if (frame === 'face') { thumbCam.position.set(0, 7.35, 7.4); thumbCam.lookAt(0, 7.2, 0.3); }
+  const tall = L.g.includes('cap') ? 0 : H.tall(L.h);
+  if (frame === 'eyes') { thumbCam.position.set(0, 7.4, 4.6); thumbCam.lookAt(0, 7.33, 0.3); }
+  else if (frame === 'mouth') { thumbCam.position.set(0, 6.8, 4.6); thumbCam.lookAt(0, 6.7, 0.3); }
+  else if (frame === 'face') { thumbCam.position.set(0, 7.35, 7.4); thumbCam.lookAt(0, 7.2, 0.3); }
   else if (small) { thumbCam.position.set(0, 7.6 + tall * 0.4, 9.4 + tall * 1.2); thumbCam.lookAt(0, 7.2 + tall * 0.45, 0.2); }
-  else { thumbCam.position.set(0, 7.45 + tall * 0.5, 12.2 + tall * 2); thumbCam.lookAt(0, 6.95 + tall * 0.55, 0.15); }
+  // head and shoulders: the face fills about 45% of the height, the shoulders run off the bottom
+  else { thumbCam.position.set(0, 7.1 + tall * 0.5, 10.6 + tall * 1.6); thumbCam.lookAt(0, 6.8 + tall * 0.55, 0.15); }
   thumbCam.updateProjectionMatrix();
   beforeRender(thumbCam);
   const prevTarget = r.getRenderTarget();
@@ -614,15 +624,21 @@ export class Viewer {
     const sway = !this.reduce && !this.dragging && t - this.idle > 2500;
     const yaw = this.yaw + (sway ? Math.sin((t - this.idle) / 2600) * 0.22 : 0);
     turn(this.rig.group, yaw);
-    const dist = this.w / this.h < 0.8 ? 13.5 : 11.2;
-    this.cam.position.set(0, 6.95 + Math.sin(this.pitch) * dist, 0.15 + Math.cos(this.pitch) * dist);
-    this.cam.lookAt(0, 6.82, 0.15);
+    // close up (the makeup and mouth tabs) eases in from the bust view
+    const fz = this.focus || 0, fzT = this.focusTo || 0;
+    this.focus = this.reduce || Math.abs(fzT - fz) < 0.01 ? fzT : fz + (fzT - fz) * 0.18;
+    const z = this.focus;
+    const dist = (this.w / this.h < 0.8 ? 12.2 : 10.0) * (1 - 0.42 * z);
+    this.cam.position.set(0, 6.95 + 0.25 * z + Math.sin(this.pitch) * dist, 0.15 + Math.cos(this.pitch) * dist);
+    this.cam.lookAt(0, 6.78 + 0.28 * z, 0.15);
     beforeRender(this.cam);
     this.r.setRenderTarget(null);
     this.r.render(this.scene, this.cam);
-    if (sway && document.visibilityState === 'visible') this.kick();
+    if ((sway || this.focus !== fzT) && document.visibilityState === 'visible') this.kick();
   }
   setReduce(v) { this.reduce = v; this.kick(); }
+  // true frames the face, false the bust
+  setFocus(on) { this.focusTo = on ? 1 : 0; this.kick(); }
   dispose() {
     this.alive = false; cancelAnimationFrame(this.raf); this.ro.disconnect();
     const el = this.r.domElement;

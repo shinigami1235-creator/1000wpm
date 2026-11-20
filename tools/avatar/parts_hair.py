@@ -1,8 +1,8 @@
-"""Hairstyles as smooth shells with UVs for a strand texture. Every style sits on the scalp
-map (ears left out). Where hair ends at the hairline it thins down to the skin and a wall
-runs under the skin; where it hangs, the ends take the ragged tip rows of the texture.
-Hanging hair keeps clear of the ears, shoulders and chest. All parts bind to the head, so
-they follow the face and head sliders."""
+"""Hair volumes for fitting the hats. The hairstyles players see are built by hair_build.py
+from MakeHuman hair (see assets/avatar/LICENSES.md); these smooth shells are
+only what parts_gear.py measures to size the visor, goggles, headset, cap and bandana tiers.
+build_assets.py does not write them as items. hood() is
+the knit hood, which hair_build.py also uses."""
 import math, numpy as np
 from geom import Part, smooth, table, hair_shell, dir_tp, C
 

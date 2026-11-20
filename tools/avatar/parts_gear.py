@@ -1,5 +1,5 @@
-"""Accessories: visor, goggles, respirator, headset, cyber eye implant, cap, bandana, earrings,
-glasses, a chain necklace, a pendant necklace and a spiked choker.
+"""Cyber gear: visor, goggles, respirator, headset, cyber eye implant, cap and bandana.
+Glasses, earrings and necklaces are MakeHuman pieces built by cloth_build.py (acc-*).
 Anything that wraps round the head comes in four fits, measured against the hair it
 has to sit on: '' (buzz, undercut, mohawk), '-mid' (tied and short styles), '-loose'
 (slick, bob, long and curly) and '-xl' (afro).
@@ -279,88 +279,7 @@ def build(K):
             b.merge(tail)
         return [b]
 
-    def earrings():
-        part = Part('gold')
-        for s in (1, -1):
-            c = np.array([K.lobe[0] * s + 0.015 * s, K.lobe[1] - 0.075, K.lobe[2]])
-            part.merge(torus(c, [1, 0, 0], 0.07, 0.014, 14, 6, 'gold'))
-            part.merge(octa(np.array([K.lobe[0] * s + 0.012 * s, K.lobe[1] + 0.005, K.lobe[2]]), [1, 0, 0], 0.018, 0.018, 'gold'))
-        return [part]
-
-    def neck_path(y_back, y_front, off, n=90, cz=0.12):
-        pts = []
-        for k in range(n):
-            a = 2 * math.pi * k / n
-            y = y_back + (y_front - y_back) * (0.5 + 0.5 * math.cos(a)) ** 2
-            d = np.array([math.sin(a), 0, math.cos(a)]); o = np.array([0, y, cz])
-            h = S_all.ray(o + d * 4, -d, 8)
-            r = (4 - h[2]) if h else 0.6
-            pts.append(o + d * (r + off))
-        return pts
-
-    def chain(pts, mat='silver', R=0.016, r=0.0045):
-        part = Part(mat)
-        for k in range(0, len(pts)):
-            p = pts[k]; q = pts[(k + 1) % len(pts)]; ax = q - p; ax /= np.linalg.norm(ax)
-            nrm = np.cross(ax, [0, 1.0, 0]); nrm /= np.linalg.norm(nrm)
-            link_axis = nrm if k % 2 else np.cross(ax, nrm)
-            part.merge(torus(p, link_axis, R, r, 8, 4, mat))
-        return part
-
-    def glasses_frame():
-        fr = Part('gear'); lenses = Part('lens-clear')
-        fronts = []
-        for c, sx in ((eyeL, 1), (eyeR, -1)):
-            cf = c + np.array([0.02 * sx, 0.01, R + 0.16])
-            loop = []
-            for k in range(40):
-                a = 2 * math.pi * k / 40
-                x, y = math.cos(a), math.sin(a)
-                sq = (abs(x) ** 4 + abs(y) ** 4) ** -0.25          # a rounded rectangle
-                loop.append(cf + np.array([x * sq * 0.17 * sx, y * sq * 0.115, -0.03 * (x * sx) ** 2]))
-            fr.merge(tube(loop + [loop[0]], [0.016] * 41, 6, 'gear', cap=False))
-            cc = lenses.add(cf); ids = [lenses.add(p) for p in loop]
-            for k in range(40): lenses.tri(cc, ids[k], ids[(k + 1) % 40])
-            fronts.append((cf, sx, loop))
-        bl = fronts[0][2][20]; br = fronts[1][2][20]
-        mid = (bl + br) / 2 + np.array([0, 0.03, 0.01])
-        fr.merge(tube([fronts[0][2][20], mid, fronts[1][2][20]], [0.014] * 3, 6, 'gear'))
-        return [fr, lenses], fronts
-
-    def glasses_arms(tier, fronts):
-        arms = Part('gear')
-        for cf, sx, loop in fronts:
-            p0 = loop[0]
-            d = np.array([math.sin(math.radians(100 * sx)), 0, math.cos(math.radians(100 * sx))])
-            yc = np.array([0, p0[1], 0.28])
-            p1 = yc + d * (outer(tier, d, yc) + 0.01)
-            p2 = p1 + np.array([0, -0.08, -0.12])
-            arms.merge(tube([p0, p0 * 0.4 + p1 * 0.6 + d * 0.01, p1, p2], [0.016] * 4, 6, 'gear'))
-        return [arms]
-
-    gl_parts, gl_fronts = glasses_frame()
-    K.prop('gear-glasses', *gl_parts)
-    chain_pts = neck_path(6.02, 5.55, 0.1, 70)
-    K.prop('gear-chain', chain(chain_pts, 'gold', 0.018, 0.005))
-    pend = chain(neck_path(6.02, 5.62, 0.1, 64), 'silver')
-    low = min(range(64), key=lambda k: neck_path(6.02, 5.62, 0.1, 64)[k][1])
-    pc = neck_path(6.02, 5.62, 0.1, 64)[0] + np.array([0, -0.075, 0.02])
-    pend.merge(torus(pc, [0, 0, 1.0], 0.05, 0.012, 20, 6, 'silver'))
-    K.prop('gear-pendant', pend)
-    ch = Part('leather'); spikes = Part('silver')
-    ring = neck_path(6.24, 6.2, 0.035, 48, cz=0.1)
-    rows = [[ch.add(p + np.array([0, dy, 0]) + (p - np.array([0, p[1], 0.1])) / np.linalg.norm((p - np.array([0, p[1], 0.1]))) * lift) for p in ring] for dy, lift in ((-0.07, 0.0), (-0.06, 0.02), (0.06, 0.02), (0.07, 0.0))]
-    for i in range(3):
-        for k in range(48):
-            j = (k + 1) % 48; ch.quad(rows[i][k], rows[i][j], rows[i + 1][j], rows[i + 1][k])
-    for k in range(0, 48, 4):
-        p = ring[k]; d = p - np.array([0, p[1], 0.1]); d /= np.linalg.norm(d)
-        if d[2] < -0.3: continue
-        spikes.merge(lathe(p + d * 0.015, d, [(0.0, 0.035), (0.01, 0.035), (0.09, 0.0)], 10, 'silver'))
-    K.prop('gear-choker', ch, spikes)
-
     for tier in ('', '-mid', '-loose', '-xl'):
-        K.prop('gear-glasses-fit' + tier, *glasses_arms(tier, gl_fronts))
         K.prop('gear-visor' + tier, *visor(tier))
         K.prop('gear-goggles' + tier, *goggles(tier))
         K.prop('gear-headset' + tier, *headset(tier))
@@ -368,4 +287,3 @@ def build(K):
         K.prop('gear-bandana' + tier, *bandana(tier))
     K.prop('gear-respirator', *respirator())
     K.prop('gear-implant', *implant())
-    K.prop('gear-earrings', *earrings())

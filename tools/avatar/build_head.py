@@ -123,5 +123,6 @@ for p in out_pos:
     wv = (d11 * d20 - d01 * d21) / den; ww = (d00 * d21 - d01 * d20) / den
     bidx.append([int(dense_idx[i]) for i in dtris[fi]]); bw.append([1 - wv - ww, wv, ww])
 dvm = np.array([[p.x / .1, p.z / .1, -p.y / .1] for p in dv])
-np.savez(out + '.npz', verts=out_pos, faces=tris, uv=new_uv, weld=weld, bidx=np.array(bidx), bw=np.array(bw), dense_verts=dvm, dense_faces=np.array(dtris))
+# uv_mh keeps the MakeHuman hm08 UVs, so skin textures made for MakeHuman can be baked across
+np.savez(out + '.npz', verts=out_pos, faces=tris, uv=new_uv, uv_mh=out_uv, weld=weld, bidx=np.array(bidx), bw=np.array(bw), dense_verts=dvm, dense_faces=np.array(dtris))
 print(json.dumps({'tris': len(tris), 'verts': len(out_pos), 'welded': int(weld.max() + 1), 'dense_tris': len(dtris)}))

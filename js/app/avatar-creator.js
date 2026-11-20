@@ -6,7 +6,9 @@ window.AvatarCreator = (() => {
   const D = window.AvatarData;
   const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['brows', 'Brows'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['makeup', 'Makeup'],
     ['hair', 'Hair'], ['outfit', 'Outfit'], ['gear', 'Accessories']];
-  let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0;
+  // tabs whose changes are small on the face: the view moves in close
+  const FOCUS = ['eyes', 'makeup', 'mouth'];
+  let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0, palette = null;
   const e = s => UI.esc(s);
   const fmt = n => UI.fmt(n);
 
@@ -72,6 +74,7 @@ window.AvatarCreator = (() => {
     host.append(view.r.domElement);
     view.resize();
     view.set(look);
+    view.setFocus(FOCUS.includes(tab));
     const onMq = () => view && view.setReduce(reduce.matches);
     reduce.addEventListener('change', onMq);
     off.push(() => reduce.removeEventListener('change', onMq));
@@ -89,8 +92,19 @@ window.AvatarCreator = (() => {
     const t = ev.target;
     if (!t.matches('input[type=range]')) return;
     if (!dragFrom) dragFrom = D.normalize(look);
-    const f = { ...look.f, [t.dataset.s]: +t.value };
-    look = D.normalize({ ...look, f });
+    if (t.dataset.mk) {
+      look = D.normalize({ ...look, mk: { ...look.mk, [t.dataset.mk + 'S']: +t.value } });
+      const row = t.closest('.mkr');
+      row.querySelector('output').textContent = `${t.value}%`;
+      row.classList.toggle('off', +t.value === 0);
+      el.querySelectorAll('[data-slot="mkp"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === D.presetOf(look.mk)));
+    } else {
+      const f = { ...look.f, [t.dataset.s]: +t.value };
+      look = D.normalize({ ...look, f });
+      // the V-shape default follows the face's sex until someone sets it
+      const vl = t.dataset.s === 'sex' && el.querySelector('input[data-s="vline"]');
+      if (vl) vl.value = D.fv(look.f, 'vline');
+    }
     if (view) view.set(look);
     paintStatus();
   }
@@ -111,8 +125,16 @@ window.AvatarCreator = (() => {
     if (slot === 'ec') return set({ ...look, ec: +id });
     if (slot === 'bc') return set({ ...look, bc: +id });
     if (slot === 'oc') return set({ ...look, oc: +id });
-    if (slot === 'mk') { const [layer, style] = id.split(':'); return set({ ...look, mk: { ...look.mk, [layer]: style } }); }
-    if (slot === 'mkc') { const [layer, i] = id.split('-'); return set({ ...look, mk: { ...look.mk, [layer + 'C']: +i, [layer]: look.mk[layer] === 'none' ? D.MAKEUP[layer].styles[1][0] : look.mk[layer] } }); }
+    if (slot === 'op') return set({ ...look, op: id });
+    if (slot === 'mkp') {
+      palette = null;
+      return set({ ...look, mk: D.presetMk(id, (layer, i) => !D.lockOf('mkc', `${layer}-${i}`)) });
+    }
+    if (slot === 'mkpal') { palette = palette === id ? null : id; return paintPane(); }
+    // picking a colour or a shape turns a layer that is off back on
+    const on = layer => look.mk[layer + 'S'] || D.MAKEUP[layer].def;
+    if (slot === 'mks') { const [layer, style] = id.split(':'); return set({ ...look, mk: { ...look.mk, [layer]: style, [layer + 'S']: on(layer) } }); }
+    if (slot === 'mkc') { const [layer, i] = id.split('-'); return set({ ...look, mk: { ...look.mk, [layer + 'C']: +i, [layer + 'S']: on(layer) } }); }
     if (slot === 'gl') { if (D.lockOf('gl', id) && D.part('gl', id).lock) return; return set({ ...look, gl: id }); }
     if (slot === 'g') {
       if (id === 'none') return set({ ...look, g: [] });
@@ -145,8 +167,8 @@ window.AvatarCreator = (() => {
     if (D.lockOf('hc', L.hc)) L.hc = Math.floor(Math.random() * 6);
     if (D.lockOf('gl', L.gl)) L.gl = pickUsable('gl', D.GLOWS, 'green');
     if (D.lockOf('bs', L.bs)) L.bs = (L.f.sex || 0) > 25 ? 'soft' : 'straight';
-    if (D.lockOf('ec', L.ec)) L.ec = Math.floor(Math.random() * 6);
-    for (const layer of Object.keys(D.MAKEUP)) if (D.lockOf('mkc', `${layer}-${L.mk[layer + 'C']}`)) L.mk = { ...L.mk, [layer + 'C']: 0 };
+    if (D.lockOf('ec', L.ec)) L.ec = pickUsable('ec', D.EYE_COLORS, 0);
+    L.mk = D.freeMk(L.mk);
     L.g = L.g.filter(id => !D.lockOf('g', id));
     set(L);
   }
@@ -184,8 +206,8 @@ window.AvatarCreator = (() => {
     }
   }
 
-  // makeup styles and outfit colours are free; brow colours use the hair colour prices
-  const lockFor = (slot, id) => slot === 'mk' || slot === 'oc' ? null : D.lockOf(slot === 'bc' ? 'hc' : slot, id);
+  // makeup shapes, presets and strengths and outfit colours are free; brow colours use the hair colour prices
+  const lockFor = (slot, id) => slot === 'mks' || slot === 'mkp' || slot === 'oc' || slot === 'op' || id === 'none' ? null : D.lockOf(slot === 'bc' ? 'hc' : slot, id);
   function priceTag(slot, id) {
     const l = lockFor(slot, id);
     if (!l) return '';
@@ -210,11 +232,51 @@ window.AvatarCreator = (() => {
       return `<button type="button" class="dot${l ? ' locked' : ''}" data-slot="${slot}" data-id="${c.id}" aria-pressed="${current === c.id}" title="${e(c.name)}${l && l.price ? ` (${fmt(l.price)} coins)` : ''}" style="--c:${c.hex}"></button>`;
     }).join('')}</div>`;
   }
-  function sliders(group) {
-    return `<div class="avs-list">${D.SLIDERS.filter(s => s.group === group).map(s => `
-      <label class="avs"><span>${e(s.name)}</span><input type="range" min="-100" max="100" step="1" value="${look.f[s.id] || 0}" data-s="${s.id}"></label>`).join('')}</div>`;
+  function sliders(group, list = D.SLIDERS.filter(s => s.group === group)) {
+    return `<div class="avs-list">${list.map(s => `
+      <label class="avs"><span>${e(s.name)}</span><input type="range" min="${s.min}" max="100" step="1" value="${D.fv(look.f, s.id)}" data-s="${s.id}"></label>`).join('')}</div>`;
+  }
+  // eye colours as named swatches, each a small iris with its pupil
+  function eyeColours() {
+    return `<div class="avc-eyes" role="group" aria-label="Eye colour">${D.EYE_ORDER.map(id => {
+      const c = D.part('ec', id), l = lockFor('ec', id);
+      return `<button type="button" class="eyec${l ? ' locked' : ''}" data-slot="ec" data-id="${id}" aria-pressed="${look.ec === id}" style="--c:${c.hex};--ci:${c.in}">
+        <i aria-hidden="true"></i><span>${e(c.name)}</span>${l && l.price ? `<span class="price">${UI.coin()}${fmt(l.price)}</span>` : ''}</button>`;
+    }).join('')}</div>`;
   }
   function sw(hex) { return `<i class="sw" style="--c:${hex}"></i>`; }
+
+  // ---------- makeup: presets, then one row per layer ----------
+  const MK_ROWS = [['liner', 'Eyes'], ['shadow'], ['brow'], ['blush', 'Face'], ['sculpt'], ['lip', 'Lips'], ['line'], ['gloss']];
+  function presetChip(p) {
+    const mk = D.presetMk(p.id, (layer, i) => !D.lockOf('mkc', `${layer}-${i}`));
+    const dots = ['shadow', 'blush', 'lip'].filter(k => mk[k + 'S']).map(k => `<i style="--c:${D.mkHex(k, mk[k + 'C'], look.sk)}"></i>`).join('');
+    return `<button type="button" class="mkp" data-slot="mkp" data-id="${p.id}" aria-pressed="${D.presetOf(look.mk) === p.id}">
+      <span class="mkp-dots" aria-hidden="true">${dots}</span>${e(p.name)}</button>`;
+  }
+  function mkRow(layer) {
+    const m = D.MAKEUP[layer], v = look.mk[layer + 'S'];
+    let sw = '<span></span>', pal = '', shapes = '';
+    if (m.colors) {
+      const i = look.mk[layer + 'C'], c = m.colors[i], l = D.lockOf('mkc', `${layer}-${i}`);
+      sw = `<button type="button" class="mkr-sw${l ? ' locked' : ''}" data-slot="mkpal" data-id="${layer}" aria-expanded="${palette === layer}"
+        aria-label="${e(`${m.name} colour: ${c.name}`)}" title="${e(c.name)}" style="--c:${D.mkHex(layer, i, look.sk)}"></button>`;
+      if (palette === layer) pal = swatches('mkc', m.colors.map((c, k) => ({ ...c, id: `${layer}-${k}`, hex: D.mkHex(layer, k, look.sk) })), `${layer}-${i}`, `${m.name} colour`);
+    }
+    if (m.styles) shapes = `<div class="mkr-shapes" role="group" aria-label="${e(m.name)} shape">${m.styles.map(([id, name]) =>
+      `<button type="button" data-slot="mks" data-id="${layer}:${id}" aria-pressed="${look.mk[layer] === id}">${e(name)}</button>`).join('')}</div>`;
+    return `<div class="mkr${v ? '' : ' off'}">
+      <span class="mkr-n">${e(m.name)}</span>${sw}
+      <input type="range" min="0" max="100" step="1" value="${v}" data-mk="${layer}" aria-label="${e(m.name)} strength">
+      <output>${v}%</output>${shapes}${pal}
+    </div>`;
+  }
+  function makeupPane() {
+    return `<div class="label avc-sub">Presets</div>
+      <div class="mkp-row" role="group" aria-label="Makeup presets">${D.MK_PRESETS.map(presetChip).join('')}</div>
+      ${MK_ROWS.map(([layer, head]) => `${head ? `<div class="label avc-sub">${head}</div>` : ''}${mkRow(layer)}`).join('')}
+      <p class="dim avc-tip">Strength sliders are free. Dimmed colours cost coins.</p>`;
+  }
 
   function paintPane() {
     if (!el) return;
@@ -226,9 +288,10 @@ window.AvatarCreator = (() => {
         <div class="label avc-sub">Skin tone</div>
         <div class="avc-skins" role="group" aria-label="Skin tone">${D.SKIN.map((c, i) => `<button type="button" class="skin" data-slot="sk" data-id="${i}" aria-pressed="${look.sk === i}" aria-label="Skin tone ${i + 1} of ${D.SKIN.length}" style="--c:${c}"></button>`).join('')}</div>`;
     } else if (tab === 'eyes') {
-      h = `${sliders('eyes')}
-        <div class="label avc-sub">Eye colour</div>
-        ${swatches('ec', D.EYE_COLORS, look.ec, 'Eye colour')}`;
+      h = `<div class="label avc-sub">Eye colour</div>
+        ${eyeColours()}
+        <div class="label avc-sub">Shape</div>
+        ${sliders('eyes')}`;
     } else if (tab === 'brows') {
       const match = `<button type="button" class="dot match" data-slot="bc" data-id="-1" aria-pressed="${look.bc < 0}" title="Match hair" style="--c:${D.HAIR_COLORS[look.hc].hex}"><span>Match hair</span></button>`;
       h = `<div class="label avc-sub">Shape</div>
@@ -236,20 +299,20 @@ window.AvatarCreator = (() => {
         <div class="label avc-sub">Brow colour</div>
         ${swatches('bc', D.HAIR_COLORS.filter(c => !c.price), look.bc, 'Brow colour', match)}
         ${sliders('brows')}`;
-    } else if (tab === 'nose' || tab === 'mouth') {
+    } else if (tab === 'nose') {
       h = sliders(tab);
+    } else if (tab === 'mouth') {
+      h = `${sliders('mouth', D.LIP_SLIDERS).replace('avs-list', 'avs-list wide')}
+        <p class="dim avc-tip">Lip colour, liner and gloss are on the Makeup tab.</p>`;
     } else if (tab === 'makeup') {
-      h = Object.entries(D.MAKEUP).map(([layer, m]) => `
-        <div class="label avc-sub">${e(m.name)}</div>
-        <div class="avc-tiles">${m.styles.map(([id, name]) => tile('mk', { id: `${layer}:${id}`, name }, look.mk[layer] === id, { ...look, mk: { ...look.mk, [layer]: id } }, '', 'mk', null)).join('')}</div>
-        ${swatches('mkc', m.colors.map((c, i) => ({ ...c, id: `${layer}-${i}` })), `${layer}-${look.mk[layer + 'C']}`, `${m.name} colour`)}`).join('');
+      h = makeupPane();
     } else if (tab === 'hair') {
       h = `<div class="label avc-sub">Style</div>
         <div class="avc-tiles">${D.PARTS.h.map(p => tile('h', p, look.h === p.id, D.withGear({ ...look, h: p.id }, null))).join('')}</div>
         <div class="label avc-sub">Hair colour</div>
         ${swatches('hc', D.HAIR_COLORS, look.hc, 'Hair colour')}
-        <div class="label avc-sub">Facial hair</div>
-        <div class="avc-tiles">${D.PARTS.fh.map(p => tile('fh', p, look.fh === p.id, { ...look, fh: p.id })).join('')}</div>`;
+        ${D.FACIAL_HAIR ? `<div class="label avc-sub">Facial hair</div>
+        <div class="avc-tiles">${D.PARTS.fh.map(p => tile('fh', p, look.fh === p.id, { ...look, fh: p.id })).join('')}</div>` : ''}`;
     } else if (tab === 'gear') {
       const hood = look.h === 'hood';
       h = `<div class="label avc-sub">Accessories</div>
@@ -264,11 +327,15 @@ window.AvatarCreator = (() => {
         <div class="avc-tiles">${D.PARTS.o.map(p => tile('o', p, look.o === p.id, { ...look, o: p.id })).join('')}</div>
         <div class="label avc-sub">Outfit colour</div>
         ${swatches('oc', D.OUTFIT_COLORS, look.oc, 'Outfit colour')}
+        ${D.PATTERN_OUTFITS.includes(look.o) ? `<div class="label avc-sub">Pattern</div>
+        <div class="mkr-shapes avc-pattern" role="group" aria-label="Pattern">${[['plain', 'Plain'], ['stripe', 'Stripes']].map(([id, name]) =>
+          `<button type="button" data-slot="op" data-id="${id}" aria-pressed="${look.op === id}">${name}</button>`).join('')}</div>` : ''}
         <div class="label avc-sub">Glow</div>
         <div class="avc-cards">${D.GLOWS.map(g => card('gl', g, look.gl === g.id, sw(g.hex), g.lock && lv < D.GOLD_LEVEL ? `Level ${D.GOLD_LEVEL}` : '')).join('')}</div>
         ${lv < D.GOLD_LEVEL ? `<p class="dim avc-tip">Gold glow unlocks at level ${D.GOLD_LEVEL}. You are level ${lv}.</p>` : ''}`;
     }
     pane.innerHTML = h;
+    if (view) view.setFocus(FOCUS.includes(tab));
     pane.setAttribute('aria-label', TABS.find(t => t[0] === tab)[1]);
     paintStatus();
   }

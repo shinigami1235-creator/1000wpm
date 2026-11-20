@@ -5,10 +5,10 @@
 window.Avatar = (() => {
   const D = window.AvatarData;
   const mem = new Map();
-  // v3: the smooth textured avatars; older cached pictures are dropped
-  const LS = 'wpm-avatar-thumbs-v3', LS_MAX = 24;
+  // v4: MakeHuman skins, eyes and brows; older cached pictures are dropped
+  const LS = 'wpm-avatar-thumbs-v4', LS_MAX = 24;
   let store = {};
-  try { localStorage.removeItem('wpm-avatar-thumbs'); store = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { store = {}; }
+  try { localStorage.removeItem('wpm-avatar-thumbs'); localStorage.removeItem('wpm-avatar-thumbs-v3'); store = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { store = {}; }
   for (const [k, v] of Object.entries(store)) mem.set(k, v);
 
   let mod = null, loading = null, started = false;
@@ -120,8 +120,7 @@ window.Avatar = (() => {
     else if (item.slot === 'gl') L.gl = item.part;
     else if (item.slot === 'mkc') {
       const [layer, i] = String(item.part).split('-');
-      const style = { liner: 'winged', shadow: 'soft', blush: 'on', lip: 'gloss' }[layer];
-      L.f = { sex: 70 }; L.h = 'bun'; L.mk = { ...D.MK_DEFAULT, [layer]: style, [layer + 'C']: +i };
+      L.f = { sex: 70 }; L.h = 'bun'; L.mk = { ...D.MK_DEFAULT, liner: 'winged', [layer + 'C']: +i, [layer + 'S']: 75, glossS: layer === 'lip' ? 35 : 0 };
     }
     return L;
   }

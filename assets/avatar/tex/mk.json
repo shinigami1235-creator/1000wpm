@@ -1,0 +1,31 @@
+{
+ "rect": [
+  0.14142414927482605,
+  0.21015417575836182,
+  0.48273274302482605,
+  0.7726541757583618
+ ],
+ "layout": "runtime",
+ "files": {
+  "mk-eyes": [
+   "liner-thin",
+   "liner-winged",
+   "liner-heavy"
+  ],
+  "mk-lids": [
+   "shadow-soft",
+   "shadow-smoky",
+   "brow"
+  ],
+  "mk-face": [
+   "blush",
+   "contour",
+   "highlight"
+  ],
+  "mk-lips": [
+   "lips",
+   "lipline",
+   "gloss"
+  ]
+ }
+}

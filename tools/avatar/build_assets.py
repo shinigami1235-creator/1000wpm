@@ -9,7 +9,7 @@ import os, sys, math, json, numpy as np
 from collections import defaultdict, Counter
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from mhlib import load_obj, load_target
-from morphs import SLIDERS, dense_deltas
+from morphs import SLIDERS, dense_deltas, GAIN, SEX_EXTRA, BASE
 from geom import *
 from gltf_writer import GLB, FLOAT, U8, U16, I16
 from mathutils import Vector
@@ -20,19 +20,10 @@ HEAD, OUT = sys.argv[1], sys.argv[2]
 ONLY = set(sys.argv[3].split(',')) if len(sys.argv) > 3 else None     # e.g. base,tex or single item ids
 os.makedirs(OUT + '/items', exist_ok=True); os.makedirs(OUT + '/tex', exist_ok=True)
 CUT_Y, SIDE_X = 4.62, 1.72
-GAIN = {'jawW': 2.2, 'jawA': 1.2, 'cheekH': 3.2, 'eyeD': 3.0, 'chinW-': 1.8, 'chinW+': 1.5, 'cheekW-': 1.6, 'cheekW+': 1.2, 'eyeS': 2.2, 'eyeT': 3.4,
-        'noseB': 1.8, 'noseT-': 1.1, 'noseT+': 3.0, 'browD-': 1.6, 'browD+': 0.45, 'browH': 1.2,
-        'lips-': 1.2, 'lips+': 1.4, 'neck': 2.0, 'noseW': 1.4, 'noseL': 1.3, 'ears': 1.2}
 V, F, G = load_obj(); NB = len(V)
-SEX_EXTRA = {
-    '-': [('chin/chin-bones-incr', 0.6), ('eyebrows/eyebrows-trans-forward', 0.35), ('chin/chin-width-incr', 0.5), ('nose/nose-scale-horiz-incr', 0.3),
-          ('neck/neck-scale-horiz-incr', 0.6), ('neck/neck-scale-depth-incr', 0.4), ('head/head-square', 0.35)],
-    '+': [('chin/chin-bones-decr', 0.5), ('eyebrows/eyebrows-trans-backward', 0.5), ('mouth/mouth-upperlip-volume-incr', 0.5), ('mouth/mouth-lowerlip-volume-incr', 0.5),
-          ('nose/nose-scale-horiz-decr', 0.4), ('nose/nose-point-up', 0.4), ('neck/neck-scale-horiz-decr', 0.6), ('chin/chin-width-decr', 0.4),
-          ('eyes/l-eye-scale-incr', 0.8), ('eyes/r-eye-scale-incr', 0.8)],
-}
 neu = np.load(os.path.join(HERE, 'neu.npy')); male = np.load(os.path.join(HERE, 'male.npy')); fem = np.load(os.path.join(HERE, 'fem.npy'))
 h = np.load(HEAD)
+import face_src
 hv, hf, huv, weld = list(h['verts']), [tuple(t) for t in h['faces']], list(map(tuple, h['uv'])), list(h['weld'])
 bidx, bw, dense_v, dense_f = h['bidx'], h['bw'], h['dense_verts'], h['dense_faces']
 n_skin = len(hv)
@@ -60,63 +51,39 @@ for plane in ('bottom', 'left', 'right'):
     for x, y in loop_edges: cap_tris.append((y, x, ci))
 n_cap = len(hv)
 
-# ---------- eyeballs and corneas ----------
-# A sphere per eye at the MakeHuman eye helper's centre and size. Its front maps onto the
-# iris texture (texture radius 0.31 is the iris edge, at 30 degrees from the eye's axis).
-EYE_RINGS = [0, 5, 10, 15, 20, 25, 30, 36, 45, 60, 75, 95, 120, 150, 180]
-EYE_SIDES = 24
-eye_tris, cornea_tris, eye_info = [], [], []
-K_UV = 0.31 / math.sin(math.radians(30))
+# ---------- eyeballs and corneas: the MakeHuman high-poly eye proxy (face_src.Eyes) ----------
+# eye_info keeps the eye helper's centre and size, which the glasses and goggles are fitted to
+eye_info = []
 for side, sx in (('l', 1), ('r', -1)):
     idx = sorted({i for f, g in zip(F, G) if g == f'helper-{side}-eye' for i in f})
     c = neu[idx].mean(0); R = float(np.linalg.norm(neu[idx] - c, axis=1).mean())
-    fwd = np.array([0.03 * sx, 0, 1.0]); fwd /= np.linalg.norm(fwd)
-    ax = np.cross([0, 1.0, 0], fwd); ax /= np.linalg.norm(ax); ay = np.cross(fwd, ax)
-    start = len(hv)
-    for layer, rad, bulge in (('eye', 0.985 * R, 0.0), ('cornea', 1.0 * R, 0.06)):
-        rings = []
-        for ang in EYE_RINGS:
-            if layer == 'cornea' and ang > 75: break
-            a = math.radians(ang)
-            ring = []
-            for s in range(EYE_SIDES if 0 < ang < 180 else 1):
-                b = 2 * math.pi * s / EYE_SIDES
-                local = math.sin(a) * (ax * math.cos(b) + ay * math.sin(b))
-                rr = rad * (1 + bulge * smooth(40, 0, ang))
-                p = c + rr * (fwd * math.cos(a) + local)
-                if ang <= 90: uvp = (0.5 + K_UV * math.sin(a) * math.cos(b), 0.5 + K_UV * math.sin(a) * math.sin(b))
-                else: uvp = (0.5 + 0.6 * math.cos(b), 0.5 + 0.6 * math.sin(b))
-                k = len(hv); hv.append(p); huv.append(uvp); weld.append(next_weld); next_weld += 1
-                ring.append(k)
-            rings.append(ring)
-        tl = eye_tris if layer == 'eye' else cornea_tris
-        for r0, r1 in zip(rings, rings[1:]):
-            n0, n1 = len(r0), len(r1)
-            for s in range(EYE_SIDES):
-                t = (s + 1) % EYE_SIDES
-                if n0 == 1: tl.append((r0[0], r1[s], r1[t]))
-                elif n1 == 1: tl.append((r0[s], r1[0], r0[t]))
-                else: tl += [(r0[s], r1[t], r0[t]), (r0[s], r1[s], r1[t])]
-    eye_info.append({'side': side, 'idx': idx, 'c': c, 'R': R, 'start': start, 'count': len(hv) - start, 'fwd': fwd})
+    eye_info.append({'side': side, 'c': c, 'R': R})
+EYES = face_src.Eyes(neu)
+eP, eUV, eMats = EYES.mesh()
+eye_start = len(hv); wkey = {}
+for p, u in zip(eP, eUV):
+    k = tuple(np.round(p, 5))
+    if k not in wkey: wkey[k] = next_weld; next_weld += 1
+    hv.append(p); huv.append(tuple(u)); weld.append(wkey[k])
+eye_tris = [(a + eye_start, b + eye_start, c + eye_start) for a, b, c in eMats['eye']]
+cornea_tris = [(a + eye_start, b + eye_start, c + eye_start) for a, b, c in eMats['cornea']]
 hv = np.array(hv); huv = np.array(huv); weld = np.array(weld)
 NV = len(hv)
 print('head verts', NV, 'skin tris', len(hf), 'cap', len(cap_tris), 'eye', len(eye_tris), 'cornea', len(cornea_tris))
 
 # ---------- morphs ----------
 morph_names, morph_data = [], []
-for sid, label, grp, neg, pos in SLIDERS:
-    for sign, spec in (('-', neg), ('+', pos)):
-        D = dense_deltas(spec, V, F, G, neu, male, fem) * GAIN.get(sid + sign, GAIN.get(sid, 1.0))
+for sid, label, grp, neg, pos in SLIDERS + [('base', '', '', [], [])]:
+    for sign, spec in ((('+', pos),) if sid == 'base' else (('-', neg), ('+', pos))):
+        D = 0 * neu if sid == 'base' else dense_deltas(spec, V, F, G, neu, male, fem) * GAIN.get(sid + sign, GAIN.get(sid, 1.0))
         if sid == 'jawA': D = D * np.array([smooth(7.2, 6.8, y) for y in neu[:, 1]])[:, None]
         if sid == 'sex':
             for t, gn in SEX_EXTRA[sign]: D = D + load_target(t, NB) * gn
+        if sid == 'base': D = sum(load_target(t, NB) * gn for t, gn in BASE)
         out = np.zeros((NV, 3))
         out[:n_skin] = (D[bidx] * bw[:, :, None]).sum(1)
         for ci, vs in cap_src: out[ci] = out[vs].mean(0)
-        for e in eye_info:
-            q = neu[e['idx']] + D[e['idx']]; c2 = q.mean(0); s = np.linalg.norm(q - c2, axis=1).mean() / e['R']
-            P = hv[e['start']:e['start'] + e['count']]
-            out[e['start']:e['start'] + e['count']] = c2 + (P - e['c']) * s - P
+        out[eye_start:] = EYES.delta(neu + D)
         out[np.abs(out).max(1) < 0.0015] = 0
         morph_names.append(sid + sign); morph_data.append(out)
 
@@ -206,13 +173,11 @@ for t in skin_tris:
 wpos = {weld[i]: hv[i] for i in range(n_skin)}
 cav_w = {w: np.mean([wpos[k] for k in ns], 0) - wpos[w] for w, ns in nb.items()}
 cav_v = np.clip(np.array([max(0.0, cav_w[weld[i]] @ NRM[i]) for i in range(n_skin)]) / 0.02, 0, 1)
-eye_n = np.zeros((NV - n_cap, 3))
-for e in eye_info:
-    sl = slice(e['start'] - n_cap, e['start'] - n_cap + e['count']); eye_n[sl] = hv[e['start']:e['start'] + e['count']] - e['c']
+eye_n = hv[n_cap:] - np.where(hv[n_cap:, :1] > 0, eyeL, eyeR)
 eye_n /= np.linalg.norm(eye_n, axis=1)[:, None]
 ao_eye = ao_bake(hv[n_cap:], eye_n, BVHTree.FromPolygons([Vector(p) for p in dense_v], [list(map(int, t)) for t in dense_f]), dist=0.5, lift=0.004)
 col_head = np.ones((NV, 4))
-col_head[n_cap:, :3] = (0.3 + 0.7 * ao_eye ** 1.4)[:, None]
+col_head[n_cap:, :3] = ((0.3 + 0.7 * ao_eye ** 1.4) * face_src.eye_lid_shade(hv[n_cap:], LID))[:, None]
 print('ao head', round(float(ao_v.mean()), 3), 'eye', round(float(ao_eye.min()), 3), round(float(ao_eye.mean()), 3))
 
 class Ctx: pass
@@ -222,9 +187,14 @@ K.eyeL, K.eyeR, K.EYE_R, K.ear_c, K.lobe, K.ear_out, K.ear_top, K.EAR_TH, K.ear_
 K.uv, K.hv_skin, K.skin_tris, K.ao_v, K.cav_v = huv[:n_skin], hv[:n_skin], skin_tris, ao_v, cav_v
 K.lid_lines, K.low_lines, K.lip_mask = LID, LOW, lip_mask
 K.weld = weld
+K.uv_mh, K.neu, K.eyes = h['uv_mh'], neu, EYES
+K.brow_tiles = face_src.brow_atlas(OUT + '/tex' if ONLY is None or 'tex' in ONLY else None, neu)
 
 if want_tex:
-    sizes = textures.face_textures(K, OUT + '/tex'); sizes.update(textures.all_small(OUT + '/tex'))
+    sizes = face_src.fh_masks(K, OUT + '/tex'); sizes.update(face_src.fh_strands(OUT + '/tex')); sizes.update(textures.all_small(OUT + '/tex'))
+    fs, K.face_meta = face_src.skin_textures(K, OUT + '/tex'); sizes.update(fs)
+    json.dump(K.face_meta, open(HEAD.replace('.npz', '_face.json'), 'w'))
+    sizes.update(face_src.eye_textures(EYES, OUT + '/tex')); sizes.update(face_src.lash_atlas(OUT + '/tex'))
     print('textures', sizes, 'total', sum(sizes.values()))
 
 # ---------- props ----------
@@ -313,21 +283,24 @@ if ONLY is None or 'base' in ONLY:
     weld_acc = g.accessor(W2, U16, 'VEC2', target=34962)
     macc, mscale = g.sparse_q(morph_data, NV)
     targets = [{'POSITION': a} for a in macc]
-    lip_on = lip_mask(np.array([hv[list(t)].mean(0) for t in hf])) > 0.2
-    skin_t = [t for t, l in zip(hf, lip_on) if not l]; lip_t = [t for t, l in zip(hf, lip_on) if l]
+    # the lips are part of the skin: their colour lives in the face texture with a soft border
+    skin_t = list(hf)
     prims = []
-    for mat, tris in (('skin', skin_t), ('lips', lip_t), ('cut', cap_tris), ('eye', eye_tris), ('cornea', cornea_tris)):
+    for mat, tris in (('skin', skin_t), ('cut', cap_tris), ('eye', eye_tris), ('cornea', cornea_tris)):
         ia = g.accessor(np.array(tris, np.uint16).reshape(-1), U16, 'SCALAR', target=34963)
         prims.append({'attributes': {'POSITION': pos_acc, 'COLOR_0': col_acc, 'TEXCOORD_0': uv_acc, '_WELD': weld_acc}, 'indices': ia, 'material': g.material(mat), 'targets': targets})
     g.mesh('head', prims, extras={'targetNames': morph_names, 'morphScale': mscale})
     stats['base'] = write_props(g, [(k, PROPS[k]) for k in BASE])
-    meta = {'eyes': [{'c': e['c'].tolist(), 'R': e['R'], 'start': e['start'], 'count': e['count']} for e in eye_info],
+    meta = {'eyes': [{'c': e['c'].tolist(), 'R': e['R']} for e in eye_info], 'face': getattr(K, 'face_meta', None) or json.load(open(HEAD.replace('.npz', '_face.json'))),
             'items': sorted(k for k in PROPS if k not in BASE), 'units': 'MakeHuman decimetres',
             'source': 'MakeHuman hm08 base mesh and targets via MPFB 2, CC0 1.0; textures and props generated by tools/avatar'}
     size = g.save(OUT + '/avatar.glb.raw', extras=meta)
     print('base glb raw', size, 'head tris', len(hf) + len(cap_tris) + len(eye_tris) + len(cornea_tris))
 for pid in PROPS:
     if pid in BASE: continue
+    # hair-* here are only the volumes parts_gear.py sizes the hats to; the hairstyles
+    # themselves are built by hair_build.py, so never overwrite them
+    if pid.startswith('hair-'): continue
     if ONLY is not None and pid not in ONLY and 'items' not in ONLY: continue
     g = GLB()
     stats[pid] = write_props(g, [(pid, PROPS[pid])])[pid]
