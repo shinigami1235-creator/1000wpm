@@ -38,11 +38,20 @@
 
   // ---------- toasts ----------
   const box = document.getElementById('toasts');
-  function toast(kind, html, ms = 3200) {
+  // Toasts that arrive together (coins, level and achievement from one run) show one after
+  // another, at most two on screen at once and one on a phone.
+  const queue = [];
+  let next = 0;
+  function toast(kind, html, ms = 3200) { queue.push({ kind, html, ms }); pump(); }
+  function pump() {
+    if (!queue.length || next) return;
+    const max = matchMedia('(max-width: 700px)').matches ? 1 : 2;
+    if (box.querySelectorAll('.toast:not(.out)').length >= max) { next = setTimeout(() => { next = 0; pump(); }, 250); return; }
+    const { kind, html, ms } = queue.shift();
     const t = UI.el(`<div class="toast ${kind}">${html}</div>`);
     box.append(t);
-    while (box.children.length > 4) box.firstElementChild.remove();
     setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, ms);
+    next = setTimeout(() => { next = 0; pump(); }, 700);
   }
   const REASON = { typing: '', 'level up': ' for the level', achievement: ' for the achievement' };
   WPM.on('coins', ({ delta, reason }) => {

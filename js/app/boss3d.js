@@ -1,11 +1,16 @@
 // The world boss in three.js: a giant program built from glowing blocks around
-// a core. BossScene.mount(host) returns a controller right away and draws once
-// three.js has loaded.
-//   hit(letters, you)   spark, shake and a core pulse (pulses at most 3 a second)
-//   setFrac(f, instant) damage states at 75%, 50%, 25% and 10% HP
-//   defeat() / revive()
-//   point()             a random spot on the boss in host pixels, for damage numbers
+// a core, standing in an arena with the raid in an arc in front of it.
+// BossScene.mount(host, { onImpact, onFrame }) returns a controller right away
+// and draws once three.js has loaded.
+//   setPhase(p, instant)  roar, reform and shift the arena to phase p's look
+//   setFrac(f, instant)   knocks off the shell, arm, rings and chest as HP drops
+//   event(ev, netNow)     plays an attack from WorldBossRules on the shared clock
+//   hit(h)                a bolt from the raider's spot to the boss; onImpact(h, x, y) when it lands
+//   returnShot(id), killAdd(id, you), block(id), stagger(), hurt(), setShield(f), setWeak(on)
+//   defeat(instant) / revive()
+//   screen(key, out)      host pixels of 'head', 'core', 'you', 'shot:<id>' or 'add:<id>'
 //   dispose()
+// Flashes go through one gate that allows 3 a second (2 with Reduce flashing on).
 window.BossScene = (() => {
   let libs = null;
   function load() {
@@ -15,91 +20,187 @@ window.BossScene = (() => {
       import('three/addons/postprocessing/RenderPass.js'),
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
+      import('three/addons/postprocessing/ShaderPass.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
 
-  function mount(host) {
-    let impl = null, gone = false, pending = { frac: 1, instant: true, defeated: false };
+  function mount(host, opts = {}) {
+    let impl = null, gone = false;
+    const pending = { frac: 1, phase: 0, defeated: false, shield: null, weak: false };
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, SP]) => {
         if (gone) return false;
-        impl = build(host, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
+        impl = build(host, opts, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass, SP.ShaderPass);
         impl.setFrac(pending.frac, true);
+        impl.setPhase(pending.phase, true);
+        impl.setShield(pending.shield);
+        impl.setWeak(pending.weak);
         if (pending.defeated) impl.defeat(true);
         return true;
       }),
-      hit: (n, you) => impl && impl.hit(n, you),
+      setPhase: (p, instant) => { pending.phase = p; if (impl) impl.setPhase(p, instant); },
       setFrac: (f, instant) => { pending.frac = f; if (impl) impl.setFrac(f, instant); },
-      defeat: () => { pending.defeated = true; if (impl) impl.defeat(false); },
-      revive: () => { pending.defeated = false; pending.frac = 1; if (impl) impl.revive(); },
-      point: () => impl ? impl.point() : null,
+      setShield: f => { pending.shield = f; if (impl) impl.setShield(f); },
+      setWeak: on => { pending.weak = on; if (impl) impl.setWeak(on); },
+      event: (ev, now) => impl && impl.event(ev, now),
+      hit: h => { if (impl && impl.live()) impl.hit(h); else if (opts.onImpact) opts.onImpact(h, null, null); },
+      returnShot: id => impl && impl.returnShot(id),
+      killAdd: (id, you) => impl && impl.killAdd(id, you),
+      block: id => impl && impl.block(id),
+      stagger: () => impl && impl.stagger(),
+      hurt: k => impl && impl.hurt(k),
+      defeat: instant => { pending.defeated = true; if (impl) impl.defeat(!!instant); },
+      revive: () => { pending.defeated = false; pending.frac = 1; pending.phase = 0; if (impl) impl.revive(); },
+      screen: (k, out) => (impl ? impl.screen(k, out) : null),
+      info: () => (impl ? impl.info() : null),
       dispose: () => { gone = true; if (impl) impl.dispose(); impl = null; },
     };
     return ctl;
   }
 
-  function build(host, THREE, EffectComposer, RenderPass, UnrealBloomPass, OutputPass) {
+  function build(host, opts, THREE, EffectComposer, RenderPass, UnrealBloomPass, OutputPass, ShaderPass) {
+    const V = THREE.Vector3;
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let calmSet = true;
+    try { const s = JSON.parse(localStorage.getItem('wpm-breach-settings') || '{}'); calmSet = s.reduceFlash !== false; } catch (e) {}
+    const calm = reduce || calmSet;
+    const still = reduce ? 0.35 : 1;           // movement scale
+    const pulseK = reduce ? 0 : 1;             // breathing glows stop with reduced motion
+    const shakeK = reduce ? 0.12 : calm ? 0.6 : 1;
     const rnd = (a, b) => a + Math.random() * (b - a);
+    const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    const ease = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
+    const easeIn = x => Math.pow(clamp(x, 0, 1), 2);
+    const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
     const C = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
+    const nowS = () => performance.now() / 1000;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(1.75, devicePixelRatio || 1));
+    // one gate for every flash: at most 3 a second, 2 with Reduce flashing on
+    const flashes = [];
+    function canFlash() {
+      const t = performance.now();
+      while (flashes.length && t - flashes[0] > 1000) flashes.shift();
+      if (flashes.length >= (calm ? 2 : 3)) return false;
+      flashes.push(t); return true;
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));
     renderer.toneMapping = THREE.NoToneMapping;
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#010503');
-    scene.fog = new THREE.Fog('#010503', 34, 80);
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
-    const target = new THREE.Vector3(0, 8.2, 0);
+    scene.fog = new THREE.Fog('#010503', 36, 95);
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 220);
     const disposables = [];
     const keep = x => (disposables.push(x), x);
 
-    // ---------- backdrop: a wall of falling code, a grid floor and a ring of light ----------
+    // ---------- arena palettes, one per phase plus the quiet one after the fight ----------
+    const PAL = [
+      { bg: '#010503', a: '#39ff88', b: '#1f9e57', c: '#3ee6ff', bloom: 0.55, wall: 0.06 },
+      { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: '#39ff88', bloom: 0.6, wall: 0.09 },
+      { bg: '#070401', a: '#f29d30', b: '#8f5513', c: '#39ff88', bloom: 0.62, wall: 0.12 },
+      { bg: '#0a0302', a: '#ff6a3d', b: '#97361c', c: '#f29d30', bloom: 0.66, wall: 0.16 },
+      { bg: '#0b0103', a: '#ff4d5e', b: '#9c1f2c', c: '#f29d30', bloom: 0.7, wall: 0.22 },
+      { bg: '#010302', a: '#1f9e57', b: '#0d4a29', c: '#3ee6ff', bloom: 0.4, wall: 0.02 },
+    ].map(p => ({ bg: C(p.bg), a: C(p.a), b: C(p.b), c: C(p.c), bloom: p.bloom, wall: p.wall }));
+    const pal = { bg: PAL[0].bg.clone(), a: PAL[0].a.clone(), b: PAL[0].b.clone(), c: PAL[0].c.clone(), bloom: 0.55, wall: 0.06 };
+    let palFrom = 0, palTo = 0, palT = 1, palAt = 0;
+
+    // ---------- backdrop: a wall of falling code, a grid floor, pillars and rings ----------
     const codeCv = document.createElement('canvas'); codeCv.width = codeCv.height = 512;
     {
       const c = codeCv.getContext('2d');
       c.font = '20px monospace';
       const CH = '01{}[]<>/=+*#$abcdef';
       for (let x = 0; x < 512; x += 16) for (let y = 0; y < 512; y += 22) {
-        if (Math.random() < 0.55) { c.fillStyle = `rgba(57,255,136,${rnd(0.15, 0.9).toFixed(2)})`; c.fillText(CH[Math.floor(Math.random() * CH.length)], x, y); }
+        if (Math.random() < 0.55) { c.fillStyle = `rgba(255,255,255,${rnd(0.15, 0.9).toFixed(2)})`; c.fillText(CH[Math.floor(Math.random() * CH.length)], x, y); }
       }
     }
     const codeTex = keep(new THREE.CanvasTexture(codeCv));
     codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping;
     codeTex.repeat.set(7, 3);
-    const wall = new THREE.Mesh(keep(new THREE.PlaneGeometry(130, 56)), keep(new THREE.MeshBasicMaterial({ map: codeTex, transparent: true, opacity: 0.22, depthWrite: false, fog: false })));
-    wall.position.set(0, 18, -34);
+    const wallMat = keep(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a, transparent: true, opacity: 0.2, depthWrite: false, fog: false }));
+    const wall = new THREE.Mesh(keep(new THREE.PlaneGeometry(150, 60)), wallMat);
+    wall.position.set(0, 20, -40);
     scene.add(wall);
-    const grid = new THREE.GridHelper(140, 70, '#1f9e57', '#0a2a18');
-    grid.material.transparent = true; grid.material.opacity = 0.5;
+    const grid = new THREE.GridHelper(160, 80, '#ffffff', '#ffffff');
+    grid.material.transparent = true; grid.material.opacity = 0.32; grid.material.color = pal.b.clone();
     keep(grid.geometry); keep(grid.material);
     scene.add(grid);
-    const ringFloor = new THREE.Mesh(keep(new THREE.RingGeometry(6.5, 6.8, 96)), keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.1), side: THREE.DoubleSide })));
-    ringFloor.rotation.x = -Math.PI / 2; ringFloor.position.y = 0.02;
-    scene.add(ringFloor);
-    const ringFloor2 = new THREE.Mesh(keep(new THREE.RingGeometry(9.5, 9.6, 96)), keep(new THREE.MeshBasicMaterial({ color: C('#1f9e57', 1.2), side: THREE.DoubleSide })));
-    ringFloor2.rotation.x = -Math.PI / 2; ringFloor2.position.y = 0.02;
-    scene.add(ringFloor2);
+    const floorRings = [[6.5, 6.8, 1.1], [9.5, 9.6, 0.8], [14, 14.08, 0.5]].map(([a, b, k]) => {
+      const m = new THREE.Mesh(keep(new THREE.RingGeometry(a, b, 96)), keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), side: THREE.DoubleSide, transparent: true, opacity: k })));
+      m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.userData.k = k;
+      scene.add(m); return m;
+    });
+
+    // block shader: glowing edges and a faint scan line, shared by the boss, pillars and adds
+    const edgeVert = `
+      attribute float aSeed; attribute float aAlt;
+      varying vec2 vUv; varying float vSeed; varying float vAlt; varying float vDepth;
+      void main() {
+        vUv = uv; vSeed = aSeed; vAlt = aAlt;
+        vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        vDepth = -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`;
+    const edgeFrag = `
+      uniform float uTime; uniform float uHit; uniform vec3 uColA; uniform vec3 uColC; uniform vec3 uHurt; uniform float uHurtMix; uniform float uFar;
+      varying vec2 vUv; varying float vSeed; varying float vAlt; varying float vDepth;
+      void main() {
+        vec2 d = min(vUv, 1.0 - vUv);
+        float e = min(d.x, d.y);
+        float edge = 1.0 - smoothstep(0.0, 0.075, e);
+        float scan = 0.5 + 0.5 * sin(vUv.y * 36.0 + uTime * 5.0 + vSeed * 30.0);
+        vec3 col = mix(uColA, uColC, vAlt);
+        col = mix(col, uHurt, uHurtMix * step(0.45, fract(vSeed * 7.31)));
+        vec3 c = vec3(0.003, 0.012, 0.008) + col * 0.035 * scan + col * edge * (0.9 + uHit * 0.9);
+        c = mix(c, vec3(0.0, 0.006, 0.004), smoothstep(uFar * 0.5, uFar, vDepth));
+        gl_FragColor = vec4(c, 1.0);
+      }`;
+    function edgeMat(colA, colC, far = 80) {
+      return keep(new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uHit: { value: 0 }, uColA: { value: colA.clone() }, uColC: { value: colC.clone() }, uHurt: { value: C('#ff4d5e', 1.2) }, uHurtMix: { value: 0 }, uFar: { value: far } },
+        vertexShader: edgeVert, fragmentShader: edgeFrag,
+      }));
+    }
+    function seededBox(n, alt) {
+      const g = keep(new THREE.BoxGeometry(1, 1, 1));
+      const s = new Float32Array(n), a = new Float32Array(n);
+      for (let i = 0; i < n; i++) { s[i] = Math.random(); a[i] = alt ? alt(i) : 0; }
+      g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(s, 1));
+      g.setAttribute('aAlt', new THREE.InstancedBufferAttribute(a, 1));
+      return g;
+    }
+
+    // pillars of data around the arena rise with each phase
+    const PIL = 22;
+    const pilMat = edgeMat(pal.b, pal.a, 130);
+    const pillars = new THREE.InstancedMesh(seededBox(PIL, i => (i % 5 === 0 ? 1 : 0)), pilMat, PIL);
+    const pilData = Array.from({ length: PIL }, (_, i) => {
+      const a = Math.PI * (0.05 + 0.9 * i / (PIL - 1)) + rnd(-0.04, 0.04);
+      const r = rnd(34, 46);
+      return { x: -Math.cos(a) * r, z: -Math.sin(a) * r * 0.75 + 4, w: rnd(1.6, 3.2), h: rnd(6, 22), k: rnd(0.3, 1), s: rnd(0.2, 0.6) };
+    });
+    pillars.frustumCulled = false;
+    scene.add(pillars);
+    let pilH = 0.35, pilHT = 0.35;
 
     // ---------- the body: blocks laid out on a grid in the shape of a giant ----------
     const S = 0.95;
+    const HIP = new V(0, 4, 0), NECK = new V(0, 10.2, 0), SHL = new V(-6.3, 9.2, 0), SHR = new V(6.3, 9.2, 0);
+    const PARTS = ['torso', 'head', 'armL', 'armR'];
     const blocks = [];
-    const add = (x, y, z, part, extra = {}) => blocks.push({ base: new THREE.Vector3(x, y, z), part, size: S * rnd(0.72, 0.98), ...extra });
-    // head
+    const add = (x, y, z, region, extra = {}) => blocks.push({ base: new V(x, y, z), region, size: S * rnd(0.72, 0.98), ...extra });
     for (let x = -2.4; x <= 2.4; x += S) for (let y = 10.8; y <= 14.6; y += S) for (let z = -1.9; z <= 1.9; z += S) {
       if ((x / 2.6) ** 2 + ((y - 12.6) / 2.1) ** 2 + (z / 2.2) ** 2 > 1) continue;
-      const surf = Math.abs(x) > 1.5 || Math.abs(z) > 1.1 || y > 13.5 || y < 11.3;
-      if (surf) add(x, y, z, 'head');
+      if (Math.abs(x) > 1.5 || Math.abs(z) > 1.1 || y > 13.5 || y < 11.3) add(x, y, z, 'head');
     }
-    // horns
     for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) add(sx * (1.7 + i * 0.45), 14.4 + i * 0.75, -0.3, 'head', { size: S * (0.7 - i * 0.1) });
-    // neck
     for (let x = -0.95; x <= 0.95; x += S) for (let z = -0.95; z <= 0.95; z += S) add(x, 9.9, z, 'neck');
-    // torso: a shell that is wide at the shoulders and narrow at the waist
     for (let y = 3.3; y <= 9.6; y += S) {
       const w = 2.4 + (y - 3.3) / 6.3 * 3.6, d = 1.5 + (y - 3.3) * 0.12;
       for (let x = -w; x <= w + 0.01; x += S) for (let z = -d; z <= d + 0.01; z += S) {
@@ -111,81 +212,53 @@ window.BossScene = (() => {
         add(x, y, z, chest ? 'chest' : 'torso');
       }
     }
-    // arms hang from the shoulders and end in claws
     for (const sx of [-1, 1]) {
-      const a = new THREE.Vector3(sx * 6.6, 9.2, 0), b = new THREE.Vector3(sx * 8.4, 2.4, 0.8);
+      const a = new V(sx * 6.6, 9.2, 0), b = new V(sx * 8.4, 2.4, 0.8);
       for (let t = 0; t <= 1.001; t += 0.12) {
         const p = a.clone().lerp(b, t);
         for (const [ox, oz] of [[-0.48, -0.48], [0.48, -0.48], [-0.48, 0.48], [0.48, 0.48]]) add(p.x + ox, p.y, p.z + oz, sx < 0 ? 'armL' : 'armR');
       }
       for (let k = -1; k <= 1; k++) for (let i = 0; i < 3; i++) add(b.x + k * 0.7, b.y - 1 - i * 0.8, b.z + 0.6, sx < 0 ? 'armL' : 'clawR', { size: S * (0.6 - i * 0.12) });
     }
-    // data dripping out under the waist
     for (let i = 0; i < 16; i++) {
       const x = rnd(-2.3, 2.3), z = rnd(-1.3, 1.3), n = Math.floor(rnd(1, 4));
       for (let k = 0; k < n; k++) add(Math.round(x / S) * S, 3.3 - S * (k + 1) * 1.1, Math.round(z / S) * S, 'drip', { size: S * (0.6 - k * 0.12) });
     }
-    // which damage state knocks each block off
+    // which part carries each block, its spot in that part and which damage state knocks it off
     for (const b of blocks) {
       const r = Math.random();
-      b.breakAt = b.part === 'armL' ? 0.5 : b.part === 'chest' ? 0.25 : b.part === 'clawR' ? 0.1
-        : b.part === 'drip' ? (r < 0.5 ? 0.75 : 0.5)
+      b.part = b.region === 'head' || b.region === 'neck' ? 1 : b.region === 'armL' ? 2 : b.region === 'armR' || b.region === 'clawR' ? 3 : 0;
+      const pivot = [HIP, NECK, SHL, SHR][b.part];
+      b.local = b.base.clone().sub(pivot);
+      b.breakAt = b.region === 'armL' ? 0.5 : b.region === 'chest' ? 0.25 : b.region === 'clawR' ? 0.1
+        : b.region === 'drip' ? (r < 0.5 ? 0.75 : 0.5)
         : r < 0.16 ? 0.75 : r < 0.3 ? 0.5 : r < 0.4 ? 0.25 : r < 0.5 ? 0.1 : 0;
-      b.seed = Math.random();
-      b.off = new THREE.Vector3(); b.vel = new THREE.Vector3(); b.rot = new THREE.Euler(); b.spin = new THREE.Vector3();
-      b.fall = false; b.gone = false; b.glitch = 0; b.gx = 0;
+      // 0 attached, 1 chipped and flying, 2 flying back, 3 falling for good, 4 resting on the floor
+      b.mode = 0; b.wp = new V(); b.vel = new V(); b.rot = new THREE.Euler(); b.spin = new V(); b.life = 0; b.ret = 0; b.from = new V();
+      b.grav = 1; b.jx = 0; b.jt = 0; b.delay = 0;
     }
     const N = blocks.length;
-    const boxGeo = keep(new THREE.BoxGeometry(1, 1, 1));
-    const seeds = new Float32Array(N); blocks.forEach((b, i) => { seeds[i] = b.seed; });
-    boxGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
-    const boxMat = keep(new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uHit: { value: 0 }, uHurt: { value: C('#ff4d5e', 1.2) }, uHurtMix: { value: 0 } },
-      vertexShader: `
-        attribute float aSeed;
-        varying vec2 vUv; varying vec3 vColor; varying float vSeed; varying float vDepth;
-        void main() {
-          vUv = uv; vSeed = aSeed;
-          #ifdef USE_INSTANCING_COLOR
-            vColor = instanceColor;
-          #else
-            vColor = vec3(0.1, 1.0, 0.4);
-          #endif
-          vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-          vDepth = -mv.z;
-          gl_Position = projectionMatrix * mv;
-        }`,
-      fragmentShader: `
-        uniform float uTime; uniform float uHit; uniform vec3 uHurt; uniform float uHurtMix;
-        varying vec2 vUv; varying vec3 vColor; varying float vSeed; varying float vDepth;
-        void main() {
-          vec2 d = min(vUv, 1.0 - vUv);
-          float e = min(d.x, d.y);
-          float edge = 1.0 - smoothstep(0.0, 0.075, e);
-          float scan = 0.5 + 0.5 * sin(vUv.y * 36.0 + uTime * 5.0 + vSeed * 30.0);
-          vec3 col = mix(vColor, uHurt, uHurtMix * step(0.45, fract(vSeed * 7.31)));
-          vec3 c = vec3(0.003, 0.014, 0.009) + col * 0.03 * scan + col * edge * (0.85 + uHit * 1.1);
-          c = mix(c, vec3(0.0, 0.01, 0.006), smoothstep(34.0, 70.0, vDepth));
-          gl_FragColor = vec4(c, 1.0);
-        }`,
-    }));
-    const body = new THREE.InstancedMesh(boxGeo, boxMat, N);
+    const boxMat = edgeMat(pal.a, pal.c, 80);
+    const body = new THREE.InstancedMesh(seededBox(N, () => (Math.random() < 0.08 ? 1 : 0)), boxMat, N);
     body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    const green = C('#39ff88'), cyan = C('#3ee6ff');
-    blocks.forEach((b, i) => body.setColorAt(i, Math.random() < 0.08 ? cyan : green));
     body.frustumCulled = false;
-    const rig = new THREE.Group();
-    rig.add(body);
-    scene.add(rig);
+    scene.add(body);
 
-    // eyes
+    // the skeleton the blocks hang on
+    const root = new THREE.Group(); scene.add(root);
+    const hip = new THREE.Group(); hip.position.copy(HIP); root.add(hip);
+    const headG = new THREE.Group(); headG.position.copy(NECK).sub(HIP); hip.add(headG);
+    const armLG = new THREE.Group(); armLG.position.copy(SHL).sub(HIP); hip.add(armLG);
+    const armRG = new THREE.Group(); armRG.position.copy(SHR).sub(HIP); hip.add(armRG);
+    const partG = [hip, headG, armLG, armRG];
+    const partQ = PARTS.map(() => new THREE.Quaternion());
+
     const eyeMat = keep(new THREE.MeshBasicMaterial({ color: C('#d7f5e3', 2) }));
     const eyeGeo = keep(new THREE.BoxGeometry(1.25, 0.28, 0.2));
-    const eyes = [-0.95, 0.95].map(x => { const m = new THREE.Mesh(eyeGeo, eyeMat); m.position.set(x, 12.7, 2.15); m.rotation.z = x < 0 ? -0.18 : 0.18; rig.add(m); return m; });
+    const eyes = [-0.95, 0.95].map(x => { const m = new THREE.Mesh(eyeGeo, eyeMat); m.position.set(x, 12.7 - NECK.y, 2.15); m.rotation.z = x < 0 ? -0.18 : 0.18; headG.add(m); return m; });
 
-    // core, its wire cage, glow and rings
-    const corePos = new THREE.Vector3(0, 7.2, 0.3);
-    const core = new THREE.Group(); core.position.copy(corePos); rig.add(core);
+    const CORE = new V(0, 7.2, 0.3);
+    const core = new THREE.Group(); core.position.copy(CORE).sub(HIP); hip.add(core);
     const coreMat = keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.8) }));
     const coreMesh = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(1.35, 2)), coreMat);
     core.add(coreMesh);
@@ -200,64 +273,240 @@ window.BossScene = (() => {
       c.fillStyle = g; c.fillRect(0, 0, 128, 128);
     }
     const glowTex = keep(new THREE.CanvasTexture(glowCv));
-    const glowMat = keep(new THREE.SpriteMaterial({ map: glowTex, color: C('#39ff88', 1), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
+    const glowMat = keep(new THREE.SpriteMaterial({ map: glowTex, color: C('#39ff88'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
     const glow = new THREE.Sprite(glowMat); glow.scale.set(7.5, 7.5, 1);
     core.add(glow);
     const rings = [3.2, 4.1, 5.0].map((r, i) => {
       const m = new THREE.Mesh(keep(new THREE.TorusGeometry(r, 0.045, 6, 120)), keep(new THREE.MeshBasicMaterial({ color: C(i === 1 ? '#3ee6ff' : '#39ff88', 1.8), transparent: true, opacity: 0.85 })));
       m.rotation.set(rnd(0, 3), rnd(0, 3), 0);
-      m.userData = { spin: new THREE.Vector3(rnd(-0.6, 0.6), rnd(0.3, 0.9) * (i % 2 ? -1 : 1), rnd(-0.3, 0.3)), vel: new THREE.Vector3(), fall: false, gone: false };
+      m.userData = { spin: new V(rnd(-0.6, 0.6), rnd(0.3, 0.9) * (i % 2 ? -1 : 1), rnd(-0.3, 0.3)), vel: new V(), fall: false, gone: false, alt: i === 1 };
       core.add(m);
       return m;
+    });
+    // weak point reticle around the core
+    const retMat = keep(new THREE.MeshBasicMaterial({ color: C('#ffc46b', 2.2), transparent: true, opacity: 0, depthWrite: false }));
+    const reticle = new THREE.Group(); core.add(reticle);
+    [2.7, 3.3].forEach((r, i) => {
+      const m = new THREE.Mesh(keep(new THREE.RingGeometry(r, r + 0.12, 64, 1, i * 0.4, Math.PI * 1.6)), retMat);
+      reticle.add(m);
     });
 
     // shards that orbit the boss
     const SH = 36;
-    const shardMat = keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.0), wireframe: true }));
+    const shardMat = keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), wireframe: true }));
     const shards = new THREE.InstancedMesh(keep(new THREE.TetrahedronGeometry(0.42)), shardMat, SH);
-    const shardData = Array.from({ length: SH }, () => ({ r: rnd(8.5, 14), a: rnd(0, Math.PI * 2), y: rnd(1.5, 16), s: rnd(0.08, 0.25) * (Math.random() < 0.5 ? -1 : 1), k: rnd(0.6, 1.6) }));
+    const shardData = Array.from({ length: SH }, () => ({ r: rnd(10, 16), a: rnd(0, Math.PI * 2), y: rnd(1.5, 17), s: rnd(0.08, 0.25) * (Math.random() < 0.5 ? -1 : 1), k: rnd(0.6, 1.6) }));
     shards.frustumCulled = false;
     scene.add(shards);
 
-    // sparks
-    const SP = 360;
-    const spPos = new Float32Array(SP * 3), spVel = new Float32Array(SP * 3), spLife = new Float32Array(SP);
+    // ---------- the raid: one marker per raider in an arc in front of the boss ----------
+    const RAID = 40;
+    const raidPos = Array.from({ length: RAID + 1 }, () => new V());   // last one is you
+    const markMat = keep(new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+    const marks = new THREE.InstancedMesh(keep(new THREE.OctahedronGeometry(0.32)), markMat, RAID + 1);
+    marks.frustumCulled = false;
+    scene.add(marks);
+    const markGlow = new Float32Array(RAID + 1);
+    const RAID_COLS = ['#3ee6ff', '#f29d30', '#8fb8ff', '#ff8a5c', '#cfe3d8'].map(h => C(h));
+    const raidCol = i => RAID_COLS[i % RAID_COLS.length];
+    const youCol = C('#39ff88');
+    const youRing = new THREE.Mesh(keep(new THREE.RingGeometry(0.9, 1.0, 48)), keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.6), side: THREE.DoubleSide, transparent: true, opacity: 0.9 })));
+    youRing.rotation.x = -Math.PI / 2;
+    scene.add(youRing);
+    let raidZ = 8;
+    function placeRaid(halfW) {
+      const w = Math.min(15, halfW * 0.86);
+      for (let i = 0; i < RAID; i++) {
+        const side = i % 2 ? 1 : -1, k = Math.floor(i / 2) + 1;
+        const x = side * (1.6 + (k / (RAID / 2)) * (w - 1.6));
+        raidPos[i].set(x, 0.55, raidZ - Math.abs(x) * 0.18 + (k % 2) * 0.6);
+      }
+      raidPos[RAID].set(0, 0.7, raidZ + 0.6);
+      youRing.position.set(0, 0.04, raidZ + 0.6);
+    }
+
+    // ---------- pooled effects ----------
+    // bolts: thin glowing boxes flying from a raider to the boss
+    const BOLTS = 72;
+    const boltMesh = new THREE.InstancedMesh(keep(new THREE.BoxGeometry(1, 1, 1)), keep(new THREE.MeshBasicMaterial({ color: '#ffffff' })), BOLTS);
+    boltMesh.frustumCulled = false;
+    scene.add(boltMesh);
+    const bolts = Array.from({ length: BOLTS }, () => ({ on: false, from: new V(), to: new V(), t: 0, dur: 0.2, w: 0.1, target: -1, h: null, col: new THREE.Color(), shield: false }));
+    let boltI = 0;
+
+    // sparks with their own colours
+    const SP = 700;
+    const spPos = new Float32Array(SP * 3), spVel = new Float32Array(SP * 3), spLife = new Float32Array(SP), spCol = new Float32Array(SP * 3), spGrav = new Float32Array(SP);
     const spGeo = keep(new THREE.BufferGeometry());
     spGeo.setAttribute('position', new THREE.BufferAttribute(spPos, 3));
-    const spMat = keep(new THREE.PointsMaterial({ color: C('#b9ffd6', 2), size: 0.22, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    spGeo.setAttribute('color', new THREE.BufferAttribute(spCol, 3));
+    const spMat = keep(new THREE.PointsMaterial({ size: 0.24, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     const sparks = new THREE.Points(spGeo, spMat);
     sparks.frustumCulled = false;
     scene.add(sparks);
     let spI = 0;
     for (let i = 0; i < SP; i++) spPos[i * 3 + 1] = -100;
-    function burst(at, n, speed) {
+    const tmpV = new V();
+    function burst(at, n, speed, col, up = 1, grav = 9, dir = null) {
       for (let k = 0; k < n; k++) {
         const i = spI = (spI + 1) % SP;
         spPos[i * 3] = at.x; spPos[i * 3 + 1] = at.y; spPos[i * 3 + 2] = at.z;
-        const v = new THREE.Vector3(rnd(-1, 1), rnd(-0.4, 1.2), rnd(0.2, 1.4)).normalize().multiplyScalar(speed * rnd(0.4, 1));
-        spVel[i * 3] = v.x; spVel[i * 3 + 1] = v.y; spVel[i * 3 + 2] = v.z;
-        spLife[i] = rnd(0.5, 1.1);
+        tmpV.set(rnd(-1, 1), rnd(-0.4, 1.2) * up, rnd(-0.6, 1.4));
+        if (dir) tmpV.addScaledVector(dir, 1.2);
+        tmpV.normalize().multiplyScalar(speed * rnd(0.35, 1));
+        spVel[i * 3] = tmpV.x; spVel[i * 3 + 1] = tmpV.y; spVel[i * 3 + 2] = tmpV.z;
+        spLife[i] = rnd(0.45, 1.1); spGrav[i] = grav;
+        spCol[i * 3] = col.r; spCol[i * 3 + 1] = col.g; spCol[i * 3 + 2] = col.b;
       }
     }
 
-    // ---------- post: bloom ----------
+    // local glows where hits land
+    const FL = 24;
+    const flares = Array.from({ length: FL }, () => {
+      const m = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: glowTex, color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 })));
+      m.visible = false; scene.add(m);
+      return { m, t: 0, life: 0.25, size: 1 };
+    });
+    let flI = 0;
+    function flare(at, col, size, life = 0.22, k = 1) {
+      const f = flares[flI = (flI + 1) % FL];
+      f.m.position.copy(at); f.m.material.color.copy(col).multiplyScalar(k); f.size = size; f.life = life; f.t = 0; f.m.visible = true;
+    }
+
+    // shock rings on the floor
+    const waves = Array.from({ length: 5 }, () => {
+      const m = new THREE.Mesh(keep(new THREE.RingGeometry(0.92, 1, 96)), keep(new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false })));
+      m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m);
+      return { m, t: 0, life: 1, r0: 1, r1: 10 };
+    });
+    let wvI = 0;
+    function wave(at, r0, r1, life, col, op = 0.9) {
+      const w = waves[wvI = (wvI + 1) % waves.length];
+      w.m.position.set(at.x, 0.05, at.z); w.r0 = r0; w.r1 = r1; w.life = life; w.t = 0; w.op = op;
+      w.m.material.color.copy(col); w.m.visible = true;
+    }
+
+    // telegraph ring on the raid and the attack beam
+    const RED = C('#ff4d5e', 1.6), CYAN = C('#3ee6ff', 1.6), AMBER = C('#f29d30', 1.6), WHITE = C('#d7f5e3', 1.4), GREEN = C('#39ff88', 1.6);
+    const tele = new THREE.Mesh(keep(new THREE.RingGeometry(0.86, 1, 96)), keep(new THREE.MeshBasicMaterial({ color: RED, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false })));
+    tele.rotation.x = -Math.PI / 2; tele.visible = false; scene.add(tele);
+    const teleFill = new THREE.Mesh(keep(new THREE.CircleGeometry(1, 64)), keep(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 0.5), side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })));
+    teleFill.rotation.x = -Math.PI / 2; teleFill.visible = false; scene.add(teleFill);
+    const beamMat = keep(new THREE.MeshBasicMaterial({ color: C('#ff6a3d', 1.8), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const beam = new THREE.Mesh(keep(new THREE.CylinderGeometry(1, 1, 1, 16, 1, true)), beamMat);
+    beam.visible = false; scene.add(beam);
+    const sweepMat = keep(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 1.6), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const sweepBar = new THREE.Mesh(keep(new THREE.BoxGeometry(0.5, 1.6, 4)), sweepMat);
+    sweepBar.visible = false; scene.add(sweepBar);
+
+    // the shield: a soft shell with ripples where hits land
+    const shieldMat = keep(new THREE.ShaderMaterial({
+      uniforms: { uCol: { value: C('#3ee6ff') }, uAmt: { value: 0 }, uTime: { value: 0 }, uRip: { value: [new THREE.Vector4(0, 0, 0, -9), new THREE.Vector4(0, 0, 0, -9), new THREE.Vector4(0, 0, 0, -9), new THREE.Vector4(0, 0, 0, -9)] } },
+      vertexShader: `varying vec3 vN; varying vec3 vW; varying vec3 vV;
+        void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz); gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `uniform vec3 uCol; uniform float uAmt; uniform float uTime; uniform vec4 uRip[4]; varying vec3 vN; varying vec3 vW; varying vec3 vV;
+        void main(){
+          float f = pow(1.0 - abs(dot(normalize(vN), vV)), 2.2);
+          float hex = smoothstep(0.92, 1.0, max(abs(sin(vW.x * 1.6 + vW.y * 0.9)), abs(sin(vW.y * 1.8 - vW.z * 0.7))));
+          float r = 0.0;
+          for (int i = 0; i < 4; i++) { float age = uTime - uRip[i].w; float d = distance(vW, uRip[i].xyz); r += smoothstep(0.6, 0.0, abs(d - age * 9.0)) * smoothstep(0.7, 0.0, age); }
+          float a = (f * 0.55 + hex * 0.12 + r * 0.6) * uAmt;
+          gl_FragColor = vec4(uCol * a, a);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    const shield = new THREE.Mesh(keep(new THREE.SphereGeometry(1, 40, 24)), shieldMat);
+    shield.visible = false; scene.add(shield);
+    let shieldF = null, shieldShow = 0, shieldBreakT = -1, ripI = 0;
+
+    // thrown words: glowing blocks that fly at you
+    const SHOTS = 10;
+    const shotMat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.7) }));
+    const shotGeo = keep(new THREE.OctahedronGeometry(0.7));
+    const shotWire = keep(new THREE.LineBasicMaterial({ color: C('#d7f5e3', 1.5) }));
+    const shotEdges = keep(new THREE.EdgesGeometry(keep(new THREE.BoxGeometry(1.4, 1.4, 1.4))));
+    const shots = Array.from({ length: SHOTS }, () => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(shotGeo, shotMat));
+      g.add(new THREE.LineSegments(shotEdges, shotWire));
+      g.visible = false; scene.add(g);
+      return { g, on: false, id: '', launch: 0, arrive: 0, from: new V(), to: new V(), ret: -1, retFrom: new V(), lane: 0, pos: new V() };
+    });
+
+    // adds: small block drones that feed the boss through a tether
+    const ADDS = 6, ADD_CUBES = 7;
+    const addMat = edgeMat(C('#f29d30'), C('#ffd08a'), 90);
+    const addCubes = new THREE.InstancedMesh(seededBox(ADDS * ADD_CUBES, i => (i % ADD_CUBES === 0 ? 1 : 0)), addMat, ADDS * ADD_CUBES);
+    addCubes.frustumCulled = false;
+    scene.add(addCubes);
+    const addCoreMat = keep(new THREE.MeshBasicMaterial({ color: C('#f29d30', 2) }));
+    const addCoreGeo = keep(new THREE.IcosahedronGeometry(0.7, 1));
+    const tethPos = new Float32Array(ADDS * 6), tethT = new Float32Array(ADDS * 2);
+    for (let i = 0; i < ADDS; i++) { tethT[i * 2] = 0; tethT[i * 2 + 1] = 1; }
+    const tethGeo = keep(new THREE.BufferGeometry());
+    tethGeo.setAttribute('position', new THREE.BufferAttribute(tethPos, 3));
+    tethGeo.setAttribute('aT', new THREE.BufferAttribute(tethT, 1));
+    const tethMat = keep(new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uCol: { value: C('#f29d30', 1.6) } },
+      vertexShader: 'attribute float aT; varying float vT; void main(){ vT = aT; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform float uTime; uniform vec3 uCol; varying float vT; void main(){ float p = 0.35 + 0.65 * smoothstep(0.6, 1.0, fract(vT * 6.0 - uTime * 1.6)); gl_FragColor = vec4(uCol * p, p); }',
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    const tethers = new THREE.LineSegments(tethGeo, tethMat);
+    tethers.frustumCulled = false;
+    scene.add(tethers);
+    const ADD_SLOTS = [new V(-11, 6, 3), new V(11, 7, 2), new V(-7.5, 14, 0), new V(7.5, 14.5, 0), new V(-13, 11, -2), new V(13, 11.5, -2)];
+    const adds = Array.from({ length: ADDS }, (_, i) => {
+      const m = new THREE.Mesh(addCoreGeo, addCoreMat); m.visible = false; scene.add(m);
+      return { m, on: false, id: '', spawn: 0, until: 0, slot: i, k: 0, dying: -1, pos: new V(), seed: rnd(0, 6) };
+    });
+
+    // ---------- post: bloom, then edge tint, vignette and glitch ----------
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.35, 0.32);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.35, 0.32);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
+    const post = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0.0004 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uTint; uniform float uTintAmt; uniform float uGlitch; uniform float uAb; varying vec2 vUv;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+        void main(){
+          vec2 uv = vUv;
+          float row = floor(uv.y * 30.0);
+          if (h(vec2(row, floor(uTime * 9.0))) < uGlitch * 0.3) uv.x += (h(vec2(row, uTime)) - 0.5) * 0.025 * uGlitch;
+          vec3 c = vec3(texture2D(tDiffuse, uv + vec2(uAb, 0.0)).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - vec2(uAb, 0.0)).b);
+          vec2 q = vUv - 0.5;
+          float edge = smoothstep(0.32, 0.72, length(q * vec2(1.0, 1.3)));
+          c = mix(c, uTint, edge * uTintAmt);
+          c *= 1.0 - smoothstep(0.45, 0.95, length(q)) * 0.45;
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
+    composer.addPass(post);
 
+    const camBase = new V(0, 5.5, 30), camLook = new V(0, 7.4, 0), lookCur = new V(0, 7.4, 0);
+    let baseFov = 40;
     function fit() {
       const w = host.clientWidth || 600, h = host.clientHeight || 400;
       renderer.setSize(w, h, false);
       composer.setSize(w, h);
+      bloom.resolution.set(w / 2, h / 2);
       camera.aspect = w / h;
-      // keep the whole boss in frame on narrow screens
+      const half = THREE.MathUtils.degToRad(baseFov / 2);
       // fit the boss's height on wide screens and its arm span on narrow ones
-      const dist = Math.max(27, 10.5 / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
-      camera.position.set(0, 7.2, dist);
-      camera.lookAt(target);
+      const dist = Math.max(28, 11.5 / (Math.tan(half) * camera.aspect));
+      camBase.set(0, 5.5, dist);
+      camera.position.copy(camBase);
+      camera.fov = baseFov;
+      camera.lookAt(camLook);
       camera.updateProjectionMatrix();
+      // the raid stands on the nearest strip of floor the camera can see
+      const pitch = Math.atan2(camLook.y - camBase.y, dist);
+      const down = half - pitch;
+      raidZ = clamp(dist - camBase.y / Math.tan(down) - 4.2, 3, 11);
+      placeRaid((dist - raidZ) * Math.tan(half) * camera.aspect);
     }
     const ro = new ResizeObserver(fit); ro.observe(host);
     let visible = true;
@@ -265,27 +514,43 @@ window.BossScene = (() => {
     fit();
 
     // ---------- state ----------
-    let frac = 1, stage = 0, dead = false, deadT = 0;
-    let shake = 0, pulse = 0, hitGlow = 0, lastFlash = 0;
+    let frac = 1, stage = 0, phase = 0, dead = false, deadT = 0, deadAt = 0;
+    let shake = 0, hitGlow = 0, stopUntil = 0, tintAmt = 0, glitch = 0;
+    let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
+    let roarAt = -9, charge = 0;
     const STAGE_AT = [0.75, 0.5, 0.25, 0.1];
-    const hurtCol = C('#ff4d5e', 2.2), coreGreen = C('#39ff88', 1.8), coreRed = C('#ff4d5e', 2), coreAmber = C('#f29d30', 1.8);
+    const coreGreen = C('#39ff88', 1.2), coreRed = C('#ff4d5e', 0.95), coreAmber = C('#f29d30', 1.0), coreWeak = C('#ffb347', 1.15);
+    const evs = [];            // attacks on the scene clock
+    const blocked = new Set();
+    const anchors = new Map();
+    const mv = { x: 0, z: 0, tx: 0, tz: 0, y: 0, face: 0, spin: 0, spinV: 0, next: 0, lungeAt: -9, blinkAt: -9 };
 
-    function knock(b, instant) {
-      if (b.fall || b.gone) return;
-      if (instant) { b.gone = true; return; }
-      b.fall = true;
-      const out = b.base.clone().sub(corePos).setY(0).normalize();
-      b.vel.set(out.x * rnd(2, 6), rnd(2, 7), Math.abs(out.z) * rnd(1, 5) + rnd(0, 3));
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
+    const v1 = new V(), v2 = new V(), v3 = new V();
+
+    function attachPos(b, out) { return out.copy(b.local).applyMatrix4(partG[b.part].matrixWorld); }
+    function knock(b, permanent, power = 1) {
+      if (b.mode >= 3) return;
+      if (b.mode === 0) attachPos(b, b.wp);
+      const out = v1.copy(b.wp).sub(root.position).setY(0).normalize();
+      if (permanent) {
+        b.mode = 3; b.grav = 1;
+        b.vel.set(out.x * rnd(2, 6), rnd(2, 7), out.z * rnd(1, 3) + rnd(-1, 1.5)).multiplyScalar(power);
+      } else {
+        if (b.mode !== 0) return;
+        b.mode = 1; b.life = rnd(0.5, 1.2); b.grav = rnd(0.15, 0.5);
+        b.vel.set(out.x * rnd(2, 5) + rnd(-1, 1), rnd(0.5, 4), out.z * 2 + rnd(1, 5)).multiplyScalar(power);
+      }
       b.spin.set(rnd(-6, 6), rnd(-6, 6), rnd(-6, 6));
     }
     function setFrac(f, instant) {
       frac = Math.max(0, f);
       const ns = STAGE_AT.filter(t => frac <= t).length;
-      for (const b of blocks) if (b.breakAt && frac <= b.breakAt) knock(b, instant);
-      if (ns > stage && !instant) {
-        burst(corePos.clone().add(rig.position), 60, 9);
-        shake = Math.max(shake, 0.8);
+      for (const b of blocks) if (b.breakAt && frac <= b.breakAt) {
+        if (instant) b.mode = 5;
+        else knock(b, true);
       }
+      if (ns > stage && !instant) shake = Math.max(shake, 0.8);
       stage = ns;
       rings.forEach((r, i) => {
         const breakAt = i === 2 ? 0.5 : i === 0 ? 0.1 : -1;
@@ -294,141 +559,751 @@ window.BossScene = (() => {
           else { r.userData.fall = true; r.userData.vel.set(rnd(-2, 2), -1, rnd(1, 3)); }
         }
       });
-      boxMat.uniforms.uHurtMix.value = [0, 0.15, 0.3, 0.5, 0.7][stage];
-      eyeMat.color.copy(stage >= 3 ? coreRed : C('#d7f5e3', 2));
-      coreMat.color.copy(stage >= 3 ? coreRed : stage >= 2 ? coreAmber : coreGreen);
-      glowMat.color.set(stage >= 3 ? '#ff4d5e' : stage >= 2 ? '#f29d30' : '#39ff88');
+      boxMat.uniforms.uHurtMix.value = [0, 0.12, 0.25, 0.42, 0.6][stage];
     }
-    function hit(n, you) {
-      if (dead) return;
-      const b = randomBlock();
-      const at = b ? b.base.clone().add(rig.position) : corePos.clone();
-      burst(at, you ? 10 + Math.min(14, n * 2) : 3, you ? 7 : 4);
-      if (!you) return;
-      shake = Math.max(shake, reduce ? 0 : Math.min(0.45, 0.12 + n * 0.03));
-      pulse = 1;
-      // a brighter core counts as a flash, so it happens at most 3 times a second
-      const now = performance.now();
-      if (!reduce && now - lastFlash > 340) { hitGlow = 1; lastFlash = now; }
+
+    // ---------- phases ----------
+    function setPhase(np, instant) {
+      if (np === phase && !instant) return;
+      const up = np > phase;
+      phase = np;
+      palFrom = palTo; palTo = np; palT = instant ? 1 : 0; palAt = nowS();
+      if (instant) applyPal(1);
+      pilHT = [0.35, 0.55, 0.75, 0.95, 1.15][np];
+      // a phase change ends the attacks in flight
+      evs.length = 0;
+      for (const s of shots) if (s.on && s.ret < 0) { s.on = false; s.g.visible = false; burst(s.pos, 10, 4, CYAN); }
+      for (const a of adds) if (a.on && a.dying < 0) a.dying = nowS();
+      tele.visible = teleFill.visible = false; beam.visible = false; sweepBar.visible = false; charge = 0;
+      if (!instant && up) {
+        roarAt = nowS();
+        shake = Math.max(shake, 0.9);
+        wave(root.position, 2, 30, 1.6, pal.a, 0.8);
+        scatter(70, 1.4);
+      }
     }
-    function randomBlock() {
-      for (let k = 0; k < 12; k++) { const b = blocks[Math.floor(Math.random() * N)]; if (!b.fall && !b.gone) return b; }
-      return null;
+    function applyPal(k) {
+      const A = PAL[palFrom], B = PAL[palTo];
+      pal.bg.copy(A.bg).lerp(B.bg, k); pal.a.copy(A.a).lerp(B.a, k); pal.b.copy(A.b).lerp(B.b, k); pal.c.copy(A.c).lerp(B.c, k);
+      pal.bloom = A.bloom + (B.bloom - A.bloom) * k; pal.wall = A.wall + (B.wall - A.wall) * k;
+      scene.background.copy(pal.bg); scene.fog.color.copy(pal.bg);
+      grid.material.color.copy(pal.b).multiplyScalar(0.9);
+      wallMat.color.copy(pal.a);
+      floorRings.forEach(r => r.material.color.copy(pal.a).multiplyScalar(1.1));
+      boxMat.uniforms.uColA.value.copy(pal.a); boxMat.uniforms.uColC.value.copy(pal.c);
+      pilMat.uniforms.uColA.value.copy(pal.b); pilMat.uniforms.uColC.value.copy(pal.a);
+      shardMat.color.copy(pal.a);
+      rings.forEach(r => { if (!r.userData.gone) r.material.color.copy(r.userData.alt ? pal.c : pal.a).multiplyScalar(1.8); });
+      bloom.strength = pal.bloom;
     }
+    function scatter(n, power) {
+      for (let k = 0; k < n; k++) { const b = blocks[Math.floor(Math.random() * N)]; if (b.mode === 0) knock(b, false, power); }
+    }
+
+    // ---------- attacks on the shared clock ----------
+    function event(ev, netNow) {
+      if (dead || evs.some(x => x.id === ev.id)) return;
+      const t = nowS(), off = ms => t + (ms - netNow) / 1000;
+      const x = { id: ev.id, type: ev.type, kind: ev.kind, s: off(ev.start), e: off(ev.end), started: false, hitDone: false };
+      if (ev.type === 'slam') { x.h = off(ev.hit); x.warned = 0; }
+      if (ev.type === 'volley') x.shots = ev.shots.map(s => ({ id: s.id, l: off(s.launch), a: off(s.arrive), lane: s.lane, fired: false }));
+      if (ev.type === 'adds') x.adds = ev.adds.map(a => ({ id: a.id, s: off(a.spawn), u: off(a.until), slot: a.slot, done: false }));
+      if (ev.type === 'shield') x.u = off(ev.up);
+      evs.push(x);
+    }
+    function freeShot() { return shots.find(s => !s.on) || shots[0]; }
+    function runEvents(t) {
+      for (let i = evs.length - 1; i >= 0; i--) {
+        const x = evs[i];
+        if (t > x.e + 0.5) { evs.splice(i, 1); continue; }
+        if (x.type === 'slam' && t >= x.h && !x.hitDone) { x.hitDone = true; impact(x); }
+        if (x.type === 'volley') for (const s of x.shots) if (!s.fired && t >= s.l) {
+          s.fired = true;
+          if (t >= s.a) continue;
+          const sh = freeShot();
+          sh.on = true; sh.id = s.id; sh.launch = s.l; sh.arrive = s.a; sh.ret = -1; sh.lane = s.lane;
+          partG[3].updateMatrixWorld();
+          sh.from.set(2.1, -6.8, 0.8).applyMatrix4(armRG.matrixWorld).add(v1.set((s.lane - 1.5) * 1.4, (s.lane % 2) * 1.6, 0));
+          sh.to.copy(raidPos[RAID]).add(v1.set((s.lane - 1.5) * 1.6, 1.6 + (s.lane % 2) * 0.8, 0.5));
+          sh.g.visible = true; sh.pos.copy(sh.from);
+          burst(sh.from, 8, 5, CYAN);
+        }
+        if (x.type === 'adds') for (const a of x.adds) if (!a.done && t >= a.s) {
+          a.done = true;
+          if (t >= a.u) continue;
+          const d = adds.find(z => !z.on) || adds[a.slot % ADDS];
+          d.on = true; d.id = a.id; d.spawn = a.s; d.until = a.u; d.slot = a.slot % ADDS; d.dying = -1; d.k = 0;
+          d.pos.copy(ADD_SLOTS[d.slot]).add(root.position);
+          d.m.visible = true;
+          v1.copy(CORE).add(root.position);
+          for (let k = 0; k < 4; k++) burst(v1, 4, 6, AMBER, 1, 2, v2.copy(d.pos).sub(v1).normalize());
+          scatter(6, 0.8);
+        }
+        if (x.type === 'shield' && !x.hitDone && t >= x.u) { x.hitDone = true; }
+      }
+    }
+    function current(t, type) { for (const x of evs) if (x.type === type && t >= x.s && t <= x.e) return x; return null; }
+    function impact(x) {
+      const you = blocked.has(x.id);
+      const at = raidPos[RAID];
+      shake = Math.max(shake, you ? 0.35 : 0.9);
+      if (x.kind === 'slam' || x.kind === 'lunge') wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
+      if (you) { burst(v1.copy(at).setY(2), 30, 9, CYAN, 1.2, 6); flare(v1, CYAN, 6, 0.3, canFlash() ? 1.2 : 0.6); }
+      else burst(v1.copy(at).setY(1), 24, 7, RED, 1, 9);
+      if (x.kind === 'beam') { beamUntil = nowS() + 0.55; }
+      if (x.kind === 'sweep') { sweepT0 = nowS(); }
+      stopUntil = Math.max(stopUntil, performance.now() + (you ? 80 : 50));
+    }
+    let beamUntil = 0, sweepT0 = -9;
+
+    // ---------- hits ----------
+    const hitQueue = [];
+    function pickBlock(region) {
+      for (let k = 0; k < 16; k++) {
+        const i = Math.floor(Math.random() * N), b = blocks[i];
+        if (b.mode !== 0) continue;
+        if (region && b.part !== 0 && Math.random() < 0.6) continue;
+        return i;
+      }
+      return -1;
+    }
+    function raiderIndex(id) { const n = /^sim(\d+)$/.exec(id || ''); return n ? +n[1] % RAID : Math.floor(Math.random() * RAID); }
+    function hit(h) {
+      if (dead) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
+      const you = h.you;
+      if (you && h.kind === 'return') {
+        // the returned word itself is the bolt, so this only lands a little later
+        hitQueue.push({ h, at: nowS() + 0.45 });
+        return;
+      }
+      const ri = you ? RAID : raiderIndex(h.id);
+      const b = bolts[boltI = (boltI + 1) % BOLTS];
+      b.on = true; b.h = h; b.t = 0;
+      b.from.copy(raidPos[ri]).setY(raidPos[ri].y + 0.4);
+      b.target = h.weak && !shieldF ? -2 : pickBlock(you);
+      b.shield = !!h.shield && shieldF !== null;
+      b.dur = you ? 0.17 : rnd(0.16, 0.24);
+      const big = h.crit || h.weak || h.kind === 'block';
+      b.w = you ? (big ? 0.34 : 0.22) : 0.055;
+      b.tail = you ? 0.4 : 0.16;
+      b.col.copy(you ? (big ? WHITE : youCol) : raidCol(ri)).multiplyScalar(you ? 2.2 : 1.05);
+      markGlow[ri] = 1;
+    }
+    function targetPos(b, out) {
+      if (b.target === -2 || b.target < 0) return out.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+      return attachPos(blocks[b.target], out);
+    }
+    function land(h, at, target) {
+      const you = h.you;
+      const big = h.crit || h.weak || h.kind === 'block' || h.kind === 'return';
+      if (h.shield) {
+        shieldMat.uniforms.uRip.value[ripI = (ripI + 1) % 4].set(at.x, at.y, at.z, shieldMat.uniforms.uTime.value);
+        burst(at, you ? 8 : 2, you ? 5 : 3, CYAN);
+      } else {
+        const col = you ? (big ? WHITE : GREEN) : raidCol(raiderIndex(h.id));
+        burst(at, you ? 10 + Math.min(20, h.dmg) : 3, you ? 8 : 4, col);
+        flare(at, col, you ? (big ? 5 : 3) : 1.1, you ? 0.22 : 0.14, you ? 1 : 0.45);
+        if (target >= 0) {
+          const bb = blocks[target];
+          if (you || Math.random() < 0.18) knock(bb, false, you ? 1 : 0.6);
+          if (you && h.dmg >= 10) for (let k = 0; k < Math.min(5, h.dmg / 8); k++) { const j = pickBlock(true); if (j >= 0) knock(blocks[j], false, 0.9); }
+        }
+        if (you) {
+          recoilV -= Math.min(0.9, 0.18 + h.dmg * 0.025) * (big ? 1.8 : 1);
+          recoilSide = clamp((at.x - root.position.x) / 6, -1, 1);
+          if (big && canFlash()) hitGlow = calm ? 0.5 : 1;
+          shake = Math.max(shake, Math.min(0.5, 0.08 + h.dmg * 0.012) * (big ? 1.6 : 1));
+          if (big) stopUntil = Math.max(stopUntil, performance.now() + (h.kind === 'block' ? 90 : 60));
+        } else recoilV -= 0.015;
+      }
+      if (opts.onImpact) {
+        v3.copy(at).project(camera);
+        const w = host.clientWidth, hh = host.clientHeight;
+        opts.onImpact(h, (v3.x * 0.5 + 0.5) * w, (-v3.y * 0.5 + 0.5) * hh);
+      }
+    }
+    function returnShot(id) {
+      const s = shots.find(x => x.on && x.id === id);
+      if (!s) return;
+      s.ret = nowS(); s.retFrom.copy(s.pos);
+      burst(s.pos, 14, 6, GREEN);
+    }
+    function killAdd(id, you) {
+      const a = adds.find(x => x.on && x.id === id);
+      if (!a || a.dying >= 0) return;
+      a.dying = nowS();
+      const from = you ? raidPos[RAID] : raidPos[Math.floor(Math.random() * RAID)];
+      const b = bolts[boltI = (boltI + 1) % BOLTS];
+      b.on = true; b.h = null; b.t = 0; b.from.copy(from); b.target = -3; b.addRef = a; b.dur = 0.18; b.w = you ? 0.3 : 0.14; b.tail = 0.4; b.col.copy(you ? GREEN : AMBER).multiplyScalar(2);
+      a.dying = nowS() + 0.18;
+    }
+    function block(id) {
+      blocked.add(id);
+      const at = v1.copy(raidPos[RAID]).setY(2.2);
+      burst(at, 26, 8, CYAN, 1.4, 4);
+      flare(at, CYAN, 7, 0.32, canFlash() ? 1.3 : 0.6);
+      wave(raidPos[RAID], 0.5, 6, 0.6, CYAN, 0.9);
+    }
+    function stagger() {
+      recoilV -= 2.6; headJerk = 1;
+      shake = Math.max(shake, 0.7);
+      stopUntil = Math.max(stopUntil, performance.now() + 120);
+      scatter(28, 1.2);
+      v1.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+      burst(v1, 40, 10, WHITE);
+      wave(root.position, 1, 14, 0.9, WHITE, 0.7);
+    }
+    function hurt() {
+      if (!canFlash()) return;
+      tintAmt = calm ? 0.22 : 0.32;
+      shake = Math.max(shake, 0.5);
+    }
+    function setShield(f) {
+      if (f === null || f === undefined) {
+        if (shieldF !== null && !dead) {
+          shieldBreakT = nowS();
+          v1.copy(root.position).setY(8);
+          burst(v1, 80, 14, CYAN, 1, 6);
+          wave(root.position, 4, 22, 1, CYAN, 0.9);
+          shake = Math.max(shake, 0.6);
+          if (canFlash()) hitGlow = calm ? 0.4 : 0.8;
+        }
+        shieldF = null;
+      } else {
+        if (shieldF === null) shieldShow = 0;
+        shieldF = f;
+      }
+    }
+    function setWeak(on) { weakOn = on; }
+
     function defeat(instant) {
       if (dead) return;
-      dead = true; deadT = instant ? 9 : 0;
-      for (const b of blocks) knock(b, instant);
-      rings.forEach(r => { if (instant) r.visible = false; else { r.userData.fall = true; r.userData.vel.set(rnd(-2, 2), -1, rnd(1, 3)); } });
-      if (!instant) burst(corePos.clone(), 120, 12);
-      eyes.forEach(e => { e.visible = false; });
+      dead = true; deadAt = nowS(); deadT = instant ? 9 : 0;
+      evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
+      for (const s of shots) { s.on = false; s.g.visible = false; }
+      for (const a of adds) if (a.on) a.dying = nowS();
+      shieldF = null;
+      if (instant) {
+        for (const b of blocks) { b.mode = 4; b.life = 99; b.wp.set(rnd(-12, 12), b.size / 2, rnd(-8, 2)); b.rot.set(0, rnd(0, 3), 0); }
+        rings.forEach(r => { r.visible = false; r.userData.gone = true; });
+        eyes.forEach(e => { e.visible = false; });
+        palFrom = palTo = 5; applyPal(1);
+      } else {
+        for (const b of blocks) b.delay = rnd(0, 1.3);
+      }
     }
     function revive() {
       dead = false; deadT = 0; frac = 1; stage = 0;
-      for (const b of blocks) { b.fall = false; b.gone = false; b.off.set(0, 0, 0); b.rot.set(0, 0, 0); b.vel.set(0, 0, 0); }
+      for (const b of blocks) { b.mode = 0; b.vel.set(0, 0, 0); b.rot.set(0, 0, 0); b.delay = 0; }
       rings.forEach(r => { r.visible = true; r.userData.fall = false; r.userData.gone = false; r.position.set(0, 0, 0); r.material.opacity = 0.85; });
       eyes.forEach(e => { e.visible = true; });
       core.scale.setScalar(1); glowMat.opacity = 0.5;
+      blocked.clear(); evs.length = 0; hitQueue.length = 0;
+      for (const s of shots) { s.on = false; s.g.visible = false; }
+      for (const a of adds) { a.on = false; a.m.visible = false; a.boomed = false; }
+      mv.x = mv.z = mv.tx = mv.tz = 0; roarAt = -9; shieldF = null; weakOn = false;
+      palFrom = palTo = phase = 0; applyPal(1); pilHT = 0.35;
       setFrac(1, true);
     }
-    const v3 = new THREE.Vector3();
-    function point() {
-      const b = stage >= 3 && Math.random() < 0.5 ? null : randomBlock();
-      v3.copy(b ? b.base : corePos);
-      rig.localToWorld(v3);
-      v3.project(camera);
+
+    const _s = { x: 0, y: 0 };
+    function screen(key, out = _s) {
+      let w = anchors.get(key);
+      if (!w) {
+        if (key.startsWith('shot:')) { const s = shots.find(x => x.on && x.id === key.slice(5)); if (s) w = s.pos; }
+        else if (key.startsWith('add:')) { const a = adds.find(x => x.on && x.id === key.slice(4)); if (a && a.dying < 0) w = a.pos; }
+      }
+      if (!w) return null;
+      v3.copy(w).project(camera);
       if (v3.z > 1) return null;
-      return { x: (v3.x * 0.5 + 0.5) * host.clientWidth, y: (-v3.y * 0.5 + 0.5) * host.clientHeight };
+      out.x = (v3.x * 0.5 + 0.5) * host.clientWidth; out.y = (-v3.y * 0.5 + 0.5) * host.clientHeight;
+      return out;
+    }
+    const anchorHead = new V(), anchorCore = new V();
+    anchors.set('head', anchorHead); anchors.set('core', anchorCore); anchors.set('you', raidPos[RAID]);
+
+    // ---------- movement: every phase moves differently ----------
+    const SPOTS = [[0, 0], [-4, 0], [4, 0], [-7, -2], [7, -2], [-3, 2], [3, 2], [0, -3]];
+    const MOVE = [
+      { every: 9, spots: 3, speed: 0.9, bob: 0.35, sway: 0.12, arms: 0.12 },
+      { every: 6, spots: 5, speed: 1.6, bob: 0.4, sway: 0.2, arms: 0.2, spin: 13 },
+      { every: 5, spots: 7, speed: 2.2, bob: 0.5, sway: 0.25, arms: 0.35, lunge: 8 },
+      { every: 4, spots: 8, speed: 3.2, bob: 0.45, sway: 0.3, arms: 0.45, blink: 4.5 },
+      { every: 0, spots: 8, speed: 4.5, bob: 0.6, sway: 0.4, arms: 0.7, blink: 6 },
+    ];
+    // pose targets, smoothed each frame
+    const pose = { hx: 0, hy: 0, hz: 0, headX: 0, headY: 0, lx: 0, lz: 0, rx: 0, ry: 0, rz: 0, y: 0 };
+    const cur = { ...pose };
+    function motion(t, at, dt) {
+      const M = MOVE[phase];
+      // pick a new spot now and then
+      if (M.every && t > mv.next) {
+        const s = SPOTS[Math.floor(Math.random() * M.spots)];
+        mv.tx = s[0]; mv.tz = s[1]; mv.next = t + M.every * rnd(0.7, 1.3) / Math.max(0.5, still);
+      }
+      if (!M.every) { mv.tx = Math.sin(at * 0.55) * 7; mv.tz = Math.cos(at * 0.55) * 2.2 - 1; }
+      if (M.blink && t - mv.blinkAt > M.blink && !reduce) {
+        mv.blinkAt = t;
+        const s = SPOTS[Math.floor(Math.random() * SPOTS.length)];
+        mv.tx = s[0]; mv.tz = s[1];
+        scatter(18, 0.9);
+      }
+      if (M.spin && t - mv.spin > M.spin && !reduce) mv.spin = t;
+      if (M.lunge && t - mv.lungeAt > M.lunge && !reduce) mv.lungeAt = t;
+      // idle pose
+      const sw = M.sway * still, ar = M.arms * still;
+      pose.y = Math.sin(at * 0.9) * M.bob * still + 0.4;
+      pose.hx = Math.sin(at * 0.7) * 0.03 * still;
+      pose.hy = Math.sin(at * 0.3) * sw;
+      pose.hz = Math.sin(at * 0.45) * sw * 0.3;
+      pose.lx = Math.sin(at * 0.8 + 1) * ar * 0.6; pose.lz = -0.1 - Math.abs(Math.sin(at * 0.6)) * ar;
+      pose.rx = Math.sin(at * 0.8) * ar * 0.6; pose.ry = 0; pose.rz = 0.1 + Math.abs(Math.sin(at * 0.6 + 2)) * ar;
+      // the head follows the camera with a little lag and looks around now and then
+      pose.headY = clamp(Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z) - root.rotation.y, -0.7, 0.7) + Math.sin(at * 0.37) * 0.15 * still;
+      pose.headX = -0.08 + Math.sin(at * 0.5) * 0.05 * still;
+      let tx = mv.tx, tz = mv.tz;
+      // phase 3: feints toward the raid
+      if (M.lunge) {
+        const u = (t - mv.lungeAt);
+        if (u < 1.6) { const k = u < 0.5 ? -easeIn(u / 0.5) : u < 0.75 ? -1 + 2.4 * ease((u - 0.5) / 0.25) : 1.4 * (1 - smooth((u - 0.75) / 0.85)); tz += k * 2.5 * still; pose.hx += k * 0.15; }
+      }
+      // attack poses on the shared clock
+      const sl = current(t, 'slam');
+      if (sl) {
+        const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1), after = t - sl.h;
+        const rec = after > 0 ? 1 - smooth(after / 1.2) : 1;
+        if (sl.kind === 'slam') {
+          if (after < 0) { pose.lz = -0.3 - 2.3 * ease(w); pose.rz = 0.3 + 2.3 * ease(w); pose.lx = pose.rx = 0.4 * w; pose.y += 2 * ease(w); pose.hx = -0.25 * w; pose.headX = -0.3 * w; }
+          else { const d = ease(after / 0.14) * rec; pose.lz = -0.3 * d - 2.6 * (1 - d) * rec; pose.rz = 0.3 * d + 2.6 * (1 - d) * rec; pose.lx = pose.rx = -1.3 * d; pose.hx = 0.35 * d; pose.y -= 1.2 * d; }
+          tx *= 1 - w * 0.6; tz = tz * (1 - w) + 1.5 * w;
+        } else if (sl.kind === 'sweep') {
+          if (after < 0) { pose.rz = 1.5 * ease(w); pose.hy = -0.6 * ease(w); pose.rx = 0.3 * w; pose.headY -= 0.3 * w; }
+          else { const d = ease(after / 0.3); pose.rz = 1.5 * (1 - d * 0.4) * rec; pose.hy = (-0.6 + 1.5 * d) * rec; pose.rx = -1.3 * d * rec; }
+        } else if (sl.kind === 'lunge') {
+          if (after < 0) { tz = tz * (1 - w) - 4 * ease(w); pose.hx = -0.3 * w; pose.lx = pose.rx = 0.8 * w; pose.y -= 0.8 * w; }
+          else { const d = ease(after / 0.18), lz = -4 + 10 * d; tz = mv.tz + (lz - mv.tz) * rec; pose.hx = 0.5 * d * rec; pose.lx = pose.rx = -1.4 * d * rec; }
+          tx *= 1 - w;
+        } else if (sl.kind === 'beam') {
+          if (after < 0) { pose.lz = -1.6 * ease(w); pose.rz = 1.6 * ease(w); pose.headX = -0.25 * w; pose.y += 1 * w; }
+          else { pose.lz = -1.6 * rec; pose.rz = 1.6 * rec; pose.hx = -0.2 * rec; }
+          tx *= 1 - w * 0.8;
+        }
+        charge = after < 0 ? (sl.kind === 'beam' ? w : w * 0.5) : 0;
+      } else charge = Math.max(0, charge - dt * 2);
+      const vo = current(t, 'volley');
+      if (vo) { const w = clamp((t - vo.s) / 1.2, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); pose.rx = -1.2 * w; pose.rz = 0.6 * w; }
+      const ad = current(t, 'adds');
+      if (ad && t - ad.s < 2.4) { const w = Math.sin(clamp((t - ad.s) / 2.4, 0, 1) * Math.PI); pose.lz = -2 * w; pose.rz = 2 * w; pose.headX = -0.3 * w; }
+      const shx = current(t, 'shield');
+      if (shx) { const w = Math.sin(clamp((t - shx.s) / 2.4, 0, 1) * Math.PI); pose.lx = pose.rx = -1.0 * w; pose.lz = 0.7 * w; pose.rz = -0.7 * w; pose.y -= 0.8 * w; }
+      // roar after a phase change
+      const ru = t - roarAt;
+      if (ru < 2.6) {
+        const w = Math.sin(clamp(ru / 2.6, 0, 1) * Math.PI);
+        pose.headX = -0.55 * w; pose.hx = -0.3 * w; pose.lz = -2.2 * w; pose.rz = 2.2 * w; pose.lx = pose.rx = 0.3 * w;
+        tx *= 1 - w; tz *= 1 - w;
+      }
+      // move
+      const rate = (0.6 + M.speed * 0.5) * (reduce ? 0.5 : 1);
+      const strike = sl && sl.kind === 'lunge' && t > sl.h && t < sl.h + 0.4;
+      mv.x += (tx - mv.x) * Math.min(1, dt * rate);
+      mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate));
+      // phase 2: a full turn now and then
+      const su = t - mv.spin;
+      mv.face = su < 1.3 && M.spin ? smooth(su / 1.3) * Math.PI * 2 : 0;
+      if (phase >= 4 && !reduce) { pose.lx += Math.sin(at * 3.1) * 0.3; pose.rx += Math.sin(at * 2.7 + 1) * 0.3; pose.headY += Math.sin(at * 5) * 0.05; }
     }
 
     // ---------- loop ----------
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
-    const clock = new THREE.Clock();
-    let t = 0;
+    let at = 0, last = nowS();
     renderer.setAnimationLoop(() => {
-      const dt = Math.min(0.05, clock.getDelta());
+      const t = nowS();
+      let dt = Math.min(0.05, t - last); last = t;
       if (!visible || document.hidden) return;
-      t += dt;
-      const still = reduce ? 0 : 1;
-      boxMat.uniforms.uTime.value = t * still;
-      codeTex.offset.y -= dt * 0.06 * still;
-      // body sway, bob and shake
-      shake = Math.max(0, shake - dt * 2.2);
-      rig.position.set((Math.random() - 0.5) * shake, Math.sin(t * 0.8) * 0.25 * still, 0);
-      rig.rotation.y = Math.sin(t * 0.3) * 0.12 * still;
-      const glitchRate = [0.01, 0.03, 0.06, 0.12, 0.22][stage] * still;
+      // hit-stop slows everything but the shared clock for a few frames
+      const adt = performance.now() < stopUntil ? dt * 0.08 : dt;
+      at += adt;
+      runEvents(t);
+      for (let i = hitQueue.length - 1; i >= 0; i--) if (t >= hitQueue[i].at) {
+        const { h } = hitQueue[i]; hitQueue.splice(i, 1);
+        land(h, v2.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld).add(v1.set(rnd(-1, 1), rnd(-1, 1), 1)), -2);
+      }
+
+      // palette
+      // the arena shifts on the wall clock so a slow frame rate cannot stall it
+      if (palT < 1) { palT = Math.min(1, (t - palAt) / 1.6); applyPal(smooth(palT)); }
+      boxMat.uniforms.uTime.value = at * still;
+      pilMat.uniforms.uTime.value = at * still;
+      addMat.uniforms.uTime.value = at * still;
+      codeTex.offset.y -= adt * pal.wall * (reduce ? 0.3 : 1);
+      tethMat.uniforms.uTime.value = reduce ? 0 : at;
+      shieldMat.uniforms.uTime.value = at;
+
+      // pose and movement
+      if (!dead) motion(t, at, adt);
+      const k = Math.min(1, adt * 7);
+      for (const key in pose) cur[key] += (pose[key] - cur[key]) * k;
+      recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt;
+      recoil = clamp(recoil, -0.5, 0.3);
+      headJerk = Math.max(0, headJerk - adt * 2.5);
+      root.position.set(mv.x, cur.y, mv.z);
+      root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
+      hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3);
+      headG.rotation.set(cur.headX + recoil * 0.6 - headJerk * 0.4, cur.headY, Math.sin(at * 13) * headJerk * 0.3 * still);
+      armLG.rotation.set(cur.lx, 0, cur.lz);
+      armRG.rotation.set(cur.rx, cur.ry, cur.rz);
+      root.updateMatrixWorld(true);
+      partG.forEach((g, i) => g.getWorldQuaternion(partQ[i]));
+      anchorHead.set(0, 4.6, 0).applyMatrix4(headG.matrixWorld);
+      anchorCore.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+
+      // blocks
+      const glitchRate = (phase >= 4 ? 0.22 : [0.01, 0.03, 0.06, 0.12, 0.22][stage]) * (reduce ? 0 : 1);
+      if (dead) deadT += adt;
       for (let i = 0; i < N; i++) {
         const b = blocks[i];
-        if (b.gone) { m4.makeScale(0, 0, 0); body.setMatrixAt(i, m4); continue; }
-        if (b.fall) {
-          b.vel.y -= 18 * dt;
-          b.off.addScaledVector(b.vel, dt);
-          b.rot.x += b.spin.x * dt; b.rot.y += b.spin.y * dt; b.rot.z += b.spin.z * dt;
-          if (b.base.y + b.off.y < -1) { b.gone = true; }
-        } else if (glitchRate) {
-          if (b.glitch > 0) b.glitch -= dt;
-          else if (Math.random() < glitchRate * dt * 4) { b.glitch = rnd(0.06, 0.18); b.gx = rnd(-1, 1) * (0.3 + stage * 0.25); }
+        if (dead && b.mode === 0 && deadT > b.delay) knock(b, true, deadT > 1.3 ? 2.2 : 1);
+        if (b.mode === 0) {
+          attachPos(b, p);
+          if (glitchRate) {
+            if (b.jt > 0) { b.jt -= adt; p.x += b.jx; }
+            else if (Math.random() < glitchRate * adt * 4) { b.jt = rnd(0.06, 0.18); b.jx = rnd(-1, 1) * (0.3 + stage * 0.2); }
+          }
+          sc.setScalar(b.size);
+          m4.compose(p, partQ[b.part], sc);
+        } else {
+          if (b.mode === 1 || b.mode === 3) {
+            b.vel.y -= 18 * b.grav * adt;
+            b.wp.addScaledVector(b.vel, adt);
+            b.rot.x += b.spin.x * adt; b.rot.y += b.spin.y * adt; b.rot.z += b.spin.z * adt;
+            if (b.mode === 1) { b.life -= adt; if (b.life <= 0) { b.mode = 2; b.ret = 0; b.from.copy(b.wp); } }
+            if (b.mode === 3 && b.wp.y < b.size / 2) { b.wp.y = b.size / 2; b.mode = 4; b.rot.x = b.rot.z = 0; b.life = dead ? rnd(5, 9) : rnd(2.5, 4.5); }
+            if (b.mode === 1 && b.wp.y < b.size / 2) { b.wp.y = b.size / 2; b.vel.y = Math.abs(b.vel.y) * 0.3; }
+          }
+          if (b.mode === 2) {
+            // flying back into place: the boss reforms
+            b.ret += adt / 0.45;
+            attachPos(b, p);
+            const u = ease(b.ret);
+            b.wp.lerpVectors(b.from, p, u);
+            b.rot.x *= 0.85; b.rot.y *= 0.85; b.rot.z *= 0.85;
+            if (b.ret >= 1) { b.mode = dead ? 3 : 0; }
+          }
+          // debris on the floor sinks away so the raid stays clear
+          if (b.mode === 4) { b.life -= adt; if (b.life < 0) b.wp.y -= adt * 0.8; if (b.wp.y < -1) b.mode = 5; }
+          if (b.mode === 5) { m4.makeScale(0, 0, 0); body.setMatrixAt(i, m4); continue; }
+          q.setFromEuler(b.rot);
+          sc.setScalar(b.size * (b.mode === 4 ? 0.85 : 1));
+          m4.compose(b.wp, q, sc);
         }
-        p.copy(b.base).add(b.off);
-        if (!b.fall && b.glitch > 0) p.x += b.gx;
-        q.setFromEuler(b.rot);
-        const s = b.size * (b.fall ? Math.max(0.2, 1 - b.off.length() * 0.02) : 1);
-        sc.set(s, s, s);
-        m4.compose(p, q, sc);
         body.setMatrixAt(i, m4);
       }
       body.instanceMatrix.needsUpdate = true;
-      // core
-      pulse = Math.max(0, pulse - dt * 4);
-      hitGlow = Math.max(0, hitGlow - dt * 6);
+
+      // core, eyes, rings, weak point
+      hitGlow = Math.max(0, hitGlow - adt * 5);
       boxMat.uniforms.uHit.value = hitGlow;
-      const crit = stage >= 4 ? 0.08 * Math.sin(t * 2 * Math.PI * 2) * still : 0;   // 2 pulses a second at under 10% HP
+      weakK += ((weakOn && !dead ? 1 : 0) - weakK) * Math.min(1, dt * 6);
+      const critPulse = stage >= 4 && !calm ? 0.06 * Math.sin(at * 2 * Math.PI * 1.5) * still : 0;
       if (dead) {
-        deadT += dt;
-        const k = Math.max(0, 1 - deadT / 2.2);
-        core.scale.setScalar(Math.max(0.001, k));
-        glowMat.opacity = 0.5 * k;
+        const kk = Math.max(0, 1 - deadT / 1.6);
+        core.scale.setScalar(Math.max(0.001, kk * (1 + Math.sin(deadT * 20) * 0.05 * pulseK)));
+        glowMat.opacity = 0.6 * kk;
+        if (deadT > 1.35 && !deadBoom) {
+          deadBoom = true;
+          v1.copy(anchorCore);
+          burst(v1, 260, 18, pal.a, 1.2, 4);
+          burst(v1, 120, 10, WHITE, 1, 2);
+          wave(root.position, 1, 45, 2.4, pal.a, 1);
+          wave(root.position, 1, 30, 1.6, WHITE, 0.6);
+          shake = Math.max(shake, 1.2);
+          if (canFlash()) flare(v1, pal.a, 18, 0.6, 1.4);
+          eyes.forEach(e => { e.visible = false; });
+          rings.forEach(r => { if (!r.userData.gone) { r.userData.fall = true; r.userData.vel.set(rnd(-3, 3), rnd(1, 4), rnd(1, 4)); } });
+        }
+        if (deadT > 1.6 && palTo !== 5) { palFrom = palTo; palTo = 5; palT = 0; palAt = t; }
       } else {
-        core.scale.setScalar(1 + (0.05 * Math.sin(t * 3) * still) + pulse * 0.18 + crit);
-        glowMat.opacity = 0.45 + hitGlow * 0.3;
+        deadBoom = false;
+        core.scale.setScalar(1 + (0.05 * Math.sin(at * 3) * pulseK) + critPulse + charge * 0.35);
+        glowMat.opacity = 0.3 + hitGlow * 0.2 + charge * 0.35 + weakK * 0.15;
+        glow.scale.setScalar(6.5 + charge * 5 + weakK * 1.5);
       }
-      coreMesh.rotation.y += dt * 0.6 * still;
-      cage.rotation.x -= dt * 0.35 * still; cage.rotation.y += dt * 0.5 * still;
+      const coreBase = stage >= 3 ? coreRed : stage >= 2 ? coreAmber : coreGreen;
+      coreMat.color.copy(coreBase).lerp(coreWeak, Math.max(weakK, charge * 0.7));
+      glowMat.color.copy(coreMat.color).multiplyScalar(0.45);
+      eyeMat.color.copy(stage >= 3 || phase >= 3 ? coreRed : WHITE).lerp(coreWeak, charge);
+      retMat.opacity = weakK * 0.95;
+      reticle.visible = weakK > 0.02;
+      reticle.quaternion.copy(partQ[0]).invert().multiply(camera.quaternion);
+      reticle.rotateZ(at * 0.8 * still);
+      reticle.scale.setScalar(1 + (1 - weakK) * 0.6);
+      coreMesh.rotation.y += adt * 0.6 * still;
+      cage.rotation.x -= adt * 0.35 * still; cage.rotation.y += adt * (0.5 + phase * 0.2) * still;
       rings.forEach(r => {
         const u = r.userData;
         if (u.gone) return;
-        r.rotation.x += u.spin.x * dt * still; r.rotation.y += u.spin.y * dt * still;
+        const sp = 1 + phase * 0.35;
+        r.rotation.x += u.spin.x * adt * still * sp; r.rotation.y += u.spin.y * adt * still * sp;
         if (u.fall) {
-          u.vel.y -= 12 * dt; r.position.addScaledVector(u.vel, dt);
-          r.material.opacity = Math.max(0, r.material.opacity - dt * 0.5);
+          u.vel.y -= 12 * adt; r.position.addScaledVector(u.vel, adt);
+          r.material.opacity = Math.max(0, r.material.opacity - adt * 0.5);
           if (r.material.opacity <= 0) { u.gone = true; r.visible = false; }
         }
       });
-      eyes.forEach(e => { e.scale.y = stage >= 4 && Math.sin(t * 9) > 0.7 && still ? 0.3 : 1; });
+      eyes.forEach(e => { e.scale.y = phase >= 4 && !calm && Math.sin(at * 3) > 0.92 && still === 1 ? 0.3 : 1; });
+
+      // telegraph, beam and sweep
+      const sl = dead ? null : current(t, 'slam');
+      if (sl && t < sl.h) {
+        const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1);
+        tele.visible = teleFill.visible = true;
+        const r = 6.5 - 4.2 * w;
+        tele.position.set(raidPos[RAID].x, 0.06, raidPos[RAID].z); tele.scale.setScalar(r);
+        teleFill.position.copy(tele.position); teleFill.scale.setScalar(r * 0.98);
+        tele.material.opacity = 0.35 + 0.55 * w;
+        teleFill.material.opacity = 0.08 + 0.22 * w;
+        tele.material.color.copy(blocked.has(sl.id) ? CYAN : RED);
+        teleFill.material.color.copy(blocked.has(sl.id) ? CYAN : RED).multiplyScalar(0.4);
+        if (sl.kind === 'beam') {
+          beam.visible = true;
+          setBeam(anchorCore, raidPos[RAID], 0.06 + 0.05 * w);
+          beamMat.opacity = 0.25 + 0.35 * w;
+        }
+      } else { tele.visible = teleFill.visible = false; }
+      if (t < beamUntil) {
+        beam.visible = true;
+        const u = (beamUntil - t) / 0.55;
+        setBeam(anchorCore, raidPos[RAID], 0.9 * u + 0.2);
+        beamMat.opacity = 0.9 * u;
+      } else if (!(sl && sl.kind === 'beam' && t < sl.h)) beam.visible = false;
+      const su = t - sweepT0;
+      if (su < 0.45) {
+        sweepBar.visible = true;
+        sweepBar.position.set(16 - 32 * ease(su / 0.35), 0.8, raidPos[RAID].z);
+        sweepMat.opacity = 0.85 * (1 - su / 0.45);
+      } else sweepBar.visible = false;
+
+      // shield
+      if (shieldF !== null) {
+        shieldShow = Math.min(1, shieldShow + dt * 1.6);
+        shield.visible = true;
+        shield.position.copy(root.position).setY(8.4);
+        const g = ease(shieldShow);
+        shield.scale.set(11.5 * g, 10.5 * g, 7.5 * g);
+        shieldMat.uniforms.uAmt.value = 0.35 + 0.65 * shieldF;
+        shieldMat.uniforms.uCol.value.copy(CYAN);
+      } else if (t - shieldBreakT < 0.5) {
+        const u = (t - shieldBreakT) / 0.5;
+        shield.visible = true;
+        shield.scale.set(11.5 * (1 + u * 0.4), 10.5 * (1 + u * 0.4), 7.5 * (1 + u * 0.4));
+        shieldMat.uniforms.uAmt.value = 1 - u;
+      } else shield.visible = false;
+
+      // shots
+      for (const s of shots) {
+        if (!s.on) continue;
+        if (s.ret >= 0) {
+          const u = (t - s.ret) / 0.45;
+          s.pos.lerpVectors(s.retFrom, anchorCore, ease(u));
+          if (u >= 1) {
+            s.on = false; s.g.visible = false;
+            burst(anchorCore, 24, 9, GREEN); flare(anchorCore, GREEN, 5, 0.25, 1);
+            recoilV -= 0.7;
+          }
+        } else {
+          const u = (t - s.launch) / (s.arrive - s.launch);
+          if (u >= 1) {
+            s.on = false; s.g.visible = false;
+            burst(s.to, 16, 6, RED);
+            continue;
+          }
+          s.pos.lerpVectors(s.from, s.to, u);
+          s.pos.y += Math.sin(u * Math.PI) * 4;
+          s.pos.x += Math.sin(u * Math.PI * 2 + s.lane) * 1.2 * still;
+        }
+        s.g.position.copy(s.pos);
+        s.g.rotation.set(at * 2 * still, at * 3 * still, 0);
+        const sz = 0.8 + 0.6 * clamp((t - s.launch) / Math.max(0.1, s.arrive - s.launch), 0, 1);
+        s.g.scale.setScalar(sz);
+        if (Math.random() < adt * 20) burst(s.pos, 1, 1, s.ret >= 0 ? GREEN : CYAN, 0.2, 0);
+      }
+
+      // adds
+      let ti = 0;
+      for (let i = 0; i < ADDS; i++) {
+        const a = adds[i];
+        for (let c = 0; c < ADD_CUBES; c++) { m4.makeScale(0, 0, 0); addCubes.setMatrixAt(i * ADD_CUBES + c, m4); }
+        if (!a.on) continue;
+        if (t >= a.until && a.dying < 0) a.dying = t;
+        let k2 = clamp((t - a.spawn) / 0.5, 0, 1);
+        if (a.dying >= 0 && t >= a.dying) {
+          const u = (t - a.dying) / 0.35;
+          if (u >= 0 && !a.boomed) { a.boomed = true; burst(a.pos, 34, 9, AMBER); flare(a.pos, AMBER, 4, 0.25, 0.9); }
+          k2 *= Math.max(0, 1 - u);
+          if (u >= 1) { a.on = false; a.boomed = false; a.m.visible = false; continue; }
+        }
+        v1.copy(ADD_SLOTS[a.slot]).add(root.position);
+        v1.y += Math.sin(at * 1.4 + a.seed) * 0.6 * still;
+        a.pos.lerp(v1, Math.min(1, adt * 3));
+        a.m.position.copy(a.pos); a.m.scale.setScalar(k2); a.m.rotation.y += adt * 2 * still;
+        for (let c = 0; c < ADD_CUBES; c++) {
+          const ang = at * 1.6 * (still || 0.3) + c * Math.PI * 2 / ADD_CUBES + a.seed;
+          p.set(Math.cos(ang) * 1.5, Math.sin(ang * 2) * 0.5, Math.sin(ang) * 1.5).multiplyScalar(k2).add(a.pos);
+          e3.set(ang, ang * 0.5, 0); q.setFromEuler(e3); sc.setScalar(0.55 * k2);
+          m4.compose(p, q, sc); addCubes.setMatrixAt(i * ADD_CUBES + c, m4);
+        }
+        if (a.dying < 0 && k2 > 0.5) {
+          tethPos[ti * 6] = a.pos.x; tethPos[ti * 6 + 1] = a.pos.y; tethPos[ti * 6 + 2] = a.pos.z;
+          tethPos[ti * 6 + 3] = anchorCore.x; tethPos[ti * 6 + 4] = anchorCore.y; tethPos[ti * 6 + 5] = anchorCore.z;
+          ti++;
+        }
+      }
+      for (let i = ti; i < ADDS; i++) for (let j = 0; j < 6; j++) tethPos[i * 6 + j] = 0;
+      tethGeo.attributes.position.needsUpdate = true;
+      tethGeo.setDrawRange(0, ti * 2);
+      addCubes.instanceMatrix.needsUpdate = true;
+
+      // bolts
+      for (let i = 0; i < BOLTS; i++) {
+        const b = bolts[i];
+        if (!b.on) { m4.makeScale(0, 0, 0); boltMesh.setMatrixAt(i, m4); continue; }
+        b.t += dt / b.dur;
+        if (b.target === -3) v2.copy(b.addRef.pos);
+        else targetPos(b, v2);
+        if (b.shield && b.h) {
+          // stop on the shell, along the line to the target
+          v1.copy(v2).sub(b.from);
+          const len = v1.length(); v1.divideScalar(len);
+          const c0 = shield.position;
+          const sx = 11.5, sy = 10.5, sz = 7.5;
+          let lo = 0, hi = len;
+          for (let it = 0; it < 12; it++) {
+            const m = (lo + hi) / 2;
+            p.copy(b.from).addScaledVector(v1, m).sub(c0);
+            ((p.x / sx) ** 2 + (p.y / sy) ** 2 + (p.z / sz) ** 2 > 1) ? (lo = m) : (hi = m);
+          }
+          v2.copy(b.from).addScaledVector(v1, lo);
+        }
+        if (b.t >= 1) {
+          b.on = false;
+          if (b.h) land(b.h, v2, b.target);
+          else if (b.target === -3) { burst(v2, 20, 8, b.col); }
+          m4.makeScale(0, 0, 0); boltMesh.setMatrixAt(i, m4);
+          continue;
+        }
+        const hd = ease(b.t), tl = ease(Math.max(0, b.t - b.tail));
+        v1.lerpVectors(b.from, v2, hd); p.lerpVectors(b.from, v2, tl);
+        const len = Math.max(0.05, v1.distanceTo(p));
+        v3.copy(v1).sub(p).normalize();
+        q.setFromUnitVectors(v1.set(0, 0, 1), v3);
+        p.add(v1.copy(v3).multiplyScalar(len / 2));
+        sc.set(b.w, b.w, len);
+        m4.compose(p, q, sc);
+        boltMesh.setMatrixAt(i, m4);
+        boltMesh.setColorAt(i, b.col);
+      }
+      boltMesh.instanceMatrix.needsUpdate = true;
+      if (boltMesh.instanceColor) boltMesh.instanceColor.needsUpdate = true;
+
+      // raid markers
+      for (let i = 0; i <= RAID; i++) {
+        const you = i === RAID;
+        markGlow[i] = Math.max(0, markGlow[i] - adt * 4);
+        p.copy(raidPos[i]); p.y += Math.sin(at * 2 + i) * 0.12 * still;
+        e3.set(0, at * (you ? 1.5 : 0.8) * still + i, 0); q.setFromEuler(e3);
+        sc.setScalar(you ? 1.5 : 0.9 + markGlow[i] * 0.3);
+        m4.compose(p, q, sc); marks.setMatrixAt(i, m4);
+        if (you) tmpCol.copy(youCol).multiplyScalar(1.8);
+        else tmpCol.copy(raidCol(i)).multiplyScalar(0.35 + markGlow[i] * 0.9);
+        marks.setColorAt(i, tmpCol);
+      }
+      marks.instanceMatrix.needsUpdate = true;
+      if (marks.instanceColor) marks.instanceColor.needsUpdate = true;
+      youRing.rotation.z = at * still;
+
+      // pillars
+      pilH += (pilHT - pilH) * Math.min(1, adt * 0.8);
+      for (let i = 0; i < PIL; i++) {
+        const d = pilData[i];
+        const h = d.h * pilH * (0.75 + 0.25 * Math.sin(at * d.s + i) * pulseK);
+        p.set(d.x, h / 2, d.z); q.identity(); sc.set(d.w, h, d.w);
+        m4.compose(p, q, sc); pillars.setMatrixAt(i, m4);
+      }
+      pillars.instanceMatrix.needsUpdate = true;
+
       // shards
       for (let i = 0; i < SH; i++) {
         const d = shardData[i];
-        d.a += d.s * dt * still * (dead ? 0.2 : 1);
-        const y = dead ? Math.max(0.3, d.y - deadT * 3) : d.y + Math.sin(t * d.k + i) * 0.4 * still;
-        p.set(Math.cos(d.a) * d.r, y, Math.sin(d.a) * d.r * 0.6);
-        q.setFromEuler(new THREE.Euler(t * d.k * still, t * still, 0));
+        d.a += d.s * adt * still * (dead ? 0.2 : 1 + phase * 0.3);
+        const y = dead ? Math.max(0.3, d.y - deadT * 3) : d.y + Math.sin(at * d.k + i) * 0.4 * still;
+        p.set(Math.cos(d.a) * d.r + root.position.x * 0.5, y, Math.sin(d.a) * d.r * 0.6);
+        e3.set(at * d.k * still, at * still, 0); q.setFromEuler(e3);
         sc.setScalar(d.k * 0.55);
         m4.compose(p, q, sc);
         shards.setMatrixAt(i, m4);
       }
       shards.instanceMatrix.needsUpdate = true;
-      // sparks
+
+      // sparks, flares, waves
       for (let i = 0; i < SP; i++) {
         if (spLife[i] <= 0) continue;
-        spLife[i] -= dt;
-        spVel[i * 3 + 1] -= 9 * dt;
-        spPos[i * 3] += spVel[i * 3] * dt; spPos[i * 3 + 1] += spVel[i * 3 + 1] * dt; spPos[i * 3 + 2] += spVel[i * 3 + 2] * dt;
+        spLife[i] -= adt;
+        spVel[i * 3 + 1] -= spGrav[i] * adt;
+        spPos[i * 3] += spVel[i * 3] * adt; spPos[i * 3 + 1] += spVel[i * 3 + 1] * adt; spPos[i * 3 + 2] += spVel[i * 3 + 2] * adt;
         if (spLife[i] <= 0) spPos[i * 3 + 1] = -100;
       }
       spGeo.attributes.position.needsUpdate = true;
-      if (stage >= 4 && !dead && Math.random() < dt * 6) burst(corePos.clone().add(rig.position), 2, 5);
+      spGeo.attributes.color.needsUpdate = true;
+      for (const f of flares) {
+        if (!f.m.visible) continue;
+        f.t += adt;
+        const u = f.t / f.life;
+        if (u >= 1) { f.m.visible = false; continue; }
+        f.m.scale.setScalar(f.size * (0.6 + 0.6 * ease(u)));
+        f.m.material.opacity = (1 - u) * 0.9;
+      }
+      for (const w of waves) {
+        if (!w.m.visible) continue;
+        w.t += adt;
+        const u = w.t / w.life;
+        if (u >= 1) { w.m.visible = false; continue; }
+        w.m.scale.setScalar(w.r0 + (w.r1 - w.r0) * ease(u));
+        w.m.material.opacity = (1 - u) * w.op;
+      }
+      if (phase >= 4 && !dead && Math.random() < adt * 8) burst(v1.set(rnd(-20, 20), 0.2, rnd(-10, 6)), 1, 3, pal.a, 1.5, -1);
+
+      // camera: follows the boss a little, shakes on big moments, leans in on a roar
+      shake = Math.max(0, shake - adt * 2);
+      const sh = shake * shakeK;
+      const roarK = Math.sin(clamp((t - roarAt) / 2.6, 0, 1) * Math.PI) * (reduce ? 0.3 : 1);
+      camera.position.set(
+        camBase.x + root.position.x * 0.12 + Math.sin(at * 0.21) * 0.6 * still + Math.sin(t * 41) * sh * 0.5,
+        camBase.y + Math.sin(at * 0.17) * 0.25 * still + Math.sin(t * 37 + 1) * sh * 0.4,
+        camBase.z - roarK * 3);
+      v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5, root.position.z * 0.3);
+      lookCur.lerp(v1, Math.min(1, dt * 2));
+      camera.lookAt(lookCur);
+
+      // post
+      tintAmt = Math.max(0, tintAmt - dt * 1.4);
+      post.uniforms.uTintAmt.value = tintAmt;
+      glitch = !calm && !reduce ? (phase >= 4 && !dead ? 0.35 : 0) + Math.max(0, roarK * 0.5) : 0;
+      post.uniforms.uGlitch.value = glitch;
+      post.uniforms.uTime.value = t;
+      post.uniforms.uAb.value = 0.0004 + (calm ? 0 : sh * 0.002);
       composer.render();
+      if (opts.onFrame) opts.onFrame();
     });
+    const tmpCol = new THREE.Color();
+    let deadBoom = false;
+
+    function setBeam(a, b, r) {
+      v1.copy(b).sub(a);
+      const len = v1.length();
+      beam.position.copy(a).addScaledVector(v1, 0.5);
+      beam.quaternion.setFromUnitVectors(v2.set(0, 1, 0), v1.normalize());
+      beam.scale.set(r, len, r);
+    }
 
     function dispose() {
       renderer.setAnimationLoop(null);
@@ -441,9 +1316,12 @@ window.BossScene = (() => {
       renderer.forceContextLoss();
       renderer.domElement.remove();
     }
+    function live() { return visible && !document.hidden; }
+    function info() { return { phase, palTo, stage, dead, shots: shots.filter(s => s.on).length, adds: adds.filter(a => a.on).length, evs: evs.length, x: mv.x, z: mv.z }; }
 
     setFrac(1, true);
-    return { hit, setFrac, defeat, revive, point, dispose };
+    applyPal(1);
+    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose };
   }
 
   return { mount };
