@@ -230,3 +230,60 @@ Chat and names go through `NetFilter` on the device now. That is enough for bots
 - names checked on change, including the reserved names (Art, 10000wpm, admin, mod, staff);
 - lobby chat off by default for accounts under 16, since the site is aimed at teenagers, with a switch to turn it on;
 - logs of chat kept long enough to act on reports.
+
+## Activity and daily snapshots (the home map)
+
+The map on the home page reads two modules, and `Community.MODE` in `js/app/community.js` switches both. In `'demo'` they simulate everything from the seeded countries and the map says "Demo data" beside every number. In `'live'` they read the endpoints below, which do not exist yet.
+
+`js/app/community.js` (countries and players): `GET /api/community/snapshot`, `GET /api/community/events?since=`, `POST /api/community/visit`. The shapes are at the top of that file.
+
+`js/app/activity.js` (what is happening now, and every day since launch):
+
+```
+Activity.now()    -> { online, inBoss, inDuel, duels, inParty, inRush, typing, wordsToday, wordsTotal, wpmAvg }
+Activity.boss()   -> { hp, max, region: { name, lon, lat }, participants, defeatsToday }
+Activity.on(ev, fn)   ev: tick, hit, duel-start, duel-end, party, rush, defeat, respawn, milestone
+Activity.history()    -> [Day], one record a day from launch
+```
+
+### Endpoints
+
+| Call | Answer |
+|---|---|
+| `GET /api/activity/now` | `{ at, online, inBoss, inDuel, duels, inParty, inRush, typing, wordsToday, wordsTotal, wpmAvg, boss: { hp, max, region, participants, defeatsToday } }`. Polled every 5 s while the map is on screen, or pushed as `activity` over the WebSocket. |
+| `GET /api/activity/events?since=<ISO>` | `{ now, events: [Event] }`, the same events as `Activity.on`. The client keeps at most 5 for the feed. |
+| `GET /api/activity/days?from=1&to=<n>` | `{ days: [Day] }` from `daily_snapshots`. |
+
+```
+Event  hit        { player: { id, name, country }, wpm, dmg }        one burst of damage on the World Boss
+       duel-start { id, a: player, b: player }
+       duel-end   { id, winner: player, loser: player, w, l }       w and l are the two wpm
+       party      { size, countries: [code] }                      a party finished a run
+       rush       { player, bosses }                                a Boss rush run ended
+       defeat     { players, region }                               the community boss reached 0 HP
+       respawn    { region }
+       milestone  { kind: 'node' | 'beacon', node?, country? }
+```
+
+### `daily_snapshots` table
+
+Written once a day at 00:00 Asia/Bangkok for the day that ended, and updated through the day for today.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `day` | int, primary key | days since launch, day 1 is `KEYSPACE.launchDate` (2026-01-26) |
+| `date` | date | Bangkok calendar date |
+| `players` | int | players signed up by the end of the day |
+| `countries` | int | countries with at least one player |
+| `counts` | json | `{ code: players }` per country, for the time-lapse |
+| `peak_online` | int | most players online at once |
+| `words` | bigint | words typed that day, every mode |
+| `words_total` | bigint | words typed since launch |
+| `defeats` | int | World Boss defeats that day |
+| `duels` | int | duels finished |
+| `parties` | int | party runs finished |
+| `new_players` | int | sign-ups that day |
+
+Milestones come from these numbers, so the server and the time-lapse agree: a Keyspace node comes online the first day `words_total` passes its threshold in `KEYSPACE.nodes` (`js/app/rewards-config.js`), and a country gets its beacon the first day its count reaches `KEYSPACE.beaconPlayers`.
+
+The community World Boss on the map has `BOSS_HP` 4,000,000 shared by everyone, separate from the 1,000,000 HP fight in `js/app/boss-rules.js`. Its region is seeded by the Bangkok date and moves to the next region on each defeat. The server should own both.

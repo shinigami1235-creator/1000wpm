@@ -68,3 +68,27 @@ window.REWARDS = {
     win: { casual: 40, normal: 80, hard: 140, typemaster: 220, brutal: 320 },
   },
 };
+
+// Keyspace milestones for the world map (js/app/activity.js, js/app/worldmap.js).
+// Every threshold of words typed by everyone, in total, brings a node of Keyspace online
+// as a permanent marker on the map. The four districts take their names from the places
+// in STORY/WORLD.md that the update passed through; the rest are numbered nodes.
+// A country gets a permanent beacon the first day it reaches beaconPlayers players.
+window.KEYSPACE = {
+  launchDate: '2026-01-26',   // day 1 of the site; 2026-11-21 is day 300
+  beaconPlayers: 100,
+  nodes: [
+    { words: 10e6, name: 'Node 1', lon: -42, lat: 8 },
+    { words: 25e6, name: 'Node 2', lon: 163, lat: 12 },
+    { words: 50e6, name: 'Stream chat', district: true, lon: -132, lat: 24 },
+    { words: 100e6, name: 'Node 4', lon: -28, lat: -30 },
+    { words: 200e6, name: 'Night market', district: true, lon: 86, lat: -12 },
+    { words: 350e6, name: 'Node 6', lon: 40, lat: 70 },
+    { words: 500e6, name: 'Line 2', district: true, lon: -152, lat: 56 },
+    { words: 750e6, name: 'Node 8', lon: 150, lat: -44 },
+    { words: 1000e6, name: 'Node 9', lon: -4, lat: 64 },
+    { words: 1400e6, name: 'Firmware line', district: true, lon: 156, lat: 53 },
+    { words: 1800e6, name: 'Node 11', lon: 22, lat: -46 },
+    { words: 2500e6, name: 'Node 12', lon: -78, lat: 64 },
+  ],
+};

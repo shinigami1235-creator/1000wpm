@@ -21,21 +21,60 @@ Router.register('home', (() => {
       <div class="home">
         <section class="hero-map" aria-labelledby="map-h">
           <div class="hm-frame">
-            <p class="hm-key"><span data-map-count></span><span class="hm-demo" hidden>Demo data</span></p>
-            <div class="hm-stage" data-map-stage>
-              <div class="hm-map" data-map>
-                <canvas aria-hidden="true"></canvas>
-                <div class="hm-dots" role="group" aria-label="Countries with players"></div>
+            <div class="hm-hud">
+              <p class="hm-brand">Keyspace // ops map</p>
+              <div class="hm-live">
+                <p class="hm-stat"><small><span class="l">Online now</span><span class="s">Online</span></small><b data-k="online">-</b></p>
+                <p class="hm-stat hm-bossbar"><small><span class="l">Fighting Syntax Error</span><span class="s">Syntax Error</span></small><b data-k="inBoss">-</b><span class="bar" aria-hidden="true"><i data-hud-bar></i></span><b class="pct" data-k="hp">-</b></p>
+                <p class="hm-stat"><small><span class="l">Duels running</span><span class="s">Duels</span></small><b data-k="duels">-</b></p>
+                <p class="hm-stat"><small><span class="l">Words typed today</span><span class="s">Words today</span></small><b data-k="words">-</b></p>
+                <p class="hm-stat hm-chat"><small>In the Commons</small><b data-k="chat">-</b></p>
+              </div>
+              <div class="hm-live hm-day" hidden>
+                <p class="hm-stat"><small data-k="d-date"></small><b data-k="d-day"></b></p>
+                <p class="hm-stat"><small>Players</small><b data-k="d-players"></b></p>
+                <p class="hm-stat"><small>Countries</small><b data-k="d-countries"></b></p>
+                <p class="hm-stat"><small>Peak online</small><b data-k="d-peak"></b></p>
+                <p class="hm-stat"><small>Words typed</small><b data-k="d-words"></b></p>
+                <p class="hm-stat"><small>Bosses beaten</small><b data-k="d-defeats"></b></p>
+              </div>
+              <span class="hm-demo" hidden>Demo data</span>
+            </div>
+            <div class="hm-mapwrap">
+              <div class="hm-intro">
+                <h1 id="map-h">A typing site by Art (@10000wpm) for anyone who wants to type faster.</h1>
+                <div class="hm-go"><a class="btn" href="#/type">Start typing</a><button class="hm-race" type="button" data-to-race>Race Art</button></div>
+              </div>
+              <div class="hm-stage" data-map-stage>
+                <div class="hm-map" data-map>
+                  <canvas aria-hidden="true"></canvas>
+                  <div class="hm-calls" aria-hidden="true"></div>
+                  <nav class="hm-missions" aria-label="Game modes on the map"></nav>
+                  <div class="hm-dots" role="group" aria-label="Countries with players"></div>
+                </div>
+              </div>
+              <p class="hm-drag" hidden>Drag to see more</p>
+              <p class="hm-banner" role="status" hidden></p>
+              <div class="hm-card" hidden></div>
+            </div>
+            <div class="hm-strip">
+              <div class="hm-filter" role="group" aria-label="Map layers">
+                <button type="button" data-view="missions" aria-pressed="true">Missions</button><button type="button" data-view="players" aria-pressed="false">Players</button><button type="button" data-view="both" aria-pressed="false">Both</button>
+              </div>
+              <p class="hm-count" data-map-count></p>
+              <div class="hm-time">
+                <button type="button" data-play aria-pressed="false">Play</button>
+                <input type="range" min="1" max="1" value="1" step="1" data-day aria-label="Day since launch">
+                <output data-day-out>Today</output>
+                <button type="button" data-now>Now</button>
+                <button type="button" data-compare aria-pressed="false">Compare</button>
               </div>
             </div>
-            <p class="hm-drag" hidden>Drag to see more</p>
-            <div class="hm-card" hidden aria-hidden="true"></div>
-            <div class="hm-intro">
-              <h1 id="map-h">A typing site by Art (@10000wpm) for anyone who wants to type faster.</h1>
-              <div class="hm-go"><a class="btn" href="#/type">Start typing</a><button class="hm-race" type="button" data-to-race>Race Art</button></div>
-            </div>
+            <div class="hm-compare" hidden></div>
+            <div class="hm-feedbox"><span class="hm-demo" hidden>Demo data</span><ol class="hm-feed" aria-label="What players are doing"></ol></div>
+            <p class="sr-only" aria-live="polite" data-feed-live></p>
+            <ul class="hm-modes" aria-label="Game modes"></ul>
           </div>
-          <p class="hm-ticker"><span class="hm-demo" hidden>Demo data</span><span class="hm-line" data-tick></span></p>
         </section>
 
         <section class="hero-race" id="race" aria-labelledby="race-h">
