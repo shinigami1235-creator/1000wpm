@@ -7,6 +7,10 @@
 //   event(ev, netNow)     plays an attack from WorldBossRules on the shared clock
 //   hit(h)                a bolt from the raider's spot to the boss; onImpact(h, x, y) when it lands
 //   returnShot(id), killAdd(id, you), block(id), stagger(), hurt(), setShield(f), setWeak(on)
+//   cast(spellId, { hits, effect })   a spell from the combat layer, aimed from your marker at the boss
+//   aura(name, on), fxEvent(kind)     statuses that stay on screen, safe mode used up, a split copy lost
+//   react(kind, power, extra)          flinch, stagger, flash, break (the phase-break pose), stun, freeze, pull
+//   freezeAttack(id)                   cryo lock: that attack's hit shows as held off for you
 //   defeat(instant) / revive()
 //   screen(key, out)      host pixels of 'head', 'core', 'you', 'shot:<id>' or 'add:<id>'
 //   dispose()
@@ -50,6 +54,12 @@ window.BossScene = (() => {
       block: id => impl && impl.block(id),
       stagger: () => impl && impl.stagger(),
       hurt: k => impl && impl.hurt(k),
+      cast: (id, c) => impl && impl.cast(id, c),
+      aura: (name, on) => impl && impl.aura(name, on),
+      fxEvent: k => impl && impl.fxEvent(k),
+      react: (k, p, x) => impl && impl.react(k, p, x),
+      freezeAttack: id => impl && impl.freezeAttack(id),
+      pause: on => impl && impl.pause(on),
       defeat: instant => { pending.defeated = true; if (impl) impl.defeat(!!instant); },
       revive: () => { pending.defeated = false; pending.frac = 1; pending.phase = 0; if (impl) impl.revive(); },
       screen: (k, out) => (impl ? impl.screen(k, out) : null),
@@ -149,6 +159,7 @@ window.BossScene = (() => {
       }`;
     const edgeFrag = `
       uniform float uTime; uniform float uHit; uniform vec3 uColA; uniform vec3 uColC; uniform vec3 uHurt; uniform float uHurtMix; uniform float uFar;
+      uniform vec3 uTintC; uniform float uTintMix;
       varying vec2 vUv; varying float vSeed; varying float vAlt; varying float vDepth;
       void main() {
         vec2 d = min(vUv, 1.0 - vUv);
@@ -157,13 +168,14 @@ window.BossScene = (() => {
         float scan = 0.5 + 0.5 * sin(vUv.y * 36.0 + uTime * 5.0 + vSeed * 30.0);
         vec3 col = mix(uColA, uColC, vAlt);
         col = mix(col, uHurt, uHurtMix * step(0.45, fract(vSeed * 7.31)));
-        vec3 c = vec3(0.003, 0.012, 0.008) + col * 0.035 * scan + col * edge * (0.9 + uHit * 0.9);
+        col = mix(col, uTintC, uTintMix);
+        vec3 c = vec3(0.003, 0.012, 0.008) + col * 0.035 * scan + col * edge * (0.9 + uHit * 0.9) + uTintC * uTintMix * 0.05;
         c = mix(c, vec3(0.0, 0.006, 0.004), smoothstep(uFar * 0.5, uFar, vDepth));
         gl_FragColor = vec4(c, 1.0);
       }`;
     function edgeMat(colA, colC, far = 80) {
       return keep(new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uHit: { value: 0 }, uColA: { value: colA.clone() }, uColC: { value: colC.clone() }, uHurt: { value: C('#ff4d5e', 1.2) }, uHurtMix: { value: 0 }, uFar: { value: far } },
+        uniforms: { uTime: { value: 0 }, uHit: { value: 0 }, uColA: { value: colA.clone() }, uColC: { value: colC.clone() }, uHurt: { value: C('#ff4d5e', 1.2) }, uHurtMix: { value: 0 }, uFar: { value: far }, uTintC: { value: C('#bfefff', 1.3) }, uTintMix: { value: 0 } },
         vertexShader: edgeVert, fragmentShader: edgeFrag,
       }));
     }
@@ -468,9 +480,9 @@ window.BossScene = (() => {
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     const post = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0.0004 } },
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0.0004 }, uDim: { value: 0 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uTint; uniform float uTintAmt; uniform float uGlitch; uniform float uAb; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uTint; uniform float uTintAmt; uniform float uGlitch; uniform float uAb; uniform float uDim; varying vec2 vUv;
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
         void main(){
           vec2 uv = vUv;
@@ -481,10 +493,35 @@ window.BossScene = (() => {
           float edge = smoothstep(0.32, 0.72, length(q * vec2(1.0, 1.3)));
           c = mix(c, uTint, edge * uTintAmt);
           c *= 1.0 - smoothstep(0.45, 0.95, length(q)) * 0.45;
+          c *= 1.0 - uDim * (0.3 + 0.7 * smoothstep(0.06, 0.5, length(q)));
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
     composer.addPass(post);
+
+    // ---------- combat effects: tier shots and spells from js/app/combat/fx3d.js ----------
+    let glitchK = 0, glitchUntil = 0, dimK = 0, dimUntil = 0, dimCur = 0, freezeUntil = 0, stunUntil = 0, breakAt = -9, tintMix = 0;
+    const frozen = new Set();
+    const fx = window.Combat && Combat.FX ? Combat.FX.create(THREE, scene, camera, {
+      glowTex, calm, reduce,
+      pixelHeight: () => renderer.domElement.height,
+      juice: {
+        shake: k => { shake = Math.max(shake, k); },
+        stop: ms => { stopUntil = Math.max(stopUntil, performance.now() + ms); },
+        glitch: (k, secs) => { glitchK = Math.max(glitchK, k); glitchUntil = Math.max(glitchUntil, nowS() + secs); },
+        dim: (k, secs) => { dimK = k; dimUntil = nowS() + secs; },
+        tint: (hex, k) => { post.uniforms.uTint.value.set(hex); tintAmt = Math.max(tintAmt, (calm ? 0.6 : 1) * k); },
+        canFlash,
+      },
+    }) : null;
+    const caster = { pos: out => out.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.9) };
+    const bossTarget = {
+      size: 6,
+      pos: out => out.copy(anchorCore),
+      top: out => out.copy(anchorHead).setY(anchorHead.y + 1),
+      base: out => out.set(root.position.x, 0, root.position.z + 1),
+      react: (k, p, x) => react(k, p, x),
+    };
 
     const camBase = new V(0, 5.5, 30), camLook = new V(0, 7.4, 0), lookCur = new V(0, 7.4, 0);
     let baseFov = 40;
@@ -644,7 +681,7 @@ window.BossScene = (() => {
     }
     function current(t, type) { for (const x of evs) if (x.type === type && t >= x.s && t <= x.e) return x; return null; }
     function impact(x) {
-      const you = blocked.has(x.id);
+      const you = blocked.has(x.id) || frozen.has(x.id);
       const at = raidPos[RAID];
       shake = Math.max(shake, you ? 0.35 : 0.9);
       if (x.kind === 'slam' || x.kind === 'lunge') wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
@@ -676,6 +713,23 @@ window.BossScene = (() => {
         hitQueue.push({ h, at: nowS() + 0.45 });
         return;
       }
+      if (h.kind === 'spell') {
+        // the spell's own effect shows the hit, so only the number appears, near the core
+        if (opts.onImpact) {
+          v3.copy(anchorCore).add(v1.set(rnd(-3, 3), rnd(-2, 3.5), 1)).project(camera);
+          opts.onImpact(h, (v3.x * 0.5 + 0.5) * host.clientWidth, (-v3.y * 0.5 + 0.5) * host.clientHeight);
+        }
+        return;
+      }
+      if (you && fx && h.tier >= 1 && h.kind === 'word') {
+        // combo tiers fire their own shot: charged bolt, twin beam, rail shot, overload
+        const ti = h.weak && !shieldF ? -2 : pickBlock(true);
+        const sh = !!h.shield && shieldF !== null;
+        const from = new V().copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.6);
+        fx.shot(Math.min(4, h.tier), from, out => aimAt(ti, sh, from, out), at => land(h, at, ti), { color: h.color });
+        markGlow[RAID] = 1;
+        return;
+      }
       const ri = you ? RAID : raiderIndex(h.id);
       const b = bolts[boltI = (boltI + 1) % BOLTS];
       b.on = true; b.h = h; b.t = 0;
@@ -688,6 +742,62 @@ window.BossScene = (() => {
       b.tail = you ? 0.4 : 0.16;
       b.col.copy(you ? (big ? WHITE : youCol) : raidCol(ri)).multiplyScalar(you ? 2.2 : 1.05);
       markGlow[ri] = 1;
+    }
+    // where a tier shot lands: its block, the core, or the shield's shell in front of them
+    function aimAt(ti, sh, from, out) {
+      if (ti >= 0 && blocks[ti].mode === 0) attachPos(blocks[ti], out); else out.copy(anchorCore);
+      if (sh && shieldF !== null) clipShell(from, out);
+      return out;
+    }
+    function clipShell(from, to) {
+      v1.copy(to).sub(from);
+      const len = v1.length(); v1.divideScalar(len);
+      const c0 = shield.position;
+      let lo = 0, hi = len;
+      for (let it = 0; it < 12; it++) {
+        const m = (lo + hi) / 2;
+        p.copy(from).addScaledVector(v1, m).sub(c0);
+        ((p.x / 11.5) ** 2 + (p.y / 10.5) ** 2 + (p.z / 7.5) ** 2 > 1) ? (lo = m) : (hi = m);
+      }
+      return to.copy(from).addScaledVector(v1, lo);
+    }
+    // the boss's reaction to big hits and spells
+    function react(kind, power = 0, extra) {
+      if (dead) return;
+      const t = nowS();
+      if (kind === 'flinch') {
+        recoilV -= Math.min(0.8, 0.12 + power * 0.008);
+        hitGlow = Math.max(hitGlow, calm ? 0.25 : 0.45);
+        scatter(Math.min(6, 1 + Math.floor(power / 15)), 0.8);
+      } else if (kind === 'stagger') {
+        stagger();
+        if (canFlash()) hitGlow = calm ? 0.5 : 1;
+      } else if (kind === 'flash') {
+        if (canFlash()) hitGlow = calm ? 0.5 : 1;
+        recoilV -= 0.3;
+      } else if (kind === 'break') {
+        // the phase-break pose: thrown back with its arms flung out and blocks flying
+        breakAt = t; recoilV -= 3.2; headJerk = 1;
+        scatter(90, 1.8);
+        shake = Math.max(shake, 1);
+        if (canFlash()) hitGlow = 1;
+        burst(anchorCore, 60, 14, WHITE);
+        wave(root.position, 1, 26, 1.2, WHITE, 0.8);
+      } else if (kind === 'stun') {
+        stunUntil = t + power / 1000; headJerk = 1;
+      } else if (kind === 'freeze') {
+        freezeUntil = t + power / 1000;
+      } else if (kind === 'pull' && extra) {
+        // blocks torn off toward the black hole, then they fly back into place
+        for (let k = 0; k < 12; k++) {
+          const b = blocks[Math.floor(Math.random() * N)];
+          if (b.mode !== 0) continue;
+          knock(b, false, 0.5);
+          b.vel.copy(extra).sub(b.wp).normalize().multiplyScalar(rnd(6, 12));
+          b.grav = 0.05; b.life = rnd(0.5, 0.9);
+        }
+        recoilV -= 0.25;
+      }
     }
     function targetPos(b, out) {
       if (b.target === -2 || b.target < 0) return out.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
@@ -755,6 +865,7 @@ window.BossScene = (() => {
     }
     function hurt() {
       if (!canFlash()) return;
+      post.uniforms.uTint.value.set('#ff4d5e');
       tintAmt = calm ? 0.22 : 0.32;
       shake = Math.max(shake, 0.5);
     }
@@ -778,6 +889,7 @@ window.BossScene = (() => {
 
     function defeat(instant) {
       if (dead) return;
+      if (fx) fx.clear();
       dead = true; deadAt = nowS(); deadT = instant ? 9 : 0;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
       for (const s of shots) { s.on = false; s.g.visible = false; }
@@ -793,6 +905,8 @@ window.BossScene = (() => {
       }
     }
     function revive() {
+      if (fx) fx.clear();
+      frozen.clear(); stunUntil = freezeUntil = 0; breakAt = -9;
       dead = false; deadT = 0; frac = 1; stage = 0;
       for (const b of blocks) { b.mode = 0; b.vel.set(0, 0, 0); b.rot.set(0, 0, 0); b.delay = 0; }
       rings.forEach(r => { r.visible = true; r.userData.fall = false; r.userData.gone = false; r.position.set(0, 0, 0); r.material.opacity = 0.85; });
@@ -896,6 +1010,13 @@ window.BossScene = (() => {
       if (ad && t - ad.s < 2.4) { const w = Math.sin(clamp((t - ad.s) / 2.4, 0, 1) * Math.PI); pose.lz = -2 * w; pose.rz = 2 * w; pose.headX = -0.3 * w; }
       const shx = current(t, 'shield');
       if (shx) { const w = Math.sin(clamp((t - shx.s) / 2.4, 0, 1) * Math.PI); pose.lx = pose.rx = -1.0 * w; pose.lz = 0.7 * w; pose.rz = -0.7 * w; pose.y -= 0.8 * w; }
+      // the phase-break pose after a big spell
+      const bu = t - breakAt;
+      if (bu < 1.5) {
+        const w = Math.sin(clamp(bu / 1.5, 0, 1) * Math.PI) * still;
+        pose.headX = -0.75 * w; pose.hx = -0.45 * w; pose.lz = -2.5 * w; pose.rz = 2.5 * w; pose.lx = pose.rx = -0.7 * w; pose.y += 1.2 * w;
+        tx *= 1 - w; tz = tz * (1 - w) - 3 * w;
+      }
       // roar after a phase change
       const ru = t - roarAt;
       if (ru < 2.6) {
@@ -919,10 +1040,14 @@ window.BossScene = (() => {
     renderer.setAnimationLoop(() => {
       const t = nowS();
       let dt = Math.min(0.05, t - last); last = t;
+      if (paused) dt = 0;
       if (!visible || document.hidden) return;
       // hit-stop slows everything but the shared clock for a few frames
       const adt = performance.now() < stopUntil ? dt * 0.08 : dt;
-      at += adt;
+      // kernel panic stops the body, cryo lock slows it
+      const stunned = t < stunUntil, iced = t < freezeUntil;
+      const bdt = adt * (stunned ? 0 : iced ? 0.25 : 1);
+      at += bdt;
       runEvents(t);
       for (let i = hitQueue.length - 1; i >= 0; i--) if (t >= hitQueue[i].at) {
         const { h } = hitQueue[i]; hitQueue.splice(i, 1);
@@ -940,15 +1065,19 @@ window.BossScene = (() => {
       shieldMat.uniforms.uTime.value = at;
 
       // pose and movement
-      if (!dead) motion(t, at, adt);
-      const k = Math.min(1, adt * 7);
+      if (!dead) motion(t, at, bdt);
+      const k = Math.min(1, bdt * 7);
       for (const key in pose) cur[key] += (pose[key] - cur[key]) * k;
       recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt;
       recoil = clamp(recoil, -0.5, 0.3);
       headJerk = Math.max(0, headJerk - adt * 2.5);
       root.position.set(mv.x, cur.y, mv.z);
       root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
-      hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3);
+      hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3 + (stunned && !reduce ? Math.sin(t * 47) * 0.025 : 0));
+      tintMix += ((iced ? 0.6 : stunned ? 0.5 : 0) - tintMix) * Math.min(1, dt * 6);
+      if (iced) boxMat.uniforms.uTintC.value.set('#bfefff').multiplyScalar(1.3);
+      else if (stunned) boxMat.uniforms.uTintC.value.set('#3d7bff').multiplyScalar(1.4);
+      boxMat.uniforms.uTintMix.value = tintMix;
       headG.rotation.set(cur.headX + recoil * 0.6 - headJerk * 0.4, cur.headY, Math.sin(at * 13) * headJerk * 0.3 * still);
       armLG.rotation.set(cur.lx, 0, cur.lz);
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
@@ -1050,7 +1179,7 @@ window.BossScene = (() => {
           if (r.material.opacity <= 0) { u.gone = true; r.visible = false; }
         }
       });
-      eyes.forEach(e => { e.scale.y = phase >= 4 && !calm && Math.sin(at * 3) > 0.92 && still === 1 ? 0.3 : 1; });
+      eyes.forEach(e => { e.scale.y = stunned ? (Math.sin(t * 23) > 0 ? 0.15 : 1) : phase >= 4 && !calm && Math.sin(at * 3) > 0.92 && still === 1 ? 0.3 : 1; });
 
       // telegraph, beam and sweep
       const sl = dead ? null : current(t, 'slam');
@@ -1170,20 +1299,7 @@ window.BossScene = (() => {
         b.t += dt / b.dur;
         if (b.target === -3) v2.copy(b.addRef.pos);
         else targetPos(b, v2);
-        if (b.shield && b.h) {
-          // stop on the shell, along the line to the target
-          v1.copy(v2).sub(b.from);
-          const len = v1.length(); v1.divideScalar(len);
-          const c0 = shield.position;
-          const sx = 11.5, sy = 10.5, sz = 7.5;
-          let lo = 0, hi = len;
-          for (let it = 0; it < 12; it++) {
-            const m = (lo + hi) / 2;
-            p.copy(b.from).addScaledVector(v1, m).sub(c0);
-            ((p.x / sx) ** 2 + (p.y / sy) ** 2 + (p.z / sz) ** 2 > 1) ? (lo = m) : (hi = m);
-          }
-          v2.copy(b.from).addScaledVector(v1, lo);
-        }
+        if (b.shield && b.h) clipShell(b.from, v2);   // stop on the shell, along the line to the target
         if (b.t >= 1) {
           b.on = false;
           if (b.h) land(b.h, v2, b.target);
@@ -1288,9 +1404,14 @@ window.BossScene = (() => {
       tintAmt = Math.max(0, tintAmt - dt * 1.4);
       post.uniforms.uTintAmt.value = tintAmt;
       glitch = !calm && !reduce ? (phase >= 4 && !dead ? 0.35 : 0) + Math.max(0, roarK * 0.5) : 0;
+      if (t < glitchUntil && !reduce) glitch += glitchK * (calm ? 0.5 : 1); else glitchK = 0;
+      if (stunned && !reduce) glitch += calm ? 0.15 : 0.3;
+      dimCur += ((t < dimUntil ? dimK : 0) - dimCur) * Math.min(1, dt * (t < dimUntil ? 3 : 2));
+      post.uniforms.uDim.value = dimCur * (reduce ? 0.6 : 1);
       post.uniforms.uGlitch.value = glitch;
       post.uniforms.uTime.value = t;
       post.uniforms.uAb.value = 0.0004 + (calm ? 0 : sh * 0.002);
+      if (fx) fx.update(adt);
       composer.render();
       if (opts.onFrame) opts.onFrame();
     });
@@ -1307,6 +1428,7 @@ window.BossScene = (() => {
 
     function dispose() {
       renderer.setAnimationLoop(null);
+      if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
       disposables.forEach(d => d.dispose && d.dispose());
@@ -1317,11 +1439,18 @@ window.BossScene = (() => {
       renderer.domElement.remove();
     }
     function live() { return visible && !document.hidden; }
-    function info() { return { phase, palTo, stage, dead, shots: shots.filter(s => s.on).length, adds: adds.filter(a => a.on).length, evs: evs.length, x: mv.x, z: mv.z }; }
+    function cast(id, c = {}) { if (fx && !dead) fx.cast(id, { caster, target: bossTarget, hits: c.hits, effect: c.effect }); }
+    function aura(name, on) { if (fx) fx.aura(name, on, { caster, target: bossTarget }); }
+    function fxEvent(kind) { if (fx) fx.event(kind, { caster }); }
+    function freezeAttack(id) { frozen.add(id); }
+    // tests only: hold every animation still so a capture shows one exact moment
+    let paused = false;
+    function pause(on) { paused = !!on; }
+    function info() { return { phase, palTo, stage, dead, shots: shots.filter(s => s.on).length, adds: adds.filter(a => a.on).length, evs: evs.length, x: mv.x, z: mv.z, fx: fx ? fx.info() : null }; }
 
     setFrac(1, true);
     applyPal(1);
-    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose };
+    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause };
   }
 
   return { mount };
