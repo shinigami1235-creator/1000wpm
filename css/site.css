@@ -307,7 +307,7 @@ body:has(.page-home) #rain { opacity: .05; }
 .page-home kbd { font: 400 var(--t-xs)/1 var(--f-mono); color: var(--ink-2); background: rgba(255,255,255,.06); border: 0; padding: 3px 5px; }
 
 /* the race: a typing field with a solid fill so the falling code stops behind it */
-.page-home .hero-race h1 { font: 600 var(--t-l)/1.2 var(--f-head); color: var(--ink); letter-spacing: .01em; margin: 0 0 12px; }
+.page-home .hero-race h1, .page-home .hero-race h2 { font: 600 var(--t-l)/1.2 var(--f-head); color: var(--ink); letter-spacing: .01em; margin: 0 0 12px; }
 .page-home .hero-race .typebox {
   padding: 30px 36px 32px; background: linear-gradient(var(--tint), var(--tint)), var(--solid);
 }
