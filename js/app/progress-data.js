@@ -40,6 +40,8 @@ window.ProgressData = (() => {
     { id: 'lesson1', ev: 'lesson_pass', tier: 'easy', n: 1, text: 'Finish an academy lesson' },
     { id: 'lesson3', ev: 'lesson_pass', tier: 'medium', n: 3, text: 'Finish {n} academy lessons' },
     { id: 'spell10', ev: 'spell_cast', tier: 'medium', n: 10, text: 'Cast {n} spells' },
+    { id: 'rush3', ev: 'rush_boss', tier: 'easy', n: 3, text: 'Beat {n} bosses in Boss rush' },
+    { id: 'rush6run', ev: 'rush_run', tier: 'hard', n: 1, when: e => e.bosses >= 6, text: 'Beat 6 bosses in one Boss rush run' },
     { id: 'pvp1', ev: 'pvp_win', tier: 'hard', n: 1, text: 'Win a PvP match' },
   ];
 
@@ -56,6 +58,7 @@ window.ProgressData = (() => {
     { id: 'w-combo100', ev: 'combo', tier: 'weekly', n: 100, max: e => e.n, text: 'Reach a {n} combo' },
     { id: 'w-lesson5', ev: 'lesson_pass', tier: 'weekly', n: 5, text: 'Finish {n} academy lessons' },
     { id: 'w-pvp3', ev: 'pvp_win', tier: 'weekly', n: 3, text: 'Win {n} PvP matches' },
+    { id: 'w-rush20', ev: 'rush_boss', tier: 'weekly', n: 20, text: 'Beat {n} bosses in Boss rush' },
   ];
 
   function modeGroup(m = '') {

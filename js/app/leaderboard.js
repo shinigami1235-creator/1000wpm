@@ -12,6 +12,7 @@ Router.register('leaderboard', (() => {
     { id: 'race', name: 'Race', modes: ['race-art', 'race-best', 'race-duo'], art: true },
     { id: 'boss', name: 'World boss', modes: ['world-boss'], score: true, label: 'Damage' },
     { id: 'endless', name: 'Breach endless', custom: true },
+    { id: 'rush', name: 'Boss rush', custom: true },
     { id: 'rooms', name: 'Rooms', custom: true },
   ];
   const LOGO = `<svg class="green" viewBox="0 0 64 64" style="width:34px;height:34px;border:1px solid var(--line);padding:3px;background:var(--bg)" aria-hidden="true"><use href="#i-logo"/></svg>`;
@@ -82,6 +83,7 @@ Router.register('leaderboard', (() => {
     clearInterval(poll); poll = 0;
     if (T.id === 'rooms') return rooms(sub, el.querySelector('[data-board]'));
     if (T.id === 'endless') return endless(sub, el.querySelector('[data-board]'));
+    if (T.id === 'rush') { if (window.RushBoard) RushBoard.render(sub, el.querySelector('[data-board]')); return; }
     if (T.id === 'boss') {
       const runs = WPM.sessions().filter(s => s.mode === 'world-boss');
       const total = runs.reduce((a, s) => a + (s.score || 0), 0);

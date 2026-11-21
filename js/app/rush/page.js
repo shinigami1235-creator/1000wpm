@@ -1,0 +1,799 @@
+// #/play/rush: Boss Rush. The entry screen with the scoreboard, the fights one after
+// another with a breather between them and the end screen. Mounted by js/app/play.js.
+//   RushPage.mount(host, pageEl) -> { destroy() }
+// The fight rules are in fight.js, the internal monitor in director.js, the 3D in
+// scene.js, the music in audio.js and the scoreboard in board.js. RUSH.md has the rules.
+// The layout reuses the World Boss page's calm styles (.page-boss in css/site.css) and
+// css/rush.css adds what the rush needs on top.
+window.RushPage = (() => {
+  if (window.WPM && WPM.events) WPM.events.register('rush_boss', 'rush_run');
+  const D = () => window.RushData;
+  const MOVE = {
+    gifts: { name: 'Free gifts', how: 'Type each gift before it reaches you.', text: 'Throws three gifts. Type them all to stun it.' },
+    fixsign: { name: 'Fix the sign', how: 'Type the sign spelled right.', text: 'Puts up a misspelled sign. Type it spelled right to stun it.' },
+    speakers: { name: 'Mute the speakers', how: 'Type them in order, one to six.', text: 'Turns on six speakers. Mute them in order to stun it.' },
+    press: { name: 'Double press', how: 'Block both wind-ups.', text: 'Winds up twice in a row. Three blocks in a row overheat it.' },
+    spell: { name: 'Which one is spelled right?', how: 'Type the right spelling.', text: 'Asks which word is spelled right. The right one stuns it.' },
+    volley: { name: 'Packets', how: 'Type each packet to send it back.', text: 'Fires packets. Type them to send them back for triple damage.' },
+  };
+  const LABEL = { block: 'Block', gift: 'Gift', fix: 'Spell it right', speaker: 'Mute', answer: 'Spelled right?', packet: 'Send back', boost: 'Boost from Art', weak: 'Weak point' };
+  const CLS = { block: 'block', gift: 'add', speaker: 'add', packet: 'return', fix: 'fix', answer: 'fix', boost: 'boost', weak: 'weak' };
+  const ORDER = { block: 0, answer: 1, fix: 1, speaker: 2, packet: 3, gift: 4, boost: 5, spell: 6, weak: 7 };
+  const TIPS = {
+    start: 'Type the highlighted word and press Space. Every word hits the boss.',
+    block: 'Type the red words before the bar runs out to block the attack and stun the boss.',
+    weak: 'The amber word is the weak point and hits for 5% of the boss\'s HP.',
+    combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
+    spell: 'Type a green spell word with no typo to cast it.',
+    stun: 'Your words deal double damage while the boss is stunned.',
+  };
+  const fmt = n => UI.fmt(Math.round(n)), esc = UI.esc;
+  const now = () => performance.now();
+  const secs = ms => (ms / 1000).toFixed(1) + ' s';
+
+  function mount(host, pageEl) {
+    let view = '', scene = null, keys = null, me = null, f = null, dir = null, run = null, plan = null;
+    let typed = '', target = null, clean = true, wordT0 = 0, hist = [], over = null;
+    let timers = [], offs = [], later = [], hiddenAt = 0, comboShown = false, popT = 0, tintT = 0, chipKey = '';
+    let tipQ = [], tipUntil = 0, seen = new Set(), lastBlocks = 0;
+    const ghostAt = new Map();
+    try { seen = new Set(JSON.parse(localStorage.getItem('wpm-rush-tips') || '[]')); } catch (e) {}
+    const q = k => host.querySelector(`[data-k="${k}"]`);
+    const A = window.RushAudio;
+    const cSfx = (n, a) => { const c = A.combat(); if (c) c.play(n, a); };
+    const wait = (ms, fn) => { const id = setTimeout(() => { later = later.filter(x => x !== id); fn(); }, ms); later.push(id); return id; };
+
+    // ---------- entry screen ----------
+    function menu() {
+      teardownFight();
+      view = 'menu';
+      pageEl.classList.remove('rush-live');
+      const b = RushBoard.load();
+      const best = b.best.bosses !== undefined ? `Best run: ${b.best.bosses} ${b.best.bosses === 1 ? 'boss' : 'bosses'} beaten. Best score: ${fmt(b.best.score)}.` : '';
+      host.innerHTML = `
+        <div class="rush page-boss" data-view="menu">
+          <section class="rush-menu">
+            <div class="rush-lead">
+              <h1>Boss rush</h1>
+              <p>Copies of every boss Art has beaten come one after another and each one is harder than the last. You get one retry per run and the run ends when a boss beats you.</p>
+              <div class="rush-go"><button class="btn" type="button" data-k="start">Start run</button><span>or press Enter</span></div>
+              ${best ? `<p class="rush-best">${best}</p>` : ''}
+            </div>
+            <ol class="rush-roster" aria-label="Bosses">
+              ${D().ROSTER.map((x, i) => `<li style="--c:${x.color};--c2:${x.color2}"><span class="rr-n">${i + 1}</span><b>${esc(x.name)}</b><span>${esc(MOVE[x.move].name)}</span></li>`).join('')}
+              <li class="rr-more"><span class="rr-n">7</span><b>Mark II</b><span>The six again with more HP and a firewall</span></li>
+            </ol>
+          </section>
+          <section class="rush-board" aria-label="Scoreboard">
+            <div class="rush-bhead"><h2>Scoreboard</h2><span>This device only until the server is live</span><a class="green" href="#/leaderboard" data-lb>Open the leaderboard</a></div>
+            ${b.runs.length ? RushBoard.bests(b.best) + RushBoard.table(b.runs, 5) : '<p class="empty">No runs yet.</p>'}
+          </section>
+        </div>`;
+      q('start').addEventListener('click', startRun);
+      host.querySelectorAll('[data-lb]').forEach(a => a.addEventListener('click', () => TT.store.set('wpm-lb-tab', 'rush')));
+    }
+
+    // ---------- the fight view ----------
+    function fightView() {
+      view = 'fight';
+      pageEl.classList.add('rush-live');
+      host.innerHTML = `
+        <div class="rush page-boss" data-view="fight">
+          <div class="wb rush-fight">
+            <section class="boss-hpbox" aria-label="Boss HP">
+              <div class="wb-hp-row">
+                <h1 class="wb-name" data-k="name"></h1>
+                <span class="boss-state" data-k="state"></span>
+                <span class="wb-phase" data-k="num"></span>
+                <span class="wb-hpnum"><b data-k="hp">0</b><span class="wb-left"><span data-k="left">100%</span> left</span></span>
+              </div>
+              <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" data-k="meter"><i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em></div>
+              <div class="rush-you"><span>You</span><div class="rush-ibar" role="meter" aria-label="Your integrity" aria-valuemin="0" aria-valuemax="100" data-k="imeter"><i data-k="ifill"></i></div><b data-k="ihp">100</b></div>
+            </section>
+            <section class="boss-stage" data-k="stage" aria-label="The boss">
+              <div class="kb-loading" data-k="loading">Loading</div>
+              <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
+              <div class="dmg-layer" data-k="nums" aria-hidden="true"></div>
+              <div class="wb-status"><span class="wb-me" data-k="flags"></span></div>
+              <div class="wb-combo" data-k="cbox" data-t="0" hidden aria-live="off">
+                <b data-k="cnum">0</b>
+                <span class="wb-combo-l"><span>Combo</span><em data-k="ctier">Bolt</em></span>
+                <i class="wb-cbar"><i data-k="cbar"></i><small data-k="cnext"></small></i>
+              </div>
+              <p class="wb-tip" data-k="tip" aria-live="polite"></p>
+              <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
+              <div class="wb-banner" data-k="banner" hidden></div>
+              <div class="rush-over" data-k="over" hidden></div>
+            </section>
+            <section class="boss-type" aria-label="Your words">
+              <div class="wb-mech"><div class="wb-chips" data-k="chips"></div></div>
+              <div class="typebox boss-words" data-k="box" tabindex="-1">
+                <div class="boss-queue" data-k="queue"></div>
+                <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
+              </div>
+            </section>
+            <div class="wb-strip">
+              <span class="wb-stat mine"><b data-k="s-score">0</b> score</span>
+              <span class="wb-stat"><b data-k="s-beaten">0</b> beaten</span>
+              <span class="wb-stat"><b data-k="s-wpm">0</b> wpm</span>
+              <span class="wb-stat"><b data-k="s-acc">100%</b> accuracy</span>
+              <button class="wb-boardbtn" type="button" data-k="quit">End run</button>
+            </div>
+          </div>
+        </div>`;
+      scene = RushScene.mount(q('stage'), { onImpact });
+      scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
+        .catch(() => { const l = q('loading'); if (l) l.textContent = 'The bosses need an internet connection to draw.'; });
+      q('quit').addEventListener('click', () => endRun('quit'));
+      q('over').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) act(b.dataset.act); });
+      keys = TT.captureKeys(q('box'), {
+        label: 'Type the words to attack the boss.',
+        onChar, onBack,
+        onKey(k) {
+          if (k === 'Enter') { if (over) act(over.primary); else submit(); }
+        },
+      });
+      if (matchMedia('(pointer: fine)').matches) keys.focus();
+    }
+
+    // ---------- the run ----------
+    function startRun() {
+      A.unlock();
+      run = { id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), n: 1, score: 0, retryUsed: false, fights: [], coins: 0, xp: 0, done: false };
+      dir = RushDirector.create({ model: RushBoard.director(), prior: priorWpm(), say: e => { if (debugLog()) console.debug('[rush director]', e); } });
+      dir.startRun();
+      me = Combat.create({});
+      wireCombat();
+      comboShown = false;
+      fightView();
+      nextFight(false);
+    }
+    // the first guess at the player's speed: their recent typing on this device
+    function priorWpm() { try { const s = WPM.stats(); return s.avgWpm ? Math.max(15, s.avgWpm) : 35; } catch (e) { return 35; } }
+    const debugLog = () => { try { return localStorage.getItem('wpm-rush-log') === '1'; } catch (e) { return false; } };
+
+    function nextFight(retry) {
+      hideOver();
+      typed = ''; target = null; clean = true; hist = [];
+      plan = dir.plan(run.n, { retry });
+      if (me) me.closeOffer('next');
+      f = RushFight.create({ plan, me, now, emit: onFight });
+      scene.setBoss(plan.slot);
+      f.start(now());
+      paintHead(); paintYou(); paintStrip();
+      A.quiet(false);
+      A.music(plan.boss.music);
+      A.play('roar');
+      const s = plan.slot, mv = MOVE[plan.boss.move];
+      const tw = s.mark > 1 && s.i === 0 ? D().TWISTS.find(x => x.mark === s.mark) : null;
+      banner(retry ? `Retry, boss ${s.n}` : `Boss ${s.n}`, s.title, tw ? `Mark ${D().markName(s.mark)}: ${tw.text}` : mv.text);
+      if (s.n === 1 && !retry) tip('start');
+      renderQueue(); paintChips(true);
+      if (!timers.length) {
+        timers.push(setInterval(tick, 50));
+        const vis = () => {
+          if (document.hidden) hiddenAt = now();
+          else if (hiddenAt && f && (f.phase === 'fight' || f.phase === 'intro')) { f.shift(now() - hiddenAt); hiddenAt = 0; }
+        };
+        document.addEventListener('visibilitychange', vis);
+        offs.push(() => document.removeEventListener('visibilitychange', vis));
+        const fwd = e => {
+          A.unlock();
+          const a = document.activeElement;
+          if (a && a !== document.body && a.id !== 'view') return;
+          if (e.ctrlKey || e.metaKey || e.altKey) return;
+          if (e.key === 'Enter' && over) { e.preventDefault(); act(over.primary); return; }
+          if (e.key.length !== 1 || !keys) return;
+          e.preventDefault();
+          keys.focus();
+          keys.el.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true }));
+        };
+        document.addEventListener('keydown', fwd);
+        offs.push(() => document.removeEventListener('keydown', fwd));
+        const snd = e => A.setOn(!!(e.detail && e.detail.on));
+        addEventListener('wpm-sound', snd);
+        offs.push(() => removeEventListener('wpm-sound', snd));
+      }
+    }
+
+    // ---------- typing ----------
+    function targets(t) {
+      if (!f || f.phase !== 'fight') return [];
+      const list = f.chips(t).filter(c => !(c.kind === 'speaker' && !c.next));
+      const o = me.offer();
+      if (o) for (const id of o.spells) { const sp = Combat.spell(id); list.push({ kind: 'spell', id: 'spell:' + id, word: sp.word, spell: sp, due: o.until, total: o.until - o.at }); }
+      return list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
+    }
+    const top = () => (f ? f.stack()[0] || '' : '');
+    const wordOf = tg => (tg && tg.kind ? tg.word : top());
+    function retarget() {
+      const list = targets(now());
+      if (target && target.kind && !list.some(x => x.id === target.id)) target = null;
+      if (target && wordOf(target).startsWith(typed)) return;
+      const m = list.find(x => x.word.startsWith(typed));
+      if (m) { target = m; return; }
+      if (top().startsWith(typed)) { target = { stack: true }; return; }
+      if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
+    }
+    function onChar(ch) {
+      A.unlock();
+      if (!f || f.phase !== 'fight' || over) return;
+      if (ch === ' ') {
+        if (target && target.kind && target.word.startsWith(typed + ' ')) { typed += ' '; renderQueue(); paintChips(true); return; }
+        if (typed) submit();
+        return;
+      }
+      if (!typed) wordT0 = now();
+      typed += ch;
+      retarget();
+      const w = wordOf(target);
+      const good = typed.length <= w.length && ch === w[typed.length - 1];
+      if (!good) clean = false;
+      f.key(good);
+      TT.click(false);
+      renderQueue(); paintChips(true);
+    }
+    function onBack(whole) {
+      if (!typed) return;
+      typed = whole ? '' : typed.slice(0, -1);
+      if (!typed) target = null; else retarget();
+      renderQueue(); paintChips(true);
+    }
+    function submit() {
+      if (!typed || !f || f.phase !== 'fight') return;
+      const t = now(), list = targets(t);
+      const exact = list.find(x => x.word === typed);
+      if (exact && exact.kind === 'spell') { castSpell(exact.spell, clean); return; }
+      if (!exact && target && target.kind === 'spell') { castSpell(target.spell, false); return; }
+      const word = top();
+      const aim = !exact && typed !== word && target && target.kind ? target.id : null;
+      const r = f.submit(typed, { clean, ms: t - wordT0, target: aim, t });
+      if (r && r.kind === 'word') {
+        scene.hit({ amount: r.amount, tier: r.tier, crit: r.crit, kind: 'word', color: me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null });
+        if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
+        TT.click(true);
+        hist.push({ word, ok: true });
+      } else if (r && r.kind === 'weak') {
+        scene.hit({ amount: r.amount, tier: Math.max(1, r.tier), crit: true, kind: 'weak' });
+        A.play('weak');
+      } else if (r && r.kind === 'miss' && !aim) hist.push({ word, ok: false });
+      if (hist.length > 3) hist.shift();
+      typed = ''; target = null; clean = true;
+      renderQueue(); paintChips(true); paintStrip();
+    }
+    function castSpell(sp, ok) {
+      typed = ''; target = null; clean = true;
+      const r = me.cast(sp.word, { clean: ok, shield: !!(f && f.state().shield) });
+      if (!r) { renderQueue(); paintChips(true); return; }
+      if (r.fizzled) { cSfx('fizzle'); pop('FIZZLED', 'red'); renderQueue(); paintChips(true); return; }
+      const out = f.cast(r, now());
+      WPM.track('spell_cast', { spell: sp.id, mode: 'rush' });
+      cSfx(sp.id);
+      if (sp.rarity >= 3) { A.duck(0.5, sp.rarity >= 4 ? 3.2 : 2.4); document.dispatchEvent(new CustomEvent('buddy', { detail: 'fast' })); }
+      scene.cast(sp.id, { hits: r.hits, effect: r.effect });
+      if (r.effect && r.effect.debuff === 'stun') scene.react('stun', r.effect.ms);
+      if (r.effect && r.effect.debuff === 'freeze') scene.react('freeze', r.effect.ms);
+      if (sp.strike && out) out.hits.forEach(h => wait(h.at, () => cSfx(sp.strike, 20)));
+      pop(sp.word, 'spell');
+      renderQueue(); paintChips(true); paintStrip();
+    }
+
+    // ---------- the fight's events ----------
+    function onFight(name, p) {
+      if (!f && name !== 'intro') return;
+      const S = f ? f.state(now()) : null;
+      switch (name) {
+        case 'fight': renderQueue(); paintChips(true); if (plan.slot.n > 1) tip('weak'); break;
+        case 'windup':
+          scene.windup(p.ms);
+          A.play('windup', Math.min(2.5, p.ms / 1000));
+          tip('block');
+          break;
+        case 'move': {
+          const m = MOVE[p.move];
+          if (p.move !== 'press') { banner('Its own move', m.name, m.how, 1800); scene.windupEnd(); }
+          A.play('warn');
+          const chips = f.chips(now());
+          if (p.move === 'gifts') scene.gifts(chips.filter(c => c.kind === 'gift').map(c => c.id), p.due);
+          if (p.move === 'speakers') scene.speakers(true);
+          if (p.move === 'fixsign') scene.setSign(p.shown);
+          break;
+        }
+        case 'blockWord': A.play('blockOk'); break;
+        case 'block': scene.windupEnd(); scene.react('stagger'); pop('BLOCKED', 'cyan'); A.play('stagger'); break;
+        case 'slam': scene.slam(); flashTint(); pop('HIT', 'red'); A.play('blockFail'); break;
+        case 'stun': scene.stun(p.ms); tip('stun'); break;
+        case 'overheat': pop('OVERHEATED', 'amber'); A.play('shieldBreak'); break;
+        case 'moveDone': scene.moveEnd(); pop('STUNNED', 'green'); A.play('stagger'); if (plan.boss.move === 'fixsign') scene.setSign('NODLES'); break;
+        case 'shield': scene.setShield(1); banner('Half HP', 'Firewall up', 'Hits go into the firewall until it breaks.', 1800); A.play('shieldUp'); break;
+        case 'shieldBreak': scene.setShield(null); pop('FIREWALL DOWN', 'cyan'); A.play('shieldBreak'); break;
+        case 'enrage': scene.enrage(true); pop('ENRAGED', 'red'); A.play('roar'); A.music(plan.boss.id === 'syntax' ? 'wb-enrage' : 'boss'); break;
+        case 'damage':
+          paintHead();
+          if (p.kind && p.kind !== 'word' && p.kind !== 'weak' && p.kind !== 'debug') number({ amount: p.amount, big: p.kind === 'spell' || p.kind === 'boost' || p.kind === 'block', kind: p.kind, shield: p.shield });
+          if (p.shield && S && S.shield) scene.setShield(S.shield.hp / S.shield.max);
+          break;
+        case 'hurt':
+          paintYou();
+          if (p.blocked) { pop(me.status('stunned-target') ? 'MISSED' : 'BLOCKED', 'cyan'); A.play('impact', true); break; }
+          if (p.kind !== 'typo') { scene.hurt(); flashTint(); A.play(p.kind === 'packet' ? 'projHit' : 'impact', false); }
+          break;
+        case 'typo': TT.click(true); break;
+        case 'packet': scene.packet(p.id, p.due); A.play('launch'); break;
+        case 'packetHit': scene.packetHit(p.id); break;
+        case 'returned': scene.returnShot(p.id); A.play('returned'); break;
+        case 'speaker': scene.speakerOff(p.order); A.play('addKill'); break;
+        case 'wrongAnswer': pop('WRONG', 'red'); break;
+        case 'boostOffer': pop('Art sent you a boost', 'boost'); A.play('milestone'); break;
+        case 'boost': scene.cast('glitch-blade', { hits: [{ at: 230, power: 70 }], effect: {} }); cSfx('glitch-blade'); break;
+        case 'won': wait(0, () => won(p)); break;
+        case 'lost': wait(0, () => lost(p)); break;
+      }
+      if (name === 'move' || name === 'windup' || name === 'block' || name === 'slam' || name === 'moveDone') paintChips(true);
+    }
+
+    function fightRecord(sum, won) {
+      const s = plan.slot;
+      const score = won ? D().bossScore({ n: s.n, secs: sum.secs, sizedSecs: sum.sizedSecs, acc: sum.acc, hpLeft: sum.hpLeft, bestCombo: sum.combo, casts: sum.casts, retry: plan.retry }) : 0;
+      const rec = { n: s.n, boss: plan.boss.id, title: s.title, mark: s.mark, won, retry: plan.retry, secs: +sum.secs.toFixed(1), wpm: sum.wpm, acc: sum.acc, combo: sum.combo, casts: sum.casts, dmg: sum.dmg, score, left: +sum.left.toFixed(3), keys: sum.keys, good: sum.good, letters: sum.letters };
+      run.fights.push(rec);
+      return rec;
+    }
+    function won(sum) {
+      if (!f) return;
+      const rec = fightRecord(sum, true);
+      dir.report(plan, sum);
+      RushBoard.saveDirector(dir.model());
+      run.score += rec.score;
+      const R = (window.REWARDS && REWARDS.rush) || { boss: { coins: 5, xp: 8, perMark: 2 } };
+      run.coins += R.boss.coins + R.boss.perMark * (plan.mark - 1);
+      run.xp += R.boss.xp;
+      WPM.track('rush_boss', { n: rec.n, boss: rec.boss, mark: rec.mark, secs: rec.secs, wpm: rec.wpm, acc: rec.acc, combo: rec.combo, retry: rec.retry });
+      if (sum.combo >= 5) WPM.track('combo', { n: sum.combo, mode: 'rush' });
+      scene.defeat();
+      A.play('defeat');
+      A.sting();
+      document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-down' }));
+      typed = ''; target = null;
+      renderQueue(); paintChips(true); paintStrip();
+      wait(1500, () => breather(rec, sum));
+    }
+    function lost(sum) {
+      if (!f) return;
+      const rec = fightRecord(sum, false);
+      dir.report(plan, sum);
+      RushBoard.saveDirector(dir.model());
+      A.play('roar');
+      typed = ''; target = null;
+      renderQueue(); paintChips(true); paintStrip();
+      wait(900, () => lostScreen(rec));
+    }
+
+    // ---------- overlays ----------
+    function showOver(html, primary, secondary) {
+      const o = q('over'); if (!o) return;
+      o.innerHTML = html; o.hidden = false;
+      q('stage').classList.add('has-over');
+      over = { primary, secondary };
+      q('box').classList.add('locked');
+      const b = o.querySelector(`button[data-act="${primary}"]`);
+      if (b && matchMedia('(pointer: fine)').matches) keys.focus();
+    }
+    function hideOver() { const o = q('over'); if (o) { o.hidden = true; o.innerHTML = ''; q('stage').classList.remove('has-over'); } over = null; const b = q('box'); if (b) b.classList.remove('locked'); }
+    function act(a) {
+      if (a === 'next') { hideOver(); run.n++; nextFight(false); }
+      else if (a === 'retry') { hideOver(); run.retryUsed = true; nextFight(true); }
+      else if (a === 'end') endRun('lost');
+    }
+    function statsHtml(rows) { return `<dl class="rush-dl">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`; }
+    function runTotals() {
+      const fs = run.fights;
+      const keys = fs.reduce((a, x) => a + x.keys, 0), good = fs.reduce((a, x) => a + x.good, 0);
+      const letters = fs.reduce((a, x) => a + x.letters, 0), sec = fs.reduce((a, x) => a + x.secs, 0);
+      const wonF = fs.filter(x => x.won);
+      const fast = wonF.slice().sort((a, b) => a.secs - b.secs)[0];
+      return {
+        keys, good, letters, secs: sec,
+        avgWpm: sec > 0 ? Math.round(letters / 5 / (sec / 60)) : 0,
+        peak: fs.filter(x => x.secs >= 5).reduce((a, x) => Math.max(a, x.wpm), 0),
+        acc: keys ? Math.round(1000 * good / keys) / 10 : 0,
+        combo: fs.reduce((a, x) => Math.max(a, x.combo), 0),
+        spells: fs.reduce((a, x) => a + x.casts, 0),
+        dmg: fs.reduce((a, x) => a + x.dmg, 0),
+        beaten: wonF.length,
+        fastest: fast ? { ms: Math.round(fast.secs * 1000), n: fast.n, boss: fast.boss, title: fast.title } : null,
+      };
+    }
+    function breather(rec) {
+      const T = runTotals();
+      const nx = D().slot(run.n + 1);
+      const tw = nx.mark > 1 && nx.i === 0 ? D().TWISTS.find(x => x.mark === nx.mark) : null;
+      A.quiet(true);
+      showOver(`<div class="ro-in">
+          <p class="ro-head">Boss ${rec.n} down in ${secs(rec.secs * 1000)}<span>+${fmt(rec.score)} score</span></p>
+          ${statsHtml([['Score', fmt(run.score)], ['Bosses beaten', T.beaten], ['wpm', T.avgWpm], ['Accuracy', T.acc + '%'], ['Best combo', T.combo], ['Spells cast', T.spells]])}
+          <div class="ro-next" style="--c:${nx.boss.color}"><span>Next, boss ${nx.n}</span><b>${esc(nx.title)}</b><em>${esc(tw ? tw.text : MOVE[nx.boss.move].text)}</em></div>
+          <div class="ro-act"><button class="btn" type="button" data-act="next">Next boss <kbd>Enter</kbd></button><button class="btn out" type="button" data-act="end">End run</button></div>
+        </div>`, 'next', 'end');
+    }
+    function lostScreen(rec) {
+      const left = rec.left * 100;
+      const can = !run.retryUsed;
+      A.quiet(true);
+      showOver(`<div class="ro-in lost">
+          <p class="ro-head">${esc(rec.title)} beat you with ${left < 1 ? left.toFixed(1) : Math.round(left)}% of its HP left</p>
+          ${can ? '<p class="ro-sub">You have one retry this run.</p>' : '<p class="ro-sub">Your retry for this run is used.</p>'}
+          <div class="ro-act">${can ? '<button class="btn" type="button" data-act="retry">Retry this boss <kbd>Enter</kbd></button><button class="btn out" type="button" data-act="end">End run</button>'
+            : '<button class="btn" type="button" data-act="end">See the results <kbd>Enter</kbd></button>'}</div>
+        </div>`, can ? 'retry' : 'end', can ? 'end' : null);
+    }
+
+    // ---------- the end of a run ----------
+    function finishRun() {
+      if (!run || run.done) return null;
+      run.done = true;
+      const T = runTotals();
+      const out = {
+        id: run.id, at: run.at, name: WPM.profile().name,
+        bosses: T.beaten, reached: run.n, score: run.score, ms: Math.round(T.secs * 1000),
+        wpm: T.peak, avgWpm: T.avgWpm, acc: T.acc, bestCombo: T.combo, spells: T.spells, dmg: T.dmg,
+        fastest: T.fastest, retry: run.retryUsed, fights: run.fights.map(({ keys, good, letters, ...x }) => x),
+      };
+      if (!T.keys) return { out, res: null, rec: null, coins: 0, xp: 0 };
+      const res = RushBoard.add(out);
+      const rec = WPM.record({ mode: 'rush', wpm: T.avgWpm, acc: Math.round(T.acc), correct: T.letters, keys: T.keys, ms: out.ms, score: out.score });
+      WPM.track('rush_run', { bosses: out.bosses, score: out.score, wpm: T.avgWpm, acc: T.acc, combo: T.combo, spells: T.spells });
+      const R = (window.REWARDS && REWARDS.rush) || { run: { coins: 10, xp: 20, minBosses: 3 }, newBest: { coins: 25 }, maxPerRun: 250 };
+      let coins = run.coins, xp = run.xp;
+      if (out.bosses >= R.run.minBosses) { coins += R.run.coins; xp += R.run.xp; }
+      if (res.best.bosses) coins += R.newBest.coins;
+      coins = Math.min(R.maxPerRun, coins);
+      if (coins) WPM.addCoins(coins, 'boss rush');
+      if (xp) WPM.addXP(xp);
+      if (dir) RushBoard.saveDirector(dir.model());
+      return { out, res, rec, coins: coins + (rec ? rec.coins : 0), xp: xp + (rec ? rec.xp : 0) };
+    }
+    function endRun(why) {
+      if (!run) return;
+      if (f && (f.phase === 'fight' || f.phase === 'intro') && why === 'quit') {
+        // a fight left half way counts toward the totals and not toward the director
+        const sum = f.summary();
+        if (sum.keys) fightRecord({ ...sum, secs: Math.max(0.5, (now() - f.state(now()).fightAt) / 1000) }, false);
+      }
+      const r = finishRun();
+      const last = run.fights[run.fights.length - 1];
+      teardownFight();
+      endView(r, last, why);
+    }
+    function endView(r, last, why) {
+      view = 'end';
+      pageEl.classList.remove('rush-live');
+      const o = r ? r.out : null;
+      const best = r && r.res ? r.res.best : {};
+      const callout = !r || !r.res ? '' : best.bosses ? `New best run: ${o.bosses} ${o.bosses === 1 ? 'boss' : 'bosses'}`
+        : best.score ? `New best score: ${fmt(o.score)}` : r.res.first ? 'Your first run on this device' : '';
+      const how = !last ? '' : last.won ? `You ended the run after boss ${last.n}.` : why === 'quit' ? `You ended the run at boss ${last.n}.` : `${esc(last.title)} beat you at boss ${last.n}.`;
+      host.innerHTML = `
+        <div class="rush page-boss" data-view="end">
+          <section class="rush-end" aria-label="Run results">
+            <h1>Run over</h1>
+            <p class="re-how">${how}</p>
+            ${callout ? `<p class="re-best">${callout}</p>` : ''}
+            <div class="re-hero">
+              <div><b>${o ? o.bosses : 0}</b><span>${o && o.bosses === 1 ? 'boss beaten' : 'bosses beaten'}</span></div>
+              <div><b>${o ? fmt(o.score) : 0}</b><span>score</span></div>
+            </div>
+            ${o ? statsHtml([
+              ['wpm', o.avgWpm + (o.wpm > o.avgWpm ? ` <small>peak ${o.wpm}</small>` : '')], ['Accuracy', o.acc + '%'], ['Best combo', o.bestCombo],
+              ['Spells cast', o.spells], ['Damage dealt', fmt(o.dmg)], ['Time', UI.time(o.ms)],
+              ['Fastest kill', o.fastest ? `${secs(o.fastest.ms)} <small>${esc(o.fastest.title)}</small>` : '-'],
+            ]) : ''}
+            ${r && (r.coins || r.xp) ? `<p class="re-coins">${UI.coin()}<span><b>+${fmt(r.coins)}</b> coins and <b>+${fmt(r.xp)}</b> XP</span></p>` : ''}
+            <div class="re-act"><button class="btn" type="button" data-k="again">New run <kbd>Enter</kbd></button><a class="btn out" href="#/leaderboard" data-lb>Scoreboard</a></div>
+            ${o && o.fights.length ? `<details class="re-fights"><summary>Every boss in this run</summary>
+              <table class="board"><thead><tr><th>#</th><th>Boss</th><th class="num-col">Time</th><th class="num-col">wpm</th><th class="num-col hide-sm">Accuracy</th><th class="num-col hide-sm">Combo</th><th class="num-col">Score</th></tr></thead>
+              <tbody>${o.fights.map(x => `<tr class="${x.won ? '' : 'lost'}"><td class="rank">${x.n}</td><td>${esc(x.title)}${x.retry ? ' <span class="tag">Retry</span>' : ''}${x.won ? '' : ' <span class="tag">Lost</span>'}</td>
+                <td class="n num-col">${x.secs.toFixed(1)} s</td><td class="n num-col">${x.wpm}</td><td class="n num-col hide-sm">${x.acc}%</td><td class="n num-col hide-sm">${x.combo}</td><td class="w num-col">${fmt(x.score)}</td></tr>`).join('')}</tbody></table>
+            </details>` : ''}
+          </section>
+        </div>`;
+      q('again').addEventListener('click', startRun);
+      host.querySelectorAll('[data-lb]').forEach(a => a.addEventListener('click', () => TT.store.set('wpm-lb-tab', 'rush')));
+      if (matchMedia('(pointer: fine)').matches) q('again').focus({ preventScroll: true });
+      // the game cards stack above the results on narrow screens
+      const head = document.querySelector('header.top');
+      const top = host.querySelector('.rush-end').getBoundingClientRect().top + scrollY - (head ? head.getBoundingClientRect().bottom : 0) - 12;
+      scrollTo({ top: matchMedia('(max-width: 1000px)').matches ? Math.max(0, top) : 0 });
+    }
+    // Enter starts a run from the entry and end screens
+    const enter = e => {
+      if (e.key !== 'Enter' || (view !== 'menu' && view !== 'end')) return;
+      const a = document.activeElement;
+      if (a && (a.tagName === 'A' || a.tagName === 'INPUT' || a.tagName === 'SUMMARY' || (a.tagName === 'BUTTON' && !a.matches('[data-k="start"], [data-k="again"]')))) return;
+      e.preventDefault(); startRun();
+    };
+    document.addEventListener('keydown', enter);
+
+    // ---------- the clock ----------
+    function tick() {
+      if (!f || view !== 'fight') return;
+      const t = now();
+      f.tick(t);
+      if (!f) return;
+      if (target && target.kind && !targets(t).some(x => x.id === target.id)) { target = null; typed = ''; renderQueue(); }
+      paintChips(false);
+      paintFlags(t);
+      paintTip(t);
+    }
+
+    // ---------- painting ----------
+    function paintHead() {
+      if (!f || !q('name')) return;
+      const S = f.state(now()), s = plan.slot;
+      q('name').textContent = s.title;
+      q('state').textContent = plan.retry ? `Boss ${s.n}, retry` : `Boss ${s.n}`;
+      q('state').dataset.s = Math.min(5, s.mark);
+      q('num').textContent = MOVE[plan.boss.move].name;
+      const fr = S.hp / S.max;
+      q('hp').innerHTML = `${fmt(Math.ceil(S.hp))}<small> / ${fmt(S.max)} HP</small>`;
+      q('fill').style.width = (100 * fr) + '%';
+      q('meter').setAttribute('aria-valuemax', S.max); q('meter').setAttribute('aria-valuenow', Math.ceil(S.hp));
+      q('left').textContent = (fr > 0 && fr < 0.01 ? (100 * fr).toFixed(1) : Math.ceil(100 * fr)) + '%';
+      const sb = q('sbar');
+      if (S.shield) { sb.hidden = false; sb.style.width = (100 * fr) + '%'; sb.style.setProperty('--s', S.shield.hp / S.shield.max); } else sb.hidden = true;
+      scene.setFrac(fr);
+    }
+    function paintYou() {
+      if (!f || !q('ifill')) return;
+      const p = f.state(now()).player;
+      const k = p.hp / p.max;
+      q('ifill').style.width = (100 * k) + '%';
+      q('ifill').parentElement.dataset.low = k <= 0.3 ? '1' : '';
+      q('ihp').textContent = Math.ceil(p.hp);
+      q('imeter').setAttribute('aria-valuenow', Math.ceil(p.hp));
+    }
+    function paintStrip() {
+      if (!run || !q('s-score')) return;
+      const T = runTotals();
+      const cur = f ? f.summary() : null;
+      const keys = T.keys + (cur && f.phase === 'fight' ? cur.keys : 0), good = T.good + (cur && f.phase === 'fight' ? cur.good : 0);
+      q('s-score').textContent = fmt(run.score);
+      q('s-beaten').textContent = T.beaten;
+      q('s-wpm').textContent = cur && f.phase === 'fight' ? cur.wpm : T.avgWpm;
+      q('s-acc').textContent = (keys ? Math.round(100 * good / keys) : 100) + '%';
+    }
+    function paintFlags(t) {
+      const box = q('flags'); if (!box || !f) return;
+      const S = f.state(t), bits = [];
+      if (S.stunned) bits.push(`<span class="wb-flag stun">Stunned <b>${(S.stunLeft / 1000).toFixed(1)}s</b> <small>damage x2</small></span>`);
+      if (S.shield) bits.push(`<span class="wb-flag shield">Firewall <b>${fmt(Math.max(0, S.shield.hp))}</b></span>`);
+      if (S.enraged) bits.push('<span class="wb-flag jam">Enraged</span>');
+      if (plan.boss.move === 'press' && S.heat) bits.push(`<span class="wb-flag weak">Heat <b>${S.heat}</b><small> of 3</small></span>`);
+      const pn = performance.now();
+      for (const x of me.statuses()) {
+        const left = x.until ? Math.max(0, Math.ceil((x.until - pn) / 1000)) + 's' : '';
+        const txt = { ward: 'Safe mode', hyper: `Hyper thread x2 <b>${left}</b>`, root: `Root access x2 <b>${left}</b>`, split: `Quantum split <b>${x.charges}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`, crits: `Crits <b>${x.charges}</b>` }[x.name];
+        if (txt) bits.push(`<span class="wb-flag buff ${x.name}">${txt}</span>`);
+      }
+      const html = bits.join('');
+      if (box.innerHTML !== html) box.innerHTML = html;
+      scene.heat(S.heat);
+    }
+    function lettersHtml(word, t, caret) {
+      let s = '';
+      for (let i = 0; i < word.length; i++) {
+        const a = t[i], c = word[i], ch = c === ' ' ? '&nbsp;' : esc(c);
+        if (a === undefined) s += `<span class="c${caret && i === t.length ? ' at' : ''}">${ch}</span>`;
+        else s += `<span class="c ${a === c ? 'ok' : 'bad'}">${ch}</span>`;
+      }
+      return s;
+    }
+    function paintChips(force) {
+      const row = q('chips'); if (!row) return;
+      const t = now();
+      const live = f && f.phase === 'fight';
+      const all = live ? f.chips(t) : [];
+      const o = live ? me.offer() : null;
+      const spells = o ? o.spells.map(id => ({ kind: 'spell', id: 'spell:' + id, word: Combat.spell(id).word, spell: Combat.spell(id), due: o.until, total: o.until - o.at })) : [];
+      const list = all.slice().sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (a.order || 0) - (b.order || 0) || (a.kind === 'packet' ? a.due - b.due : 0));
+      const on = id => target && target.kind && target.id === id;
+      const key = list.map(c => c.id + (c.next ? '*' : '')).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
+      if (force || key !== chipKey) {
+        chipKey = key;
+        let html = '';
+        const attacks = list.filter(c => c.kind !== 'weak' && c.kind !== 'boost');
+        if (live && !attacks.length) {
+          const S = f.state(t);
+          if (!S.action && S.nextAttack > 0 && !S.stunned) html += `<span class="wb-next">Next attack in <b data-k="nexts">${Math.ceil(S.nextAttack / 1000)}s</b></span>`;
+        }
+        // the six speakers share one chip and one timer, the next one lit
+        const spk = list.filter(c => c.kind === 'speaker');
+        if (spk.length) {
+          const nx = spk.find(c => c.next) || spk[0];
+          html += `<span class="wb-chip add speakers${on(nx.id) ? ' on' : ''}" data-id="${esc(nx.id)}"><small>Mute in order</small>${spk.map(c => `<span class="w${c === nx ? '' : ' dim'}">${lettersHtml(c.word, on(c.id) ? typed : '', on(c.id))}</span>`).join('')}<i class="bar"><i></i></i><em class="secs"></em></span>`;
+        }
+        let answered = false;
+        html += list.filter(c => c.kind !== 'speaker').map(c => {
+          let label = c.kind === 'block' && c.frozen ? 'Block, frozen' : LABEL[c.kind];
+          if (c.kind === 'answer') { label = answered ? '' : label; answered = true; }
+          const word = c.kind === 'fix'
+            ? `<span class="w sign">${esc(c.shown)}</span>${on(c.id) ? `<span class="w typed">${lettersHtml(c.word, typed, true)}</span>` : ''}`
+            : `<span class="w">${lettersHtml(c.word, on(c.id) ? typed : '', on(c.id))}</span>`;
+          const timed = c.due && c.kind !== 'weak';
+          return `<span class="wb-chip ${CLS[c.kind]}${on(c.id) ? ' on' : ''}${c.kind === 'block' && list[0] === c ? ' first' : ''}${c.kind === 'speaker' && !c.next ? ' wait' : ''}${c.frozen ? ' frozen' : ''}" data-id="${esc(c.id)}">
+            ${label ? `<small>${label}</small>` : ''}${word}${timed ? '<i class="bar"><i></i></i><em class="secs"></em>' : ''}</span>`;
+        }).join('');
+        if (spells.length) html += `<span class="wb-spells" aria-label="Spells">${spells.map(x => `<span class="wb-chip spell r${x.spell.rarity}${on(x.id) ? ' on' : ''}" data-id="${esc(x.id)}" style="--sc:${x.spell.color}"><small>${esc(x.spell.label)}</small><span class="w">${lettersHtml(x.word, on(x.id) ? typed : '', on(x.id))}</span><i class="bar"><i></i></i><em class="secs"></em></span>`).join('')}</span>`;
+        row.innerHTML = html;
+      }
+      const pn = performance.now();
+      const spkNext = list.find(c => c.kind === 'speaker' && c.next);
+      for (const c of [...list.filter(x => x.kind !== 'speaker'), ...(spkNext ? [spkNext] : []), ...spells]) {
+        if (!c.due || c.kind === 'weak') continue;
+        const n = row.querySelector(`[data-id="${CSS.escape(c.id)}"]`); if (!n) continue;
+        const left = Math.max(0, c.due - (c.kind === 'spell' ? pn : t));
+        const bar = n.querySelector('.bar i'); if (bar) bar.style.width = (100 * left / c.total).toFixed(1) + '%';
+        const s = n.querySelector('.secs'); if (s) s.textContent = c.kind === 'spell' ? Math.ceil(left / 1000) + 's' : (left / 1000).toFixed(1) + 's';
+        n.classList.toggle('late', c.kind !== 'boost' && left < (c.kind === 'spell' ? 4000 : 1500));
+      }
+      const ns = row.querySelector('[data-k="nexts"]');
+      if (ns && live) ns.textContent = Math.ceil(f.state(t).nextAttack / 1000) + 's';
+    }
+    function renderQueue() {
+      const box = q('queue'); if (!box) return;
+      const st = f ? f.stack() : [];
+      const w = st[0] || '';
+      const mine = !target || target.stack;
+      const t = mine ? typed : '';
+      let cur = '';
+      for (let i = 0; i < Math.max(w.length, t.length); i++) {
+        const a = t[i], c = w[i];
+        if (a === undefined) cur += `<span class="c${i === t.length && mine ? ' at' : ''}">${esc(c)}</span>`;
+        else if (c === undefined) cur += `<span class="c bad extra">${esc(a)}</span>`;
+        else cur += `<span class="c ${a === c ? 'ok' : 'bad'}">${esc(c)}</span>`;
+      }
+      if (mine && t.length >= w.length) cur += '<span class="c at">&nbsp;</span>';
+      const last = hist[hist.length - 1];
+      let ghost = '';
+      if (last) {
+        if (!ghostAt.has(last)) { ghostAt.clear(); ghostAt.set(last, now()); }
+        const age = now() - ghostAt.get(last);
+        if (age < 700) ghost = `<span class="bw done ${last.ok ? 'hit' : 'miss'}" style="animation-delay:-${Math.round(age)}ms">${esc(last.word)}</span>`;
+      }
+      box.innerHTML = `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mine ? '' : ' wait'}" aria-current="${mine}">${cur}</span></span></div>`
+        + `<div class="bq-next">${st.slice(1, 13).map((x, i) => `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`).join('')}</div>`;
+    }
+    function paintCombo(drop) {
+      const box = q('cbox'); if (!box || !me) return;
+      const c = me.state();
+      if (c.combo > 0) comboShown = true;
+      box.hidden = !comboShown;
+      q('cnum').textContent = c.combo;
+      q('ctier').textContent = c.name;
+      box.dataset.t = c.tier;
+      q('cbar').style.width = (100 * Math.min(1, c.progress)).toFixed(1) + '%';
+      q('cnext').textContent = c.next ? c.next : '';
+      if (drop) { box.classList.remove('drop'); void box.offsetWidth; box.classList.add('drop'); }
+    }
+    function wireCombat() {
+      me.on('combo', c => { paintCombo(['hurt', 'typo', 'wrong', 'fizzle'].includes(c.reason)); if (c.combo && c.combo % 5 === 0 && c.reason === 'word') WPM.track('combo', { n: c.combo, mode: 'rush' }); });
+      me.on('tierUp', e => { if (!q('cbox')) return; cSfx('tierUp', e.tier); pop(e.name.toUpperCase(), 'green'); tip('combo'); const b = q('cbox'); b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); });
+      me.on('miss', e => { if (e.from >= 10) cSfx('break'); });
+      me.on('spellOffer', () => { cSfx('offer'); tip('spell'); paintChips(true); });
+      me.on('offerEnd', () => { if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
+      me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
+      me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
+      me.on('status', e => { if (scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, !!e.on); });
+    }
+
+    // ---------- feedback ----------
+    function onImpact(h, x, y) { number({ amount: h.amount, big: h.crit || h.tier >= 3 || h.kind === 'weak', kind: h.kind }, x, y); A.play(h.kind === 'weak' ? 'crit' : h.crit ? 'crit' : 'hit', 0); }
+    function number(h, x, y) {
+      const layer = q('nums'); if (!layer) return;
+      if (x === null || x === undefined) {
+        const pt = scene && scene.screen('core', { x: 0, y: 0 });
+        const stg = q('stage');
+        x = pt ? pt.x : stg.clientWidth / 2; y = pt ? pt.y : stg.clientHeight * 0.4;
+      }
+      const s = document.createElement('span');
+      s.className = 'dmg you' + (h.big ? ' big' : '') + (h.shield ? ' sh' : '') + (h.kind === 'spell' ? ' spell' : '') + (h.amount >= 1000 ? ' huge' : '');
+      s.textContent = '-' + fmt(h.amount);
+      s.style.left = (x + (Math.random() - 0.5) * 80) + 'px';
+      s.style.top = (y + (Math.random() - 0.5) * 50) + 'px';
+      layer.append(s);
+      while (layer.children.length > 24) layer.firstElementChild.remove();
+      setTimeout(() => s.remove(), 1200);
+    }
+    function pop(text, cls) {
+      const p = q('pop'); if (!p) return;
+      const t = now();
+      if (t - popT < 350 && cls !== 'boost') return;
+      popT = t;
+      p.className = 'wb-pop ' + cls;
+      p.textContent = text;
+      void p.offsetWidth; p.classList.add('go');
+    }
+    function flashTint() {
+      const n = q('tint'); if (!n) return;
+      if (now() - tintT < 400) return;
+      tintT = now();
+      n.classList.remove('go'); void n.offsetWidth; n.classList.add('go');
+    }
+    function banner(small, big, line, ms = 2400) {
+      const b = q('banner'); if (!b) return;
+      b.hidden = false;
+      b.innerHTML = `<div class="in"><small>${esc(small)}</small><b>${esc(big)}</b>${line ? `<span>${esc(line)}</span>` : ''}</div>`;
+      b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+      clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, ms);
+    }
+    function tip(id) { if (!seen.has(id) && !tipQ.includes(id)) tipQ.push(id); }
+    function paintTip(t) {
+      const n = q('tip'); if (!n || t < tipUntil) return;
+      const id = tipQ.shift();
+      if (!id) { if (n.textContent) { n.textContent = ''; n.classList.remove('on'); } return; }
+      seen.add(id);
+      try { localStorage.setItem('wpm-rush-tips', JSON.stringify([...seen])); } catch (e) {}
+      n.textContent = TIPS[id]; n.classList.add('on');
+      tipUntil = t + 6000;
+    }
+
+    // ---------- leaving ----------
+    function teardownFight() {
+      later.forEach(clearTimeout); later = [];
+      timers.forEach(clearInterval); timers = [];
+      offs.forEach(fn => fn()); offs = [];
+      if (scene) { scene.dispose(); scene = null; }
+      if (me) { me.bus.clear(); }
+      A.stop();
+      f = null; keys = null; over = null;
+    }
+    function destroy() {
+      if (run && !run.done && run.fights.length + (f ? 1 : 0) > 0) {
+        if (f && (f.phase === 'fight' || f.phase === 'intro')) { const sum = f.summary(); if (sum.keys) fightRecord(sum, false); }
+        finishRun();
+      }
+      document.removeEventListener('keydown', enter);
+      teardownFight();
+      me = null; run = null;
+      pageEl.classList.remove('rush-live');
+      delete window._rush;
+    }
+    const leave = () => { if (run && !run.done && (run.fights.length || f)) { if (f && (f.phase === 'fight' || f.phase === 'intro')) { const sum = f.summary(); if (sum.keys) fightRecord(sum, false); } finishRun(); } };
+    addEventListener('pagehide', leave);
+
+    // ---------- test hooks ----------
+    window._rush = {
+      view: () => view,
+      start: () => { if (view !== 'fight') startRun(); },
+      jump: n => { if (!run) startRun(); later.forEach(clearTimeout); later = []; run.n = n; nextFight(false); },
+      plan: () => plan && { n: plan.n, boss: plan.boss.id, mark: plan.mark, S: plan.S, knobs: plan.knobs, floor: plan.floor, help: plan.help, boost: plan.boost },
+      state: () => f && f.state(now()),
+      summary: () => f && f.summary(),
+      chips: () => (f ? f.chips(now()).map(c => ({ kind: c.kind, word: c.word, id: c.id, next: c.next })) : []),
+      stack: () => (f ? f.stack().slice(0, 6) : []),
+      win: () => f && f.debug.win(now()),
+      lose: left => f && f.debug.lose(now(), left === undefined ? 0.4 : left),
+      setHp: x => f && (f.debug.setHp(x), paintHead()),
+      attack: () => f && f.debug.attack(now()),
+      move: () => f && f.debug.move(now()),
+      act: a => act(a),
+      end: () => endRun('quit'),
+      type: w => { for (const ch of w) onChar(ch); onChar(' '); },
+      setCombo: n => me && me.debug.setCombo(n),
+      cast: id => { const sp = Combat.spell(id); if (!sp || !me) return false; me.debug.offer([id]); typed = ''; target = null; castSpell(sp, true); return true; },
+      boost: () => { if (!f) return false; f.plan.boost = { word: 'overclock', at: 0, dmg: Math.round(f.state(now()).max * 0.1) }; return true; },
+      log: () => (dir ? dir.log() : []),
+      board: () => RushBoard.load(),
+      scene: () => scene && scene.info(),
+      sceneCtl: () => scene,
+      audio: () => A.state(),
+    };
+
+    menu();
+    return {
+      destroy() { removeEventListener('pagehide', leave); destroy(); },
+    };
+  }
+
+  return { mount };
+})();

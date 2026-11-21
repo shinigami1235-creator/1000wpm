@@ -185,6 +185,12 @@ window.WPM = (() => {
   function learn() { return JSON.parse(JSON.stringify(data.learn || {})); }
   function setLearn(patch) { data.learn = { ...(data.learn || {}), ...patch }; save(); emit('learn', learn()); }
 
+  // ---------- mode data ----------
+  // A mode's own saved data that is not a run, such as the Boss Rush scoreboard and its
+  // director's model. Stored in the same save under modes[name].
+  function modeData(name) { const m = data.modes && data.modes[name]; return m === undefined ? null : JSON.parse(JSON.stringify(m)); }
+  function setModeData(name, value) { data.modes = { ...(data.modes || {}), [name]: value }; save(); emit('mode-data', { name }); }
+
   function reset() { data = blank(); save(); emit('reset', null); }
   function exportData() { return JSON.stringify(data); }
 
@@ -198,5 +204,6 @@ window.WPM = (() => {
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,
+    modeData, setModeData,
   };
 })();

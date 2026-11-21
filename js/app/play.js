@@ -1,5 +1,6 @@
-// #/play: the game hub. #/play/breach mounts the game agent's window.Breach and
-// #/play/race mounts the race. Only one game runs at a time.
+// #/play: the game hub. #/play/breach mounts the game agent's window.Breach,
+// #/play/race mounts the race and #/play/rush mounts Boss rush (js/app/rush/page.js).
+// Only one game runs at a time.
 Router.register('play', (() => {
   let el, game = '', stopGame = null;
 
@@ -12,20 +13,21 @@ Router.register('play', (() => {
       <nav class="game-tabs" aria-label="Games">
         <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3><p>Five chapters with a boss at the end of each, plus endless and a daily run.</p></a>
         <a class="panel game-tab" href="#/play/race" data-g="race"><span class="label">&gt; GAME 02</span><h3>Race</h3><p>Your car's speed comes from your typing speed. Race Art, your best run or a friend.</p></a>
+        <a class="panel game-tab" href="#/play/rush" data-g="rush"><span class="label">&gt; GAME 03</span><h3>Boss rush</h3><p>Copies of every boss Art has beaten, one after another, each harder than the last.</p></a>
       </nav>
       <div data-game></div>`;
     update(params);
   }
 
   function update(params) {
-    const want = params && params[0] === 'race' ? 'race' : 'breach';
+    const want = params && (params[0] === 'race' || params[0] === 'rush') ? params[0] : 'breach';
     if (want === game) return;
     stop();
     game = want;
     el.querySelectorAll('.game-tab').forEach(a => a.dataset.g === game ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
     const host = el.querySelector('[data-game]');
     host.innerHTML = '';
-    if (game === 'breach') breach(host); else race(host);
+    if (game === 'breach') breach(host); else if (game === 'rush') rush(host); else race(host);
   }
 
   function breach(host) {
@@ -49,6 +51,14 @@ Router.register('play', (() => {
     host.append(panel);
     const r = RaceGame.mount(panel);
     stopGame = () => r.destroy();
+  }
+
+  function rush(host) {
+    const box = UI.el('<div class="rush-host"></div>');
+    host.append(box);
+    let r = null;
+    const cancel = UI.waitFor('RushPage', box, R => { r = R.mount(box, el); });
+    stopGame = () => { cancel(); if (r) r.destroy(); };
   }
 
   function stop() {

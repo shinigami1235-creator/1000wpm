@@ -37,6 +37,15 @@ window.REWARDS = {
     hidden: { coins: 150, xp: 150 },
   },
 
+  // Boss Rush, on top of what WPM.record pays for the run's typing. Kept small until the
+  // economy is settled. js/app/rush/page.js reads these.
+  rush: {
+    boss: { coins: 5, xp: 8, perMark: 2 },   // each boss beaten: 5 coins plus 2 for each mark past I, and 8 XP
+    run: { coins: 10, xp: 20, minBosses: 3 }, // a run that beats at least 3 bosses
+    newBest: { coins: 25 },                   // a new best run (bosses beaten) on this device
+    maxPerRun: 250,                           // rush coins in one run stop here
+  },
+
   // Random room items.
   gifts: {
     streakDays: [3, 7],       // days of the 7-day cycle that bring a gift
