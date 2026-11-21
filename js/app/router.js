@@ -37,5 +37,5 @@ window.Router = (() => {
     go();
   }
 
-  return { register, start, reload: () => go(true), current: () => curName };
+  return { register, get: name => pages[name], start, reload: () => go(true), current: () => curName };
 })();
