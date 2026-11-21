@@ -266,7 +266,7 @@ Router.register('duel', (() => {
   function event(ev) {
     const me = info.you;
     switch (ev.type) {
-      case 'shot': scene.shot(ev.side, ev.tier, null, { color: info.players[ev.side].art ? '#3ee6ff' : SIDE_COL[ev.side] }); break;
+      case 'shot': scene.shot(ev.side, ev.tier, null, { color: info.players[ev.side].art ? '#3ee6ff' : SIDE_COL[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock() }); break;
       case 'hit': {
         num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
         if (ev.kind !== 'word') scene.react(ev.to, 'hit', 0.5);
@@ -423,7 +423,7 @@ Router.register('duel', (() => {
     let out = '';
     for (let i = 0; i < Math.max(w.length, typed.length); i++) {
       const c = w[i], t = typed[i];
-      if (t == null) out += `<i class="${i === typed.length ? 'caret' : ''}">${e(c === ' ' ? ' ' : c)}</i>`;
+      if (t == null) out += `<i class="${i === typed.length ? 'at' : ''}">${e(c === ' ' ? ' ' : c)}</i>`;
       else if (t === c) out += `<i class="ok">${e(c === ' ' ? ' ' : c)}</i>`;
       else out += `<i class="bad">${e(c ? (c === ' ' ? ' ' : c) : t)}</i>`;
     }

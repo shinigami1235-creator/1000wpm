@@ -392,7 +392,7 @@ Router.register('party', (() => {
     for (let i = 0; i < Math.max(w.length, typed.length); i++) {
       const c = w[i], t = typed[i];
       const ch = x => e(x === ' ' ? ' ' : x);
-      if (t == null) out += `<i class="${i === typed.length ? 'caret' : ''}">${ch(c)}</i>`;
+      if (t == null) out += `<i class="${i === typed.length ? 'at' : ''}">${ch(c)}</i>`;
       else out += `<i class="${t === c ? 'ok' : 'bad'}">${ch(c || t)}</i>`;
     }
     return out + (typed.length >= w.length ? '<i class="caret"> </i>' : '');
