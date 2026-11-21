@@ -15,13 +15,13 @@ Router.register('type', (() => {
   const SECS = [15, 30, 60, 120], COUNTS = [25, 50, 100];
 
   let el, tt, keys, iv = 0, stopKey = null, onResize = null;
-  let opt, running, ended, startT, samples, lastQuote = -1, hist, raws, ks;
+  let opt, running, ended, startT, samples, lastQuote = '', hist, raws, ks;
 
   const modeKey = () => opt.mode === 'time' ? `time-${opt.secs}` : opt.mode === 'words' ? `words-${opt.count}` : opt.mode;
 
   function mount(root) {
     el = root;
-    opt = { mode: 'time', secs: 60, count: 50, ...TT.store.get('wpm-type-opts', {}) };
+    opt = { mode: 'time', secs: 60, count: 50, caps: 1, ...TT.store.get('wpm-type-opts', {}) };
     el.innerHTML = `
       <div class="type-top">
         <div class="panel title-block">
@@ -43,6 +43,9 @@ Router.register('type', (() => {
             <div class="seg" data-g="count" role="group" aria-label="Word count">${COUNTS.map(s => `<button type="button" data-v="${s}">${s}</button>`).join('')}</div>
           </div>
           <div class="row" data-row="none"><span class="label">Length</span><span class="dim" data-k="len"></span></div>
+          <div class="row" data-row="caps"><span class="label">Capitals</span>
+            <div class="seg" data-g="caps" role="group" aria-label="Capitals"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off</button></div>
+          </div>
           ${window.Focus ? `<div class="row"><span class="label">Focus</span>
             <div class="seg" data-focus role="group" aria-label="Focus mode"><button type="button" data-v="on">On</button><button type="button" data-v="off">Off</button></div>
           </div>` : ''}
@@ -134,9 +137,13 @@ Router.register('type', (() => {
     if (opt.mode === 'time') return TT.randomWords(Math.max(120, opt.secs * 4.5)).join(' ');
     if (opt.mode === 'words') return TT.randomWords(opt.count).join(' ');
     if (opt.mode === 'quote') {
-      let i; do { i = Math.floor(Math.random() * QUOTES.length); } while (i === lastQuote && QUOTES.length > 1);
-      lastQuote = i;
-      return QUOTES[i];
+      // the free typing passages (short and medium) once they have loaded, the few quotes above until then
+      const P = window.PASSAGES;
+      const list = P ? P.LIST.filter(x => x.len === 'short' || x.len === 'medium').map(x => x.text) : QUOTES;
+      if (!P && window.Lazy) Lazy.need('passages').then(() => { if (el && opt.mode === 'quote' && !running && !ended) reset(); }).catch(() => {});
+      let i; do { i = Math.floor(Math.random() * list.length); } while (list[i] === lastQuote && list.length > 1);
+      lastQuote = list[i];
+      return opt.caps ? list[i] : list[i].toLowerCase();
     }
     return TT.store.get('wpm-custom-text', '');
   }
@@ -148,8 +155,9 @@ Router.register('type', (() => {
     el.querySelector('[data-row="secs"]').hidden = opt.mode !== 'time';
     el.querySelector('[data-row="count"]').hidden = opt.mode !== 'words';
     el.querySelector('[data-row="none"]').hidden = opt.mode === 'time' || opt.mode === 'words';
+    el.querySelector('[data-row="caps"]').hidden = opt.mode !== 'quote';
     el.querySelectorAll('[data-focus] button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.v === 'on') === Focus.enabled()));
-    el.q('len').textContent = opt.mode === 'quote' ? 'One short passage' : 'Your own text';
+    el.q('len').textContent = opt.mode === 'quote' ? 'One passage from a book or a speech' : 'Your own text';
     el.q('i-mode').textContent = UI.modeName(modeKey());
     const n = WPM.sessions().length + 1;
     el.q('run').textContent = `[ RUN ${n} ]`;
