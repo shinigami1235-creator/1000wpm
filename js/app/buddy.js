@@ -57,6 +57,7 @@
   // corner, below = under its left edge, text = right after a heading's text.
   // face: which way it turns when it lands. bonus pulls it toward the perches that matter.
   const PERCHES = [
+    { route: 'home', sel: '.hero-map .hm-go', at: 'out-r', dx: 18, dy: 30, face: 'left', bonus: 120, arrive: ['point', 'happy'] },
     { route: 'home', sel: '.hero-race .hr-pace', at: 'out-r', dx: 26, dy: 14, face: 'left', bonus: 90, arrive: ['point', 'curious'] },
     { route: 'home', sel: '.home-art .ha-stats', at: 'out-r', dx: 24, dy: 18, face: 'left', bonus: 10 },
     { route: 'home', sel: '#keyboards .sec-head h2', at: 'text', dx: 20, dy: 4, face: 'right', bonus: 60, arrive: ['point', 'happy'] },

@@ -13,6 +13,8 @@ window.WorldMap = (() => {
   const G = '57,255,136', INK = '#d7f5e3', BG = '#040806';
   const LAT_TOP = 84, LAT_BOT = -56;
   const FPS_MS = 33;   // about 30 frames a second is plenty for slow arcs
+  const HUB_ARCS = 15;
+  const DRAG_SEEN = 'wpm-map-drag-seen';
 
   // ---------- Equal Earth projection (Šavrič, Patterson and Jenny, 2018) ----------
   const A1 = 1.340264, A2 = -0.081106, A3 = 0.000893, A4 = 0.003796, M = Math.sqrt(3) / 2;
@@ -66,7 +68,8 @@ window.WorldMap = (() => {
     const cv = box.querySelector('canvas');
     const ctx = cv.getContext('2d');
     const dotsEl = box.querySelector('.hm-dots');
-    const card = box.querySelector('.hm-card');
+    const card = root.querySelector('.hm-card');
+    const drag = root.querySelector('.hm-drag');
     const countEl = root.querySelector('[data-map-count]');
     const tick = root.querySelector('[data-tick]');
     const hit = document.createElement('canvas').getContext('2d');
@@ -116,7 +119,9 @@ window.WorldMap = (() => {
       }
       const L = lit();
       const h = pts.get(hub);
-      arcs = h ? L.filter(c => c.code !== hub && pts.has(c.code)).map((c, i) => arc(c.code, pts.get(c.code), h, i)) : [];
+      // hub arcs only for the countries with the most players; the rest keep their dot and link
+      arcs = h ? L.filter(c => c.code !== hub && pts.has(c.code)).sort((a, b) => b.players - a.players)
+        .slice(0, HUB_ARCS).map((c, i) => arc(c.code, pts.get(c.code), h, i)) : [];
       // a faint link from each lit country to its nearest lit neighbour
       links = []; const seen = new Set();
       for (const a of L) {
@@ -207,14 +212,21 @@ window.WorldMap = (() => {
         <dt>Best wpm</dt><dd>${ct.top ? ct.top.wpm : '-'}</dd></dl>
         ${ct.you ? '<p>Your country</p>' : ''}`;
       card.hidden = false;
-      const p = pts.get(code);
-      const cw = card.offsetWidth, ch = card.offsetHeight;
-      const left = stage.scrollLeft, right = left + stage.clientWidth;
-      let x = Math.max(left + 8, Math.min(right - cw - 8, p[0] - cw / 2));
-      let y = p[1] - ch - 16;
-      if (y < 8) y = p[1] + 16;
-      card.style.left = x + 'px'; card.style.top = Math.min(H - ch - 4, y) + 'px';
+      place();
       paintStill();
+    }
+    // the card sits outside the scrolling strip and stays inside the part of the map on screen
+    function place() {
+      if (card.hidden || !hover) return;
+      const p = pts.get(hover);
+      if (!p) return;
+      const cw = card.offsetWidth, ch = card.offsetHeight;
+      const ox = stage.offsetLeft + box.offsetLeft - stage.scrollLeft, oy = stage.offsetTop;
+      const px = p[0] + ox, py = p[1] + oy;
+      const x = Math.max(stage.offsetLeft + 8, Math.min(stage.offsetLeft + stage.clientWidth - cw - 8, px - cw / 2));
+      let y = py - ch - 16;
+      if (y < oy + 4) y = py + 16;
+      card.style.left = x + 'px'; card.style.top = Math.min(oy + H - ch - 4, y) + 'px';
     }
     function pick(x, y, touch) {
       let best = null, bd = touch ? 24 : 14;
@@ -328,7 +340,25 @@ window.WorldMap = (() => {
     function center() {
       const h = pts.get(hub);
       if (h && W > stage.clientWidth) stage.scrollLeft = Math.max(0, h[0] - stage.clientWidth / 2);
+      edges();
     }
+    // on a phone the strip scrolls sideways: fade the side with more map, and say so once
+    function edges() {
+      const more = W > stage.clientWidth + 1;
+      stage.classList.toggle('more-l', more && stage.scrollLeft > 2);
+      stage.classList.toggle('more-r', more && stage.scrollLeft + stage.clientWidth < W - 2);
+      if (!more) { drag.hidden = true; return; }
+      let seen = true;
+      try { seen = !!localStorage.getItem(DRAG_SEEN); if (!seen) localStorage.setItem(DRAG_SEEN, '1'); } catch (e) {}
+      if (!seen) { drag.hidden = false; drag.style.top = (stage.offsetTop + H - drag.offsetHeight - 10) + 'px'; }
+    }
+    on(stage, 'scroll', () => {
+      stage.classList.toggle('more-l', stage.scrollLeft > 2);
+      stage.classList.toggle('more-r', stage.scrollLeft + stage.clientWidth < W - 2);
+      place();
+    }, { passive: true });
+    // the hint goes once the player touches or scrolls the strip themselves
+    for (const t of ['pointerdown', 'wheel']) on(stage, t, () => { drag.hidden = true; }, { passive: true });
 
     // ---------- ticker ----------
     function setTick(text, animate) {
@@ -351,8 +381,9 @@ window.WorldMap = (() => {
       snap = sn;
       build();
       if (ev.type === 'join') {
-        const A = arcs.find(x => x.code === ev.country);
-        flashes.push({ code: ev.country, t: performance.now() - t0, arc: A || null });
+        const p = pts.get(ev.country), h = pts.get(hub);
+        const A = arcs.find(x => x.code === ev.country) || (p && h && ev.country !== hub ? arc(ev.country, p, h, 0) : null);
+        flashes.push({ code: ev.country, t: performance.now() - t0, arc: A });
       }
       if (hover && !card.hidden) show(hover);
       setTick(line(ev), true);

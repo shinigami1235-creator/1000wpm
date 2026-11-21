@@ -56,10 +56,17 @@
 .page-home .hm-card dd { margin: 0; color: var(--ink); text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .page-home .hm-card p { margin: 8px 0 0; font: 500 var(--t-xs)/1 var(--f-head); color: var(--green); }
 
+/* the first time the map scrolls sideways on a phone */
+.page-home .hm-drag {
+  position: absolute; right: 14px; top: 0; z-index: 2; margin: 0;
+  font: 500 var(--t-xs)/1 var(--f-head); color: var(--ink); background: var(--solid); padding: 6px 8px; border-radius: var(--r);
+  pointer-events: none;
+}
+
 /* the line and the main action */
 .page-home .hm-intro { position: absolute; left: 1.5%; bottom: 5%; width: 25%; max-width: 330px; z-index: 2; }
 .page-home .hm-intro h1 { margin: 0; font: 600 var(--t-l)/1.35 var(--f-head); color: var(--ink); text-wrap: balance; }
-.page-home .hm-go { margin: 16px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
+.page-home .hm-go { width: fit-content; margin: 16px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
 .page-home .hm-race {
   font: 500 var(--t-m)/1 var(--f-head); color: var(--ink-2); background: none; border: 0; padding: 12px 0; cursor: pointer;
   text-decoration: underline; text-decoration-color: rgba(215,245,227,.3); text-underline-offset: 4px;
@@ -87,8 +94,15 @@
 @media (max-width: 640px) {
   .page-home .hero-map { width: auto; margin-inline: -14px; }
   .page-home .hm-key, .page-home .hm-intro, .page-home .hm-ticker { padding-inline: 14px; }
+  .page-home .hero-map:not(.ready) .hm-stage { aspect-ratio: auto; height: 259px; }
   .page-home .hm-stage { overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   .page-home .hm-stage::-webkit-scrollbar { display: none; }
   .page-home .hm-map { margin: 0; }
+  .page-home .hm-stage.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+  .page-home .hm-stage.more-r { -webkit-mask-image: linear-gradient(270deg, transparent, #000 40px); mask-image: linear-gradient(270deg, transparent, #000 40px); }
+  .page-home .hm-stage.more-l.more-r {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  }
   .page-home .hero-race { margin-top: 48px; }
 }

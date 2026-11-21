@@ -26,9 +26,10 @@ Router.register('home', (() => {
               <div class="hm-map" data-map>
                 <canvas aria-hidden="true"></canvas>
                 <div class="hm-dots" role="group" aria-label="Countries with players"></div>
-                <div class="hm-card" hidden aria-hidden="true"></div>
               </div>
             </div>
+            <p class="hm-drag" hidden>Drag to see more</p>
+            <div class="hm-card" hidden aria-hidden="true"></div>
             <div class="hm-intro">
               <h1 id="map-h">A typing site by Art (@10000wpm) for anyone who wants to type faster.</h1>
               <div class="hm-go"><a class="btn" href="#/type">Start typing</a><button class="hm-race" type="button" data-to-race>Race Art</button></div>
