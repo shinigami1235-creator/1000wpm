@@ -28,7 +28,7 @@ Router.register('home', (() => {
                 <p class="hm-stat hm-bossbar"><small><span class="l">Fighting Syntax Error</span><span class="s">Syntax Error</span></small><b data-k="inBoss">-</b><span class="bar" aria-hidden="true"><i data-hud-bar></i></span><b class="pct" data-k="hp">-</b></p>
                 <p class="hm-stat"><small><span class="l">Duels running</span><span class="s">Duels</span></small><b data-k="duels">-</b></p>
                 <p class="hm-stat"><small><span class="l">Words typed today</span><span class="s">Words today</span></small><b data-k="words">-</b></p>
-                <p class="hm-stat hm-chat"><small>In the Commons</small><b data-k="chat">-</b></p>
+                <p class="hm-stat hm-chat"><small>In Open Port</small><b data-k="chat">-</b></p>
               </div>
               <div class="hm-live hm-day" hidden>
                 <p class="hm-stat"><small data-k="d-date"></small><b data-k="d-day"></b></p>

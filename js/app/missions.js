@@ -35,7 +35,7 @@ window.Missions = (() => {
       desc: 'Up to 4 players pick roles and fight through Keyspace together.' },
     { id: 'race', name: 'Race Art', href: '#/play/race', icon: 'race', color: '#d7f5e3', lon: 134, lat: -25, side: 'l',
       desc: 'Your car\'s speed comes from your typing speed. Race Art, your best run or a friend.' },
-    { id: 'commons', name: 'Commons', tag: 'Chat', href: '#/commons', icon: 'chat', color: '#ff8fc8', lon: -72, lat: 5, side: 'l',
+    { id: 'commons', name: 'Open Port', tag: 'Chat', href: '#/commons', icon: 'chat', color: '#ff8fc8', lon: -72, lat: 5, side: 'l',
       desc: 'Talk with other players in one shared space.' },
     { id: 'training', name: 'Training', href: '#/type', icon: 'keys', color: '#3cf2b4', lon: 22, lat: 4, side: 'l', cluster: true,
       desc: 'The typing test, the academy and free typing.' },

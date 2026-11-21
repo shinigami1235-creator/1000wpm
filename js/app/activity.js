@@ -5,7 +5,7 @@
 //
 // Activity.attach(snap)  start from a Community snapshot (countries and players)
 // Activity.now()         -> { online, inBoss, inDuel, duels, inParty, inRush, inChat, typing, wordsToday, wordsTotal, wpmAvg }
-//                           inChat is the number chatting in the Commons (#/commons)
+//                           inChat is the number chatting in Open Port (#/commons)
 // Activity.boss()        -> { hp, max, region: { name, lon, lat }, participants, defeatsToday }
 // Activity.on(ev, fn)    -> unsubscribe. ev: 'tick' (once a second), 'hit', 'duel-start', 'duel-end',
 //                           'party', 'rush', 'chat', 'defeat', 'respawn', 'milestone'

@@ -53,6 +53,8 @@ Each chapter is a network or system the update passed through, in reverse order 
 
 **[PROPOSED, Nov 2026]** The area looks above replace the earlier green floor with one second colour per chapter.
 
+**Open Port** (decided by Gid, 21 Nov 2026): the chat rooms on the site (#/commons). It is the one port in Keyspace that stays open to everyone, where players talk between runs.
+
 ## Set pieces **[PROPOSED, Nov 2026]**
 | Chapter | Set piece | What happens | Why it happens in the story |
 |---|---|---|---|

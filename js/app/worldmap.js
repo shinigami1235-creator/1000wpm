@@ -627,7 +627,7 @@ window.WorldMap = (() => {
       unsub.push(Activity.on('duel-end', du => { if (!day) feed(`Duel: ${who(du.winner)} beat ${who(du.loser)} ${du.w}-${du.l}`); }));
       unsub.push(Activity.on('party', pa => { if (!day) feed(`A party of ${pa.size} cleared a run through Keyspace`); }));
       unsub.push(Activity.on('rush', r => { if (!day) feed(`${who(r)} beat ${r.bosses} bosses in Boss rush`); }));
-      unsub.push(Activity.on('chat', c => { if (!day && c.people > 1) feed(`${UI.fmt(c.people)} people in the Commons`); }));
+      unsub.push(Activity.on('chat', c => { if (!day && c.people > 1) feed(`${UI.fmt(c.people)} people in Open Port`); }));
       unsub.push(Activity.on('defeat', d => {
         if (day) return;
         const text = `Syntax Error defeated by ${UI.fmt(d.players)} players`;

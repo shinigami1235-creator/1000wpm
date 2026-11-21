@@ -331,7 +331,7 @@ The rooms are data in `js/net/chat-rooms.js`: areas, then rooms with `id`, `name
 
 - **Join and leave.** `chat.join` subscribes the player to one room and answers with the people in it, the recent offline members and the last 50 messages (`CHAT_ROOMS.history`). `chat.msg` events come only for the joined room. `chat.rooms` goes to everyone in the chat every few seconds with each room's online count and its last `seq`, and the page shows `seq` minus the last `seq` it saw as the unread count.
 - **One check, both sides.** The server runs `ChatRules.check` on every line with the player's own recent lines and last send time, and drops anything that fails. The page runs the same check first so the player sees the reason at once. It refuses lines over 140 characters, links, email addresses, phone numbers (7 or more digits), usernames from other apps (an @handle, or an app name with "add", "my", "follow" and the like), words from `NetFilter` and the `TEEN_OFF` list in `js/wordbank.js`, and the same line again within 30 seconds. Runs of one letter are cut to five.
-- **Slow mode.** One line every 2 seconds per player (`CHAT_ROOMS.slowMs`), or a room's own `slowMs`. The server answers `err` with `code: 'slow'` and `wait` in ms. On top of that, more than 20 lines in a minute mutes the player for 5 minutes.
+- **Slow mode.** One line every 2 seconds per player (`CHAT_ROOMS.slowMs`), or a room's own `slowMs`. The server answers `err` with `code: 'slow'` and `wait` in ms. On top of that, more than 20 lines in a minute mutes the player for 5 minutes (approved by Gid, 21 Nov 2026).
 - **The wpm tag** is measured on the device from the first keystroke to Enter and sent with the line. The server can't check it, so it is shown only as a tag, capped at 300, and never counts toward records, ratings or tasks. Pasting is off in the box. Quick phrases carry no wpm.
 - **Announcements** (`readOnly`) take lines only from Art's account and moderators. In demo it shows the site's updates.
 - **Moderators** can delete any message with `chat.delete`, which removes it from history and sends `chat.delete` to the room. Moderators can also mute a player in every room for a set time.
@@ -345,6 +345,6 @@ The rooms are data in `js/net/chat-rooms.js`: areas, then rooms with `id`, `name
 - Accounts under 13 send quick phrases only (`ChatRules.QUICK`: hi, gg, good luck, join my party?, rematch?, well played). `chat.enter` answers `mode: 'quick'` and the server refuses any other text.
 - School accounts start with chat off (`mode: 'off'`). A teacher's switch turns it on for the class, to quick phrases or to full chat.
 - A teacher can also limit the class to the Learn rooms (`school: true` in the config). `chat.enter` then answers `allowed: [the Learn room ids]` and `chat.join` refuses the rest.
-- Chat logs are kept for 90 days so reports can be acted on.
+- Chat logs are kept for 90 days so reports can be acted on (approved by Gid, 21 Nov 2026).
 
 The sim backend tests these with `Net.test({ chatMode: 'quick' | 'off', chatRooms: 'learn' })`, or `window.__netTest` set before the scripts load. `chatBots`, `chatRate`, `chatChurnMs` and `chatReply` also change the simulated rooms. Unit tests: `node tools/net/chat-test.js`.

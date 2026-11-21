@@ -37,7 +37,7 @@ window.ProgressData = (() => {
     { id: 'endless1', ev: 'breach_endless', tier: 'easy', n: 1, text: 'Play a run of Breach endless' },
     { id: 'endless5', ev: 'breach_endless', tier: 'medium', n: 5, max: e => e.level, text: 'Reach level {n} in Breach endless' },
     { id: 'room', ev: 'room_save', tier: 'easy', n: 1, text: 'Move or add an item in your room' },
-    { id: 'chathi', ev: 'chat_message', tier: 'easy', n: 1, when: e => e.greet, text: 'Say hi in the Commons' },
+    { id: 'chathi', ev: 'chat_message', tier: 'easy', n: 1, when: e => e.greet, text: 'Say hi in Open Port' },
     { id: 'lesson1', ev: 'lesson_pass', tier: 'easy', n: 1, text: 'Finish an academy lesson' },
     { id: 'lesson3', ev: 'lesson_pass', tier: 'medium', n: 3, text: 'Finish {n} academy lessons' },
     { id: 'spell10', ev: 'spell_cast', tier: 'medium', n: 10, text: 'Cast {n} spells' },

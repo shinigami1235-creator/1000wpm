@@ -7,7 +7,7 @@
 //
 // Every message shows the speed it was typed at, from the first keystroke to Enter.
 // Lines go through ChatRules here and again in the backend; the server runs the same file.
-window.CommonsPage = { NAME: 'Commons', events: ['chat_message'] };
+window.CommonsPage = { NAME: 'Open Port', events: ['chat_message'] };
 if (window.WPM) WPM.events.register(...CommonsPage.events);
 
 Router.register('commons', (() => {
