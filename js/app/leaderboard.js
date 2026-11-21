@@ -13,6 +13,7 @@ Router.register('leaderboard', (() => {
     { id: 'boss', name: 'World boss', modes: ['world-boss'], score: true, label: 'Damage' },
     { id: 'endless', name: 'Breach endless', custom: true },
     { id: 'rooms', name: 'Rooms', custom: true },
+    { id: 'duel', name: 'Duels', custom: true },
   ];
   const LOGO = `<svg class="green" viewBox="0 0 64 64" style="width:34px;height:34px;border:1px solid var(--line);padding:3px;background:var(--bg)" aria-hidden="true"><use href="#i-logo"/></svg>`;
   let el, tab = '60', chapter = 0, diff = 'all', endKind = 'endless', off = [], poll = 0;
@@ -21,9 +22,9 @@ Router.register('leaderboard', (() => {
   // runs saved before difficulty existed count as Normal
   const diffOf = s => s.difficulty || 'normal';
 
-  function mount(root) {
+  function mount(root, params) {
     el = root;
-    tab = TT.store.get('wpm-lb-tab', '60');
+    tab = params && TABS.some(t => t.id === params[0]) ? params[0] : TT.store.get('wpm-lb-tab', '60');
     const st = WPM.stats();
     const today = UI.day();
     const todayRuns = WPM.sessions().filter(s => s.at && UI.day(new Date(s.at)) === today).length;
@@ -81,6 +82,7 @@ Router.register('leaderboard', (() => {
     const sub = el.querySelector('[data-sub]');
     clearInterval(poll); poll = 0;
     if (T.id === 'rooms') return rooms(sub, el.querySelector('[data-board]'));
+    if (T.id === 'duel') return window.MultiUI ? MultiUI.duelBoard(sub, el.querySelector('[data-board]')) : null;
     if (T.id === 'endless') return endless(sub, el.querySelector('[data-board]'));
     if (T.id === 'boss') {
       const runs = WPM.sessions().filter(s => s.mode === 'world-boss');
@@ -195,5 +197,8 @@ Router.register('leaderboard', (() => {
 
   function unmount() { clearInterval(poll); poll = 0; off.forEach(f => f()); off = []; el = null; }
 
-  return { title: 'Leaderboard', mount, unmount };
+  // #/leaderboard/duel opens that tab
+  function update(params) { if (params && TABS.some(t => t.id === params[0])) { tab = params[0]; paint(); } }
+
+  return { title: 'Leaderboard', mount, unmount, update };
 })());

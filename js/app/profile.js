@@ -93,6 +93,7 @@ Router.register('profile', (() => {
 
         <div class="col">
           ${window.ProgressUI ? '<div class="prof-side" data-prog-side></div>' : ''}
+          ${window.MultiUI ? '<section class="panel" data-multi-prof aria-label="Duels and party"></section>' : ''}
           <section class="panel">
             <div class="ph">// PROGRESS</div>
             <p class="dim" style="margin-bottom:12px">Coins, XP, runs and items are saved in this browser.</p>
@@ -128,6 +129,7 @@ Router.register('profile', (() => {
     dlg.addEventListener('close', () => { if (dlg.returnValue === 'reset') WPM.reset(); });
     drawChart(typed);
     if (window.ProgressUI) { off.push(ProgressUI.profile(el, jump)); jump = false; }
+    if (window.MultiUI) MultiUI.profilePanel(el.querySelector('[data-multi-prof]'));
   }
 
   function drawChart() {
@@ -154,6 +156,9 @@ Router.register('profile', (() => {
     const save = keep => {
       if (done) return; done = true;
       const v = inp.value.replace(/\s+/g, ' ').trim().slice(0, 20);
+      // other players see this name, so it goes through the same filter as chat (js/net/filter.js)
+      const bad = keep && v && v !== old && window.NetFilter ? NetFilter.nameOk(v, 1) : null;
+      if (bad && !bad.ok) { if (window.Toast) Toast('t-err', `<span>${UI.esc(bad.why)}</span>`); paint(); return; }
       if (keep && v && v !== old) WPM.setProfile({ name: v }); else paint();
     };
     inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') save(true); if (ev.key === 'Escape') save(false); });

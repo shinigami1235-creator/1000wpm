@@ -1,5 +1,7 @@
 // My Room: a cut-away 3D room the player decorates with items from the shop.
 // window.Room.mount(el) builds the page inside el and Room.unmount() tears it down.
+// Room.mount(el, { visit: { name, layout, owned, size, preset } }) shows someone else's room read-only:
+// their saved layout, or one of the presets laid out with the items they own when there is none.
 // Layouts are saved with WPM.setRoom({ v: 1, items: [{ id, x, y, z, rot, wall }] }).
 window.Room = (() => {
   const T = 0.14;                                    // wall thickness in metres
@@ -350,15 +352,16 @@ window.Room = (() => {
   }
 
   // ---------------------------------------------------------------- mount
-  async function mount(el) {
+  async function mount(el, opts = {}) {
     if (S) unmount();
-    const s = S = { el, items: [], uid: 0, mode: 'view', sel: null, placing: null, dirty: false, cat: 'All', off: [], alive: true };
+    const visit = opts.visit || null;
+    const s = S = { el, items: [], uid: 0, mode: 'view', sel: null, placing: null, dirty: false, cat: 'All', off: [], alive: true, visit };
     el.innerHTML = `
-      <div class="rm" data-mode="view">
-        <div class="rm-stage" role="img" aria-label="Your room in 3D"></div>
+      <div class="rm" data-mode="view"${visit ? ' data-visit' : ''}>
+        <div class="rm-stage" role="img" aria-label="${visit ? esc(visit.name) + "'s room in 3D" : 'Your room in 3D'}"></div>
         <p class="rm-load">Loading room</p>
         <nav class="rm-menu rm-panel" aria-label="Room">
-          <h2 class="rm-ttl">${svg('home')}<span>MY ROOM</span></h2>
+          <h2 class="rm-ttl">${svg('home')}<span>${visit ? esc(String(visit.name).toUpperCase()) + "'S ROOM" : 'MY ROOM'}</span></h2>
           <button type="button" data-act="edit" aria-pressed="false">${svg('move')}<span>Edit room</span></button>
           <button type="button" data-act="inventory" aria-expanded="false">${svg('box')}<span>Inventory</span></button>
           <button type="button" data-act="save">${svg('save')}<span>Save room</span><i class="rm-dot" hidden></i></button>
@@ -452,9 +455,10 @@ window.Room = (() => {
     composer.addPass(new OutputPass());
 
     // ---------- load the saved room or lay out the starter items ----------
-    const saved = WPM.getRoom();
-    const z = RoomItems.sizeOf(saved);
-    s.size = sizeOwned(z) ? z : sizes()[0];
+    const saved = visit ? visit.layout || null : WPM.getRoom();
+    const vOwned = visit ? new Set(visit.owned || []) : null;
+    const z = visit && !saved && visit.size ? sizes().find(x => x.id === visit.size) || sizes()[0] : RoomItems.sizeOf(saved);
+    s.size = visit ? (z.price === 0 || vOwned.has(z.id) ? z : sizes()[0]) : sizeOwned(z) ? z : sizes()[0];
     setDims(s.size);
     buildShell(s, phone);
     s.itemsRoot = new THREE.Group();
@@ -463,7 +467,7 @@ window.Room = (() => {
     buildGrids(s);
     controls.target.set(W / 2, 0.85, D / 2);
 
-    const owned = new Set(WPM.owned().filter(id => def(id) && !def(id).roomSize));
+    const owned = new Set((visit ? [...vOwned] : WPM.owned()).filter(id => def(id) && !def(id).roomSize));
     for (const id of owned) RoomItems.create(id);   // fills in heights
     let list;
     if (saved && Array.isArray(saved.items)) {
@@ -475,9 +479,26 @@ window.Room = (() => {
         if (fits(q, list)) { list.push(q); seen.add(p.id); }
       });
     } else {
-      list = presetLayout(PRESETS[0], owned);
+      list = presetLayout(PRESETS[visit ? Math.abs(visit.preset | 0) % PRESETS.length : 0], owned);
     }
     setLayout(s, list);
+    if (visit) {
+      // read only: no edit dock, no inventory, nothing saved
+      s.ro = new ResizeObserver(() => resize(s));
+      s.ro.observe(root);
+      resize(s, true);
+      const clock = new THREE.Clock();
+      s.t = 0;
+      renderer.setAnimationLoop(() => {
+        if (document.hidden) return;
+        const dt = Math.min(0.05, clock.getDelta());
+        s.t += dt;
+        controls.update();
+        for (const p of s.items) if (p.model.userData.tick) p.model.userData.tick(s.t, dt);
+        composer.render();
+      });
+      return;
+    }
 
     // ---------- UI ----------
     buildTabs(s);
@@ -507,7 +528,7 @@ window.Room = (() => {
     const s = S;
     if (!s) return;
     // leaving the page keeps the changes, the same as pressing Save room
-    if (s.dirty) { try { if (s.placing) cancelPlacing(s, true); WPM.setRoom(serialize(s)); } catch (e) {} }
+    if (s.dirty && !s.visit) { try { if (s.placing) cancelPlacing(s, true); WPM.setRoom(serialize(s)); } catch (e) {} }
     S = null;
     s.alive = false;
     s.off.forEach(f => { try { f(); } catch (e) {} });

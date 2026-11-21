@@ -210,7 +210,8 @@ window.WorldMap = (() => {
         <dl><dt>Players</dt><dd>${UI.fmt(ct.players)}</dd>
         <dt>Top typist</dt><dd>${ct.top ? e(ct.top.name) : 'None yet'}</dd>
         <dt>Best wpm</dt><dd>${ct.top ? ct.top.wpm : '-'}</dd></dl>
-        ${ct.you ? '<p>Your country</p>' : ''}`;
+        ${ct.you ? '<p>Your country</p>' : ''}
+        ${ct.top && window.MultiUI ? `<a class="hm-visit" href="#/u/${encodeURIComponent(ct.top.name)}">Visit ${e(ct.top.name)}</a>${pinned === code ? '' : '<small class="hm-pin">Click the country to keep this card open.</small>'}` : ''}`;
       card.hidden = false;
       place();
       paintStill();
@@ -251,14 +252,14 @@ window.WorldMap = (() => {
     on(box, 'click', ev => {
       const dot = ev.target.closest('.hm-dot');
       const code = dot ? dot.dataset.code : pick(...local(ev), ev.pointerType !== 'mouse');
-      if (ev.pointerType === 'mouse' && !dot) { pinned = null; show(code); return; }
+      // a click pins the card so its profile link can be clicked
       pinned = code && code !== pinned ? code : null;
       show(pinned);
     });
     on(dotsEl, 'focusin', ev => { const d = ev.target.closest('.hm-dot'); if (d) show(d.dataset.code); });
     on(dotsEl, 'focusout', () => setTimeout(() => { if (!dotsEl.contains(document.activeElement) && !pinned) show(null); }, 0));
     on(document, 'keydown', ev => { if (ev.key === 'Escape' && !card.hidden) { pinned = null; show(null); } });
-    on(document, 'pointerdown', ev => { if (pinned && !box.contains(ev.target)) { pinned = null; show(null); } });
+    on(document, 'pointerdown', ev => { if (pinned && !box.contains(ev.target) && !card.contains(ev.target)) { pinned = null; show(null); } });
 
     // ---------- drawing ----------
     function frame(now) {

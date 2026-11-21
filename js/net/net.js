@@ -1,0 +1,152 @@
+// The one network API every multiplayer page uses: duels, party lobbies and runs,
+// profiles, visits and challenges. Pages never talk to a backend directly.
+//
+// BACKEND below is the one switch:
+//   'sim'  everything runs in this browser with simulated players (js/net/sim.js). Every
+//          simulated player is shown as a bot.
+//   'ws'   a WebSocket server at WS_URL (js/net/ws.js). The server does not exist yet;
+//          NET.md has every message it must answer.
+//
+// API (every call returns a Promise unless noted)
+//   Net.connect()                          -> { id, name }        uses the player's name and look from WPM
+//   Net.disconnect()
+//   Net.on(event, fn) -> off               events: 'presence', 'lobbies', 'lobby', 'chat', 'match', 'challenge', 'notice'
+//   Net.presence()                         -> [Player]             not a promise; the last list the backend sent
+//
+//   Net.lobbies.list()                     -> [LobbySummary]
+//   Net.lobbies.create({ name, run, difficulty }) -> Lobby
+//   Net.lobbies.join(id)                   -> Lobby
+//   Net.lobbies.leave()
+//   Net.lobbies.ready(on)
+//   Net.lobbies.setRole(role)              'striker' | 'guard' | 'support'
+//   Net.lobbies.kick(playerId)             host only
+//   Net.lobbies.setRun({ run, difficulty }) host only
+//   Net.lobbies.chat(text)                 filtered here and again on the server
+//   Net.lobbies.start()                    host only, everyone ready
+//   Net.lobbies.current()                  not a promise; the lobby you are in or null
+//
+//   Net.match.queue({ mode, opponent, challenge }) -> MatchInfo   mode: 'quick' | 'art' | 'player' | 'watch'
+//   Net.match.input(k, t)                  not a promise; one key at t ms on the match clock
+//   Net.match.leave()                      leaving a duel before the end counts as a loss
+//   Net.match.current()                    not a promise; { info, state } or null
+//   'match' events: { type: 'start' | 'state' | 'event' | 'end', ... }, see NET.md
+//
+//   Net.results.record()                   -> this player's duel record { rating, games, wins, losses, streak, bestStreak, vsArt, history }
+//   Net.results.party()                    -> party record { runs, wins, best, history }
+//   Net.results.opponents()                -> [{ id, name, bot, rating, w, l }]   players this device has duelled
+//
+//   Net.profiles.get(id)                   -> Profile                'me' is this device's own public profile
+//   Net.profiles.visit(id)                 -> { profile, room }      also counts the visit on the server
+//   Net.profiles.online()                  -> [Player]
+//
+//   Net.challenges.send(id)                -> Challenge { id, from, to, status }
+//   Net.challenges.accept(id) / decline(id)
+//   'challenge' events: Challenge with status 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'
+//
+// Test hooks: Net.test({ hp, roundMs, search, artChance, botWpm, join }) speeds the simulated
+// backend up for automated tests. window.__netTest set before this file loads does the same.
+window.Net = (() => {
+  const BACKEND = 'sim';
+  const WS_URL = 'wss://api.10000wpm.com/ws';   // placeholder until the domain and server exist
+
+  const bus = NetCore.emitter();
+  let impl = null, me = null, conn = null;
+  const T = { ...(window.__netTest || {}) };
+
+  // what the backends need from the page: words, the player's level, their public profile
+  const host = {
+    emit: (ev, p) => {
+      if (ev === 'chat' && p && p.text) p = { ...p, text: NetFilter.clean(p.text).text };
+      bus.emit(ev, p);
+    },
+    now: () => performance.now(),
+    test: T,
+    words(seed, { count = 120, difficulty = [2, 5], theme = 'common' } = {}) {
+      if (window.WordBank) return WordBank.pick({ count, difficulty, theme, seed, minLen: 2, maxLen: 9 }).map(w => (typeof w === 'string' ? w : w.text || w.word || String(w)));
+      const r = NetCore.rng(seed), base = (TT.randomWords ? TT.randomWords(count) : []);
+      return base.length ? base : Array.from({ length: count }, () => NetCore.pick(r, ['type', 'fast', 'word', 'key']));
+    },
+    level() {
+      const st = WPM.stats();
+      const recent = WPM.sessions().filter(s => s.wpm && s.acc).slice(-20);
+      const acc = recent.length ? recent.reduce((a, s) => a + s.acc, 0) / recent.length / 100 : 0.94;
+      return { wpm: st.avgWpm || 45, acc: Math.max(0.85, Math.min(0.99, acc || 0.94)) };
+    },
+    local: () => (window.MultiLocal ? MultiLocal.profile() : { id: 'me', name: WPM.profile().name }),
+    store: {
+      get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+      del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+    },
+  };
+
+  function backend() {
+    if (impl) return impl;
+    impl = BACKEND === 'ws' ? NetWS.create(host, WS_URL) : NetSim.create(host);
+    return impl;
+  }
+
+  function connect() {
+    if (conn) return conn;
+    const p = WPM.profile();
+    const ok = NetFilter.nameOk(p.name);
+    me = { id: 'me', name: ok.ok || p.name === 'Guest' ? p.name : 'Guest', look: window.Avatar ? Avatar.mine() : null };
+    conn = backend().connect(me).catch(e => { conn = null; throw e; });
+    return conn;
+  }
+  const need = fn => (...a) => connect().then(() => fn(...a));
+
+  // the device's progress reset clears the simulated server's copy of this player too
+  if (window.WPM) WPM.on('reset', () => { if (impl && impl.reset) impl.reset(); });
+
+  return {
+    BACKEND, WS_URL,
+    isSim: () => BACKEND === 'sim',
+    connect,
+    disconnect() { if (impl) impl.disconnect(); conn = null; },
+    on: (ev, fn) => bus.on(ev, fn),
+    presence: () => (impl ? impl.presence() : []),
+    lobbies: {
+      list: need(() => impl.lobbies.list()),
+      create: need(o => impl.lobbies.create(o || {})),
+      join: need(id => impl.lobbies.join(id)),
+      leave: () => (impl ? impl.lobbies.leave() : Promise.resolve()),
+      ready: need(on => impl.lobbies.ready(!!on)),
+      setRole: need(role => impl.lobbies.setRole(role)),
+      kick: need(id => impl.lobbies.kick(id)),
+      setRun: need(o => impl.lobbies.setRun(o)),
+      chat: need(text => {
+        const c = NetFilter.clean(text);
+        if (!c.text) return Promise.resolve(null);
+        return impl.lobbies.chat(c.text);
+      }),
+      start: need(() => impl.lobbies.start()),
+      current: () => (impl ? impl.lobbies.current() : null),
+    },
+    match: {
+      queue: need(o => impl.match.queue(o || { mode: 'quick' })),
+      input: (k, t) => { if (impl) impl.match.input(k, t); },
+      leave: () => (impl ? impl.match.leave() : Promise.resolve()),
+      current: () => (impl ? impl.match.current() : null),
+      clock: () => (impl ? impl.match.clock() : 0),
+    },
+    results: {
+      record: need(() => impl.results.record()),
+      party: need(() => impl.results.party()),
+      opponents: need(() => impl.results.opponents()),
+    },
+    profiles: {
+      get: need(id => impl.profiles.get(id)),
+      visit: need(id => impl.profiles.visit(id)),
+      online: need(() => impl.profiles.online()),
+    },
+    challenges: {
+      send: need(id => impl.challenges.send(id)),
+      accept: need(id => impl.challenges.accept(id)),
+      decline: need(id => impl.challenges.decline(id)),
+    },
+    test(o) { Object.assign(T, o || {}); return { ...T }; },
+    // for tests and the simulated pages: the backend object itself
+    _impl: () => backend(),
+  };
+})();

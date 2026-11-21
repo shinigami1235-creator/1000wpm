@@ -36,6 +36,7 @@ window.UI = (() => {
     quote: 'Quote', custom: 'Custom',
     'race-art': 'Race vs Art', 'race-best': 'Race vs best', 'race-duo': 'Race, 2 players',
     'world-boss': 'World boss', 'breach-endless': 'Breach endless', 'breach-daily': 'Breach daily',
+    duel: 'Duel', 'duel-art': 'Duel vs Art', party: 'Party run',
   };
   const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   function modeName(m, difficulty) {

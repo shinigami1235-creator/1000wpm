@@ -13,6 +13,9 @@ The site is one page, `index.html`, with a hash route for each page so it works 
 - **Leaderboard** (`#/leaderboard`). Art's 204 wpm from his reels and the runs on this device, with a tab for each mode, the world boss, Breach endless and daily runs and this device's room. Breach scores are split by difficulty. The global board needs the server so no other players are shown.
 - **My Room** (`#/room`). A 3D room decorated with items from the shop. Bigger floors from S to XL are sold in the shop, and any size you own can be picked.
 - **Shop** (`#/shop`). Room items by category, bought with coins. Filter by owned or not owned, sort by price and search by name.
+- **Duel** (`#/duel`). PvP typing duels, best of 3 rounds: a quick match at your level, a challenge to another player or Art's ghost at 204 wpm, or watching two bots. Both players type the same words, every correct word fires a shot, combos power the shots up and spells land on the other player. Ratings, wins, losses, streaks and the record against Art are on the Duels tab of the leaderboard.
+- **Party** (`#/party`). Lobbies of up to 4 players who pick a role (striker, guard or support) and fight a chain of bosses through Keyspace together. Empty seats fill with bots and Art sometimes drops in to call out attacks and buff the team.
+- **Player profiles** (`#/u/<id>`). Another player's 3D avatar, stats and duel record, a button to challenge them and a read-only visit to their room (`#/u/<id>/room`). `#/u/me` shows your own profile the way others see it.
 - **Profile** (`#/profile`). Name, one of eight hooded avatars drawn from code characters, level and XP, coins, stats, a wpm chart, recent sessions, the 7-day streak, achievements and a button that resets progress after asking.
 
 Every run calls `WPM.record` once when it ends and earns coins and XP. Coins, XP, runs, the streak and the room are saved in this browser through `js/state.js`.
@@ -34,6 +37,7 @@ Every run calls `WPM.record` once when it ends and earns coins and XP. Coins, XP
 - `js/keyboards.js` holds each board's specs, colours and layout and `js/kb3d.js` builds the 3D keyboards through `KB3D.mount(stage, card)`.
 - `js/breach/` is Breach, loaded by `js/breach/load.js`. `audio/` and `STORY/` belong to it.
 - `js/room/` is the room and the shop items, loaded by `js/room/load.js`.
+- `js/net/` is the network layer for duels, party runs, profiles and challenges, with a simulated backend until the server exists. NET.md has the API, every message and how the server checks results. `js/app/duel.js`, `duel3d.js`, `party.js`, `players.js` and `multi-ui.js` are the multiplayer pages and `css/multi.css` their styles.
 
 Add a new sponsor board as one entry in `js/keyboards.js`.
 

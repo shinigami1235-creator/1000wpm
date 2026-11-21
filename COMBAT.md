@@ -209,4 +209,4 @@ Counts: 8000 common words in five bands (1000, 1500, 2000, 2000, 1500), 900 more
 2. On each key, `me.key(ok)`. On each finished word, `me.word(...)` or `me.miss()`, and send `amount` (or letters with `mult`) to your target.
 3. Show `me.offer()` as typing targets. When one is typed, `me.cast(word, { clean })`, run its `hits` on timers and pass them to `fx.cast`.
 4. When the other side attacks, `me.hurt()` first.
-5. For PvP, the target adapter is the opponent's figure and the hits go to their HP. Map `ward` to blocking their next spell, `stun` to locking their input for a moment, and `freeze` to adding time to your own next defence.
+5. For PvP, the target adapter is the opponent's figure and the hits go to their HP. `js/net/duel-rules.js` does this for the duels: `ward` blocks the next shot or spell, `stun` locks the other side's keys for a moment and `freeze` halves their word damage. NET.md has the PvP numbers and how a server checks them.
