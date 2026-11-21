@@ -1,13 +1,14 @@
 // #/type/reel: the reel recorder. Art types a set text in a full-screen view made for
 // screen recording, so his reels show this site instead of Monkeytype. The text is his
-// follower-count format (one two three ... up to a number he sets) or text he pastes.
+// random words from the 1,000 most common English words (the default, like Monkeytype's
+// English 1k), the old follower-count format (one two three ... up to a number) or pasted text.
 // The view has the logo and the site address in a corner, an optional live wpm and timer,
 // a 9:16 or 16:9 frame, a 3 2 1 countdown and an end card with the wpm and the address.
 // Esc closes the view. Settings are saved as wpm-reel-opts.
 // The address comes from window.SITE_URL in index.html since the domain isn't bought yet.
 window.ReelPage = (() => {
   const KEY = 'wpm-reel-opts';
-  const DEF = { src: 'count', upto: 100, custom: '', layout: '9x16', wpm: true, timer: true, full: true };
+  const DEF = { src: 'common', count: 100, upto: 100, custom: '', layout: '9x16', wpm: true, timer: true, full: true };
   const MAX = 100000;
   const site = () => window.SITE_URL || '10000wpm.com';
 
@@ -24,7 +25,25 @@ window.ReelPage = (() => {
   const clean = t => (t || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
 
   // words and characters in the chosen text, for the line under the settings
+  // the 1,000 most common English words: the word bank's first band, or words.js
+  function common1k() {
+    try { if (window.WordBank && WordBank.list) { const l = WordBank.list('band1').map(e => typeof e === 'string' ? e : e.text); if (l.length) return l; } } catch (e) { /* fall back */ }
+    return ((window.WORDS && WORDS.common) || []).slice(0, 1000);
+  }
+  function randomWords(n) {
+    const pool = common1k(), out = [];
+    if (!pool.length) return out;
+    while (out.length < n) {
+      const w = pool[Math.floor(Math.random() * pool.length)];
+      if (w !== out[out.length - 1]) out.push(w);
+    }
+    return out;
+  }
   function size(o) {
+    if (o.src === 'common') {
+      const pool = common1k(), avg = pool.length ? pool.reduce((a, w) => a + w.length, 0) / pool.length : 5;
+      return { words: o.count, chars: Math.round(o.count * (avg + 1)) - 1 };
+    }
     if (o.src === 'custom') { const t = clean(o.custom); return { words: t ? t.split(' ').length : 0, chars: t.length }; }
     let words = 0, chars = 0;
     for (let n = 1; n <= o.upto; n++) { const s = say(n); words += s.split(' ').length; chars += s.length + 1; }
@@ -33,6 +52,7 @@ window.ReelPage = (() => {
 
   // ---------- the text, made a word at a time so counting to 100,000 stays light ----------
   function source(o) {
+    if (o.src === 'common') { const w = randomWords(o.count); let i = 0; return () => (i < w.length ? w[i++] : null); }
     if (o.src === 'custom') { const w = clean(o.custom).split(' ').filter(Boolean); let i = 0; return () => (i < w.length ? w[i++] : null); }
     let n = 0, buf = [];
     return () => { if (!buf.length) { if (n >= o.upto) return null; n++; buf = say(n).split(' '); } return buf.shift(); };
@@ -53,7 +73,9 @@ window.ReelPage = (() => {
             Start your screen recorder first, then press Start for a 3, 2, 1 countdown. Esc closes the view.</p>
           <div class="rs-grid">
             <span class="label">Text</span>
-            <div class="seg" data-o="src" role="group" aria-label="Text"><button type="button" data-v="count">Follower count</button><button type="button" data-v="custom">Your text</button></div>
+            <div class="seg" data-o="src" role="group" aria-label="Text"><button type="button" data-v="common">English 1k</button><button type="button" data-v="count">Count up</button><button type="button" data-v="custom">Your text</button></div>
+            <label class="label" for="rs-count" data-row="common">Words</label>
+            <div data-row="common"><input class="field rs-num" id="rs-count" type="number" min="1" max="${MAX}" step="1" inputmode="numeric"></div>
             <label class="label" for="rs-upto" data-row="count">Count to</label>
             <div data-row="count"><input class="field rs-num" id="rs-upto" type="number" min="1" max="${MAX}" step="1" inputmode="numeric"></div>
             <label class="label" for="rs-text" data-row="custom">Your text</label>
@@ -74,6 +96,12 @@ window.ReelPage = (() => {
       </div>`;
     const q = s => el.querySelector(s);
     q('#rs-upto').value = opt.upto;
+    q('#rs-count').value = opt.count;
+    q('#rs-count').addEventListener('input', ev => {
+      const n = Math.round(+ev.target.value);
+      if (n >= 1) { opt.count = Math.min(MAX, n); save(); paintSize(); }
+    });
+    q('#rs-count').addEventListener('change', ev => { ev.target.value = opt.count; });
     q('#rs-text').value = opt.custom;
     el.querySelectorAll('.seg[data-o]').forEach(g => g.addEventListener('click', ev => {
       const b = ev.target.closest('button'); if (!b) return;
