@@ -1,7 +1,7 @@
 // #/profile: name, avatar, level, coins, stats, wpm chart, recent sessions,
 // the daily loop from js/app/progress-ui.js and the progress reset.
 Router.register('profile', (() => {
-  let el, off = [], span = 30, onResize = null, host = null, creator = false, jump = false;
+  let el, off = [], host = null, creator = false, jump = false, stats = null;
 
   function mount(root, params) {
     el = root; host = root;
@@ -10,15 +10,12 @@ Router.register('profile', (() => {
     paint();
     off.push(WPM.on('profile', paint), WPM.on('session', paint), WPM.on('coins', paint));
     if (window.Progress) off.push(Progress.on('ready', paint), Progress.on('achievements', paint), Progress.on('many', paint));
-    onResize = () => drawChart();
-    addEventListener('resize', onResize);
   }
 
   function paint() {
     if (!el) return;
     const p = WPM.profile(), st = WPM.stats(), lv = WPM.levelInfo();
     const achs = WPM.achievements(), got = achs.filter(a => a.unlocked).length;
-    const typed = WPM.sessions().filter(s => s.wpm != null);
     const recent = WPM.sessions().slice(-8).reverse();
     const e = UI.esc;
     el.innerHTML = `
@@ -59,28 +56,7 @@ Router.register('profile', (() => {
         </div>
 
         <div class="col mid-col">
-          <section class="panel hot">
-            <div class="ph">// TYPING PERFORMANCE
-              <div class="seg" data-span role="group" aria-label="Runs shown">
-                ${[[10, 'Last 10'], [30, 'Last 30'], [0, 'All']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === span}">${l}</button>`).join('')}
-              </div>
-            </div>
-            <div class="perf-nums">
-              <div><span class="label">Best wpm</span><b class="mid">${st.bestWpm}</b></div>
-              <div><span class="label">Best accuracy</span><b class="mid">${st.bestAcc}%</b></div>
-              <div><span class="label">Avg wpm, last 20</span><b class="mid">${st.avgWpm}</b></div>
-            </div>
-            <canvas class="chart" data-chart></canvas>
-          </section>
-          <section class="panel">
-            <div class="ph">// TYPING STATS<span class="meta">ALL TIME</span></div>
-            <div class="totals">
-              <div><span class="label">Keystrokes</span><b class="mid">${UI.fmt(st.keys)}</b></div>
-              <div><span class="label">Words typed</span><b class="mid">${UI.fmt(st.words)}</b></div>
-              <div><span class="label">Accuracy</span><b class="mid">${st.accuracy}%</b></div>
-              <div><span class="label">Time typing</span><b class="mid">${UI.time(st.ms)}</b></div>
-            </div>
-          </section>
+          <div class="stats-host" data-stats></div>
           <section class="panel">
             <div class="ph">// RECENT SESSIONS</div>
             ${recent.length ? `<table class="sessions">
@@ -115,32 +91,15 @@ Router.register('profile', (() => {
 
     el.querySelector('[data-edit]').addEventListener('click', editName);
     el.querySelectorAll('[data-av]').forEach(b => b.addEventListener('click', () => WPM.setProfile({ avatar: +b.dataset.av })));
-    el.querySelector('[data-span]').addEventListener('click', ev => {
-      const b = ev.target.closest('button'); if (!b) return;
-      span = +b.dataset.v;
-      el.querySelectorAll('[data-span] button').forEach(x => x.setAttribute('aria-pressed', x === b));
-      drawChart();
-    });
     const dlg = el.querySelector('[data-dialog]');
     el.querySelector('[data-reset]').addEventListener('click', () => dlg.showModal());
     const bt = el.querySelector('[data-buddy-toggle]');
     if (bt) bt.addEventListener('click', () => { Buddy.setHidden(!Buddy.hidden()); paint(); });
     dlg.addEventListener('close', () => { if (dlg.returnValue === 'reset') WPM.reset(); });
-    drawChart(typed);
+    // the stats block from js/app/stats-view.js, the same one the public profile shows
+    if (stats) stats.destroy();
+    stats = window.StatsView ? StatsView.render(el.querySelector('[data-stats]'), { sessions: WPM.sessions(), keyStats: WPM.keyStats(), totals: st }) : null;
     if (window.ProgressUI) { off.push(ProgressUI.profile(el, jump)); jump = false; }
-  }
-
-  function drawChart() {
-    if (!el) return;
-    const cv = el.querySelector('[data-chart]');
-    if (!cv) return;
-    let runs = WPM.sessions().filter(s => s.wpm != null);
-    if (span) runs = runs.slice(-span);
-    UI.lineChart(cv, runs.map(s => s.wpm), {
-      labels: runs.map((s, i) => { const d = UI.date(s.at, false); return i && d === UI.date(runs[i - 1].at, false) ? '' : d; }),
-      empty: 'Your wpm shows here after your first run',
-      tag: runs.length ? `${runs[runs.length - 1].wpm} WPM` : '',
-    });
   }
 
   function editName() {
@@ -163,7 +122,7 @@ Router.register('profile', (() => {
   function unmount() {
     if (creator) { AvatarCreator.unmount(); creator = false; }
     off.forEach(f => f()); off = [];
-    removeEventListener('resize', onResize);
+    if (stats) { stats.destroy(); stats = null; }
     el = null;
   }
   // #/profile and #/profile/avatar share this page

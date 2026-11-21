@@ -23,6 +23,7 @@ window.WPM = (() => {
     totals: { keys: 0, correct: 0, words: 0, ms: 0 },
     learn: {},                  // academy progress and free typing coins, see js/app/learn.js
     prog: {},                   // sign-in streak, tasks, counters and visual bonuses, owned by js/app/progress.js
+    keyStats: {},               // per expected key: [typed right, missed], summed over every run that sends keyStats
   });
 
   let data;
@@ -90,6 +91,17 @@ window.WPM = (() => {
     const today = day();
     const words = run.correct / 5;
     const s = { ...run, at: now().toISOString() };
+    // run.keyStats ({ key: [right, missed] }) goes into the all-time key totals, and the
+    // session keeps only the misses as kmiss so 500 saved runs stay small
+    if (run.keyStats) {
+      const ks = (data.keyStats ||= {}), miss = {};
+      for (const [k, [ok, bad]] of Object.entries(run.keyStats)) {
+        const t = (ks[k] ||= [0, 0]); t[0] += ok || 0; t[1] += bad || 0;
+        if (bad) miss[k] = bad;
+      }
+      delete s.keyStats;
+      s.kmiss = miss;
+    }
     data.sessions.push(s);
     if (data.sessions.length > 500) data.sessions.splice(0, data.sessions.length - 500);
     data.totals.keys += run.keys || 0;
@@ -198,5 +210,6 @@ window.WPM = (() => {
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,
+    keyStats: () => JSON.parse(JSON.stringify(data.keyStats || {})),
   };
 })();

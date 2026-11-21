@@ -8,8 +8,10 @@
   if (!test || !window.LearnPage || !window.FreePage) return;
 
   const TABS = [['test', 'Typing test', '#/type'], ['learn', 'Academy', '#/type/learn'], ['free', 'Free typing', '#/type/free']];
-  const pageOf = t => t === 'learn' ? LearnPage : t === 'free' ? FreePage : test;
-  const tabOf = params => params[0] === 'learn' || params[0] === 'free' ? params[0] : 'test';
+  // #/type/reel is the reel recorder in js/app/reel.js, shown as a fourth tab when loaded
+  if (window.ReelPage) TABS.push(['reel', 'Reel', '#/type/reel']);
+  const pageOf = t => t === 'learn' ? LearnPage : t === 'free' ? FreePage : t === 'reel' ? ReelPage : test;
+  const tabOf = params => ['learn', 'free'].includes(params[0]) || (params[0] === 'reel' && window.ReelPage) ? params[0] : 'test';
   let root = null, holder = null, cur = null, curTab = '';
 
   // a player with no runs, no placement test and no lessons yet
@@ -33,7 +35,7 @@
     holder.append(el);
     cur = pageOf(t); curTab = t;
     try { cur.mount(el, t === 'test' ? params : params.slice(1)); } catch (e) { console.error(e); }
-    if (t !== 'learn') document.title = `${t === 'free' ? 'Free typing' : 'Type'} | 10000WPM`;
+    if (t !== 'learn') document.title = `${t === 'free' ? 'Free typing' : t === 'reel' ? 'Reel' : 'Type'} | 10000WPM`;
   }
 
   Router.register('type', {

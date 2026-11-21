@@ -15,7 +15,7 @@ Router.register('type', (() => {
   const SECS = [15, 30, 60, 120], COUNTS = [25, 50, 100];
 
   let el, tt, keys, iv = 0, stopKey = null, onResize = null;
-  let opt, running, ended, startT, samples, lastQuote = -1, hist;
+  let opt, running, ended, startT, samples, lastQuote = -1, hist, raws, ks;
 
   const modeKey = () => opt.mode === 'time' ? `time-${opt.secs}` : opt.mode === 'words' ? `words-${opt.count}` : opt.mode;
 
@@ -43,6 +43,9 @@ Router.register('type', (() => {
             <div class="seg" data-g="count" role="group" aria-label="Word count">${COUNTS.map(s => `<button type="button" data-v="${s}">${s}</button>`).join('')}</div>
           </div>
           <div class="row" data-row="none"><span class="label">Length</span><span class="dim" data-k="len"></span></div>
+          ${window.Focus ? `<div class="row"><span class="label">Focus</span>
+            <div class="seg" data-focus role="group" aria-label="Focus mode"><button type="button" data-v="on">On</button><button type="button" data-v="off">Off</button></div>
+          </div>` : ''}
         </div>
       </div>
 
@@ -95,6 +98,13 @@ Router.register('type', (() => {
 
     const q = k => el.querySelector(`[data-k="${k}"]`);
     el.q = q;
+    const fs = el.querySelector('[data-focus]');
+    if (fs) fs.addEventListener('click', ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      Focus.setEnabled(b.dataset.v === 'on');
+      paintOpts();
+      if (keys) keys.focus();
+    });
     el.querySelectorAll('.seg[data-g]').forEach(g => g.addEventListener('click', ev => {
       const b = ev.target.closest('button'); if (!b) return;
       const k = g.dataset.g;
@@ -138,6 +148,7 @@ Router.register('type', (() => {
     el.querySelector('[data-row="secs"]').hidden = opt.mode !== 'time';
     el.querySelector('[data-row="count"]').hidden = opt.mode !== 'words';
     el.querySelector('[data-row="none"]').hidden = opt.mode === 'time' || opt.mode === 'words';
+    el.querySelectorAll('[data-focus] button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.v === 'on') === Focus.enabled()));
     el.q('len').textContent = opt.mode === 'quote' ? 'One short passage' : 'Your own text';
     el.q('i-mode').textContent = UI.modeName(modeKey());
     const n = WPM.sessions().length + 1;
@@ -158,7 +169,8 @@ Router.register('type', (() => {
   function reset() {
     clearInterval(iv);
     stopTab();
-    running = false; ended = false; startT = 0; samples = []; hist = [];
+    if (window.Focus) Focus.end();
+    running = false; ended = false; startT = 0; samples = []; hist = []; raws = []; ks = {};
     paintOpts(); paintRecords();
     const stage = el.q('stage');
     stage.innerHTML = '';
@@ -175,7 +187,9 @@ Router.register('type', (() => {
         if (ended) return;
         if (!running) start();
         win.classList.remove('idle');
-        tt.input(ch);
+        const want = tt.text[tt.pos];
+        const ok = tt.input(ch);
+        if (want !== undefined && ok !== null) noteKey(want, ok);
         TT.click(ch === ' ');
         scroll();
         if (tt.done()) finish();
@@ -217,12 +231,14 @@ Router.register('type', (() => {
     running = true;
     startT = performance.now();
     let lastSample = startT;
-    hist = [{ t: startT, c: 0 }];
+    hist = [{ t: startT, c: 0, k: 0 }];
     iv = setInterval(() => {
       const now = performance.now();
       if (now - lastSample >= 1000) {
         lastSample += 1000;
-        hist.push({ t: now, c: tt.correct });
+        const prev = hist[hist.length - 1];
+        hist.push({ t: now, c: tt.correct, k: tt.typed });
+        raws.push(((tt.typed - prev.k) / 5) / ((now - prev.t) / 60000 || 1));
         const back = hist[Math.max(0, hist.length - 3)];
         const w = Math.round(((tt.correct - back.c) / 5) / ((now - back.t) / 60000 || 1));
         samples.push(Math.max(0, w));
@@ -288,12 +304,17 @@ Router.register('type', (() => {
     clearInterval(iv);
     const now = performance.now();
     const ms = opt.mode === 'time' ? opt.secs * 1000 : now - startT;
-    if (opt.mode === 'time') hist.push({ t: now, c: tt.correct });
+    if (opt.mode === 'time') hist.push({ t: now, c: tt.correct, k: tt.typed });
     running = false; ended = true;
+    if (window.Focus) Focus.end();
     const wpm = Math.round((tt.correct / 5) / (ms / 60000));
+    const raw = Math.round((tt.typed / 5) / (ms / 60000));
     const acc = tt.accuracy();
+    const cons = consistency(raws);
     const key = modeKey();
-    const r = WPM.record({ mode: key, wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms) });
+    const prevBest = WPM.best()[key];
+    const weak = weakest(ks);
+    const r = WPM.record({ mode: key, wpm, raw, acc, cons, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), keyStats: ks });
     WPM.track('type_test', { mode: key, wpm, acc, correct: tt.correct, ms: Math.round(ms) });
     el.q('wpm').textContent = wpm;
     el.q('time').textContent = UI.clock(ms / 1000) + (opt.mode === 'time' ? ` / ${UI.clock(opt.secs)}` : '');
@@ -305,15 +326,22 @@ Router.register('type', (() => {
     const vsArt = wpm >= ART
       ? `You beat Art's ${ART} wpm by ${wpm - ART}.`
       : `You typed ${pct}% of Art's ${ART} wpm, ${ART - wpm} wpm short.`;
+    const pb = r.newBest && prevBest > 0;
     el.q('stage').innerHTML = `
+      ${pb ? `<p class="pb-banner" role="status"><b>New personal best</b><span>${wpm} wpm, up from ${prevBest} in ${UI.esc(UI.modeName(key))}</span></p>` : ''}
       <div class="result" aria-live="polite">
         <div><div class="big">${wpm}</div><div class="unit">WPM, ${UI.esc(UI.modeName(key).toUpperCase())}</div></div>
         <div class="result-grid">
+          <div class="stat"><span class="label">Raw wpm</span><b class="mid">${raw}</b></div>
           <div class="stat"><span class="label">Accuracy</span><b class="mid">${acc}%</b></div>
+          <div class="stat"><span class="label">Consistency</span><b class="mid">${cons == null ? '<span class="dim">n/a</span>' : cons + '%'}</b></div>
+          <div class="stat"><span class="label">Vs Art</span><b class="mid cyan">${pct}%</b></div>
           <div class="stat"><span class="label">Coins</span><b class="mid gold">+${r.coins}</b></div>
           <div class="stat"><span class="label">XP</span><b class="mid green">+${r.xp}</b></div>
-          <div class="stat"><span class="label">Vs Art</span><b class="mid cyan">${pct}%</b></div>
-          <p class="result-note">${vsArt}${r.newBest ? ` <span class="new">New best for ${UI.esc(UI.modeName(key))}.</span>` : ''}</p>
+          <div class="stat weak-keys"><span class="label">Weakest keys</span>${weak.length
+            ? `<span class="wk-list">${weak.map(w => `<span class="wk"><kbd>${UI.esc(keyLabel(w.k))}</kbd> ${w.bad} of ${w.n} missed</span>`).join('')}</span>`
+            : '<span class="dim">No missed keys</span>'}</div>
+          <p class="result-note">${vsArt}${r.newBest && !pb ? ` <span class="new">First ${UI.esc(UI.modeName(key))} run.</span>` : ''}</p>
         </div>
       </div>`;
     el.q('help').innerHTML = 'Press <kbd>Tab</kbd> or the button to start over. <button class="btn out sm" type="button" data-k="again">Start over</button>';
@@ -325,9 +353,33 @@ Router.register('type', (() => {
   }
   let stopTab = () => {};
 
+  // per-key results for this run, keyed by the character the text asked for
+  function noteKey(want, ok) {
+    const k = want === ' ' ? ' ' : want.toLowerCase();
+    const t = (ks[k] ||= [0, 0]);
+    t[ok ? 0 : 1]++;
+  }
+  // up to three keys with misses, most missed first
+  function weakest(map) {
+    return Object.entries(map).filter(([, [, bad]]) => bad > 0)
+      .map(([k, [ok, bad]]) => ({ k, bad, n: ok + bad, rate: bad / (ok + bad) }))
+      .sort((a, b) => b.bad - a.bad || b.rate - a.rate).slice(0, 3);
+  }
+  const keyLabel = k => k === ' ' ? 'space' : k;
+  // How steady the raw speed was from second to second, 0 to 100. Same curve as
+  // Monkeytype: 100 * (1 - tanh(cv + cv^3/3 + cv^5/5)), cv = spread / mean.
+  function consistency(a) {
+    if (!a || a.length < 3) return null;
+    const m = a.reduce((x, y) => x + y, 0) / a.length;
+    if (!m) return 0;
+    const cv = Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length) / m;
+    return Math.max(0, Math.round(100 * (1 - Math.tanh(cv + cv ** 3 / 3 + cv ** 5 / 5))));
+  }
+
   function unmount() {
     clearInterval(iv);
     stopTab();
+    if (window.Focus) Focus.end();
     document.removeEventListener('keydown', stopKey);
     removeEventListener('resize', onResize);
     el = null; tt = null; keys = null;
