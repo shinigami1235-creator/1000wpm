@@ -32,6 +32,17 @@ window.AvatarData = (() => {
     ['browSp', 'Brow spacing', 'brows'], ['browIn', 'Inner height', 'brows'], ['browTl', 'Tail height', 'brows'],
     ['browAp', 'Arch position', 'brows'], ['browAh', 'Arch height', 'brows'], ['browLn', 'Tail length', 'brows'],
     ['browTi', 'Inner thickness', 'brows'], ['browTo', 'Tail thickness', 'brows'],
+    // proportions: the facial thirds and the outer fifths (Face tab, under Proportions)
+    ['foreH', 'Forehead height', 'prop'], ['midH', 'Midface length', 'prop'], ['lowH', 'Lower face length', 'prop'], ['faceW', 'Face width', 'prop'],
+    // the rest of a Sims-style face editor
+    ['foreS', 'Forehead slope', 'face'], ['foreP', 'Forehead prominence', 'face'], ['templeW', 'Temple width', 'face'],
+    ['cheekF', 'Cheek fullness', 'face'], ['cheekHo', 'Cheek hollows', 'face'], ['jawH', 'Jaw angle height', 'face'],
+    ['jawDef', 'Jaw line definition', 'face'], ['chinP', 'Chin projection', 'face'], ['earA', 'Ear angle', 'face'],
+    ['eyeDp', 'Eye depth', 'eyes'], ['lidF', 'Eyelid fold', 'eyes'],
+    ['nostW', 'Nostril width', 'nose'], ['tipW', 'Nose tip width', 'nose'], ['bridgeW', 'Bridge width', 'nose'], ['noseA', 'Nose angle', 'nose'], ['noseP', 'Nose projection', 'nose'],
+    // lips: the whole mouth, then each lip on its own (LIP_GROUPS)
+    ['mouthY', 'Mouth position', 'mouth'], ['lipH', 'Lip height', 'mouth'],
+    ['lipUW', 'Upper lip width', 'mouth'], ['lipUH', 'Upper lip height', 'mouth'], ['lipLW', 'Lower lip width', 'mouth'], ['lipLH', 'Lower lip height', 'mouth'],
   ].map(([id, name, group, min = -100]) => ({ id, name, group, min }));
   // the creator's Mouth tab, in this order; every slider runs from -100 to 100
   const LIP_SLIDERS = ['lips', 'lipU', 'lipL', 'mouthW', 'lipBow', 'lipCorner'].map(id => SLIDERS.find(s => s.id === id));
@@ -39,6 +50,30 @@ window.AvatarData = (() => {
   // the creator's Brows tab, in this order
   const BROW_SLIDERS = ['browH', 'browD', 'browSp', 'browIn', 'browAp', 'browAh', 'browTl', 'browLn', 'browA', 'browT', 'browTi', 'browTo']
     .map(id => SLIDERS.find(s => s.id === id));
+  const byId = id => SLIDERS.find(s => s.id === id);
+  // the Mouth tab's groups, in order
+  const LIP_GROUPS = [
+    ['Whole mouth', ['lips', 'mouthW', 'lipH', 'mouthY', 'lipCorner']],
+    ['Upper lip', ['lipUW', 'lipUH', 'lipU', 'lipBow']],
+    ['Lower lip', ['lipLW', 'lipLH', 'lipL']],
+  ].map(([name, ids]) => [name, ids.map(byId)]);
+  // Lip presets set every lip shape slider at once (missing means 0) and leave the mouth's
+  // position alone; the sliders stay free to fine-tune afterwards
+  const LIP_IDS = ['lips', 'mouthW', 'lipH', 'lipCorner', 'lipUW', 'lipUH', 'lipU', 'lipBow', 'lipLW', 'lipLH', 'lipL'];
+  const LIP_PRESETS = [
+    { id: 'natural', name: 'Natural', f: {} },
+    { id: 'full', name: 'Full', f: { lips: 45, lipU: 35, lipL: 30, lipUH: 25, lipLH: 20 } },
+    { id: 'thin', name: 'Thin', f: { lips: -45, lipU: -35, lipL: -30, lipUH: -25, lipLH: -20, lipH: -20 } },
+    { id: 'wide', name: 'Wide', f: { mouthW: 50, lipUW: 20, lipLW: 20, lipH: -10 } },
+    { id: 'heart', name: 'Heart', f: { lipU: 40, lipBow: 50, mouthW: -25, lipUW: -10, lipLW: -30, lipL: 10, lipLH: -10 } },
+    { id: 'bow', name: 'Bow', f: { lipBow: 70, lipUH: 30, lipU: 20, mouthW: -35, lipCorner: 10 } },
+    { id: 'pouty', name: 'Pouty', f: { lips: 20, lipU: 25, lipL: 50, lipLH: 35, mouthW: -10, lipCorner: -20 } },
+  ];
+  const withLipPreset = (f, id) => ({ ...f, ...Object.fromEntries(LIP_IDS.map(k => [k, 0])), ...(LIP_PRESETS.find(p => p.id === id) || LIP_PRESETS[0]).f });
+  const lipPresetOf = f => (LIP_PRESETS.find(p => LIP_IDS.every(k => ((f && f[k]) || 0) === (p.f[k] || 0))) || {}).id || null;
+  // the Face tab's Proportions: the thirds, then the fifths (face width, eye width and spacing)
+  const PROP_SLIDERS = ['foreH', 'midH', 'lowH', 'faceW', 'eyeW', 'eyeD'].map(byId);
+  const THIRDS = ['foreH', 'midH', 'lowH'];
 
   const SKIN = ['#ebc6aa', '#e6bc9c', '#d9ab86', '#c69470', '#b3805c', '#9c6c4a', '#85583a', '#6c452d', '#553422', '#45291c'];
   const HAIR_COLORS = [
@@ -454,7 +489,7 @@ window.AvatarData = (() => {
   }
 
   return {
-    SLIDERS, LIP_SLIDERS, BROW_SLIDERS, SKIN, HAIR_COLORS, EYE_COLORS, EYE_ORDER, FACIAL_HAIR, OUTFIT_COLORS, GLOWS, MAKEUP, MK_LAYERS, MK_DEFAULT, MK_PRESETS, PARTS, PATTERN_OUTFITS, SLOT_NAME, DEFAULT, GOLD_LEVEL, HOOD_BLOCKS,
+    SLIDERS, LIP_SLIDERS, BROW_SLIDERS, LIP_GROUPS, LIP_PRESETS, PROP_SLIDERS, THIRDS, withLipPreset, lipPresetOf, SKIN, HAIR_COLORS, EYE_COLORS, EYE_ORDER, FACIAL_HAIR, OUTFIT_COLORS, GLOWS, MAKEUP, MK_LAYERS, MK_DEFAULT, MK_PRESETS, PARTS, PATTERN_OUTFITS, SLOT_NAME, DEFAULT, GOLD_LEVEL, HOOD_BLOCKS,
     items, itemId, part, lockOf, normalize, fv, normalizeMk, presetMk, presetOf, freeMk, mkHex, usable, unownedParts, withGear, stable, hash, random, rng,
   };
 })();

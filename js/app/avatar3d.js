@@ -303,6 +303,23 @@ function computeNormals(pos, index, canon, nrm) {
 
 // sliders that move the brow cards (prop morphs in avatar.glb), not the head
 const BROW_MORPHS = ['browT', 'browA', 'browSp', 'browIn', 'browTl', 'browAp', 'browAh', 'browLn', 'browTi', 'browTo'];
+// ---------- proportions: the landmarks tools/avatar/morphs.py landmarks() picked ----------
+// How much of a slider's morph goes on: |v|, except that the masculine end already tapers the
+// jaw, so V-shape goes on at up to 35% less there and the two together never make a pointed chin
+const slideW = (s, v, L) => Math.abs(v) * (s.id === 'vline' ? 1 - 0.35 * Math.max(0, -(L.f.sex || 0)) / 100 : 1);
+function morphAt(A, key, i, ax) {
+  const m = A.morphs.get(key); if (!m) return 0;
+  let lo = 0, hi = m.idx.length - 1;
+  while (lo <= hi) { const k = (lo + hi) >> 1, x = m.idx[k]; if (x === i) return m.d[k * 3 + ax]; if (x < i) lo = k + 1; else hi = k - 1; }
+  return 0;
+}
+// one coordinate of skin vertex i for look L, worked out from the morphs without applying the look
+function markAt(A, L, i, ax) {
+  let p = A.base[i * 3 + ax] + morphAt(A, 'base+', i, ax);
+  for (const s of D.SLIDERS) { const v = D.fv(L.f, s.id) / 100; if (v) p += slideW(s, v, L) * morphAt(A, s.id + (v < 0 ? '-' : '+'), i, ax); }
+  return p;
+}
+const THIRD_MARKS = ['hair', 'brow', 'sub', 'ment'];
 
 // ---------- the rig: one avatar built from the shared assets ----------
 export class Rig {
@@ -450,9 +467,7 @@ export class Rig {
       for (const s of D.SLIDERS) {
         const v = D.fv(L.f, s.id) / 100; if (!v) continue;
         const m = this.A.morphs.get(s.id + (v < 0 ? '-' : '+')); if (!m) continue;
-        // the masculine end already tapers the jaw: V-shape goes on at up to 35% less there, so
-        // the two together never make a pointed chin
-        const w = Math.abs(v) * (s.id === 'vline' ? 1 - 0.35 * Math.max(0, -(L.f.sex || 0)) / 100 : 1), idx = m.idx, d = m.d;
+        const w = slideW(s, v, L), idx = m.idx, d = m.d;
         for (let i = 0; i < idx.length; i++) { const k = idx[i] * 3; pos[k] += w * d[i * 3]; pos[k + 1] += w * d[i * 3 + 1]; pos[k + 2] += w * d[i * 3 + 2]; }
       }
       for (let i = 0; i < pos.length; i++) dl[i] = pos[i] - base[i];
@@ -487,6 +502,35 @@ export class Rig {
     return L;
   }
   setLineScale(px, w, h) { this.M.line.linewidth = px; this.M.line.resolution.set(w, h); }
+
+  // Forehead height, midface length and lower face length that make the three thirds (hairline
+  // to brows, brows to nose base, nose base to chin) equal on this face, keeping its overall
+  // height. Each slider moves only its own band, so a few Newton steps per third settle it.
+  // Returns { foreH, midH, lowH }, or null when the file has no landmarks.
+  balanceThirds(look) {
+    const A = this.A, mk = A.meta.marks; if (!mk) return null;
+    const L = D.normalize(look), f = { ...L.f };
+    const thirds = ff => { const y = THIRD_MARKS.map(k => markAt(A, { ...L, f: ff }, mk[k], 1)); return [y[0] - y[1], y[1] - y[2], y[2] - y[3]]; };
+    const t0 = thirds(f), T = (t0[0] + t0[1] + t0[2]) / 3;
+    for (let it = 0; it < 4; it++) D.THIRDS.forEach((id, k) => {
+      const t = thirds(f)[k], need = T - t, v = f[id] || 0, step = need > 0 ? 4 : -4;
+      const slope = (thirds({ ...f, [id]: v + step })[k] - t) / step;
+      if (Math.abs(slope) > 1e-7) f[id] = Math.max(-100, Math.min(100, Math.round(v + need / slope)));
+    });
+    return Object.fromEntries(D.THIRDS.map(id => [id, f[id] || 0]));
+  }
+  // the guide lines on the current shape, as segment end points: across the face at the
+  // hairline, brows, nose base and chin (the thirds), and down it at each side of the face and
+  // each eye corner (the fifths). Each line sits at its landmark's own depth.
+  guideSegments() {
+    const mk = this.A.meta.marks, P = this.pos, out = [];
+    const at = i => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+    const fifths = [...mk.l, ...mk.r].map(at), X = Math.max(...fifths.map(p => Math.abs(p[0]))) + 0.14;
+    const [hair, , , ment] = THIRD_MARKS.map(k => at(mk[k]));
+    for (const k of THIRD_MARKS) { const [, y, z] = at(mk[k]); out.push(-X, y, z, X, y, z); }
+    for (const [x, , z] of fifths) out.push(x, hair[1] + 0.1, z, x, ment[1] - 0.1, z);
+    return out;
+  }
 }
 
 // turn the avatar about the middle of the head rather than the origin
@@ -659,9 +703,27 @@ export class Viewer {
     this.host.style.setProperty('--av-glow', D.part('gl', L.gl).hex);
     const wait = ensure(L, false);
     if (wait) wait.then(() => { if (this.alive && seq === this.seq) { this.rig.set(look); this.kick(); } });
+    if (this.guides && this.guides.visible) this.fillGuides();
     this.kick();
     return L;
   }
+  // thin lines over the face for the thirds and fifths (Rig.guideSegments), in the glow colour
+  setGuides(on) {
+    on = !!on && !!this.rig.A.meta.marks;
+    if (on && !this.guides) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(60), 3));
+      const m = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.75, depthTest: false, depthWrite: false });
+      this.guides = new THREE.LineSegments(g, m); this.guides.frustumCulled = false; this.guides.renderOrder = 10;
+      this.rig.group.add(this.guides);
+    }
+    if (this.guides) { this.guides.visible = on; if (on) this.fillGuides(); }
+    this.kick();
+  }
+  fillGuides() {
+    const a = this.guides.geometry.attributes.position; a.array.set(this.rig.guideSegments()); a.needsUpdate = true;
+    this.guides.material.color.set(D.part('gl', this.rig.look ? this.rig.look.gl : 'green').hex);
+  }
+  balanceThirds(look) { return this.rig.balanceThirds(look); }
   rotate(d) { this.yaw += d; this.kick(); }
   kick() { if (!this.raf && this.alive) this.raf = requestAnimationFrame(t => this.frame(t)); }
   frame(t) {
@@ -688,6 +750,7 @@ export class Viewer {
   setFocus(on) { this.focusTo = on ? 1 : 0; this.kick(); }
   dispose() {
     this.alive = false; cancelAnimationFrame(this.raf); this.ro.disconnect();
+    if (this.guides) { this.guides.removeFromParent(); this.guides.geometry.dispose(); this.guides.material.dispose(); }
     const el = this.r.domElement;
     el.removeEventListener('pointerdown', this.onDown); el.removeEventListener('pointermove', this.onMove);
     el.removeEventListener('pointerup', this.onUp); el.removeEventListener('pointercancel', this.onUp);

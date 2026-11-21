@@ -158,3 +158,9 @@
   .avc-bar > a { grid-column: 1 / -1; }
   .avc-bar .grow { display: none; }
 }
+
+/* Face tab: Balance thirds and Show guides; Mouth tab: lip preset chips */
+.avc-prop { display: flex; flex-wrap: wrap; gap: 8px; }
+.avc-prop [aria-pressed="true"] { color: var(--green); border-color: var(--green); }
+.mkp-row.lp { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); }
+.mkp-row.lp .mkp { min-height: 40px; }
