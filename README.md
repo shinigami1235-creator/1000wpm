@@ -1,6 +1,6 @@
-# 10000wpm
+# lowercase
 
-Sample website for Art, who posts speed typing on Instagram as @10000wpm. Run it from a web server: GitHub Pages, or `python -m http.server` in this folder and then http://localhost:8000. Opened straight from the folder (a `file://` address), Chrome blocks the 3D scenes, the avatars, the fonts and the boss music, since it won't load modules, fonts or audio from disk. Nothing loads from another company's server: three.js is in `lib/three/` and the fonts are in `fonts/`.
+lowercase is the typing site and the organisation its players join, made for Art, who posts speed typing on Instagram as @10000wpm. Everything on it shows in lower case (see SPEC.md). Run it from a web server: GitHub Pages, or `python -m http.server` in this folder and then http://localhost:8000. Opened straight from the folder (a `file://` address), Chrome blocks the 3D scenes, the avatars, the fonts and the boss music, since it won't load modules, fonts or audio from disk. Nothing loads from another company's server: three.js is in `lib/three/` and the fonts are in `fonts/`.
 
 ## Pages
 

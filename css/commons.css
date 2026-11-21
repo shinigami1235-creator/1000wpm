@@ -7,7 +7,7 @@
 .cm > .panel { min-height: 0; display: flex; flex-direction: column; padding: 14px; }
 .cm .ph { margin-bottom: 10px; }
 .cm-demo {
-  font: 500 12px/1 var(--f-head); letter-spacing: 0; text-transform: none; color: var(--ink);
+  font: 500 12px/1 var(--f-head); letter-spacing: 0; color: var(--ink);
   background: rgba(215,245,227,.09); padding: 4px 6px; border-radius: var(--r); white-space: nowrap;
 }
 .cm-note { font: 400 13px/1.4 var(--f-head); color: var(--gold); margin-bottom: 8px; }
@@ -41,7 +41,7 @@
 .cm-main { padding-bottom: 10px !important; }
 .cm-top { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
 .cm-tt { flex: 1; min-width: 0; }
-.cm-tt h2 { font: 700 22px/1.1 var(--f-head); text-transform: uppercase; letter-spacing: .03em; color: var(--ink); }
+.cm-tt h2 { font: 700 22px/1.1 var(--f-head); letter-spacing: .03em; color: var(--ink); }
 .cm-tt h2 .pre { color: var(--green); margin-right: 4px; }
 .cm-tt p { font-size: 14px; color: var(--ink-2); margin-top: 3px; }
 .cm-back, .cm-pbtn, .cm-px { display: none !important; }
@@ -73,7 +73,7 @@ button.cm-name:hover { color: var(--green); text-decoration: underline; }
 .cm-q b { color: var(--ink); font-weight: 600; }
 .cm-rbtn {
   position: absolute; right: 2px; top: 2px; opacity: 0; cursor: pointer; padding: 2px 6px;
-  font: 400 12px/1.2 var(--f-label); text-transform: uppercase; letter-spacing: .05em; color: var(--green); background: var(--bg-3); border: 1px solid var(--line-2);
+  font: 400 12px/1.2 var(--f-label); letter-spacing: .05em; color: var(--green); background: var(--bg-3); border: 1px solid var(--line-2);
 }
 .cm-line:hover .cm-rbtn, .cm-rbtn:focus-visible { opacity: 1; }
 @media (hover: none) { .cm-rbtn { opacity: .7; } }

@@ -282,7 +282,7 @@ window.LearnPage = (() => {
     if (id === 'placement') renderPlacement();
     else if (L) renderLesson(L);
     else renderMap();
-    document.title = `${id === 'placement' ? 'Placement test' : L ? L.title : 'Academy'} | 10000WPM`;
+    document.title = `${id === 'placement' ? 'Placement test' : L ? L.title : 'Academy'} | lowercase`.toLowerCase();
     scrollTo(0, 0);
   }
 

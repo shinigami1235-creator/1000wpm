@@ -19,6 +19,11 @@ window.FreePage = (() => {
   function newSession() { sess = { correct: 0, keys: 0, good: 0, active: 0, last: 0, bank: 0 }; paid = new Set(); }
 
   function textFor() {
+    const t = pick();
+    if (!opt.caps && t.text && (opt.src === 'quotes' || opt.src === 'own')) t.text = t.text.toLowerCase();
+    return t;
+  }
+  function pick() {
     if (opt.src === 'pack') return { text: LearnWords.pack(opt.pack, 40).join(' ') };
     if (opt.src === 'quotes') {
       // a passage from js/learn/passages.js in the picked category and length
@@ -36,7 +41,7 @@ window.FreePage = (() => {
 
   function mount(root) {
     el = root;
-    opt = { src: 'common', pack: '', stats: false, cat: 'any', len: 'any', ...TT.store.get('wpm-free-opts', {}) };
+    opt = { src: 'common', pack: '', stats: false, cat: 'any', len: 'any', caps: true, ...TT.store.get('wpm-free-opts', {}) };
     const packs = LearnWords.packs();
     if (!packs[opt.pack]) opt.pack = Object.keys(packs)[0] || '';
     newSession();
@@ -48,6 +53,7 @@ window.FreePage = (() => {
           <select class="fr-pack" aria-label="Themed pack" data-pack>${Object.entries(packs).map(([id, p]) => `<option value="${UI.esc(id)}">${UI.esc(p.name)}</option>`).join('')}</select>
           <select class="fr-pack" aria-label="What to type" data-cat><option value="any">Everything</option>${PASSAGES.CATS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>
           <select class="fr-pack" aria-label="Length" data-len><option value="any">Any length</option>${PASSAGES.LENGTHS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>
+          <button class="fr-toggle" type="button" data-caps aria-pressed="true">Capitals on</button>
           <button class="fr-toggle" type="button" data-stats aria-pressed="false">Show stats</button>
         </div>
         <div class="fr-stage" data-stage></div>
@@ -66,6 +72,7 @@ window.FreePage = (() => {
     q('[data-cat]').addEventListener('change', ev => { save(); opt.cat = ev.target.value; lengths(); store(); load(); });
     q('[data-len]').addEventListener('change', ev => { save(); opt.len = ev.target.value; store(); load(); });
     lengths();
+    q('[data-caps]').addEventListener('click', () => { save(); opt.caps = !opt.caps; store(); load(); });
     q('[data-stats]').addEventListener('click', () => { opt.stats = !opt.stats; store(); paintStats(); if (box) box.focus(); });
     load();
     paintStats();
@@ -92,6 +99,10 @@ window.FreePage = (() => {
     el.querySelectorAll('[data-src] button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === opt.src));
     el.querySelector('[data-pack]').hidden = opt.src !== 'pack';
     el.querySelector('[data-cat]').hidden = el.querySelector('[data-len]').hidden = opt.src !== 'quotes';
+    // book passages and the player's own text keep their capitals unless the switch is off
+    const caps = el.querySelector('[data-caps]');
+    caps.hidden = opt.src !== 'quotes' && opt.src !== 'own';
+    caps.setAttribute('aria-pressed', opt.caps); caps.textContent = opt.caps ? 'Capitals on' : 'Capitals off';
     const { text, src } = textFor();
     const clean = (text || '').replace(/\s+/g, ' ').trim();
     el.querySelector('[data-from]').textContent = src || '';

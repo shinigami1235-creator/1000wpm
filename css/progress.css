@@ -27,7 +27,7 @@
 .sk-head .sk-flame { width: 34px; height: 34px; color: var(--green); filter: drop-shadow(0 0 6px rgba(57,255,136,.6)); }
 .sk-n { display: block; font: 600 36px/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--green); text-shadow: var(--glow); }
 .sk-compact .sk-n { font-size: 30px; }
-.sk-meta { display: grid; grid-template-columns: auto auto; gap: 4px 10px; margin: 0; font: 400 13px/1.2 var(--f-label); text-transform: uppercase; letter-spacing: .06em; }
+.sk-meta { display: grid; grid-template-columns: auto auto; gap: 4px 10px; margin: 0; font: 400 13px/1.2 var(--f-label); letter-spacing: .06em; }
 .sk-meta dt { color: var(--ink-2); }
 .sk-meta dd { margin: 0; text-align: right; font-family: var(--f-mono); }
 .sk-cycle { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
@@ -102,7 +102,7 @@
 .fx-info small { display: block; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
 .fx-list li.got .fx-info b { color: var(--ink); }
 .fx-list li.got .fx-info small { color: var(--ink-2); }
-.fx-lock { display: inline-flex; align-items: center; gap: 5px; font: 400 12px/1 var(--f-label); color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+.fx-lock { display: inline-flex; align-items: center; gap: 5px; font: 400 12px/1 var(--f-label); color: var(--ink-3); letter-spacing: .05em; white-space: nowrap; }
 .fx-lock svg { width: 13px; height: 13px; }
 .fx-ctl { display: flex; align-items: center; gap: 10px; }
 .fx-tog { width: 40px; height: 22px; padding: 2px; cursor: pointer; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-3); }

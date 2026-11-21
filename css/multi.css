@@ -16,7 +16,7 @@
 .mu-who > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .mu-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 18ch; }
 .mu-tag {
-  display: inline-block; font: 500 11px/1 var(--f-head); letter-spacing: .04em; text-transform: uppercase;
+  display: inline-block; font: 500 11px/1 var(--f-head); letter-spacing: .04em;
   padding: 3px 5px; color: var(--ink-2); border: 1px solid var(--line-2); white-space: nowrap;
 }
 .mu-tag.bot { color: var(--amber, #f29d30); border-color: rgba(242,157,48,.4); }
@@ -105,7 +105,7 @@
 .du-last a { color: var(--ink); }
 .du-rule-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: var(--ink); font-size: 15px; }
 .du-spells { margin-top: 14px; }
-.du-spells summary { cursor: pointer; font: 400 var(--t-s)/1 var(--f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--green); padding: 6px 0; }
+.du-spells summary { cursor: pointer; font: 400 var(--t-s)/1 var(--f-label); letter-spacing: .06em; color: var(--green); padding: 6px 0; }
 .du-spells dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0 0; font-size: var(--t-s); }
 .du-spells dt { font-family: var(--f-mono); color: var(--sc); white-space: nowrap; }
 .du-spells dd { margin: 0; color: var(--ink-2); }
@@ -215,7 +215,7 @@
 .du-sum, .du-rounds { width: 100%; border-collapse: collapse; font-size: var(--t-s); }
 .du-sum th, .du-sum td, .du-rounds th, .du-rounds td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); text-align: left; }
 .du-sum thead th .mu-tag { margin-left: 6px; }
-.du-sum thead th, .du-rounds thead th { font: 400 var(--t-xs)/1.2 var(--f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.du-sum thead th, .du-rounds thead th { font: 400 var(--t-xs)/1.2 var(--f-label); letter-spacing: .06em; color: var(--ink-2); }
 .du-sum tbody th { font-weight: 400; color: var(--ink-2); }
 .du-sum td.num, .du-rounds td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .du-sum td.sp { font-family: var(--f-mono); color: var(--ink); font-size: var(--t-xs); }
@@ -246,7 +246,7 @@
 .pa-seat .pa-av { width: 48px; height: 48px; border: 1px dashed var(--line-2); }
 .pa-role { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-s); }
 .pa-role svg { width: 16px; height: 16px; }
-.pa-ready { font: 400 var(--t-xs)/1 var(--f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.pa-ready { font: 400 var(--t-xs)/1 var(--f-label); letter-spacing: .06em; color: var(--ink-3); }
 .pa-ready.on { color: var(--green); }
 .pa-rolepick { display: grid; gap: 8px; }
 .pa-rolebtn { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; text-align: left; padding: 10px; background: var(--bg-3); border: 1px solid var(--line-2); cursor: pointer; color: var(--ink); }

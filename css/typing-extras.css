@@ -63,7 +63,7 @@ html.focus-typing #rain { opacity: 0; visibility: hidden; }
 .sv-none { position: absolute; inset: 0 0 22px 34px; display: grid; place-items: center; font: 400 14px/1.4 var(--f-label); color: var(--ink-2); }
 .sv-scroll { overflow-x: auto; }
 table.sv-modes { width: 100%; border-collapse: collapse; font: 400 14px/1.2 var(--f-label); }
-.sv-modes th { text-align: left; color: var(--ink-2); font-weight: 400; text-transform: uppercase; letter-spacing: .05em; font-size: 12px; padding: 0 8px 8px; border-bottom: 1px solid var(--line-2); }
+.sv-modes th { text-align: left; color: var(--ink-2); font-weight: 400; letter-spacing: .05em; font-size: 12px; padding: 0 8px 8px; border-bottom: 1px solid var(--line-2); }
 .sv-modes td { padding: 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 .sv-modes td:first-child, .sv-modes th:first-child { padding-left: 2px; }
 .sv-modes .r { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
@@ -159,7 +159,7 @@ html.reel-on { overflow: hidden; }
 .re-logo { width: 16cqmin; height: 16cqmin; color: var(--green); filter: drop-shadow(0 0 10px rgba(57,255,136,.5)); }
 .re-wpm { display: grid; justify-items: center; gap: 1cqmin; }
 .re-wpm b { font: 700 30cqmin/0.9 var(--f-mono); color: var(--green); text-shadow: 0 0 30px rgba(57,255,136,.55); font-variant-numeric: tabular-nums; }
-.re-wpm span { font: 400 5cqmin/1 var(--f-label); color: var(--ink-2); letter-spacing: .3em; text-transform: uppercase; }
+.re-wpm span { font: 400 5cqmin/1 var(--f-label); color: var(--ink-2); letter-spacing: .3em; }
 .re-sub { font: 400 4cqmin/1.3 var(--f-label); color: var(--ink); }
 .re-site { margin-top: 2cqmin; font: 700 6.4cqmin/1 var(--f-head); color: var(--ink); letter-spacing: .02em; border-top: 1px solid var(--line); padding-top: 3cqmin; }
 .reel-ov[data-layout="16x9"] .re-wpm b { font-size: 26cqmin; }

@@ -1,4 +1,6 @@
-# 10000WPM site: build spec
+# lowercase site: build spec
+
+The site is **lowercase**, the organisation every player joins (Gid, 22 Nov 2026). Its mark is the Shift key's arrow turned to point down, and its theme is lower case: every word on the site shows in lower case through one rule in `css/site.css`, canvases included through a hook in `js/app/ui.js`. The text a player types keeps its case, and free typing has a switch that drops the capitals from book passages. Keyspace is the world; Art keeps his laurel mark and @10000wpm.
 
 This spec covers the standalone version of the site for Art (@10000wpm on Instagram, 25.5K followers, a speed typist sponsored by keyboard makers). Everything runs in the browser with no server. Progress, coins and the room are saved on the player's device through `js/state.js`. A server for global leaderboards and a shared world boss, and payments, come later.
 
@@ -30,7 +32,7 @@ Fonts from Google Fonts: **Chakra Petch** (600, 700) for headings, **Share Tech 
 ### Patterns
 
 - Panel: `--bg-2` fill, 1px `--line` border, top-left and bottom-right corners cut 10px with `clip-path`, and a panel title in Share Tech Mono like `// TYPING PERFORMANCE` or `> SHOP_`.
-- Nav: logo (laurel "A" mark in SVG plus `10000WPM` and `// THE TYPING COLLECTIVE`) at the left, then `[ HOME ] [ TYPE ] [ PLAY ] [ LEADERBOARD ] [ MY ROOM ] [ SHOP ] [ PROFILE ]`, then coins and the player's avatar and name at the right. The active item is green with an underline glow.
+- Nav: logo (the downward arrow mark plus `lowercase_` with a blinking cursor and `// the typing collective`) at the left, then `[ home ] [ type ] [ play ] [ world boss ] [ open port ] [ leaderboard ] [ my room ] [ shop ] [ profile ]`, then coins and the player's avatar and name at the right. The active item is green with an underline glow.
 - Big numbers (wpm, coins, rank) in JetBrains Mono with `font-variant-numeric: tabular-nums`.
 - Do not use the Guy Fawkes mask from the mockups. Use a hooded figure made from code characters instead.
 

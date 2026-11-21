@@ -72,7 +72,7 @@
 .avsc-tools, .avsc-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .avsc-tools .btn[aria-pressed="true"] { color: #04110a; background: var(--green); border-color: var(--green); }
 .avsc-head { display: flex; justify-content: space-between; align-items: baseline; }
-.avsc-head .dim { font-size: 13px; text-transform: none; letter-spacing: 0; }
+.avsc-head .dim { font-size: 13px; letter-spacing: 0; }
 .avsc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
 .avsc-row {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; text-align: left;

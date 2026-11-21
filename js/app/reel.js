@@ -160,7 +160,7 @@ window.ReelPage = (() => {
       this.o = o;
       const root = this.root = UI.el(`<div class="reel-ov" data-layout="${o.layout}" role="dialog" aria-modal="true" aria-label="Reel recording">
         <div class="reel-frame">
-          <div class="reel-brand"><svg aria-hidden="true"><use href="#i-logo"/></svg><span><b>10000WPM</b><small>${UI.esc(site())}</small></span></div>
+          <div class="reel-brand"><svg aria-hidden="true"><use href="#i-mark"/></svg><span><b>lowercase_</b><small>${UI.esc(site())}</small></span></div>
           <div class="reel-hud">
             <span class="rh-wpm"${o.wpm ? '' : ' hidden'}><b data-wpm>0</b> wpm</span>
             <span class="rh-time"${o.timer ? '' : ' hidden'} data-time>0:00</span>
@@ -333,7 +333,7 @@ window.ReelPage = (() => {
       WPM.record({ mode: 'reel', wpm, acc, correct: this.correct, keys: this.typed, ms: Math.round(ms), keyStats: this.ks });
       const end = this.root.querySelector('[data-end]');
       end.innerHTML = `
-        <svg class="re-logo" aria-hidden="true"><use href="#i-logo"/></svg>
+        <svg class="re-logo" aria-hidden="true"><use href="#i-mark"/></svg>
         <p class="re-wpm"><b>${wpm}</b><span>wpm</span></p>
         <p class="re-sub">${acc}% accuracy in ${UI.clock(ms / 1000)}</p>
         <p class="re-site">${UI.esc(site())}</p>`;

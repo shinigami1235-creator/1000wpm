@@ -41,7 +41,7 @@ window.Router = (() => {
     if (cur) { try { cur.unmount(); } catch (e) { console.error(e); } }
     view.innerHTML = '';
     curName = name; cur = pages[name];
-    document.title = cur.title ? `${cur.title} | 10000WPM` : '10000WPM';
+    document.title = (cur.title ? `${cur.title} | lowercase` : 'lowercase').toLowerCase();
     document.querySelectorAll('#nav a').forEach(a => {
       if (a.dataset.route === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
