@@ -1,6 +1,8 @@
-// The entrance. Plays once per browser session when the site opens on #/home or
-// with no hash. A small script in <head> decides that before the first paint and
-// covers the page; this file loads async so the page keeps loading underneath.
+// The fall into Keyspace. Plays once on this device, the first time the player opens
+// Play (#/play), as the moment they fall into the network (STORY/WORLD.md). The home page
+// opens straight on the map. When the site is opened on #/play directly, a small script
+// in <head> decides before the first paint and covers the page; this file loads async so
+// the page keeps loading underneath. The footer link replays it on any page.
 //
 // Timeline, in seconds:
 //   0.0 to 1.2   falling code: each column types Art's words or a bit of code down the screen
@@ -11,11 +13,12 @@
 //                shows the landing page, which has been loaded the whole time
 //   3.4          the buddy flies out of the portal to its spot on the page
 //   3.9 to 4.3   what is left fades and the site's own falling code carries on
-// Any key, click or tap skips. The key that skips never reaches the page.
+// Any key, click or tap skips. The key that skips, and any typed during the fade, go to
+// the page's typing box once the intro is gone.
 // prefers-reduced-motion gets a still wordmark and a short fade instead.
 (() => {
   const html = document.documentElement;
-  const SEEN = 'wpm-intro-seen';
+  const SEEN = 'wpm-fell-in';   // localStorage, so it plays once per device
   const END = 4.3, ARRIVE = 3.4;
   const G = '#39ff88', GD = '#1f9e57', INK = '#d7f5e3', CY = '#3ee6ff', GOLD = '#f2c230', BG = '#040806';
   const ART = 'hi im art and i type fast sometimes every day i type my follower count with one word for each follower so today i type twenty five thousand words';
@@ -377,7 +380,7 @@
   addEventListener('wpm-sound', e => { if (!(e.detail && e.detail.on)) hush(); });
 
   // ---------- running it ----------
-  let run = null, swallow = false, swallowT = 0;
+  let run = null, queued = [];
   const stats = { frames: 0, cost: [], gaps: [], started: 0, ended: 0 };
 
   function start({ at = null } = {}) {
@@ -388,7 +391,7 @@
     ov.innerHTML = '<canvas aria-hidden="true"></canvas><button class="intro-skip" type="button" aria-label="Skip intro">Skip</button>';
     document.body.append(ov);
     html.classList.add('intro');
-    try { sessionStorage.setItem(SEEN, '1'); } catch (e) {}
+    try { localStorage.setItem(SEEN, '1'); } catch (e) {}
     document.dispatchEvent(new CustomEvent('buddy', { detail: 'intro' }));
     const cv = ov.querySelector('canvas'), c = cv.getContext('2d');
     const dpr = Math.min(2, window.devicePixelRatio || 1), w = innerWidth, h = innerHeight;
@@ -462,7 +465,7 @@
       if (r.shell) { r.shell.style.transform = ''; r.shell.style.transformOrigin = ''; }
       html.classList.remove('intro', 'intro-cover');
       if (run === r) run = null;
-      swallowT = setTimeout(() => { swallow = false; }, 1200);
+      deliver();
     }, r.calmAll ? 650 : fast ? 260 : 340);
   }
 
@@ -472,17 +475,46 @@
     finish(true);
   }
 
-  // Keys during the intro skip it and never reach the page, and neither does the key held
-  // down after it ends. Shortcuts like Ctrl+R and F5 still work.
+  // A key during the intro skips it. The page doesn't see the key then; printable keys are
+  // kept and handed to the typing box after the overlay is gone, so the first letter the
+  // player types still counts. Held-down repeats are dropped. Shortcuts like Ctrl+R and F5
+  // still work.
   const TYPING = new Set(['Enter', 'Tab', 'Backspace', 'Delete', ' ', 'Spacebar', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End']);
   addEventListener('keydown', e => {
-    if (!run && !swallow) return;
+    if (!run) return;
     const shortcut = e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key);
-    if (!shortcut && (e.key.length === 1 || TYPING.has(e.key))) e.preventDefault();
-    if (!shortcut) e.stopImmediatePropagation();
-    if (run && !run.ending && run.frozen == null) skip();
+    if (shortcut) return;
+    if (e.key.length === 1 || TYPING.has(e.key)) e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.key.length === 1 && !e.repeat && queued.length < 8) queued.push(e.key);
+    if (!run.ending && run.frozen == null) skip();
   }, true);
-  addEventListener('keyup', () => { if (!run && swallow) { clearTimeout(swallowT); swallow = false; } }, true);
+
+  // The kept keys go to the focused text field, or else to the first typing box on the page
+  // (the hidden textarea of TT.captureKeys). A game that is still loading gets up to 3 s.
+  function deliver() {
+    if (!queued.length) return;
+    const t0 = performance.now();
+    const go = () => {
+      if (!queued.length) return;
+      let t = document.activeElement;
+      const field = t && /^(INPUT|TEXTAREA)$/.test(t.tagName) && !t.readOnly;
+      if (!field) {
+        t = document.querySelector('#view .sr-input');
+        if (!t) { if (performance.now() - t0 < 3000) setTimeout(go, 100); else queued = []; return; }
+        t.focus({ preventScroll: true });
+      }
+      const keys = queued; queued = [];
+      for (const k of keys) {
+        const ev = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+        // a plain text field gets the letter written in when nothing handled the key
+        if (t.dispatchEvent(ev) && !t.classList.contains('sr-input') && typeof t.setRangeText === 'function') {
+          try { t.setRangeText(k, t.selectionStart, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+        }
+      }
+    };
+    go();
+  }
   addEventListener('resize', () => { if (run && run.frozen == null && (innerWidth !== run.w || innerHeight !== run.h)) skip(); });
 
   // the replay link in the footer
@@ -491,9 +523,14 @@
     if (!a) return;
     e.preventDefault();
     if (run) return;
-    if (!/^#\/?(home)?\/?$/.test(location.hash)) location.hash = '#/home';
     scrollTo(0, 0);
     start();
+  });
+
+  // the first time the player opens Play on this device
+  const seen = () => { try { return !!localStorage.getItem(SEEN); } catch (e) { return true; } };
+  addEventListener('wpm-route', e => {
+    if (e.detail && e.detail.name === 'play' && !seen() && !run) { scrollTo(0, 0); start(); }
   });
 
   window.Intro = {

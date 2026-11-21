@@ -103,6 +103,7 @@ window.RaceGame = (() => {
 
     function finish() {
       running = false; finished = true;
+      if (window.Focus) Focus.end();
       host.classList.add('idle');
       const now = performance.now();
       const myMs = now - tt.startT;
