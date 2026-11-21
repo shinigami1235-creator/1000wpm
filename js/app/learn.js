@@ -1,3 +1,4 @@
+if (window.WPM && WPM.events) WPM.events.register("lesson_pass");
 // #/type/learn: the academy. The lesson map, each lesson (guide, finger keyboard, drill,
 // result with stars) and the placement test. js/app/type-tabs.js mounts it as a tab of the
 // Type page. Params: [] for the map, ['placement'] for the test, [lessonId] for a lesson.
@@ -145,6 +146,7 @@ window.LearnPage = (() => {
       const lessons = { ...now.lessons, [L.id]: { stars: Math.max(prev.stars, st), wpm: Math.max(prev.wpm || 0, wpm), acc: Math.max(prev.acc || 0, acc) } };
       WPM.setLearn({ lessons, open: Math.max(now.open, st ? i + 1 : 0) });
       WPM.record({ mode: 'learn-' + L.id, wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), coins });
+      if (st && window.WPM && WPM.track) WPM.track('lesson_pass', { lesson: L.id, wpm, acc, stars: st, first: !prev.stars });
       const allNow = LS().every(x => (lessons[x.id] || {}).stars);
       let bonus = 0;
       if (allNow && !now.allPaid) { bonus = C.allPassed; WPM.setLearn({ allPaid: true }); WPM.addCoins(bonus, 'academy'); }
