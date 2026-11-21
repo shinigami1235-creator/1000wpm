@@ -6,7 +6,7 @@ Skins  three MakeHuman skins (light, medium, dark) baked from the hm08 UVs into 
 Eyes   the MakeHuman high-poly eye proxy (eyeball and cornea), turned a little down so the
        face looks relaxed. The irises are resampled from MakeHuman eye textures into one
        polar layout: the eye's axis at the texture centre, 90 degrees off axis at radius 0.5.
-Brows  cards laid on the brow ridge with painted hairs, one per brow style (brows.py).
+Brows  placed by rule from the canthi and the ala; the site builds the cards (brows.py).
 Lashes the MakeHuman eyelashes01 (shortened, for men) and eyelashes02 cards.
 
 Every proxy is fitted to the neutral hm08 mesh through its .mhclo, and refitted to each
@@ -326,26 +326,18 @@ def eye_textures(eyes, out_dir, size=512):
 
 
 # ---------------------------------------------------------------- brows and lashes
-# The brows are built in brows.py: cards laid on the brow ridge, one per style, with a painted
-# hair atlas and a prop morph per brow slider.
+# The brows are placed by rule and built live by the site (js/app/avatar-brows.js); brows.py
+# paints their atlas and supplies the landmarks, presets and styles in the glb meta.
 import brows as _brows
-BROW_ORDER = _brows.ORDER
-BROW_MORPHS = _brows.MORPH_NAMES
 
 
 def brow_atlas(out_dir, K):
-    """brow_atlas.webp (see brows.py) and the tiles' places. K.brows keeps the builder."""
-    K.brows = _brows.Brows(K)
-    at, tiles = K.brows.atlas()
+    """brow_atlas.webp (see brows.py); sets K.brow_meta for the glb. Returns (sizes, tiles)."""
+    at, tiles, K.brow_meta = _brows.build(K)
     if out_dir is None: return {}, tiles
     arr = np.round(np.clip(at, 0, 1) * 255).astype(np.uint8)
     Image.fromarray(arr, 'RGBA').save(f'{out_dir}/brow_atlas.webp', 'WEBP', quality=85, alpha_quality=60, method=6)
     return {'brow_atlas.webp': os.path.getsize(f'{out_dir}/brow_atlas.webp')}, tiles
-
-
-def brow_parts(K, Part, neu, tiles):
-    """One Part per brow style, with a morph per brow slider (brows.MORPHS)."""
-    return {name: K.brows.part(name, Part, tiles) for name in BROW_ORDER}
 
 
 def lash_atlas(out_dir):

@@ -24,6 +24,8 @@ const CL = window.AvatarCloth.create({ THREE, loader, root: ROOT, prep });
 const isCloth = pid => pid.startsWith('fit-') || pid.startsWith('acc-');
 // sculpt points (look.sc): pushed and pulled areas on top of the slider morphs, in avatar-sculpt.js
 const SC = (await import('./avatar-sculpt.js')).default;
+// brows placed by rule on the current head, built here rather than in the glb (avatar-brows.js)
+const BR = (await import('./avatar-brows.js')).default;
 
 // ---------- reading the files ----------
 function vec3Array(attr, off, sc) {
@@ -113,6 +115,7 @@ async function loadAssets() {
     A.headPrims[m.material.name] = g.index.array.slice();
   }
   for (const [pid, parts] of readProps(gltf.scene)) A.props.set(pid, parts);
+  if (A.meta.brow) for (const [pid, parts] of BR.parts(A.meta.brow)) A.props.set(pid, parts);
   window.AvatarFace.init(THREE, ROOT, A.meta.face);
   gltf.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   A.tex = {
@@ -303,7 +306,7 @@ function computeNormals(pos, index, canon, nrm) {
   }
 }
 
-// sliders that move the brow cards (prop morphs in avatar.glb), not the head
+// sliders that change the brows but not the head (avatar-brows.js)
 const BROW_MORPHS = ['browT', 'browA', 'browSp', 'browIn', 'browTl', 'browAp', 'browAh', 'browLn', 'browTi', 'browTo'];
 // ---------- proportions: the landmarks tools/avatar/morphs.py landmarks() picked ----------
 // How much of a slider's morph goes on: |v|, except that the masculine end already tapers the
@@ -392,17 +395,15 @@ export class Rig {
     return out;
   }
   updateProp(pr, L) {
-    // brow sliders are prop morphs named by slider id; one with a '-' variant uses it below 0
-    const dl = this.delta, w = [];
-    for (const id of BROW_MORPHS) {
-      const v = (L.f[id] || 0) / 100; if (!v) continue;
-      w.push([v < 0 ? id + '-' : id + '+', Math.abs(v)], [id, v]);
-    }
+    const dl = this.delta;
     for (const r of pr.recs) {
-      const { bind, bindw, morph } = r.p, base = r.base, out = r.pos;
+      const { bind, bindw } = r.p, base = r.base, out = r.pos;
+      if (pr.brow) {
+        BR.update(this, r, L);
+        computeNormals(out, r.p.index, r.p.canon, r.nrm); r.nattr.needsUpdate = true; r.attr.needsUpdate = true;
+        continue;
+      }
       base.set(r.p.pos);
-      for (const [name, k] of w) { const m = morph[name]; if (m) for (let i = 0; i < base.length; i++) base[i] += m[i] * k; }
-      if (pr.brow) { this.browFollow(base, out); r.attr.needsUpdate = true; if (r.p.index) { computeNormals(out, r.p.index, r.p.canon, r.nrm); r.nattr.needsUpdate = true; } continue; }
       for (let i = 0, n = base.length / 3; i < n; i++) {
         const b0 = bind[i * 4] * 3, b1 = bind[i * 4 + 1] * 3, b2 = bind[i * 4 + 2] * 3;
         const w0 = bindw[i * 4] / 255, w1 = bindw[i * 4 + 1] / 255, w2 = bindw[i * 4 + 2] / 255;
@@ -415,44 +416,6 @@ export class Rig {
       if (r.lines) this.fillLines(r.lines);
     }
     pr.stamp = this.shapeStamp;
-  }
-
-  // Brow cards move across the skin with their sliders, so a fixed binding would leave them with
-  // the head shape of the spot they started on (on a deep brow ridge they sink in). Each card
-  // vertex instead takes the head's shape change from the three nearest skin vertices where it
-  // is now, and is pushed back out if it still ends up under the skin.
-  browFollow(base, out) {
-    const A = this.A, P = A.base, dl = this.delta, pos = this.pos, nrm = this.nrm;
-    if (!this.browSkin) {
-      const seen = new Uint8Array(P.length / 3), idx = [];
-      for (const v of A.headPrims.skin) {
-        if (seen[v]) continue; seen[v] = 1;
-        if (Math.abs(P[v * 3]) < 0.85 && P[v * 3 + 1] > 7.1 && P[v * 3 + 1] < 7.95 && P[v * 3 + 2] > 0.4) idx.push(v);
-      }
-      this.browSkin = Uint32Array.from(idx);
-    }
-    const R = this.browSkin, LIFT = 0.0025;
-    for (let i = 0, n = base.length / 3; i < n; i++) {
-      const x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2];
-      let d0 = 1e9, d1 = 1e9, d2 = 1e9, j0 = 0, j1 = 0, j2 = 0;
-      for (let k = 0; k < R.length; k++) {
-        const v = R[k] * 3, dx = P[v] - x, dy = P[v + 1] - y, dz = P[v + 2] - z, d = dx * dx + dy * dy + dz * dz;
-        if (d < d2) {
-          if (d < d1) { d2 = d1; j2 = j1; if (d < d0) { d1 = d0; j1 = j0; d0 = d; j0 = v; } else { d1 = d; j1 = v; } }
-          else { d2 = d; j2 = v; }
-        }
-      }
-      const w0 = 1 / (Math.sqrt(d0) + 1e-4), w1 = 1 / (Math.sqrt(d1) + 1e-4), w2 = 1 / (Math.sqrt(d2) + 1e-4), ws = w0 + w1 + w2;
-      let px = x, py = y, pz = z, nx = 0, ny = 0, nz = 0, h = 0;
-      for (const [j, w] of [[j0, w0 / ws], [j1, w1 / ws], [j2, w2 / ws]]) {
-        px += w * dl[j]; py += w * dl[j + 1]; pz += w * dl[j + 2];
-        nx += w * nrm[j]; ny += w * nrm[j + 1]; nz += w * nrm[j + 2];
-      }
-      for (const [j, w] of [[j0, w0 / ws], [j1, w1 / ws], [j2, w2 / ws]])
-        h += w * ((px - pos[j]) * nrm[j] + (py - pos[j + 1]) * nrm[j + 1] + (pz - pos[j + 2]) * nrm[j + 2]);
-      if (h < LIFT) { const l = Math.hypot(nx, ny, nz) || 1, k = (LIFT - h) / l; px += nx * k; py += ny * k; pz += nz * k; }
-      out[i * 3] = px; out[i * 3 + 1] = py; out[i * 3 + 2] = pz;
-    }
   }
 
   // Applies a look. Items not loaded yet are skipped; call ensure() first to wait for them.
@@ -762,5 +725,5 @@ export class Viewer {
   }
 }
 
-window.Avatar3D = { ready, thumb, Viewer, Rig };
+window.Avatar3D = { ready, thumb, Viewer, Rig, browGuides: BR.guides };
 export { ready, thumb };
