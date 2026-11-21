@@ -874,5 +874,6 @@ window.WordBank = (() => {
     return c;
   }
 
-  return { pick, stream, meta, list, counts, THEMES, PACKS: PACK_NAMES, hash, rng: mulberry };
+  // TEEN_OFF and teenOk are also used by the chat filter (js/net/chat-rules.js)
+  return { pick, stream, meta, list, counts, THEMES, PACKS: PACK_NAMES, hash, rng: mulberry, TEEN_OFF, teenOk };
 })();

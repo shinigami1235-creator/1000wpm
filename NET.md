@@ -17,6 +17,10 @@ The rules run in files with no DOM, so the server loads the same code as the pag
 | `js/net/party-rules.js` | `PartyRules`: roles, the team combo, boss attacks, buffs, Art's drop-in and the run result |
 | `js/net/rating.js` | `NetRating`: Elo with a larger step for new players, bot ratings, rating tiers |
 | `js/net/filter.js` | `NetFilter`: the chat and name filter |
+| `js/net/chat-rules.js` | `ChatRules`: one check for a chat line (length, words, contact details, slow mode, repeats) and the typed wpm |
+| `js/net/chat-rooms.js` | `CHAT_ROOMS`: the areas and rooms at #/commons, as data |
+| `js/net/chat-lines.js` | `CHAT_LINES`: what the bots say in each room, and the demo Announcements (sim only) |
+| `js/net/chat-sim.js` | `NetChatSim`: the chat rooms in the sim backend |
 | `js/net/bot.js` | `NetBot`: simulated typists for the sim backend |
 | `js/app/combat/*.js` | The combat layer (combo, accuracy, spells, damage), see COMBAT.md |
 
@@ -31,7 +35,8 @@ Every call returns a Promise unless marked.
 ```js
 Net.connect()                           // -> { id, name }   name and look come from WPM
 Net.disconnect()
-Net.on(event, fn)                       // -> off()   'presence' 'lobbies' 'lobby' 'chat' 'match' 'challenge' 'notice'
+Net.on(event, fn)                       // -> off()   'presence' 'lobbies' 'lobby' 'chat' 'match' 'challenge' 'invite' 'notice'
+                                        //            and for the chat rooms 'chat.msg' 'chat.rooms' 'chat.people' 'chat.post' 'chat.unpost' 'chat.delete'
 Net.presence()                          // not a promise: the last presence list
 
 Net.lobbies.list()                      // -> [LobbySummary]
@@ -45,6 +50,19 @@ Net.lobbies.setRun({ run, difficulty }) // host only
 Net.lobbies.chat(text)                  // filtered here, and the server filters again
 Net.lobbies.start()                     // host only, once everyone is ready
 Net.lobbies.current()                   // not a promise: the lobby you are in or null
+Net.lobbies.invite(playerId)            // -> Invite   opens a lobby for you first if you have none; 'invite' events follow
+
+Net.chat.rooms()                        // not a promise: CHAT_ROOMS
+Net.chat.enter()                        // -> { mode: 'full' | 'quick' | 'off', allowed: [roomId] | null, rooms: { id: { members, seq } } }
+Net.chat.exit()
+Net.chat.join(room)                     // -> { room, members: [Player], offline: [Player], history: [ChatMessage], posts: [Post] | null }
+Net.chat.leave(room)
+Net.chat.send({ room, text, wpm, quick, reply })   // -> ChatMessage   reply is a message id
+Net.chat.post({ run, difficulty, skill: [lo, hi] }) // -> Post   Party finder; opens your lobby
+Net.chat.people(room)                   // not a promise: who is online in the room
+Net.chat.mute(id, on)                   // not a promise: kept in localStorage 'wpm-chat-mutes' and sent to the server
+Net.chat.muted()                        // not a promise: [id]
+Net.chat.report({ player, name, room, reason, lines })
 
 Net.match.queue({ mode, opponent, challenge })  // -> MatchInfo   mode: 'quick' | 'art' | 'player' | 'watch'
 Net.match.input(k, t)                   // not a promise: one key at t ms on the match clock
@@ -108,6 +126,16 @@ Each WebSocket message is one JSON object:
 | `challenge.send` | `{ to }` | `Challenge` |
 | `challenge.accept` | `{ id }` | `Challenge` |
 | `challenge.decline` | `{ id }` | `Challenge` |
+| `lobby.invite` | `{ to }` | `Invite` |
+| `chat.enter` | `{}` | `{ mode, allowed, rooms }` |
+| `chat.exit` | `{}` | `{}` |
+| `chat.join` | `{ room }` | `{ room, members, offline, history, posts }`, history is the last 50 messages |
+| `chat.leave` | `{ room }` | `{}` |
+| `chat.send` | `{ room, text, wpm, quick, reply }` | `ChatMessage`, or `err` with `{ message, code, wait? }` |
+| `chat.post` | `{ run, difficulty, skill: [lo, hi] }` | `Post` |
+| `chat.mute` | `{ id, on }` | `{}` |
+| `chat.report` | `{ player, room, reason, lines: [id] }` | `{ id }` |
+| `chat.delete` | `{ room, id }` | `{}`, moderators only |
 
 ### Server to client (events)
 
@@ -120,6 +148,12 @@ Each WebSocket message is one JSON object:
 | `match` | `{ type: 'start', ...MatchInfo, state, clock }`, `{ type: 'state', id, kind, state, clock }` (10 a second), `{ type: 'event', id, kind, ev }`, `{ type: 'end', id, kind, result, rating?, verified }` |
 | `challenge` | `Challenge` whenever its status changes |
 | `notice` | `{ kind: 'offline' \| 'maintenance' \| 'kicked', text? }` |
+| `invite` | `Invite` whenever its status changes |
+| `chat.msg` | `ChatMessage` with `room` and `seq`, for the room you joined |
+| `chat.rooms` | `{ rooms: { id: { members, seq } } }`, every few seconds, for the unread counts |
+| `chat.people` | `{ room, join: [Player], leave: [id], offline: [Player] }` |
+| `chat.post` / `chat.unpost` | `Post` / `{ id }` in the Party finder |
+| `chat.delete` | `{ room, id }`, a moderator removed a message |
 
 ## Payloads
 
@@ -134,6 +168,9 @@ MatchInfo    duel:  { id, kind: 'duel', mode, seed, you: 0 | 1 | -1, players: [D
              party: { id, kind: 'party', seed, run, difficulty, lobby, players: [{ id, name, role, bot, level }], you, art, startedAt }
 DuelPlayer   { id, name, bot, art, rating, level, country }
 Challenge    { id, from, fromName, to, toName, status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled', reason?, at }
+Invite       { id, to, toName, lobby, status: 'pending' | 'accepted' | 'declined', reason?, at }
+RoomMessage  { id, room, seq, from, name, bot, staff?, country, text, wpm, quick, reply: { id, name, text } | null, at }
+Post         { id, lobby, room: 'party', by, name, bot, country, run, difficulty, skill: [lo, hi], count, max, status, at, expires }
 DuelRecord   { rating, games, wins, losses, draws, streak, bestStreak, vsArt: { w, l },
                history: [{ at, id, mode, opp: { id, name, bot, art, rating }, score, wins, delta, rating, wpm, acc, forfeit }] }
 PartyRecord  { runs, wins, best, history: [{ at, run, difficulty, won, cleared, of, art, role, dmg, wpm, acc, team }] }
@@ -287,3 +324,27 @@ Written once a day at 00:00 Asia/Bangkok for the day that ended, and updated thr
 Milestones come from these numbers, so the server and the time-lapse agree: a Keyspace node comes online the first day `words_total` passes its threshold in `KEYSPACE.nodes` (`js/app/rewards-config.js`), and a country gets its beacon the first day its count reaches `KEYSPACE.beaconPlayers`.
 
 The community World Boss on the map has `BOSS_HP` 4,000,000 shared by everyone, separate from the 1,000,000 HP fight in `js/app/boss-rules.js`. Its region is seeded by the Bangkok date and moves to the next region on each defeat. The server should own both.
+
+## Chat rooms (#/commons)
+
+The rooms are data in `js/net/chat-rooms.js`: areas, then rooms with `id`, `name`, `topic`, `lang`, and `readOnly`, `kind: 'posts'`, `school` or `slowMs` where they apply. The server loads the same file, so a room added there exists on both sides. A room's `id` never changes once players have used it, since history is stored by it.
+
+- **Join and leave.** `chat.join` subscribes the player to one room and answers with the people in it, the recent offline members and the last 50 messages (`CHAT_ROOMS.history`). `chat.msg` events come only for the joined room. `chat.rooms` goes to everyone in the chat every few seconds with each room's online count and its last `seq`, and the page shows `seq` minus the last `seq` it saw as the unread count.
+- **One check, both sides.** The server runs `ChatRules.check` on every line with the player's own recent lines and last send time, and drops anything that fails. The page runs the same check first so the player sees the reason at once. It refuses lines over 140 characters, links, email addresses, phone numbers (7 or more digits), usernames from other apps (an @handle, or an app name with "add", "my", "follow" and the like), words from `NetFilter` and the `TEEN_OFF` list in `js/wordbank.js`, and the same line again within 30 seconds. Runs of one letter are cut to five.
+- **Slow mode.** One line every 2 seconds per player (`CHAT_ROOMS.slowMs`), or a room's own `slowMs`. The server answers `err` with `code: 'slow'` and `wait` in ms. On top of that, more than 20 lines in a minute mutes the player for 5 minutes.
+- **The wpm tag** is measured on the device from the first keystroke to Enter and sent with the line. The server can't check it, so it is shown only as a tag, capped at 300, and never counts toward records, ratings or tasks. Pasting is off in the box. Quick phrases carry no wpm.
+- **Announcements** (`readOnly`) take lines only from Art's account and moderators. In demo it shows the site's updates.
+- **Moderators** can delete any message with `chat.delete`, which removes it from history and sends `chat.delete` to the room. Moderators can also mute a player in every room for a set time.
+- **Mute** is per player. The page keeps it in localStorage and hides that player's lines and posts. The server keeps it with the account so it follows the player to other devices.
+- **Reports** carry the player, the room, the reason and the ids of their last 5 lines. The server keeps the lines with the report even if they are later deleted. In demo a report is saved on the device under `wpm-chat-reports`.
+- **Party finder** (`kind: 'posts'`) has no free text. A post is made from a lobby (`chat.post` opens one), shows the run, difficulty, skill range and seats, and closes after 15 minutes (`CHAT_ROOMS.postMinutes`), when its lobby closes or starts a run. Join calls `lobby.join`.
+- **Region rooms** are for one language each. The server's word list needs those languages too, Thai first.
+
+### School and young accounts
+
+- Accounts under 13 send quick phrases only (`ChatRules.QUICK`: hi, gg, good luck, join my party?, rematch?, well played). `chat.enter` answers `mode: 'quick'` and the server refuses any other text.
+- School accounts start with chat off (`mode: 'off'`). A teacher's switch turns it on for the class, to quick phrases or to full chat.
+- A teacher can also limit the class to the Learn rooms (`school: true` in the config). `chat.enter` then answers `allowed: [the Learn room ids]` and `chat.join` refuses the rest.
+- Chat logs are kept for 90 days so reports can be acted on.
+
+The sim backend tests these with `Net.test({ chatMode: 'quick' | 'off', chatRooms: 'learn' })`, or `window.__netTest` set before the scripts load. `chatBots`, `chatRate`, `chatChurnMs` and `chatReply` also change the simulated rooms. Unit tests: `node tools/net/chat-test.js`.
