@@ -1,6 +1,6 @@
 # Avatar assets: sources and licences
 
-`avatar.glb` holds the smooth head and bust (with UVs), the eyes, the slider morph targets (two per slider, plus the always-on `base+` shape), the eight brow shapes and the lashes. Each hairstyle, facial hair, outfit and accessory is its own file in `items/`, loaded the first time someone wears it. `tex/` holds every texture.
+`avatar.glb` holds the smooth head and bust (with UVs), the eyes, the slider morph targets (two per slider, plus the always-on `base+` shape), the eight brow shapes (with a prop morph per brow slider) and the lashes. Each hairstyle, facial hair, outfit and accessory is its own file in `items/`, loaded the first time someone wears it. `tex/` holds every texture.
 
 ## MakeHuman base mesh and targets (CC0 1.0)
 
@@ -11,7 +11,7 @@
 
 ## Face (CC0 1.0)
 
-The skin, eyes, brows and lashes come from MakeHuman assets released as CC0, built by `tools/avatar/face_src.py` (proxies read by `tools/avatar/mhclo.py`). The MakeHuman system assets carry the same CC0 notice as the base mesh (Data Collection AB, Joel Palmius and Jonas Hauquier, September 2020); the community packs list `"license": "CC0"` for every asset in their `packs/*.json`. Sources, from the MakeHuman asset downloads (makehumancommunity.org):
+The skin, eyes and lashes come from MakeHuman assets released as CC0, built by `tools/avatar/face_src.py` (proxies read by `tools/avatar/mhclo.py`). The MakeHuman system assets carry the same CC0 notice as the base mesh (Data Collection AB, Joel Palmius and Jonas Hauquier, September 2020); the community packs list `"license": "CC0"` for every asset in their `packs/*.json`. Sources, from the MakeHuman asset downloads (makehumancommunity.org):
 
 - Skins, baked from the hm08 UVs into the head's UV layout and tinted between for the ten skin tones (`tex/skin_light.webp`, `skin_medium.webp`, `skin_dark.webp`):
   - light: system asset `skins/young_caucasian_female2` (`young_lightskinned_female_diffuse2.png`);
@@ -19,7 +19,7 @@ The skin, eyes, brows and lashes come from MakeHuman assets released as CC0, bui
   - dark: system asset `skins/young_african_female` (`young_darkskinned_female_diffuse.png`).
 - Pores and roughness detail (`tex/skin_nrm.webp`, the G channel of `tex/skin_orm.webp`): the fine detail (blurred copy subtracted) of the normal and specular maps of `skins02` pack, `mindfront_skin_male_african_middleage` by Mindfront. The T-zone, lips and ambient occlusion in `skin_orm.webp` are generated.
 - Eyes: system asset `eyes/high-poly` (eyeball and cornea mesh, `.mhclo` fitted to the head). One eye texture for every colour (`tex/eye_iris.webp`) in a polar layout: the sclera resampled from system `eyes/materials/blue_eye`, the grey iris fibres high-passed from `grey_eye` with generated radial streaks and collarette. The eye shader colours the fibres and draws the pupil and limbal ring.
-- Brows: system assets `eyebrows/eyebrow002`, `004`, `007`, `009`, `010`, `011` and `012` (cards and textures; `010` also makes the slit brow), packed into `tex/brow_atlas.webp` with a soft fill under the hairs.
+- Brows: no third-party assets. The brow cards are laid on the head by `tools/avatar/brows.py` and the hairs in `tex/brow_atlas.webp` are painted by the same script.
 - Lashes: system assets `eyelashes/eyelashes01` (shortened, for men) and `eyelashes02` (cards and textures, in `tex/eye_lash.webp`).
 - Face shape: the always-on base shape, the lip shape sliders (`lipU`, `lipL`, `lipBow`, `lipCorner`) and the rest of the face sliders are MakeHuman `.target` files from MPFB 2 (see above), listed in `tools/avatar/morphs.py`.
 

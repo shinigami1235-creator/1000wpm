@@ -33,8 +33,10 @@
 // colours glow clearly). The cornea
 // adds reflections and a catchlight from the key light.
 //
-// BROWS AND LASHES. MakeHuman eyebrow cards packed into tex/brow_atlas.webp; lashes in
-// tex/eye_lash.webp. Brow colour follows the hair unless look.bc picks another colour.
+// BROWS AND LASHES. Brow cards laid on the brow ridge with painted hairs (tools/avatar/brows.py),
+// one atlas tile per style in tex/brow_atlas.webp; lashes in tex/eye_lash.webp. Brow colour
+// follows the hair (x 0.62) unless look.bc picks another colour; makeup brow fill is powder drawn
+// on the brow cards under the hairs.
 window.AvatarFace = (() => {
   const D = window.AvatarData;
   const layout = { face: [0.005, 0.005, 0.605, 0.995], bust: [0.61, 0.62, 0.995, 0.99], neck: [0.61, 0.24, 0.995, 0.6] };
@@ -293,6 +295,22 @@ window.AvatarFace = (() => {
           totalEmissiveRadiance += vec3( 1.0, 0.98, 0.95 ) * uCatch * smoothstep( 0.972, 0.988, dot( rv, uKeyDir ) ); }`);
   };
 
+  // the brows (tools/avatar/brows.py): the atlas is linear. R hair brightness (gamma 2.2), G the
+  // shadow under the hairs, A hair coverage. The shadow and brow powder (makeup brow fill) go on
+  // under the hairs in uUnderCol; the hairs take the material colour.
+  const browHook = BU => sh => {
+    Object.assign(sh.uniforms, BU);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uUnder; uniform vec3 uUnderCol;')
+      .replace('#include <map_fragment>', `{
+        vec4 bt = texture2D( map, vMapUv );
+        float ha = bt.a, ua = clamp( bt.g * uUnder, 0.0, 1.0 ) * ( 1.0 - ha ), a = ha + ua;
+        vec3 hair = diffuseColor.rgb * pow( bt.r, 2.2 );
+        diffuseColor.rgb = ( hair * ha + uUnderCol * ua ) / max( a, 1e-4 );
+        diffuseColor.a *= a;
+      }`);
+  };
+
   // ---------- materials ----------
   const texs = new Map();
   // a texture whose image arrives through image(), so need() can wait for it
@@ -315,6 +333,7 @@ window.AvatarFace = (() => {
       uSkinGain: { value: 1 }, uLash: { value: 0.4 } };
     const EU = { uIrisIn: { value: new THREE.Color() }, uIrisOut: { value: new THREE.Color() }, uIrisLit: { value: 0.3 }, uPupil: { value: 0.092 } };
     const CU = { uCatch: { value: 1.4 } };
+    const BU = { uUnder: { value: 0.2 }, uUnderCol: { value: new THREE.Color() } };
     const nrm = tex('skin_nrm.webp', false), orm = U.uSkinOrm.value;
     const skinOpts = { roughness: 0.58, normalMap: nrm, normalScale: new THREE.Vector2(0.45, 0.45), aoMap: orm, aoMapIntensity: 1, envMap: env, envMapIntensity: 0.15 };
     const M = {
@@ -324,14 +343,14 @@ window.AvatarFace = (() => {
       // the cornea adds only its reflections: a sharp wet highlight and catchlight from the key light, and the room
       cornea: prep(new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, metalness: 0, envMap: env, envMapIntensity: 0.12,
         transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), { rim: 0, hook: corneaHook(CU), name: 'cornea' }),
-      brow: prep(new THREE.MeshStandardMaterial({ map: tex('brow_atlas.webp'), transparent: true, alphaTest: 0.03, depthWrite: false,
-        side: THREE.DoubleSide, roughness: 0.75, envMapIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2 }), { rim: 0 }),
+      brow: prep(new THREE.MeshStandardMaterial({ map: tex('brow_atlas.webp', false), transparent: true, alphaTest: 0.004, depthWrite: false,
+        side: THREE.DoubleSide, roughness: 0.75, envMapIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2 }), { rim: 0, hook: browHook(BU), name: 'brow' }),
       lash: prep(new THREE.MeshStandardMaterial({ map: tex('eye_lash.webp'), transparent: true, alphaTest: 0.05, depthWrite: false,
         side: THREE.DoubleSide, color: '#140d0b', roughness: 0.6, envMapIntensity: 0 }), { rim: 0 }),
     };
     // the lips are part of the skin mesh now; M.lips stays as a name for the same material
     M.lips = M.skin;
-    M.skin.userData.faceUniforms = { SU, EU };   // avatar3d spreads M into its own list
+    M.skin.userData.faceUniforms = { SU, EU, BU };   // avatar3d spreads M into its own list
     return M;
   }
   // Eye brightness (look.f.eyeB, -40 muted, 0 natural, 100 vivid). EYE_COLORS hold the vivid
@@ -367,6 +386,25 @@ window.AvatarFace = (() => {
     const hair = D.HAIR_COLORS[L.bc < 0 ? L.hc : L.bc].hex;
     // brows sit a little darker than the hair
     M.brow.color.set(hair).multiplyScalar(0.62);
+    // ... and apart from the skin. rho is the hairs' brightness over the skin's (the atlas darkens
+    // the colour to about 0.6): a brow as bright as the skin vanishes, so between 0.6 and 1.7 it
+    // goes darker (to 0.6) or lighter (to 1.7), as the beard does; above that light brows on dark
+    // skin ease towards 2.5 so blonde and grey never glow
+    if (META) {
+      const sk = D.SKIN[L.sk] ? L.sk : 0;
+      const lsk = lum(hexLin(D.SKIN[sk]).map((v, k) => v * CAL[sk][k]));
+      const c = M.brow.color, rho = 0.6 * lum([c.r, c.g, c.b]) / lsk;
+      const rhoT = rho <= 0.6 ? rho : rho < 1.1 ? 0.6 : rho <= 1.7 ? 0.6 + 1.1 * smooth(1.1, 1.7, rho)
+        : 1.7 + 0.8 * (1 - Math.exp(-(rho - 1.7) / 1.5));
+      c.multiplyScalar(rhoT / rho);
+    }
+    if (F) {
+      // under the hairs: a soft shadow in a deep shade of the brow colour, and brow powder
+      // (makeup brow fill) in the brow colour, a little lighter than the hairs
+      const fill = ((L.mk && L.mk.browS) || 0) / 100;
+      F.BU.uUnder.value = 0.2 + 0.75 * fill;
+      F.BU.uUnderCol.value.copy(M.brow.color).multiplyScalar(0.45 + 0.45 * fill / (0.2 + 0.75 * fill));
+    }
     M.lash.color.set(((L.f && L.f.sex) || 0) > 25 ? '#0d0807' : '#1a120e');
   }
 

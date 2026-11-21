@@ -188,7 +188,8 @@ K.uv, K.hv_skin, K.skin_tris, K.ao_v, K.cav_v = huv[:n_skin], hv[:n_skin], skin_
 K.lid_lines, K.low_lines, K.lip_mask = LID, LOW, lip_mask
 K.weld = weld
 K.uv_mh, K.neu, K.eyes = h['uv_mh'], neu, EYES
-K.brow_tiles = face_src.brow_atlas(OUT + '/tex' if ONLY is None or 'tex' in ONLY else None, neu)
+# the brow atlas belongs with the brow cards, so a base build writes it too
+K.brow_tiles = face_src.brow_atlas(OUT + '/tex' if ONLY is None or 'tex' in ONLY or 'base' in ONLY else None, K)
 
 if want_tex:
     sizes = face_src.fh_masks(K, OUT + '/tex'); sizes.update(face_src.fh_strands(OUT + '/tex')); sizes.update(textures.all_small(OUT + '/tex'))
@@ -230,7 +231,7 @@ def part_ao(parts):
 def write_props(g, plist, name='props'):
     """All parts in one vertex set; node extras list each part's slice."""
     allP, allB, allW, allC, allUV, allS, allT, allL, meta, allM = [], [], [], [], [], [], [], [], [], defaultdict(list)
-    MORPHS = ['browT', 'browA']
+    MORPHS = face_src.BROW_MORPHS
     aos = part_ao([p for _, ps in plist for p in ps])
     for pid, parts in plist:
         for part in parts:

@@ -6,8 +6,7 @@ Skins  three MakeHuman skins (light, medium, dark) baked from the hm08 UVs into 
 Eyes   the MakeHuman high-poly eye proxy (eyeball and cornea), turned a little down so the
        face looks relaxed. The irises are resampled from MakeHuman eye textures into one
        polar layout: the eye's axis at the texture centre, 90 degrees off axis at radius 0.5.
-Brows  the MakeHuman eyebrow001-012 cards, eight of them mapped to the site's brow shapes,
-       their textures packed into one atlas.
+Brows  cards laid on the brow ridge with painted hairs, one per brow style (brows.py).
 Lashes the MakeHuman eyelashes01 (shortened, for men) and eyelashes02 cards.
 
 Every proxy is fitted to the neutral hm08 mesh through its .mhclo, and refitted to each
@@ -26,10 +25,6 @@ SKINS = {
 }
 PORES = PACKS + 'skins02_cc0/skins/mindfront_skin_male_african_middleage/skin_male_african_middleage_NRM.png'
 PORE_SPEC = PACKS + 'skins02_cc0/skins/mindfront_skin_male_african_middleage/skin_male_african_middleage_SPEC.png'
-# site brow shape -> MakeHuman eyebrow card
-BROWS = {'straight': 'eyebrow010', 'arched': 'eyebrow002', 'soft': 'eyebrow004', 'thick': 'eyebrow012',
-         'thin': 'eyebrow011', 'angled': 'eyebrow007', 'bushy': 'eyebrow009', 'slit': 'eyebrow010'}
-BROW_ORDER = list(BROWS)
 GAZE_DOWN, GAZE_IN = -1.5, 1.5    # degrees, on top of the MakeHuman eye's own lowered gaze (about 3.5 down)
 IRIS_R = 0.225                     # iris edge radius in the polar eye texture (about 25 degrees off axis)
 
@@ -331,72 +326,26 @@ def eye_textures(eyes, out_dir, size=512):
 
 
 # ---------------------------------------------------------------- brows and lashes
-def _brow_proxy(name): return Proxy(SYS + f'eyebrows/{name}/{name}.mhclo')
+# The brows are built in brows.py: cards laid on the brow ridge, one per style, with a painted
+# hair atlas and a prop morph per brow slider.
+import brows as _brows
+BROW_ORDER = _brows.ORDER
+BROW_MORPHS = _brows.MORPH_NAMES
 
 
-def brow_atlas(out_dir, neu):
-    """brow_atlas.webp: the eight brow textures in a 2 x 4 grid, each cropped to the band
-    the cards use. Greyscale detail in RGB (the material colour gives the hair colour), the
-    hairs in alpha, firmed up a little so the brows read at avatar sizes."""
-    TW, TH = 512, 128
-    atlas = np.zeros((TH * 4, TW * 2, 4), np.float32); tiles = {}
-    for k, shape in enumerate(BROW_ORDER):
-        name = BROWS[shape]; px = _brow_proxy(name)
-        im = _img(px.dir + f'/{name}.png')
-        a = im[..., 3]
-        r0 = int(max(0, (1 - px.VT[:, 1].max()) * 512 - 4)); r1 = int(min(512, (1 - px.VT[:, 1].min()) * 512 + 4))
-        v0, v1 = 1 - r1 / 512, 1 - r0 / 512
-        crop = a[r0:r1]
-        crop = np.asarray(Image.fromarray(np.round(crop * 255).astype(np.uint8)).resize((TW, TH), Image.LANCZOS)) / 255.0
-        crop = np.clip(crop * 1.6, 0, 1) ** 0.8
-        # a soft fill under the hairs, the way a real brow reads as a shape and not single strokes
-        soft = np.asarray(Image.fromarray(np.round(crop * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(3))) / 255.0
-        crop = np.maximum(crop, np.clip(soft * 1.3, 0, 1) * 0.4)
-        if shape == 'slit':
-            # two narrow gaps near the tail of each brow: cut along u where the tail lies
-            P = px.fit(neu); src, uv, tris = px.split()
-            R, msk = rasterize(np.stack([uv[:, 0], (uv[:, 1] - v0) / (v1 - v0)], 1), np.abs(P[src][:, :1]), tris, TW)
-            ax = np.asarray(Image.fromarray(R[..., 0]).resize((TW, TH)))
-            gap = ((ax > 0.40) & (ax < 0.425)) | ((ax > 0.455) & (ax < 0.48))
-            gap = np.asarray(Image.fromarray((gap * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.5))) / 255.0
-            crop = crop * np.clip(1 - 1.5 * gap, 0, 1)
-        crop = np.where(crop < 0.04, 0, crop)
-        detail = 0.92 - 0.25 * crop
-        tile = np.dstack([detail, detail, detail, crop])
-        cx, cy = (k % 2) * TW, (k // 2) * TH
-        atlas[cy:cy + TH, cx:cx + TW] = tile
-        tiles[shape] = (name, v0, v1, k % 2, k // 2)
+def brow_atlas(out_dir, K):
+    """brow_atlas.webp (see brows.py) and the tiles' places. K.brows keeps the builder."""
+    K.brows = _brows.Brows(K)
+    at, tiles = K.brows.atlas()
     if out_dir is None: return {}, tiles
-    return {'brow_atlas.webp': save_webp(atlas, f'{out_dir}/brow_atlas.webp', q=84)}, tiles
+    arr = np.round(np.clip(at, 0, 1) * 255).astype(np.uint8)
+    Image.fromarray(arr, 'RGBA').save(f'{out_dir}/brow_atlas.webp', 'WEBP', quality=85, alpha_quality=60, method=6)
+    return {'brow_atlas.webp': os.path.getsize(f'{out_dir}/brow_atlas.webp')}, tiles
 
 
 def brow_parts(K, Part, neu, tiles):
-    """One Part per site brow shape, with browT (thickness) and browA (tail angle) morphs."""
-    out = {}
-    for shape in BROW_ORDER:
-        name, v0, v1, col, row = tiles[shape]
-        px = _brow_proxy(name); P = px.fit(neu); src, uv, tris = px.split()
-        Q = P[src]
-        # lift the cards a hair off the skin so they never sink in when a slider moves the brow
-        for i, q in enumerate(Q): Q[i] = q + K.S.normal_at(q) * 0.006
-        auv = np.stack([(col + uv[:, 0]) / 2, 1 - (row + 1 - (uv[:, 1] - v0) / (v1 - v0)) / 4], 1)
-        part = Part('brow'); mt, ma = [], []
-        for side in (1, -1):
-            sel = np.where(np.sign(Q[:, 0]) == side)[0]
-            xs = np.abs(Q[sel, 0]); x0, x1 = xs.min(), xs.max()
-            cy = np.polyfit(xs, Q[sel, 1], 2)
-            for i in sel:
-                q = Q[i]; u = (abs(q[0]) - x0) / (x1 - x0)
-                mt.append((i, np.array([0, (q[1] - np.polyval(cy, abs(q[0]))) * 0.55, 0])))
-                ma.append((i, np.array([0, 0.1 * u ** 1.2, -0.02 * u ** 1.2])))
-        ids = [part.add(q, 1.0, 1.0, tuple(t)) for q, t in zip(Q, auv)]
-        for a, b, c in tris: part.tri(ids[a], ids[b], ids[c])
-        MT = np.zeros((len(Q), 3)); MA = np.zeros((len(Q), 3))
-        for i, d in mt: MT[i] = d
-        for i, d in ma: MA[i] = d
-        part.morph = {'browT': MT, 'browA': MA}; part.noao = True
-        out[shape] = part
-    return out
+    """One Part per brow style, with a morph per brow slider (brows.MORPHS)."""
+    return {name: K.brows.part(name, Part, tiles) for name in BROW_ORDER}
 
 
 def lash_atlas(out_dir):

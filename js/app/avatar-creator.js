@@ -7,7 +7,7 @@ window.AvatarCreator = (() => {
   const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['brows', 'Brows'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['makeup', 'Makeup'],
     ['hair', 'Hair'], ['outfit', 'Outfit'], ['gear', 'Accessories']];
   // tabs whose changes are small on the face: the view moves in close
-  const FOCUS = ['eyes', 'makeup', 'mouth'];
+  const FOCUS = ['eyes', 'brows', 'makeup', 'mouth'];
   let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0, palette = null;
   const e = s => UI.esc(s);
   const fmt = n => UI.fmt(n);
@@ -298,7 +298,7 @@ window.AvatarCreator = (() => {
         <div class="avc-tiles">${D.PARTS.bs.map(p => tile('bs', p, look.bs === p.id, { ...look, bs: p.id, g: [] })).join('')}</div>
         <div class="label avc-sub">Brow colour</div>
         ${swatches('bc', D.HAIR_COLORS.filter(c => !c.price), look.bc, 'Brow colour', match)}
-        ${sliders('brows')}`;
+        ${sliders('brows', D.BROW_SLIDERS)}`;
     } else if (tab === 'nose') {
       h = sliders(tab);
     } else if (tab === 'mouth') {

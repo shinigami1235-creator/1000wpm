@@ -58,8 +58,7 @@ window.AvatarMakeup = (() => {
     if (s('sculpt')) out.push({ kind: 'sculpt', a: s('sculpt') });
     if (s('blush')) out.push({ kind: 'blush', mask: 'blush', c: col('blush', mk.blushC), a: s('blush') });
     if (s('shadow')) out.push({ kind: 'multiply', mask: 'shadow-' + mk.shadow, c: col('shadow', mk.shadowC), a: s('shadow') * 0.9 });
-    // brow fill: the brow colour (as the brow cards draw it, a little darker than the hair)
-    if (s('brow')) out.push({ kind: 'multiply', mask: 'brow', c: rgb(d.HAIR_COLORS[L.bc < 0 ? L.hc : L.bc].hex).map(v => Math.min(1, v * 0.8 + 0.12)), a: s('brow') * 0.5 });
+    // brow fill is drawn on the brow cards themselves (avatar-face.js), so it follows the brow sliders
     // liner is laid on, not multiplied, so a coloured liner stays its colour over a dark shadow
     if (s('liner')) out.push({ kind: 'paint', mask: 'liner-' + mk.liner, c: col('liner', mk.linerC), a: Math.min(1, s('liner') * 1.15) });
     if (s('lip')) out.push({ kind: 'tint', mask: 'lips', c: col('lip', mk.lipC), a: s('lip') * 0.92 });

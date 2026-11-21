@@ -301,6 +301,9 @@ function computeNormals(pos, index, canon, nrm) {
   }
 }
 
+// sliders that move the brow cards (prop morphs in avatar.glb), not the head
+const BROW_MORPHS = ['browT', 'browA', 'browSp', 'browIn', 'browTl', 'browAp', 'browAh', 'browLn', 'browTi', 'browTo'];
+
 // ---------- the rig: one avatar built from the shared assets ----------
 export class Rig {
   constructor(A, renderer, { faceSize = 1024 } = {}) {
@@ -365,17 +368,22 @@ export class Rig {
       grp.add(sub);
       return rec;
     });
-    const out = { grp, recs, stamp: -1 };
+    const out = { grp, recs, stamp: -1, brow: pid.startsWith('brow-') };
     this.group.add(grp); this.props.set(pid, out);
     return out;
   }
   updateProp(pr, L) {
-    const dl = this.delta, bt = (L.f.browT || 0) / 100, ba = (L.f.browA || 0) / 100;
+    // brow sliders are prop morphs named by slider id; one with a '-' variant uses it below 0
+    const dl = this.delta, w = [];
+    for (const id of BROW_MORPHS) {
+      const v = (L.f[id] || 0) / 100; if (!v) continue;
+      w.push([v < 0 ? id + '-' : id + '+', Math.abs(v)], [id, v]);
+    }
     for (const r of pr.recs) {
       const { bind, bindw, morph } = r.p, base = r.base, out = r.pos;
       base.set(r.p.pos);
-      if (morph.browT && bt) for (let i = 0; i < base.length; i++) base[i] += morph.browT[i] * bt;
-      if (morph.browA && ba) for (let i = 0; i < base.length; i++) base[i] += morph.browA[i] * ba;
+      for (const [name, k] of w) { const m = morph[name]; if (m) for (let i = 0; i < base.length; i++) base[i] += m[i] * k; }
+      if (pr.brow) { this.browFollow(base, out); r.attr.needsUpdate = true; if (r.p.index) { computeNormals(out, r.p.index, r.p.canon, r.nrm); r.nattr.needsUpdate = true; } continue; }
       for (let i = 0, n = base.length / 3; i < n; i++) {
         const b0 = bind[i * 4] * 3, b1 = bind[i * 4 + 1] * 3, b2 = bind[i * 4 + 2] * 3;
         const w0 = bindw[i * 4] / 255, w1 = bindw[i * 4 + 1] / 255, w2 = bindw[i * 4 + 2] / 255;
@@ -388,6 +396,44 @@ export class Rig {
       if (r.lines) this.fillLines(r.lines);
     }
     pr.stamp = this.shapeStamp;
+  }
+
+  // Brow cards move across the skin with their sliders, so a fixed binding would leave them with
+  // the head shape of the spot they started on (on a deep brow ridge they sink in). Each card
+  // vertex instead takes the head's shape change from the three nearest skin vertices where it
+  // is now, and is pushed back out if it still ends up under the skin.
+  browFollow(base, out) {
+    const A = this.A, P = A.base, dl = this.delta, pos = this.pos, nrm = this.nrm;
+    if (!this.browSkin) {
+      const seen = new Uint8Array(P.length / 3), idx = [];
+      for (const v of A.headPrims.skin) {
+        if (seen[v]) continue; seen[v] = 1;
+        if (Math.abs(P[v * 3]) < 0.85 && P[v * 3 + 1] > 7.1 && P[v * 3 + 1] < 7.95 && P[v * 3 + 2] > 0.4) idx.push(v);
+      }
+      this.browSkin = Uint32Array.from(idx);
+    }
+    const R = this.browSkin, LIFT = 0.0025;
+    for (let i = 0, n = base.length / 3; i < n; i++) {
+      const x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2];
+      let d0 = 1e9, d1 = 1e9, d2 = 1e9, j0 = 0, j1 = 0, j2 = 0;
+      for (let k = 0; k < R.length; k++) {
+        const v = R[k] * 3, dx = P[v] - x, dy = P[v + 1] - y, dz = P[v + 2] - z, d = dx * dx + dy * dy + dz * dz;
+        if (d < d2) {
+          if (d < d1) { d2 = d1; j2 = j1; if (d < d0) { d1 = d0; j1 = j0; d0 = d; j0 = v; } else { d1 = d; j1 = v; } }
+          else { d2 = d; j2 = v; }
+        }
+      }
+      const w0 = 1 / (Math.sqrt(d0) + 1e-4), w1 = 1 / (Math.sqrt(d1) + 1e-4), w2 = 1 / (Math.sqrt(d2) + 1e-4), ws = w0 + w1 + w2;
+      let px = x, py = y, pz = z, nx = 0, ny = 0, nz = 0, h = 0;
+      for (const [j, w] of [[j0, w0 / ws], [j1, w1 / ws], [j2, w2 / ws]]) {
+        px += w * dl[j]; py += w * dl[j + 1]; pz += w * dl[j + 2];
+        nx += w * nrm[j]; ny += w * nrm[j + 1]; nz += w * nrm[j + 2];
+      }
+      for (const [j, w] of [[j0, w0 / ws], [j1, w1 / ws], [j2, w2 / ws]])
+        h += w * ((px - pos[j]) * nrm[j] + (py - pos[j + 1]) * nrm[j + 1] + (pz - pos[j + 2]) * nrm[j + 2]);
+      if (h < LIFT) { const l = Math.hypot(nx, ny, nz) || 1, k = (LIFT - h) / l; px += nx * k; py += ny * k; pz += nz * k; }
+      out[i * 3] = px; out[i * 3 + 1] = py; out[i * 3 + 2] = pz;
+    }
   }
 
   // Applies a look. Items not loaded yet are skipped; call ensure() first to wait for them.
@@ -420,7 +466,8 @@ export class Rig {
       if (!this.A.props.has(pid)) continue;
       const pr = this.prop(pid);
       pr.grp.visible = true;
-      if (pr.stamp !== this.shapeStamp || pr.browKey !== `${L.f.browT}|${L.f.browA}`) { this.updateProp(pr, L); pr.browKey = `${L.f.browT}|${L.f.browA}`; }
+      const bk = BROW_MORPHS.map(id => L.f[id] || 0).join('|');
+      if (pr.stamp !== this.shapeStamp || pr.browKey !== bk) { this.updateProp(pr, L); pr.browKey = bk; }
     }
     // colours and textures
     const M = this.M, glow = D.part('gl', L.gl).hex, hair = D.HAIR_COLORS[L.hc].hex;

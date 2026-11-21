@@ -28,10 +28,17 @@ window.AvatarData = (() => {
     ['vline', 'V-shape', 'face', 0],
     // FACE pass 4: iris colour from muted (-40) through natural (0, the default) to vivid (100)
     ['eyeB', 'Eye brightness', 'eyes', -40],
+    // brow shape (BROW pass 1): prop morphs on the brow cards (tools/avatar/brows.py MORPHS)
+    ['browSp', 'Brow spacing', 'brows'], ['browIn', 'Inner height', 'brows'], ['browTl', 'Tail height', 'brows'],
+    ['browAp', 'Arch position', 'brows'], ['browAh', 'Arch height', 'brows'], ['browLn', 'Tail length', 'brows'],
+    ['browTi', 'Inner thickness', 'brows'], ['browTo', 'Tail thickness', 'brows'],
   ].map(([id, name, group, min = -100]) => ({ id, name, group, min }));
   // the creator's Mouth tab, in this order; every slider runs from -100 to 100
   const LIP_SLIDERS = ['lips', 'lipU', 'lipL', 'mouthW', 'lipBow', 'lipCorner'].map(id => SLIDERS.find(s => s.id === id));
   const LEGACY_SLIDERS = SLIDERS.slice(0, 21);
+  // the creator's Brows tab, in this order
+  const BROW_SLIDERS = ['browH', 'browD', 'browSp', 'browIn', 'browAp', 'browAh', 'browTl', 'browLn', 'browA', 'browT', 'browTi', 'browTo']
+    .map(id => SLIDERS.find(s => s.id === id));
 
   const SKIN = ['#ebc6aa', '#e6bc9c', '#d9ab86', '#c69470', '#b3805c', '#9c6c4a', '#85583a', '#6c452d', '#553422', '#45291c'];
   const HAIR_COLORS = [
@@ -126,9 +133,9 @@ window.AvatarData = (() => {
       { id: 'shortbeard', name: 'Short beard', price: 700 }, { id: 'beard', name: 'Full beard', price: 900 },
     ],
     bs: [
-      { id: 'straight', name: 'Straight' }, { id: 'arched', name: 'Arched' }, { id: 'soft', name: 'Soft' },
-      { id: 'thick', name: 'Thick' }, { id: 'thin', name: 'Thin' }, { id: 'angled', name: 'Angled' },
-      { id: 'bushy', name: 'Bushy' }, { id: 'slit', name: 'Slit', price: 400 },
+      { id: 'straight', name: 'Straight' }, { id: 'soft', name: 'Soft arch' }, { id: 'arched', name: 'High arch' },
+      { id: 'rounded', name: 'Rounded' }, { id: 'angled', name: 'Angled' }, { id: 'full', name: 'Feathered' },
+      { id: 'thin', name: 'Thin' }, { id: 'sparse', name: 'Sparse' },
     ],
     g: [
       { id: 'glasses', name: 'Rectangle glasses', price: 800, zones: ['eyes'] },
@@ -160,6 +167,8 @@ window.AvatarData = (() => {
   // Styles taken out until they look right. Their files stay in assets/avatar/items, and
   // saved or random looks that use one get the nearest style still offered.
   const HAIR_RETIRED = { crop: 'slick', messy: 'sidepart', mohawk: 'undercut', hood: 'buzz', long: 'ponytail', wavyends: 'wavy' };
+  // brow styles replaced in BROW pass 1, and the new style nearest each
+  const BROW_RETIRED = { thick: 'full', bushy: 'full', slit: 'straight' };
   const SLOT_NAME = { h: 'Hair', fh: 'Facial hair', bs: 'Brows', g: 'Accessory', o: 'Outfit', hc: 'Hair colour', gl: 'Glow', ec: 'Eye colour', mkc: 'Makeup colour' };
   const HOOD_BLOCKS = ['top', 'ears'];
   const GOLD_LEVEL = 20;
@@ -228,7 +237,8 @@ window.AvatarData = (() => {
     L.ec = clamp(Math.round(+L.ec) || 0, 0, EYE_COLORS.length - 1);
     L.oc = clamp(Math.round(+L.oc) || 0, 0, OUTFIT_COLORS.length - 1);
     L.bc = Math.round(+L.bc); if (!(L.bc >= 0 && L.bc < HAIR_COLORS.length)) L.bc = -1;
-    if (!part('bs', src.bs)) L.bs = defaultBrow(f);
+    if (BROW_RETIRED[src.bs]) L.bs = BROW_RETIRED[src.bs];
+    else if (!part('bs', src.bs)) L.bs = defaultBrow(f);
     if (HAIR_RETIRED[L.h]) L.h = HAIR_RETIRED[L.h];
     if (!part('h', L.h)) L.h = DEFAULT.h;
     if (!part('fh', L.fh)) L.fh = 'none';
@@ -379,9 +389,12 @@ window.AvatarData = (() => {
     L.hc = weighted(r, [[0, 4], [1, 4], [2, 3], [3, 1.5], [4, 1.5], [5, 1], [6, free ? 0 : 0.6], [7, free ? 0 : 0.6]]);
     const r2 = rng(String(seed) + '|v3');
     L.ec = weighted(r2, [[0, 4], [1, 3], [2, 2], [3, 1.5], [4, 2], [5, 1]]);
-    L.bs = woman ? weighted(r2, [['soft', 3], ['arched', 3], ['thin', 2], ['angled', 1.5], ['straight', 1]])
-      : weighted(r2, [['straight', 4], ['thick', 2.5], ['bushy', 1], ['angled', 1.5], ['arched', 0.5]]);
+    L.bs = woman ? weighted(r2, [['soft', 3], ['arched', 2], ['rounded', 1.5], ['thin', 1.5], ['angled', 1.5], ['full', 1], ['straight', 1]])
+      : weighted(r2, [['straight', 4], ['full', 3], ['soft', 1.2], ['angled', 1.2], ['sparse', 0.8], ['rounded', 0.4]]);
     f.browT = Math.round(clamp((r2() - 0.5) * 80, -50, 50)); f.browA = Math.round(clamp((r2() - 0.5) * 70, -40, 40));
+    // brow shape (added later): its own generator, small changes round each style
+    const r6 = rng(String(seed) + '|brows');
+    for (const id of ['browSp', 'browIn', 'browTl', 'browAp', 'browAh', 'browLn', 'browTi', 'browTo']) f[id] = Math.round(clamp((r6() + r6() - 1) * 32, -24, 24));
     // lip shape (added later): its own generator, so the faces above stay as they were
     const r3 = rng(String(seed) + '|lips');
     for (const id of ['lipU', 'lipL', 'lipBow', 'lipCorner']) f[id] = Math.round(clamp((r3() + r3() - 1) * 55, -45, 45));
@@ -441,7 +454,7 @@ window.AvatarData = (() => {
   }
 
   return {
-    SLIDERS, LIP_SLIDERS, SKIN, HAIR_COLORS, EYE_COLORS, EYE_ORDER, FACIAL_HAIR, OUTFIT_COLORS, GLOWS, MAKEUP, MK_LAYERS, MK_DEFAULT, MK_PRESETS, PARTS, PATTERN_OUTFITS, SLOT_NAME, DEFAULT, GOLD_LEVEL, HOOD_BLOCKS,
+    SLIDERS, LIP_SLIDERS, BROW_SLIDERS, SKIN, HAIR_COLORS, EYE_COLORS, EYE_ORDER, FACIAL_HAIR, OUTFIT_COLORS, GLOWS, MAKEUP, MK_LAYERS, MK_DEFAULT, MK_PRESETS, PARTS, PATTERN_OUTFITS, SLOT_NAME, DEFAULT, GOLD_LEVEL, HOOD_BLOCKS,
     items, itemId, part, lockOf, normalize, fv, normalizeMk, presetMk, presetOf, freeMk, mkHex, usable, unownedParts, withGear, stable, hash, random, rng,
   };
 })();
