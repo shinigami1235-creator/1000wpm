@@ -29,17 +29,15 @@ What each part of the site is in the story:
 Art becomes an NPC guide on the site who can also talk with viewers. Tilde, the keycap buddy, stays as the player's companion.
 
 ### Holes in the site story
-- The network has no name yet.
 - How the player falls in (what they were typing) is not written.
 - What being a Typemaster lets the player do is not written.
 
-Decided by Gid, 21 Nov 2026: players can leave the network, but their avatars stay in it as part of that world.
+Decided by Gid, 21 Nov 2026: the network is called Keyspace. Players can leave Keyspace, but their avatars stay in it as part of that world.
 
 ### Suggestions for the open holes **[PROPOSED, Nov 2026]**
-- **The network's name.** The Buffer: where typed text waits before it's sent, so the leftover typos live there. Other options: Drafts, Keyspace.
 - **How the player falls in.** The player is watching Art's stream and types in his chat. A leftover typo in their message gets a body and pulls them in, the same way Art fell in.
 - **Art's lines and his real streams.** Art's guide lines are written in his voice and stored on the site. When Art is live (server later), the guide shows "Art is live" and his real stream announcements in place of the stored lines. For now it runs on a schedule.
-- **What staying behind means.** A player who leaves stays in the Buffer as their avatar. It shows on the world map, in lobbies and in rooms other players can visit.
+- **What staying behind means.** A player who leaves stays in Keyspace as their avatar. It shows on the world map, in lobbies and in rooms other players can visit.
 - How Art's NPC lines relate to Art's real streams (live messages later, simulated now) is not decided.
 
 ## Places
