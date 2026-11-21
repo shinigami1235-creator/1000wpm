@@ -33,9 +33,11 @@ A task or achievement for an event nobody has registered stays out of the daily 
 | `gift_open` | the gift crate | `id, source` |
 | `lesson_pass` | the academy, not built yet | `lesson` and anything else |
 | `spell_cast` | combat, not built yet | `spell` |
-| `pvp_win` | PvP, not built yet | none needed |
 | `superboss_win` | `js/app/superboss.js`, the streamer won a Superboss fight | `boss, dial, ms, wpm, combo` |
 | `support_sent` | `js/app/superboss.js`, a viewer's support or chaos item landed | `item, kind, price, boss` |
+| `pvp_win` | `js/app/duel.js`, a duel won | `mode` (`quick`, `art`, `player`), `opp`, `art` |
+| `pvp_match` | `js/app/duel.js`, every duel that ends, won or lost | `mode, won, opp, art, wpm, acc, rating` |
+| `party_run` | `js/app/party.js`, a party run that ends | `run, difficulty, won, cleared, role, dmg, art` |
 
 A combo event carries the highest combo so far. Tasks keep the largest `n` they see and sending it often or once at the end both work.
 

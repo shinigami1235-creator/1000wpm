@@ -166,3 +166,8 @@
   .rm-pop { left: 8px; right: 8px; top: 76px; bottom: 8px; width: auto; max-height: none; }
 }
 @media (prefers-reduced-motion: reduce) { .rm-status { transition: none; } }
+
+/* someone else's room, read only (#/u/<id>/room) */
+.rm[data-visit] .rm-menu button { display: none; }
+.rm[data-visit] .rm-menu { width: auto; max-width: calc(100% - 32px); }
+.rm[data-visit] .rm-menu .rm-ttl { display: flex; margin: 2px 4px; }

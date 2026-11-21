@@ -15,6 +15,8 @@ Router.register('play', (() => {
         <a class="panel game-tab" href="#/play/race" data-g="race"><span class="label">&gt; GAME 02</span><h3>Race</h3><p>Your car's speed comes from your typing speed. Race Art, your best run or a friend.</p></a>
         <a class="panel game-tab" href="#/play/rush" data-g="rush"><span class="label">&gt; GAME 03</span><h3>Boss rush</h3><p>Copies of every boss Art has beaten, one after another, each harder than the last.</p></a>
         <a class="panel game-tab" href="#/superboss" data-g="superboss"><span class="label">&gt; LIVE</span><h3>Superboss</h3><p>Art fights these bosses on his stream. Watch, chat and send him support with your coins.</p></a>
+        <a class="panel game-tab" href="#/duel" data-g="duel"><span class="label">&gt; PVP</span><h3>Duel</h3><p>Type against another player, best of 3 rounds. Challenge Art at 204 wpm.</p></a>
+        <a class="panel game-tab" href="#/party" data-g="party"><span class="label">&gt; CO-OP</span><h3>Party</h3><p>Up to 4 players pick roles and fight through Keyspace together.</p></a>
       </nav>
       <div data-game></div>`;
     update(params);

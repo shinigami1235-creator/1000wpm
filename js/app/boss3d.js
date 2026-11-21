@@ -1,6 +1,6 @@
 // The world boss in three.js: a giant program built from glowing blocks around
 // a core, standing in an arena with the raid in an arc in front of it.
-// BossScene.mount(host, { onImpact, onFrame }) returns a controller right away
+// BossScene.mount(host, { onImpact, onFrame, raid }) returns a controller right away (raid: raider markers shown, default 40)
 // and draws once three.js has loaded.
 //   setPhase(p, instant)  roar, reform and shift the arena to phase p's look
 //   setFrac(f, instant)   knocks off the shell, arm, rings and chest as HP drops
@@ -313,6 +313,8 @@ window.BossScene = (() => {
 
     // ---------- the raid: one marker per raider in an arc in front of the boss ----------
     const RAID = 40;
+    // opts.raid: how many raider markers to show (a party shows its 1 to 3 teammates); all 40 by default
+    const SHOWN = opts.raid != null ? Math.max(0, Math.min(RAID, opts.raid)) : RAID;
     const raidPos = Array.from({ length: RAID + 1 }, () => new V());   // last one is you
     const markMat = keep(new THREE.MeshBasicMaterial({ color: '#ffffff' }));
     const marks = new THREE.InstancedMesh(keep(new THREE.OctahedronGeometry(0.32)), markMat, RAID + 1);
@@ -1327,7 +1329,7 @@ window.BossScene = (() => {
         markGlow[i] = Math.max(0, markGlow[i] - adt * 4);
         p.copy(raidPos[i]); p.y += Math.sin(at * 2 + i) * 0.12 * still;
         e3.set(0, at * (you ? 1.5 : 0.8) * still + i, 0); q.setFromEuler(e3);
-        sc.setScalar(you ? 1.5 : 0.9 + markGlow[i] * 0.3);
+        sc.setScalar(you ? 1.5 : i >= SHOWN ? 0 : 0.9 + markGlow[i] * 0.3);
         m4.compose(p, q, sc); marks.setMatrixAt(i, m4);
         if (you) tmpCol.copy(youCol).multiplyScalar(1.8);
         else tmpCol.copy(raidCol(i)).multiplyScalar(0.35 + markGlow[i] * 0.9);

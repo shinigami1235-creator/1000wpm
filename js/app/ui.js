@@ -38,6 +38,7 @@ window.UI = (() => {
     'world-boss': 'World boss', 'breach-endless': 'Breach endless', 'breach-daily': 'Breach daily',
     rush: 'Boss rush',
     superboss: 'Superboss',
+    duel: 'Duel', 'duel-art': 'Duel vs Art', party: 'Party run',
   };
   const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   function modeName(m, difficulty) {
