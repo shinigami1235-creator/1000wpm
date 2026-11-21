@@ -97,6 +97,7 @@ window.RaceGame = (() => {
       const run = { mode, wpm: tt.wpm(), acc: tt.accuracy(), correct: tt.correct, keys: tt.typed, ms: Math.round(performance.now() - tt.startT) };
       if (won !== undefined) run.won = won;
       const r = WPM.record(run);
+      WPM.track('race_done', { opp, wpm: run.wpm, acc: run.acc, won: !!won });
       return ` +${r.coins} coins, +${r.xp} XP.`;
     }
 

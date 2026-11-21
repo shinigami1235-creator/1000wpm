@@ -23,7 +23,7 @@ Router.register('shop', (() => {
     const list = Array.isArray(c) ? c : Array.isArray(c && c.items) ? c.items
       : Object.entries(c || {}).flatMap(([k, v]) => Array.isArray(v) ? v.map(i => ({ category: k, ...i })) : [{ id: k, ...v }]);
     const av = window.AvatarData ? AvatarData.items() : [];
-    return [...list, ...av].filter(i => i && i.id).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
+    return [...list, ...av].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
     const named = window.RoomItems.categories;

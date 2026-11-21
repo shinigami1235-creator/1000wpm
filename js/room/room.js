@@ -619,7 +619,8 @@ window.Room = (() => {
     shell.add(key, key.target);
     const moon = new THREE.DirectionalLight('#7f9cff', 0.45);
     moon.position.set(-5, 3, wz); moon.target.position.set(W / 2, 0.5, wz); shell.add(moon, moon.target);
-    const green = new THREE.PointLight(GREEN, 5 * Math.min(k, 1.6), 5.5 * k, 1.6); green.position.set(0.3, H - 0.15, 0.3); shell.add(green);
+    const lightBonus = window.Progress && Progress.ready() && Progress.bonus('roomlight');   // a streak bonus colour
+    const green = new THREE.PointLight(lightBonus ? lightBonus.color : GREEN, 5 * Math.min(k, 1.6), 5.5 * k, 1.6); green.position.set(0.3, H - 0.15, 0.3); shell.add(green);
     // one warm ceiling light per 4 by 4 m or so
     const nx = Math.max(1, Math.round(W / 4.5)), nz = Math.max(1, Math.round(D / 4.5));
     for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
@@ -1082,7 +1083,7 @@ window.Room = (() => {
     const owned = WPM.owned().map(def).filter(d => d && !d.roomSize);
     const inRoom = new Set(s.items.map(p => p.id));
     const list = owned.filter(d => s.cat === 'All' || d.category === s.cat);
-    const more = RoomItems.catalog.filter(d => !d.roomSize && !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
+    const more = RoomItems.catalog.filter(d => !d.roomSize && !d.gift && !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
     s.ui.strip.innerHTML = list.map(d => `
       <button type="button" class="rm-card${s.sel && s.sel.id === d.id ? ' on' : ''}" data-id="${d.id}" aria-label="${esc(d.name)}${inRoom.has(d.id) ? ', in room' : ''}">
         <span class="rm-thumb"><img alt="" data-thumb="${d.id}"></span>
@@ -1125,7 +1126,7 @@ window.Room = (() => {
       return;
     }
     if (kind === 'inventory') {
-      const more = RoomItems.catalog.filter(d => !d.roomSize).length - owned.length;
+      const more = RoomItems.catalog.filter(d => !d.roomSize && !d.gift && !WPM.owns(d.id)).length;
       pop.innerHTML = `
         <header><h3>// INVENTORY</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
         <p class="rm-hint">You own ${owned.length} item${owned.length > 1 ? 's' : ''} and ${owned.filter(d => inRoom.has(d.id)).length} are in the room.</p>

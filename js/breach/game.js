@@ -929,7 +929,11 @@
     const modeKey = E.daily ? 'breach-daily' : 'breach-endless';
     reward = null;
     if (window.WPM && stats.keys) {
-      try { reward = WPM.record({ mode: modeKey, difficulty: runDiff, wpm, acc, correct: stats.chars, keys: stats.keys, ms: Math.round(stats.ms), score }); } catch (e) { console.error(e); }
+      try {
+        reward = WPM.record({ mode: modeKey, difficulty: runDiff, wpm, acc, correct: stats.chars, keys: stats.keys, ms: Math.round(stats.ms), score });
+        WPM.track('breach_endless', { score, level: E.maxLevel, daily: !!E.daily, difficulty: runDiff });
+        WPM.track('combo', { n: maxCombo, mode: 'breach' });
+      } catch (e) { console.error(e); }
     }
     const entry = { date: todayKey(), score, level: E.maxLevel, streak: E.longest, wpm, acc, difficulty: runDiff };
     let newBest = false;
@@ -1350,7 +1354,10 @@
     const { wpm, acc } = runStats();
     if (!window.WPM || !stats.keys) return null;
     try {
-      return WPM.record({ mode: 'horde-' + (chIndex + 1), difficulty: runDiff, wpm, acc, correct: stats.chars, keys: stats.keys, ms: Math.round(stats.ms), score, cleared });
+      const r = WPM.record({ mode: 'horde-' + (chIndex + 1), difficulty: runDiff, wpm, acc, correct: stats.chars, keys: stats.keys, ms: Math.round(stats.ms), score, cleared });
+      if (cleared) WPM.track('breach_stage', { chapter: chIndex + 1, difficulty: runDiff, score, wpm, acc });
+      WPM.track('combo', { n: maxCombo, mode: 'breach' });
+      return r;
     } catch (e) { console.error(e); return null; }
   }
   function chapterClear() {
