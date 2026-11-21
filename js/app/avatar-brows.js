@@ -15,15 +15,18 @@
 import * as THREE from 'three';
 const NS = 28, NR = 6, LIFT = 0.003;
 const GX0 = -0.82, GX1 = 0.82, GY0 = 7.0, GY1 = 8.0, CELL = 0.008;
+const DRAPE = 3;                        // cells (2.4 mm) a brow may hang from a ledge above it
+const TIPS = 0.34;                      // and for the card's ends, where only hair tips lie (about 70 degrees)
+const FACING = 0.4;                     // cos of the steepest skin (about 66 degrees) the brow may lie on, seen from the front
 const GW = Math.round((GX1 - GX0) / CELL) + 1, GH = Math.round((GY1 - GY0) / CELL) + 1;
 // brow sliders: what each adds at +100 (and takes away at -100)
 const SLIDE = {
   browH: { head_low: 4, peak_low: 4 },           // brow height: the head morph lifts the skin, this the brow on it
-  browSp: { head_x: 4.5, peak_x: 1.5 },          // spacing: the head further from the midline
-  browIn: { head_low: 4 },                       // inner height
-  browTl: { tail_lift: 4.5 },                    // tail height
-  browAp: { peak_at: 0.6 },                      // arch position
-  browAh: { peak_low: 4 },                       // arch height
+  browSp: { head_x: 8, peak_x: 2.5 },          // spacing: the head further from the midline
+  browIn: { head_low: 8 },                       // inner height
+  browTl: { tail_lift: 8 },                    // tail height
+  browAp: { peak_at: 0.7 },                      // arch position
+  browAh: { peak_low: 8 },                       // arch height
   browLn: { tail_x: 13 },                        // tail length
   browA: { tail_lift: 5, peak_low: 2 },          // angle: the brow turns about its head
 };
@@ -54,15 +57,22 @@ function params(B, style, f) {
   return p;
 }
 
-function design(p, ala, mc, lc) {
+// heights (mm above the canthal line) the brow keeps to: its lower edge clear of the upper lid,
+// and no higher than a brow can sit
+const LOW_MIN = 8, LOW_MAX = 32, HEAD_MIN = 6;
+function design(p, ala, mc, lc, [floor, cap] = [-Infinity, Infinity]) {
   const a = [ala[0] + p.ala_out_mm, ala[1]];
   const ec = [(mc[0] + lc[0]) / 2, (mc[1] + lc[1]) / 2], ln = Math.hypot(lc[0] - mc[0], lc[1] - mc[1]);
   const ll = [ec[0] + (lc[0] - mc[0]) / ln * p.iris_radius_mm, ec[1] + (lc[1] - mc[1]) / ln * p.iris_radius_mm];
-  const hb = p.head_low, pb = p.peak_low, tb = hb + p.tail_lift;
-  const hx = lineX(a, mc, hb) + p.head_x;
+  const lim = v => Math.max(LOW_MIN, Math.min(LOW_MAX, v));
+  const hb = lim(p.head_low), pb = lim(p.peak_low), tb = lim(hb + p.tail_lift);
+  // the two heads never meet over the nose: each stays at least HEAD_MIN mm out from the midline
+  const hx = Math.max(lineX(a, mc, hb) + p.head_x, floor, HEAD_MIN);
   const pat = Math.max(-0.8, Math.min(1.3, p.peak_at));
   let px = (1 - pat) * lineX(a, ll, pb) + pat * lineX(a, lc, pb) + p.peak_x;
-  let tx = lineX(a, lc, tb) + p.tail_x;
+  // the canthus line runs outward as it rises, so a raised brow would carry its tail off the
+  // side of the face: the tail ends at most 15 mm past the outer eye corner
+  let tx = Math.min(Math.min(lineX(a, lc, tb), lc[0] + 15) + p.tail_x, cap);
   px = Math.max(hx + 6, Math.min(tx - 4, px)); tx = Math.max(px + 4, tx);
   const lower = u => {
     if (u <= px) { const t = Math.min(1, Math.max(0, (u - hx) / (px - hx))); return hermite(hb, pb, (pb - hb) * p.k_in, (pb - hb) * p.sharp * 0.9, t); }
@@ -76,10 +86,12 @@ function design(p, ala, mc, lc) {
 }
 
 // ---------- the face's depth from the front ----------
+// the skin round the brows and the eyeballs: over an eye opening the skin seen from the front
+// is the inside of the socket, behind the eyeball, so the eyeballs stand in for it there
 function region(A) {
   if (A.browTris) return A.browTris;
-  const P = A.base, T = A.headPrims.skin, out = [];
-  for (let i = 0; i < T.length; i += 3) {
+  const P = A.base, out = [];
+  for (const T of [A.headPrims.skin, A.headPrims.eye || []]) for (let i = 0; i < T.length; i += 3) {
     let ok = false;
     for (let k = 0; k < 3; k++) { const v = T[i + k] * 3; if (Math.abs(P[v]) < 0.9 && P[v + 1] > 6.85 && P[v + 1] < 8.15 && P[v + 2] > 0.3) ok = true; }
     if (ok) out.push(T[i], T[i + 1], T[i + 2]);
@@ -107,7 +119,31 @@ function depthMap(rig) {
       for (let k = 0; k < 3; k++) n[q * 3 + k] = w0 * N[a + k] + w1 * N[b + k] + w2 * N[c + k];
     }
   }
-  return (rig.browDepth = { stamp: rig.shapeStamp, z, n });
+  // the eye openings hold no skin: their cells take the depth of the lids round them, so a
+  // card row that reaches over them stays at the face's depth instead of falling back
+  const filled = new Uint8Array(GW * GH);
+  for (let pass = 0; pass < 14; pass++) {
+    let any = false; const z0 = z.slice();
+    for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+      const q = j * GW + i; if (z0[q] > -1e8) continue;
+      let zs = 0, k = 0, nx = 0, ny = 0, nz = 0;
+      for (const o of [q - 1, q + 1, q - GW, q + GW]) if (z0[o] > -1e8) { zs += z0[o]; nx += n[o * 3]; ny += n[o * 3 + 1]; nz += n[o * 3 + 2]; k++; }
+      if (k >= 2) { z[q] = zs / k; n[q * 3] = nx / k; n[q * 3 + 1] = ny / k; n[q * 3 + 2] = nz / k; filled[q] = 1; any = true; }
+    }
+    if (!any) break;
+  }
+  // Where the skin folds into a ledge (Brow height pulled down, a sculpted ridge), the skin just
+  // under the lip is hidden from the front. Each cell takes the front-most depth within DRAPE
+  // cells above it, so a brow hangs from the ledge instead of tucking under it.
+  const zd = z.slice(), nd = n.slice();
+  for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+    const q = j * GW + i;
+    for (let k = 1; k <= DRAPE && j + k < GH; k++) {
+      const a = q + k * GW;
+      if (z[a] > zd[q]) { zd[q] = z[a]; nd[q * 3] = n[a * 3]; nd[q * 3 + 1] = n[a * 3 + 1]; nd[q * 3 + 2] = n[a * 3 + 2]; }
+    }
+  }
+  return (rig.browDepth = { stamp: rig.shapeStamp, z: zd, n: nd, filled });
 }
 // the skin point (lifted) at front position (x, y)
 function onSkin(G, x, y, out, o, nrm) {
@@ -148,7 +184,7 @@ function parts(B) {
 }
 
 // The current landmarks and the design for each side ('l' +x, 'r' -x), in the eye's plane (mm).
-function designs(rig, style, f) {
+function designs(rig, style, f, caps, raise = 0) {
   const B = rig.A.meta.brow, P = rig.pos, m = B.marks;
   const at = i => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
   const eye = s => { const a = at(m[s][0]), b = at(m[s][1]); return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; };
@@ -156,11 +192,12 @@ function designs(rig, style, f) {
   const mmpu = B.common.ipd_mm / Math.hypot(el[0] - er[0], el[1] - er[1], el[2] - er[2]);
   const mid = (P[m.l[0] * 3] + P[m.r[0] * 3]) / 2;
   const p = params(B, style, f), out = {};
+  p.head_low += raise; p.peak_low += raise;
   for (const [s, sx] of [['l', 1], ['r', -1]]) {
     const base = (P[m[s][0] * 3 + 1] + P[m[s][1] * 3 + 1]) / 2;
     const toPlane = q => [(q[0] - mid) * sx * mmpu, (q[1] - base) * mmpu];
     const marks = [toPlane(at(m[s][2])), toPlane(at(m[s][0])), toPlane(at(m[s][1]))];
-    const d = design(p, ...marks);
+    const d = design(p, ...marks, caps ? caps[s] : undefined);
     d.marks = marks;
     d.frame = { sx, mid, base, mmpu };
     d.xy = (u, v) => [mid + sx * u / mmpu, base + v / mmpu];
@@ -172,8 +209,43 @@ function designs(rig, style, f) {
 // Fills the brow part's positions for look L.
 function update(rig, rec, L) {
   const B = rig.A.meta.brow; if (!B) return;
-  const G = depthMap(rig), out = rec.pos, D = designs(rig, rec.p.style, L.f);
-  const tmp = new Float32Array(3), N = 90;
+  const G = depthMap(rig), tmp = new Float32Array(3), nrm = new Float32Array(3), N = 90;
+  // The brow is drawn on the front view, so where the head turns away at the temple a few mm
+  // across the front become a long stretch of skin. The tail ends before the skin faces more
+  // than about 66 degrees to the side and the card (with the hair tips) before 70, the same for
+  // both brows.
+  let D = designs(rig, rec.p.style, L.f);
+  // The head end keeps off the side of the nose the same way.
+  let cap = Infinity, floor = -Infinity;
+  const facing = (d, u) => { const [x, y] = d.xy(u, d.lower(u) + d.thick(u) / 2); onSkin(G, x, y, tmp, 0, nrm); return nrm[2]; };
+  for (const s of ['l', 'r']) {
+    const d = D.sides[s], m = B.margin * (d.tx - d.hx);
+    // walk out from above the middle of the eye, where the skin always faces the front
+    const u0 = (d.mc[0] + d.lc[0]) / 2;
+    // the brow's ends stop before FACING; the card's ends, with the hair tips, before TIPS
+    for (let u = u0; u <= Math.max(u0, d.tx + m); u += 0.5) {
+      const nz = facing(d, u);
+      if (nz < FACING && u <= d.tx) { cap = Math.min(cap, u - 0.5); break; }
+      if (nz < TIPS) { cap = Math.min(cap, u - m - 0.5); break; }
+    }
+    for (let u = u0; u >= Math.min(u0, d.hx - m); u -= 0.5) {
+      const nz = facing(d, u);
+      if (nz < FACING && u >= d.hx) { floor = Math.max(floor, u + 0.5); break; }
+      if (nz < TIPS) { floor = Math.max(floor, u + m + 0.5); break; }
+    }
+  }
+  const caps = { l: [floor, cap], r: [floor, cap] };
+  if (cap < Infinity || floor > -Infinity) D = designs(rig, rec.p.style, L.f, caps);
+  // and the brow sits on the brow bone, not under it: where the head morphs fold the skin under
+  // the ridge, the whole brow goes up a mm at a time until its body faces the front
+  const under = d => {
+    for (let u = d.hx; u <= d.tx; u += 0.5) for (const k of [0.3, 0.5, 0.7]) {
+      const [x, y] = d.xy(u, d.lower(u) + d.thick(u) * k); onSkin(G, x, y, tmp, 0, nrm); if (nrm[2] < 0.3) return true;
+    }
+    return false;
+  };
+  for (let up = 1; up <= 10 && (under(D.sides.l) || under(D.sides.r)); up++) D = designs(rig, rec.p.style, L.f, caps, up);
+  const out = rec.pos;
   let side = 0;
   for (const s of ['l', 'r']) {
     const d = D.sides[s], m = B.margin * (d.tx - d.hx), u0 = d.hx - m, u1 = d.tx + m;
@@ -434,6 +506,6 @@ class Tool {
   }
 }
 
-const AvatarBrows = { parts, update, guides, dragTo, skinAt, Tool, SLIDE: Object.keys(SLIDE) };
+const AvatarBrows = { parts, update, guides, dragTo, skinAt, Tool, SLIDE: Object.keys(SLIDE), GRID: { GX0, GY0, CELL, GW, GH, NS, NR, LIFT } };
 window.AvatarBrows = AvatarBrows;
 export default AvatarBrows;
