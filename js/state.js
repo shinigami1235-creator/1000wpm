@@ -18,6 +18,7 @@ window.WPM = (() => {
     owned: ['desk-basic', 'chair-basic', 'monitor-basic', 'keyboard-basic'],
     room: null,                 // room layout, written by the room editor
     totals: { keys: 0, correct: 0, words: 0, ms: 0 },
+    learn: {},                  // academy progress and free typing coins, see js/app/learn.js
   });
 
   let data;
@@ -82,7 +83,8 @@ window.WPM = (() => {
     if (newBest) data.best[bestKey] = metric;
     // rewards: 1 coin per 2 correct words, scaled by accuracy, plus a bonus for a new best
     const accF = Math.max(0, (run.acc - 50) / 50);
-    const coins = Math.round(words / 2 * accF) + (newBest ? 25 : 0);
+    // run.coins, when given, replaces the formula (the academy and free typing set their own)
+    const coins = run.coins !== undefined ? Math.round(run.coins) : Math.round(words / 2 * accF) + (newBest ? 25 : 0);
     const xp = Math.round(words * accF * 2 + (run.wpm || 0) / 4);
     save();
     addCoins(coins, 'typing');
@@ -161,6 +163,11 @@ window.WPM = (() => {
   function profile() { return { ...data.profile }; }
   function setProfile(p) { data.profile = { ...data.profile, ...p }; save(); emit('profile', data.profile); }
 
+  // ---------- academy ----------
+  // { lessons: { id: { stars, wpm, acc } }, open, placement, layout, free: { day, coins } }
+  function learn() { return JSON.parse(JSON.stringify(data.learn || {})); }
+  function setLearn(patch) { data.learn = { ...(data.learn || {}), ...patch }; save(); emit('learn', learn()); }
+
   function reset() { data = blank(); save(); emit('reset', null); }
   function exportData() { return JSON.stringify(data); }
 
@@ -169,6 +176,6 @@ window.WPM = (() => {
     coins: () => data.coins, addCoins, spend, addXP, xp: () => data.xp,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
-    reset, exportData,
+    reset, exportData, learn, setLearn,
   };
 })();
