@@ -161,6 +161,10 @@ function botDuel(a, b, seed, cfg) {
   for (const c of 'glitch blade ') m.input(0, c, t += 40);
   m.advance(t += 600);
   ok(!B.eng.status('ward') && hpB - B.hp >= 50, 'glitch blade breaks the shield and hits double');
+  ok(m.state().sides[1].corrupt > 0, 'glitch blade corrupts the other side');
+  const hpC = B.hp;
+  m.advance(t += 6500);
+  ok(hpC - B.hp === 12, 'corruption deals 2 a second for 6 seconds');
   A.eng.debug.offer(['hyper-thread']);
   for (const c of 'hyper thread ') m.input(0, c, t += 40);
   ok(A.eng.status('hyper') && A.eng.status('hyper').mult === 1.5, 'hyper thread is 1.5 times in PvP');

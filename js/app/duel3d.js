@@ -9,7 +9,7 @@
 //   sc.shot(from, tier, onLand, { color, crit, word, combo, ms })   a word's shot from side `from`:
 //                                     the typed word flies over as glowing letters and lands in ms
 //   sc.cast(from, spellId, hits, effect)           hits: [{ at: ms after now, dmg }]
-//   sc.react(side, kind, power)       'typo' | 'hit' | 'block' | 'stun' | 'freeze' | 'flash' | 'fog'
+//   sc.react(side, kind, power)       'typo' | 'hit' | 'block' | 'stun' | 'freeze' | 'flash' | 'fog' | 'poison' | 'poisonTick' | 'cleanse'
 //   sc.aura(side, name, on)           'ward' | 'hyper' | 'root' | 'split'
 //   sc.setLook(side, look), sc.setHp(side, frac), sc.ko(side), sc.revive()
 //   sc.screen(side, out)              host pixels above a fighter, for numbers and labels
@@ -201,7 +201,7 @@ window.DuelScene = (() => {
     const shardCv = document.createElement('canvas'); shardCv.width = shardCv.height = 32;
     { const c = shardCv.getContext('2d'); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(16, 1); c.lineTo(30, 27); c.lineTo(5, 22); c.closePath(); c.fill(); }
     const shardTex = own(new THREE.CanvasTexture(shardCv));
-    const PN = 160;
+    const PN = 280;
     const parts = Array.from({ length: PN }, () => ({ s: sprite(glowTex, 1, 7), v: new V(), life: 0, max: 1, size: 0.3, spin: 0, grav: 0 }));
     let pI = 0;
     function burst(at, n, speed, col, o = {}) {
@@ -231,15 +231,180 @@ window.DuelScene = (() => {
       w.r = r; w.life = life; w.t = 0; w.m.visible = true;
     }
 
-    // a straight rail of light along the shot for the top combo tiers
-    const rail = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
-    rail.visible = false; rail.renderOrder = 7; scene.add(rail);
-    let railT = 0;
-    function railShot(from, to, col) {
-      const a = casterOf(from).pos(new V()), b = centre(to, new V());
-      rail.position.lerpVectors(a, b, 0.5); rail.scale.set(a.distanceTo(b), 0.16, 1);
-      rail.lookAt(camera.position); rail.rotation.z = Math.atan2(b.y - a.y, b.x - a.x);
-      rail.material.color.copy(col).multiplyScalar(1.5); railT = 0.14; rail.visible = true;
+    // beams for the top combo tiers, named after them: Twin beam (2) fires two thin beams,
+    // Rail shot (3) one strong beam, Overload (4) a thick one that pulses. A beam grows out of
+    // the attacker with the lead letter, holds through the hit and fades.
+    const beamCv = document.createElement('canvas'); beamCv.width = 4; beamCv.height = 64;
+    { const c = beamCv.getContext('2d'), g = c.createLinearGradient(0, 0, 0, 64);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g; c.fillRect(0, 0, 4, 64); }
+    const beamTex = own(new THREE.CanvasTexture(beamCv)), beamGeo = own(new THREE.PlaneGeometry(1, 1));
+    const beamMesh = () => {
+      const m = new THREE.Mesh(beamGeo, own(new THREE.MeshBasicMaterial({ map: beamTex, color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
+      m.visible = false; m.renderOrder = 7; m.frustumCulled = false; scene.add(m); return m;
+    };
+    const beams = Array.from({ length: 6 }, () => ({ core: beamMesh(), glow: beamMesh(), on: false, t: 0, grow: 0.3, hold: 0.4, fade: 0.35, a: new V(), b: new V(), off: new V(), w: 0.3, col: new THREE.Color(), pulse: false }));
+    let bI = 0;
+    function beam(a, b, col, w, grow, hold, off, pulse) {
+      const B = beams[bI = (bI + 1) % beams.length];
+      B.a.copy(a); B.b.copy(b); B.off.copy(off); B.col.copy(col); B.w = w; B.grow = grow; B.hold = hold; B.pulse = pulse;
+      B.t = -0.04; B.on = true;
+      B.core.material.color.copy(col).lerp(WHITE, 0.55).multiplyScalar(2.2);
+      B.glow.material.color.copy(col).multiplyScalar(1.5);
+    }
+    const _bx = new V(), _by = new V(), _bz = new V(), _bm = new THREE.Matrix4(), _mid = new V();
+    // a flat strip from a to b, turned to face the camera
+    function strip(mesh, a, b, width, op) {
+      _bx.subVectors(b, a);
+      const len = _bx.length();
+      if (len < 1e-3 || width <= 0 || op <= 0) { mesh.visible = false; return; }
+      _bx.divideScalar(len);
+      _mid.addVectors(a, b).multiplyScalar(0.5);
+      _bz.subVectors(camera.position, _mid).normalize();
+      _by.crossVectors(_bz, _bx).normalize(); _bz.crossVectors(_bx, _by);
+      _bm.makeBasis(_bx, _by, _bz); mesh.quaternion.setFromRotationMatrix(_bm);
+      mesh.position.copy(_mid); mesh.scale.set(len, width, 1);
+      mesh.material.opacity = op; mesh.visible = true;
+    }
+    const _ba = new V(), _bb = new V();
+    function drawBeams(dt) {
+      for (const B of beams) {
+        if (!B.on) continue;
+        B.t += dt;
+        if (B.t < 0) continue;
+        const u = Math.min(1, B.t / B.grow);
+        const tf = B.t - B.grow - B.hold, k = tf > 0 ? 1 - tf / B.fade : 1;
+        if (k <= 0) { B.on = false; B.core.visible = B.glow.visible = false; continue; }
+        _ba.copy(B.a).add(B.off);
+        _bb.copy(B.a).lerp(B.b, Math.pow(u, 1.35)).add(B.off);
+        const fl = B.pulse ? 1 + Math.sin(B.t * 42) * 0.18 : 1 + Math.sin(B.t * 25) * 0.06;
+        strip(B.core, _ba, _bb, B.w * 0.4 * fl * (0.5 + 0.5 * k), Math.min(1, k * 1.5));
+        strip(B.glow, _ba, _bb, B.w * 1.7 * fl * k, 0.5 * k);
+        // sparks peel off the beam while it holds
+        if (u >= 1 && k > 0.3 && Math.random() < dt * (B.pulse ? 60 : 30)) {
+          const at = tmp.copy(_ba).lerp(_bb, Math.random());
+          burst(at, 1, 2.5, B.col, { size: 0.22, life: 0.35, grav: -1 });
+        }
+      }
+    }
+
+    // ---------- status effects on the cards ----------
+    // Frozen: frost over the card and ice crystals round its edge that shatter when it ends.
+    // Locked (stun): electric arcs crawl over the card and sparks circle above it.
+    // Corrupted (poison): the card pulses toxic green and bubbles rise off it; each tick puffs.
+    // Blurred: smoke drifts across the face.
+    const frostCv = document.createElement('canvas'); frostCv.width = 256; frostCv.height = 298;
+    {
+      const c = frostCv.getContext('2d'), W = 256, H = 298;
+      const g = c.createRadialGradient(W / 2, H / 2, W * 0.2, W / 2, H / 2, W * 0.75);
+      g.addColorStop(0, 'rgba(220,245,255,0.05)'); g.addColorStop(1, 'rgba(230,250,255,0.85)');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineCap = 'round';
+      const branch = (x, y, a, len, w, d) => {
+        if (d > 4 || len < 4) return;
+        const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+        c.lineWidth = w; c.beginPath(); c.moveTo(x, y); c.lineTo(x2, y2); c.stroke();
+        branch(x2, y2, a + rnd(-0.5, 0.5), len * 0.72, w * 0.7, d + 1);
+        if (Math.random() < 0.7) branch(x + (x2 - x) * 0.5, y + (y2 - y) * 0.5, a + (Math.random() < 0.5 ? -1 : 1) * rnd(0.6, 1.1), len * 0.5, w * 0.6, d + 1);
+      };
+      for (let k = 0; k < 26; k++) {
+        const side = k % 4, p = Math.random();
+        const [x, y, a] = side === 0 ? [p * W, 0, Math.PI / 2] : side === 1 ? [p * W, H, -Math.PI / 2] : side === 2 ? [0, p * H, 0] : [W, p * H, Math.PI];
+        branch(x, y, a + rnd(-0.6, 0.6), rnd(22, 46), 2.4, 0);
+      }
+    }
+    const frostTex = own(new THREE.CanvasTexture(frostCv));
+    const iceGeo = own(new THREE.ConeGeometry(0.13, 1, 5));
+    const iceMat = own(new THREE.MeshBasicMaterial({ color: C('#cff4ff', 1.15), transparent: true, opacity: 0.85, depthWrite: false }));
+    const arcMat = own(new THREE.LineBasicMaterial({ color: C('#d4eeff', 4), transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    const ARCS = 6, ARC_SEG = 9;
+    F.forEach(f => {
+      const frost = new THREE.Mesh(own(new THREE.PlaneGeometry(CARD_W + 0.1, CARD_H + 0.1)), own(new THREE.MeshBasicMaterial({ map: frostTex, color: '#e6f8ff', transparent: true, opacity: 0, depthWrite: false })));
+      frost.position.z = 0.035; frost.visible = false; f.card.add(frost);
+      const ice = new THREE.Group(); f.card.add(ice);
+      const spikes = [];
+      for (let k = 0; k < 16; k++) {
+        const m = new THREE.Mesh(iceGeo, iceMat);
+        // along the bottom and up the sides, pointing outwards
+        const t = k / 15, onSide = k % 3 !== 0;
+        let x, y, ang;
+        if (!onSide) { x = (t - 0.5) * CARD_W; y = -CARD_H / 2; ang = Math.PI + rnd(-0.5, 0.5); }
+        else { const sx = k % 2 ? 1 : -1; x = sx * CARD_W / 2; y = -CARD_H / 2 + t * CARD_H * 0.85; ang = -sx * Math.PI / 2 + rnd(-0.6, 0.6); }
+        m.position.set(x, y, 0.05); m.rotation.z = ang; m.userData.len = rnd(0.5, 1.2);
+        m.scale.set(1, 0.001, 1); ice.add(m); spikes.push(m);
+      }
+      const arcGeo = new THREE.BufferGeometry();
+      arcGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(ARCS * ARC_SEG * 6), 3));
+      own(arcGeo);
+      const arcs = new THREE.LineSegments(arcGeo, arcMat); arcs.position.z = 0.06; arcs.visible = false; arcs.frustumCulled = false; f.card.add(arcs);
+      const stars = Array.from({ length: 3 }, () => sprite(glowTex, 1, 8));
+      Object.assign(f, { frost, spikes, arcs, stars, ice: 0, wasFrozen: false, arcT: 0, poison: 0, bubbleT: 0, smokeT: 0 });
+    });
+    const _sp = new V();
+    function zigzag(f) {
+      const pos = f.arcs.geometry.attributes.position, A = pos.array;
+      const edge = () => {
+        const s = Math.random() * 4 | 0, p = Math.random();
+        return s === 0 ? [(p - 0.5) * CARD_W, CARD_H / 2] : s === 1 ? [(p - 0.5) * CARD_W, -CARD_H / 2] : s === 2 ? [-CARD_W / 2, (p - 0.5) * CARD_H] : [CARD_W / 2, (p - 0.5) * CARD_H];
+      };
+      let o = 0;
+      for (let a = 0; a < ARCS; a++) {
+        const [x0, y0] = edge(), [x1, y1] = edge();
+        let px = x0, py = y0;
+        for (let k = 1; k <= ARC_SEG; k++) {
+          const u = k / ARC_SEG, j = k === ARC_SEG ? 0 : 0.36;
+          const nx = x0 + (x1 - x0) * u + rnd(-j, j), ny = y0 + (y1 - y0) * u + rnd(-j, j);
+          A[o++] = px; A[o++] = py; A[o++] = 0; A[o++] = nx; A[o++] = ny; A[o++] = 0;
+          px = nx; py = ny;
+        }
+      }
+      pos.needsUpdate = true;
+    }
+    const TOXIC = new THREE.Color('#7dff4f'), VIRUS = new THREE.Color('#c06bff'), ICE = new THREE.Color('#bfefff'), SMOKE = new THREE.Color('#7f9c90');
+    function drawStatus(dt) {
+      F.forEach((f, i) => {
+        // frozen: frost and crystals grow in, then shatter
+        const frozen = f.freeze > 0 && !f.broken;
+        f.ice += ((frozen ? 1 : 0) - f.ice) * Math.min(1, dt * (frozen ? 6 : 20));
+        if (f.wasFrozen && !frozen && !f.broken) {
+          burst(centre(i, tmp), 22, 6, ICE, { shard: true, size: 0.3, life: 0.8, grav: 9 });
+          f.ice = 0;
+        }
+        f.wasFrozen = frozen;
+        f.frost.visible = f.ice > 0.01; f.frost.material.opacity = f.ice * 0.75;
+        for (const m of f.spikes) m.scale.set(1, Math.max(0.001, f.ice * m.userData.len), 1);
+        if (frozen && Math.random() < dt * 8) burst(centre(i, tmp).add(tmp2.set(rnd(-1.5, 1.5), rnd(-1.6, 1.6), 0.3)), 1, 0.4, ICE, { size: 0.16, life: 0.6, grav: 1 });
+        // locked: arcs and circling sparks
+        const stunned = f.stun > 0 && !f.broken;
+        f.arcs.visible = stunned;
+        if (stunned) { f.arcT -= dt; if (f.arcT <= 0) { zigzag(f); f.arcT = 0.06; } f.arcs.material.opacity = 0.6 + Math.random() * 0.4; }
+        f.stars.forEach((st, k) => {
+          st.visible = stunned;
+          if (!stunned) return;
+          const a = t * 5 + k * Math.PI * 2 / 3;
+          centre(i, _sp);
+          st.position.set(_sp.x + Math.cos(a) * 0.9, f.card.position.y + CARD_H / 2 + 0.4 + Math.sin(a * 2) * 0.08, _sp.z + Math.sin(a) * 0.5);
+          st.scale.setScalar(0.45); st.material.color.set('#fff3a8').multiplyScalar(2);
+        });
+        // corrupted: bubbles rise off the card
+        f.poison = Math.max(0, f.poison - dt);
+        if (f.poison > 0 && !f.broken) {
+          f.bubbleT -= dt;
+          if (f.bubbleT <= 0) {
+            f.bubbleT = 0.05;
+            const at = centre(i, tmp).add(tmp2.set(rnd(-1.4, 1.4), -CARD_H / 2 + rnd(0, 1.2), 0.3));
+            burst(at, 1, 0.5, Math.random() < 0.7 ? TOXIC : VIRUS, { size: rnd(0.14, 0.3), life: 1.3, grav: -2.2, up: 1.5 });
+          }
+        }
+        // blurred: smoke across the face
+        if (f.fog > 0 && !f.broken) {
+          f.smokeT -= dt;
+          if (f.smokeT <= 0) {
+            f.smokeT = 0.04;
+            burst(centre(i, tmp).add(tmp2.set(rnd(-1.2, 1.2), rnd(-0.6, 1), 0.4)), 1, 0.5, SMOKE, { size: rnd(1.3, 2.1), life: 1.6, grav: -0.3, k: 1.1 });
+          }
+        }
+      });
     }
 
     let punch = 0, slowUntil = 0, koCam = -1, koCamT = 0;
@@ -296,9 +461,15 @@ window.DuelScene = (() => {
         g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(2.2);
         g.tr.forEach(x => { x.material.color.copy(col).multiplyScalar(1.2); });
         g.size = size; g.spin = 0; g.t = 0; g.on = true;
-        g.cb = order === n - 1 ? () => { if (tier >= 3) railShot(from, to, col); impact(to, tier, o.crit, col, onLand); } : () => tick(to, col);
+        g.cb = order === n - 1 ? () => impact(to, tier, o.crit, col, onLand) : () => tick(to, col);
       }
       burst(start, 4 + tier * 2, 3, col, { size: 0.3, life: 0.3, grav: 0 });
+      if (tier >= 2) {
+        const grow = T - (n - 1) * step - 0.04, hold = (n - 1) * step + (tier >= 4 ? 0.55 : 0.4);
+        const w = (tier === 2 ? 0.16 : tier === 3 ? 0.34 : 0.55) * (o.crit ? 1.3 : 1);
+        if (tier === 2) for (const dy of [-0.24, 0.24]) beam(start, end, col, w, grow, hold, tmp2.set(0, dy, 0), false);
+        else beam(start, end, col, w, grow, hold, tmp2.set(0, 0, 0), tier >= 4);
+      }
     }
 
     function cast(from, id, hits, effect) {
@@ -314,7 +485,10 @@ window.DuelScene = (() => {
       if (kind === 'block') { f.flash = Math.max(f.flash, 0.5); f.flashCol.set('#7dffc4'); if (fx) fx.event('ward', { caster: adapters[i] }); }
       if (kind === 'stun') { f.stun = Math.max(f.stun, power > 10 ? power / 1000 : 1.5); }
       if (kind === 'freeze') { f.freeze = Math.max(f.freeze, power > 10 ? power / 1000 : 2); }
-      if (kind === 'fog') { f.fog = 1.5; }
+      if (kind === 'fog') { f.fog = 4; }
+      if (kind === 'poison') { f.poison = Math.max(f.poison, power > 10 ? power / 1000 : 6); burst(centre(i, new V()), 16, 4, TOXIC, { size: 0.3, life: 0.7, grav: -1 }); }
+      if (kind === 'poisonTick') { f.kick = Math.min(1, f.kick + 0.12); f.flash = Math.max(f.flash, 0.3); f.flashCol.set('#7dff4f'); burst(centre(i, new V()).add(tmp2.set(rnd(-0.6, 0.6), rnd(-0.6, 0.6), 0.3)), 6, 2.5, TOXIC, { size: 0.25, life: 0.5, grav: -2 }); }
+      if (kind === 'cleanse') { f.freeze = 0; f.stun = 0; f.poison = 0; f.fog = 0; burst(centre(i, new V()), 24, 5, C('#c8ffe0'), { size: 0.3, life: 0.7, grav: -1.5 }); }
       if (kind === 'flash') { f.flash = 1; f.flashCol.set('#ffffff'); }
     }
     function aura(i, name, on) { if (fx) fx.aura(name, on, { caster: adapters[i], target: adapters[1 - i] }); }
@@ -388,7 +562,7 @@ window.DuelScene = (() => {
     function revive() {
       F.forEach((f, i) => {
         if (f.broken) { f.broken.list.forEach(x => x.m.geometry.dispose()); f.card.remove(f.broken.grp); f.broken = null; f.card.children.forEach(ch => { ch.visible = true; }); }
-        f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0;
+        f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0; f.poison = 0; f.fog = 0; f.ice = 0; f.wasFrozen = false;
         f.drop = reduce ? 0 : 1;
         if (reduce) ringAt(i, f.col, 3, 0.5);
       });
@@ -462,8 +636,9 @@ window.DuelScene = (() => {
         f.card.scale.set(1 + sq * 0.08 + f.recoil * 0.04, 1 - sq * 0.06 - f.recoil * 0.03, 1);
         // tint: flash colour, then stun blue, frozen ice
         let op = f.flash * 0.22, c = f.flashCol;
-        if (f.stun > 0) { op = Math.max(op, 0.35 + Math.sin(t * 30) * 0.1); c = tmpCol.set('#3d7bff'); }
-        else if (f.freeze > 0) { op = Math.max(op, 0.32); c = tmpCol.set('#bfefff'); }
+        if (f.stun > 0) { op = Math.max(op, 0.12 + Math.sin(t * 30) * 0.06); c = tmpCol.set('#3d7bff'); }
+        else if (f.freeze > 0) { op = Math.max(op, 0.22); c = tmpCol.set('#bfefff'); }
+        else if (f.poison > 0) { op = Math.max(op, 0.07 + 0.05 * Math.sin(t * 7)); c = tmpCol.set('#5cff6a'); }
         f.tintMat.opacity = op; f.tintMat.color.copy(c);
         // the broken card's pieces fly apart and shrink away
         if (f.broken) {
@@ -511,7 +686,8 @@ window.DuelScene = (() => {
         if (u >= 1) { w.m.visible = false; continue; }
         w.m.scale.setScalar(0.3 + w.r * ease(u)); w.m.material.opacity = 0.85 * (1 - u);
       }
-      if (railT > 0) { railT -= real; rail.material.opacity = Math.max(0, railT / 0.14); if (railT <= 0) rail.visible = false; }
+      drawBeams(dt);
+      drawStatus(dt);
       // camera: a slow drift, a punch in on big hits, a lean towards the fighter who fell
       shake = Math.max(0, shake - real * 2.5);
       punch = Math.max(0, punch - real * 2.2);

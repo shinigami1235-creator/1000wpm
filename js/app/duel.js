@@ -269,7 +269,8 @@ Router.register('duel', (() => {
       case 'shot': scene.shot(ev.side, ev.tier, null, { color: info.players[ev.side].art ? '#3ee6ff' : SIDE_COL[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock() }); break;
       case 'hit': {
         num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
-        if (ev.kind !== 'word') scene.react(ev.to, 'hit', 0.5);
+        if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
+        else if (ev.kind !== 'word') scene.react(ev.to, 'hit', 0.5);
         hpTo(ev.to, ev.hp);
         break;
       }
@@ -302,8 +303,9 @@ Router.register('duel', (() => {
     if (ev.name === 'fog') { scene.react(ev.side, 'fog'); if (ev.side === me) fog = ev.n; num(ev.side, 'Blurred', 'debuff'); }
     if (ev.name === 'locked') { scene.react(ev.side, 'stun', ev.ms); num(ev.side, 'Locked', 'debuff'); }
     if (ev.name === 'frozen') { scene.react(ev.side, 'freeze', ev.ms); num(ev.side, 'Frozen', 'debuff'); }
+    if (ev.name === 'corrupt') { scene.react(ev.side, 'poison', ev.ms); num(ev.side, 'Corrupted', 'debuff'); }
     if (ev.name === 'dispel') num(ev.side, 'Buffs removed', 'debuff');
-    if (ev.name === 'cleanse') { if (ev.side === me) fog = 0; num(ev.side, 'Cleansed', 'buff'); }
+    if (ev.name === 'cleanse') { if (ev.side === me) fog = 0; scene.react(ev.side, 'cleanse'); num(ev.side, 'Cleansed', 'buff'); }
     if (ev.name === 'reflect') num(ev.side, 'Reflecting', 'buff');
     if (ev.name === 'shieldBroken') num(ev.side, 'Shield broken', 'debuff');
   }

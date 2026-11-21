@@ -37,13 +37,13 @@
     'safe-mode': { hits: [], ward: true, text: 'Blocks the next shot or spell aimed at you.' },
     'binary-rain': { hits: [[450, 4], [750, 4], [1050, 4], [1350, 4], [1650, 4], [1950, 4]], fog: 4, text: '6 hits of 4 and blurs the next 4 words on their screen.' },
     'echo-pulse': { hits: [], echo: 0.5, text: 'Sends half the damage of your last 8 words again.' },
-    'glitch-blade': { hits: [[230, 30]], wardBreak: true, text: '30, goes through a shield and deals double when it breaks one.' },
+    'glitch-blade': { hits: [[230, 30]], wardBreak: true, corrupt: { ms: 6000, tick: 2 }, text: '30, goes through a shield and deals double when it breaks one. Then corrupts them: 2 a second for 6 seconds.' },
     'cryo-lock': { hits: [[600, 12]], freeze: 4000, text: '12 and halves their word damage for 4 seconds.' },
     'electro-storm': { hits: [[800, 5], [1180, 5], [1560, 5], [1940, 5], [2320, 5], [2700, 5], [3080, 5]], text: '7 hits of 5.' },
     'hyper-thread': { hits: [], hyper: { ms: 6000, mult: 1.5 }, text: 'Your words deal 1.5 times damage for 6 seconds.' },
     'packet-storm': { hits: Array.from({ length: 16 }, (_, i) => [1000 + i * 85, 2]), reflect: { ms: 5000, k: 0.5 }, text: '16 hits of 2. For 5 seconds half of every shot that hits you goes back.' },
     'neon-nova': { hits: [[480, 45]], dispel: true, text: '45 and removes their shield and buffs.' },
-    'system-purge': { hits: [[700, 25]], cleanse: 6000, text: '25, clears blur, freeze and lock from you and keeps them off for 6 seconds.' },
+    'system-purge': { hits: [[700, 25]], cleanse: 6000, text: '25, clears blur, freeze, lock and corruption from you and keeps them off for 6 seconds.' },
     'void-sphere': { hits: [[1000, 3], [1260, 3], [1520, 3], [1780, 3], [2040, 3], [2300, 3], [2900, 70]], text: '6 hits of 3, then 70.' },
     'kernel-panic': { hits: [[380, 20]], lock: 1500, crits: 3, text: '20, locks their keys for 1.5 seconds and your next 3 words crit.' },
     'root-access': { hits: [[500, 10]], root: { ms: 5000, mult: 1.5 }, text: '10, then your hits go through shields and deal 1.5 times damage for 5 seconds.' },
@@ -68,7 +68,7 @@
 
     function side(i, r) {
       const list = words(r) || [];
-      const s = { i, hp: cfg.hp, list, idx: 0, stats: blankStats(), recent: [], fog: 0, frozen: 0, locked: 0, immune: 0, reflect: 0 };
+      const s = { i, hp: cfg.hp, list, idx: 0, stats: blankStats(), recent: [], fog: 0, frozen: 0, locked: 0, corrupt: 0, corruptN: 0, immune: 0, reflect: 0 };
       s.eng = Cb().create({ rng: R(`${seed}:${r}:${i}`), now: () => clock, offerMs: cfg.offerMs,
         offerAt: n => cfg.offerAt.includes(n) || (n > 50 && n % 25 === 0), offerSize: n => (n < 15 ? 2 : 3) });
       s.ty = root.NetTypist.create({
@@ -158,12 +158,18 @@
       if (b.hp <= 0) endRound(clock);
     }
 
-    function debuff(target, name, val) {
+    function debuff(target, name, val, o = {}) {
       const t = S[target];
       if (t.immune > clock) { emit({ type: 'effect', side: target, name, resisted: true, at: clock }); return; }
       if (name === 'fog') t.fog = Math.max(t.fog, val);
       if (name === 'frozen') t.frozen = clock + val;
       if (name === 'locked') t.locked = clock + val;
+      // corruption: damage every second; a new one replaces the old, and a cleanse stops it
+      if (name === 'corrupt') {
+        t.corrupt = clock + val;
+        const n = ++t.corruptN, from = 1 - target;
+        for (let k = 1; k * 1000 <= val; k++) schedule(clock + k * 1000, () => { if (t.corruptN === n && t.corrupt >= clock) land(from, o.tick, 'dot', { pierce: true }); });
+      }
       emit({ type: 'effect', side: target, name, ms: name === 'fog' ? 0 : val, n: name === 'fog' ? val : 0, until: name === 'fog' ? 0 : clock + val, at: clock });
     }
 
@@ -227,8 +233,9 @@
       if (P.fog) schedule(when, () => debuff(b.i, 'fog', P.fog));
       if (P.freeze) schedule(when, () => debuff(b.i, 'frozen', P.freeze));
       if (P.lock) schedule(when, () => debuff(b.i, 'locked', P.lock));
+      if (P.corrupt) schedule(when, () => debuff(b.i, 'corrupt', P.corrupt.ms, { tick: P.corrupt.tick }));
       if (P.reflect) { s.reflect = t + P.reflect.ms; emit({ type: 'effect', side: s.i, name: 'reflect', until: s.reflect, at: t }); }
-      if (P.cleanse) { s.fog = 0; s.frozen = 0; s.locked = 0; s.immune = t + P.cleanse; emit({ type: 'effect', side: s.i, name: 'cleanse', until: s.immune, at: t }); }
+      if (P.cleanse) { s.fog = 0; s.frozen = 0; s.locked = 0; s.corrupt = 0; s.immune = t + P.cleanse; emit({ type: 'effect', side: s.i, name: 'cleanse', until: s.immune, at: t }); }
       if (P.dispel) schedule(when, () => {
         for (const n of ['ward', 'hyper', 'root', 'split', 'crits']) b.eng.end(n);
         b.reflect = 0;
@@ -283,10 +290,10 @@
           combo: s.eng.state().combo, tier: s.eng.state().tier, acc: Math.round(s.eng.acc() * 1000) / 10,
           offer: s.eng.offer() ? s.eng.offer().spells.slice() : [], offerUntil: s.eng.offer() ? s.eng.offer().until : 0,
           statuses: s.eng.statuses().filter(x => !['stunned-target', 'frozen-target', 'cleanse', 'purge'].includes(x.name)).map(x => ({ name: x.name, until: x.until, charges: x.charges })),
-          fog: s.fog, frozen: Math.max(0, s.frozen - clock), locked: Math.max(0, s.locked - clock), immune: Math.max(0, s.immune - clock), reflect: Math.max(0, s.reflect - clock),
+          fog: s.fog, frozen: Math.max(0, s.frozen - clock), locked: Math.max(0, s.locked - clock), corrupt: Math.max(0, s.corrupt - clock), immune: Math.max(0, s.immune - clock), reflect: Math.max(0, s.reflect - clock),
           stats: { ...s.stats, spells: s.stats.spells.slice() },
           liveWpm: clock > roundAt ? Math.round(s.stats.chars / 5 / ((clock - roundAt) / 60000)) : 0,
-        } : { hp: cfg.hp, idx: 0, typed: '', combo: 0, tier: 0, acc: 100, offer: [], statuses: [], fog: 0, frozen: 0, locked: 0, stats: blankStats(), liveWpm: 0 }),
+        } : { hp: cfg.hp, idx: 0, typed: '', combo: 0, tier: 0, acc: 100, offer: [], statuses: [], fog: 0, frozen: 0, locked: 0, corrupt: 0, stats: blankStats(), liveWpm: 0 }),
       };
     }
 
