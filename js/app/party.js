@@ -173,7 +173,7 @@ Router.register('party', (() => {
       ? `<div class="seg" data-run role="group" aria-label="Run">${Object.values(R().RUNS).map(x => `<button type="button" data-v="${x.id}" aria-pressed="${x.id === l.run}">${e(x.name)}</button>`).join('')}</div>
          <div class="seg" data-diff role="group" aria-label="Difficulty" style="margin-top:8px">${['easy', 'normal', 'hard'].map(d => `<button type="button" data-v="${d}" aria-pressed="${d === l.difficulty}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div>`
       : `<p>${e(R().RUNS[l.run].name)}, ${e(l.difficulty)}</p>`;
-    rp.insertAdjacentHTML('beforeend', `<ol class="pa-areas">${R().RUNS[l.run].fights.map(k => `<li><b>${e(R().AREAS[k].boss)}</b><span class="dim">${e(R().KINDS[R().AREAS[k].kind])}, ${e(R().AREAS[k].area)}</span></li>`).join('')}</ol>`);
+    rp.insertAdjacentHTML('beforeend', `<ol class="pa-areas">${R().RUNS[l.run].fights.map(k => `<li><b>${e(R().AREAS[k].boss)}</b><span class="dim">${e(R().KINDS[R().AREAS[k].kind])}${R().AREAS[k].mite && R().AREAS[k].kind !== 'swarm' ? ' and mites' : ''}, ${e(R().AREAS[k].area)}</span></li>`).join('')}</ol>`);
     if (l.isHost) {
       rp.querySelector('[data-run]').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) Net.lobbies.setRun({ run: b.dataset.v }); });
       rp.querySelector('[data-diff]').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) Net.lobbies.setRun({ difficulty: b.dataset.v }); });
@@ -216,6 +216,8 @@ Router.register('party', (() => {
     golem: 'When the core opens, everything does double damage.',
     twins: 'Type a name to aim. Drop both within 12 s of each other or the first one comes back.',
   };
+  HOW.mites = 'Mites carry words too: type one before it lands.';
+  const MUSIC = ['stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage4', 'stage5', 'stage3'];
   const ROLE_HOW = {
     striker: 'Your words hit 1.3 times harder.',
     guard: 'Type the red word to block. Type a teammate\'s name to shield them.',
@@ -444,10 +446,10 @@ Router.register('party', (() => {
           scene.setFight({ kind: ev.kind, look: ev.look, foes: ev.foes });
           ty.reset();
           for (const t of tagEls.values()) t.remove(); tagEls.clear();
-          el.querySelector('[data-how]').textContent = HOW[ev.kind] || '';
-          el.querySelector('[data-kind]').textContent = R().KINDS[ev.kind] || '';
+          el.querySelector('[data-how]').textContent = (HOW[ev.kind] || '') + (ev.adds ? ' ' + HOW.mites : '');
+          el.querySelector('[data-kind]').textContent = (R().KINDS[ev.kind] || '') + (ev.adds ? ' and mites' : '');
           banner(`${ev.boss}`, 'round', 1800);
-          playMusic('stage' + (ev.look + 1));
+          playMusic(MUSIC[ev.look] || 'stage1');
           sfx('roar');
           measureLanes();
         } else {

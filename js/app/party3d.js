@@ -100,6 +100,9 @@ window.PartyScene = (() => {
       { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: '#39ff88', eye: '#ffffff' },   // transit: the train
       { bg: '#0a0402', a: '#ff7a3d', b: '#8f3a13', c: '#ffd24d', eye: '#ffd24d' },   // firmware: the golem
       { bg: '#07010a', a: '#ff4dd8', b: '#7a1f6e', c: '#3ee6ff', eye: '#ffffff' },   // core: the twins
+      { bg: '#0a0300', a: '#ffb02e', b: '#8a4a0c', c: '#ff5a2e', eye: '#fff2c4' },   // foundry: golem and mites
+      { bg: '#04020b', a: '#a98bff', b: '#4b3a8f', c: '#5dffd2', eye: '#ffffff' },   // mirror: twins and mites
+      { bg: '#030801', a: '#b6ff3d', b: '#4f7a12', c: '#3ee6ff', eye: '#ffffff' },   // junction: train and mites
     ];
     let pal = PALS[0];
 
@@ -345,41 +348,18 @@ window.PartyScene = (() => {
       });
       const cache = Array.from({ length: 12 }, (_, k) => box(queen, 0.7, 0.7, 0.7, qMat));
       const tailPts = Array.from({ length: 26 }, () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: C(pal.a), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); queen.add(s); return { s, k: Math.random() }; });
-      const miteMat = edgeMat(pal.c, 1);
-      const mites = new Map();
-      function mite(f) {
-        const m = new THREE.Group();
-        box(m, 0.62, 0.42, 0.8, miteMat, 0, 0, 0);
-        box(m, 0.42, 0.34, 0.36, miteMat, 0, 0.04, 0.55);
-        const eye = box(m, 0.3, 0.1, 0.06, glowMatFor(pal.eye), 0, 0.1, 0.75);
-        const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshBasicMaterial({ color: C(pal.c, 1.4), transparent: true, opacity: 0.5, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); w.position.set(s * 0.5, 0.25, 0); m.add(w); return w; });
-        for (let k = 0; k < 3; k++) for (const s of [-1, 1]) { const l = box(m, 0.06, 0.06, 0.45, miteMat, s * 0.35, -0.22, -0.25 + k * 0.25); l.rotation.y = s * 0.9; }
-        holder.add(m);
-        const x = { m, wings, eye, f, pos: new V(), start: new V(), ctrl: new V(), end: new V(), dead: 0, how: '' };
-        mites.set(f.id, x);
-        return x;
-      }
       holder.add(g);
       const qPos = new V();
       let qHit = 0;
       return {
         g,
-        anchor(id, out) {
-          const f = foes.get(id); if (!f) return null;
-          if (f.kind === 'queen') return out.copy(queen.position).add(v4.set(0, 5.2, 0));
-          const x = mites.get(id); return x && !x.dead ? out.copy(x.pos).add(v4.set(0, 0.9, 0)) : null;
-        },
-        hitPos(id, out) { const x = mites.get(id); return x ? out.copy(x.pos) : out.copy(queen.position); },
+        anchor(id, out) { return out.copy(queen.position).add(v4.set(0, 5.2, 0)); },
+        hitPos(id, out) { return out.copy(queen.position); },
+        source(out) { return out.copy(qPos).add(v4.set(0, -1, 1)); },
         hit(id) { qHit = 1.4; },
         charge() {},
         lunge() { for (const a of arms) a.rotation.x = -0.9; },
-        gone(id, how) {
-          const x = mites.get(id);
-          if (!x) return;
-          x.dead = 0.001; x.how = how;
-          if (how === 'pop') burst(x.pos, 22, 7, C(pal.c), { up: 0.4, size: 0.3 });
-          if (how === 'bite') { burst(x.pos, 14, 6, RED, { up: 0.5 }); shake = Math.max(shake, 0.25); }
-        },
+        gone() {},
         regrow() {},
         update(dt, t) {
           qPos.set(Math.sin(t * 0.4) * 2.2 * still, 7.4 + Math.sin(t * 0.9) * 0.5 * still, -6);
@@ -391,35 +371,6 @@ window.PartyScene = (() => {
           arms.forEach((a, k) => { a.rotation.x += (Math.sin(t * 1.5 + k) * 0.25 - a.rotation.x) * Math.min(1, dt * 3); });
           qHit = Math.max(0, qHit - dt * 4);
           qMat.uniforms.uHit.value = qHit;
-          const now = opts.now ? opts.now() : 0;
-          // new mites from the state, drawn along a curve from the wraith to their player's card
-          for (const f of foes.values()) if (f.kind === 'mite' && f.alive && !mites.has(f.id)) mite(f);
-          for (const [id, x] of mites) {
-            const f = foes.get(id);
-            if (!x.dead && (!f || !f.alive)) x.dead = 0.001;
-            if (x.dead) {
-              x.dead += dt;
-              if (x.how === 'bite') x.m.position.y -= dt * 4;
-              x.m.scale.setScalar(Math.max(0.01, 1 - x.dead * 3));
-              if (x.dead > 0.4) { holder.remove(x.m); drop(x.m, miteMat); mites.delete(id); }
-              continue;
-            }
-            const u = clamp((now - x.f.born) / Math.max(1, x.f.land - x.f.born), 0, 1);
-            x.start.copy(qPos).add(v4.set(0, -1, 1));
-            laneAt(x.f.lane, x.end); x.end.y += 1;
-            const side = (((x.f.path ?? (parseInt(id.slice(1), 10) * 0.37 % 1)) - 0.5)) * 16;
-            x.ctrl.set((x.start.x + x.end.x) / 2 + side, 8 + Math.sin(parseInt(id.slice(1), 10)) * 2, (x.start.z + x.end.z) / 2);
-            bez(x.start, x.ctrl, x.end, smooth(u * 0.92 + u * u * 0.08), x.pos);
-            x.pos.y += Math.sin(t * 6 + parseInt(id.slice(1), 10)) * 0.15 * still;
-            x.m.position.copy(x.pos);
-            bez(x.start, x.ctrl, x.end, Math.min(1, u + 0.02), v1);
-            x.m.lookAt(v1);
-            x.m.scale.setScalar(0.8 + u * 0.6);
-            const flap = Math.sin(t * 40 + parseInt(id.slice(1), 10)) * 0.9;
-            x.wings[0].rotation.z = flap; x.wings[1].rotation.z = -flap;
-            x.eye.material.color.copy(u > 0.75 ? RED : C(pal.eye)).multiplyScalar(1.6);
-          }
-          miteMat.uniforms.uHit.value = Math.max(0, miteMat.uniforms.uHit.value - dt * 3);
         },
       };
     }
@@ -666,6 +617,70 @@ window.PartyScene = (() => {
       };
     }
 
+
+    // mites: small fliers that carry a word each, from a source to one player's card.
+    // The swarm sends them; in the Mixed run a golem, a train or the twins send them too.
+    function miteLayer(source) {
+      const miteMat = edgeMat(pal.c, 1);
+      const mites = new Map();
+      function mite(f) {
+        const m = new THREE.Group();
+        box(m, 0.62, 0.42, 0.8, miteMat, 0, 0, 0);
+        box(m, 0.42, 0.34, 0.36, miteMat, 0, 0.04, 0.55);
+        const eye = box(m, 0.3, 0.1, 0.06, glowMatFor(pal.eye), 0, 0.1, 0.75);
+        const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshBasicMaterial({ color: C(pal.c, 1.4), transparent: true, opacity: 0.5, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); w.position.set(s * 0.5, 0.25, 0); m.add(w); return w; });
+        for (let k = 0; k < 3; k++) for (const s of [-1, 1]) { const l = box(m, 0.06, 0.06, 0.45, miteMat, s * 0.35, -0.22, -0.25 + k * 0.25); l.rotation.y = s * 0.9; }
+        holder.add(m);
+        const x = { m, wings, eye, f, pos: new V(), start: new V(), ctrl: new V(), end: new V(), dead: 0, how: '' };
+        mites.set(f.id, x);
+        return x;
+      }
+      return {
+        has: id => mites.has(id),
+        anchor(id, out) { const x = mites.get(id); return x && !x.dead ? out.copy(x.pos).add(v4.set(0, 0.9, 0)) : null; },
+        hitPos(id, out) { const x = mites.get(id); return x ? out.copy(x.pos) : null; },
+        gone(id, how) {
+          const x = mites.get(id);
+          if (!x) return;
+          x.dead = 0.001; x.how = how;
+          if (how === 'pop') burst(x.pos, 22, 7, C(pal.c), { up: 0.4, size: 0.3 });
+          if (how === 'bite') { burst(x.pos, 14, 6, RED, { up: 0.5 }); shake = Math.max(shake, 0.25); }
+        },
+        update(dt, t) {
+          const qPos = source(new V());
+          const now = opts.now ? opts.now() : 0;
+          // new mites from the state, drawn along a curve from the wraith to their player's card
+          for (const f of foes.values()) if (f.kind === 'mite' && f.alive && !mites.has(f.id)) mite(f);
+          for (const [id, x] of mites) {
+            const f = foes.get(id);
+            if (!x.dead && (!f || !f.alive)) x.dead = 0.001;
+            if (x.dead) {
+              x.dead += dt;
+              if (x.how === 'bite') x.m.position.y -= dt * 4;
+              x.m.scale.setScalar(Math.max(0.01, 1 - x.dead * 3));
+              if (x.dead > 0.4) { holder.remove(x.m); drop(x.m, miteMat); mites.delete(id); }
+              continue;
+            }
+            const u = clamp((now - x.f.born) / Math.max(1, x.f.land - x.f.born), 0, 1);
+            x.start.copy(qPos);
+            laneAt(x.f.lane, x.end); x.end.y += 1;
+            const side = (((x.f.path ?? (parseInt(id.slice(1), 10) * 0.37 % 1)) - 0.5)) * 16;
+            x.ctrl.set((x.start.x + x.end.x) / 2 + side, 8 + Math.sin(parseInt(id.slice(1), 10)) * 2, (x.start.z + x.end.z) / 2);
+            bez(x.start, x.ctrl, x.end, smooth(u * 0.92 + u * u * 0.08), x.pos);
+            x.pos.y += Math.sin(t * 6 + parseInt(id.slice(1), 10)) * 0.15 * still;
+            x.m.position.copy(x.pos);
+            bez(x.start, x.ctrl, x.end, Math.min(1, u + 0.02), v1);
+            x.m.lookAt(v1);
+            x.m.scale.setScalar(0.8 + u * 0.6);
+            const flap = Math.sin(t * 40 + parseInt(id.slice(1), 10)) * 0.9;
+            x.wings[0].rotation.z = flap; x.wings[1].rotation.z = -flap;
+            x.eye.material.color.copy(u > 0.75 ? RED : C(pal.eye)).multiplyScalar(1.6);
+          }
+          miteMat.uniforms.uHit.value = Math.max(0, miteMat.uniforms.uHit.value - dt * 3);
+        },
+      };
+    }
+
     const BUILD = { hydra, swarm, snake, golem, twins };
     const cachedGeo = new Set();
     // frees what a creature made for itself; the box shapes are shared and stay
@@ -679,8 +694,11 @@ window.PartyScene = (() => {
     }
     function clearCreature() {
       for (const o of [...holder.children]) { holder.remove(o); drop(o); }
-      cre = null;
+      cre = null; mites = null;
     }
+    let mites = null;
+    const isMite = id => !!(mites && mites.has(id));
+    const foePos = (id, out) => (isMite(id) ? mites.hitPos(id, out) : cre.hitPos(id, out));
     function applyPal(look) {
       pal = PALS[look] || PALS[0];
       scene.background.set(pal.bg); scene.fog.color.set(pal.bg);
@@ -695,6 +713,8 @@ window.PartyScene = (() => {
       foes = new Map((f.foes || []).map(x => [x.id, x]));
       deadAt = -9;
       cre = (BUILD[kind] || golem)();
+      if (kind === 'swarm') mites = miteLayer(out => cre.source(out));
+      else if (f.adds === 'mites') { const main = (f.foes || [])[0]; mites = miteLayer(out => cre.hitPos(main && main.id, out).add(v4.set(0, 1, 1))); }
       if (fx) fx.clear();
     }
 
@@ -735,7 +755,7 @@ window.PartyScene = (() => {
       if (!cre) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const from = laneAt(h.id, new V()).add(v4.set(0, 0.6, 0));
       const foe = h.foe;
-      const to = out => cre.hitPos(foe, out);
+      const to = out => foePos(foe, out);
       const col = h.you ? null : (opts.color ? opts.color(h.id) : null);
       const land = () => {
         cre.hit(foe, h.crit ? 1.2 : 0.7);
@@ -755,9 +775,9 @@ window.PartyScene = (() => {
       const foe = c.foe;
       const target = {
         size: kind === 'swarm' ? 3 : 4,
-        pos: out => cre.hitPos(foe, out),
-        top: out => cre.hitPos(foe, out).add(v4.set(0, 2.5, 0)),
-        base: out => cre.hitPos(foe, out).setY(0),
+        pos: out => foePos(foe, out),
+        top: out => foePos(foe, out).add(v4.set(0, 2.5, 0)),
+        base: out => foePos(foe, out).setY(0),
         react: () => cre.hit(foe, 1),
       };
       fx.cast(id, { caster, target, hits: c.hits, effect: c.effect });
@@ -788,7 +808,7 @@ window.PartyScene = (() => {
     }
     function foeGone(id, how) {
       if (!cre) return;
-      cre.gone(id, how);
+      if (isMite(id)) mites.gone(id, how); else cre.gone(id, how);
     }
     function regrow(id) { if (cre) cre.regrow(id); const f = foes.get(id); if (f && cre) { cre.hitPos(id, v1); burst(v1, 20, 5, C(pal.c), { up: 0.8 }); } }
     function down(id) { laneAt(id, v1); burst(v1, 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); }
@@ -808,7 +828,7 @@ window.PartyScene = (() => {
       if (!cre) return out;
       for (const f of foes.values()) {
         if (!f.alive) continue;
-        const p = cre.anchor(f.id, v3);
+        const p = f.kind === 'mite' ? (mites ? mites.anchor(f.id, v3) : null) : cre.anchor(f.id, v3);
         if (!p) continue;
         const s = screen(p);
         if (s) out.set(f.id, { x: s.x, y: s.y, on: true });
@@ -825,6 +845,7 @@ window.PartyScene = (() => {
       if (performance.now() < hitStop) dt *= 0.15;
       T.value = t;
       if (cre) cre.update(dt, t);
+      if (mites) mites.update(dt, t);
       drawAttack(t);
       for (const p of parts) {
         if (!p.s.visible) continue;

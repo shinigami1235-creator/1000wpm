@@ -115,7 +115,7 @@
     function oneLobby(r, i, size) {
       const roles = ['guard', 'support', 'striker', 'striker'];
       const players = Array.from({ length: size }, (_, k) => botMember(r, roles[k]));
-      return { id: 'L' + hash('l' + i + players[0].id).toString(36), name: `${players[0].name}'s run`, host: players[0].id, run: r() < 0.65 ? 'relay' : 'deep', difficulty: pick(r, ['easy', 'normal', 'normal', 'hard']), players, max: 4, status: size === 4 && r() < 0.5 ? 'running' : 'open', chat: [] };
+      return { id: 'L' + hash('l' + i + players[0].id).toString(36), name: `${players[0].name}'s run`, host: players[0].id, run: pick(r, ['relay', 'relay', 'deep', 'mixed']), difficulty: pick(r, ['easy', 'normal', 'normal', 'hard']), players, max: 4, status: size === 4 && r() < 0.5 ? 'running' : 'open', chat: [] };
     }
     const summary = l => ({ id: l.id, name: l.name, host: l.host, hostName: (l.players.find(p => p.id === l.host) || {}).name, run: l.run, difficulty: l.difficulty, players: l.players.map(p => ({ id: p.id, name: p.name, bot: p.bot, role: p.role })), count: l.players.length, max: l.max, status: l.status, art: false });
     const full = l => l && { ...summary(l), players: l.players.map(p => ({ ...p })), chat: l.chat.slice(-50), you: 'me', isHost: l.host === 'me' };

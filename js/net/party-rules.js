@@ -24,6 +24,7 @@
 //           last car; type one of the last two cars' words to cut it off at once. Shorter is weaker.
 //           A car grows back every 14 s. When no cars are left the head takes the hits.
 //   golem   one big target. Its core opens now and then: 6 s of double damage.
+//   mixed   the Mixed run's areas add mites to a golem, a train and the twins.
 //   twins   Syntax and Echo. Type a name to aim. When one falls, the other must fall within 10 s
 //           or the first comes back at half HP.
 //
@@ -49,9 +50,19 @@
     core: { kind: 'twins', area: 'Fixword core', boss: 'Syntax and Echo', look: 4, hp: 2400, every: [6500, 9000], dmg: 22, windup: 4200, names: ['syntax', 'echo'], relink: 12000,
       chip: { every: [2800, 4200], dmg: 9, what: 'beam' } },
   };
+  // mixed fights: a main kind plus mites, which any kind can carry
+  Object.assign(AREAS, {
+    foundry: { kind: 'golem', area: 'Foundry floor', boss: 'Kiln Golem', look: 5, hp: 2100, every: [8000, 10500], dmg: 22, windup: 4600, weakEvery: [22000, 28000], weakMs: 6000, weakX: 2,
+      chip: { every: [6000, 7500], dmg: 6, what: 'quake', team: true }, mite: { every: [4200, 6200], travel: [9000, 11500], bite: 10, popX: 4, max: 4 } },
+    mirror: { kind: 'twins', area: 'Mirror stack', boss: 'Syntax and Echo', look: 6, hp: 2300, every: [7500, 10000], dmg: 22, windup: 4400, names: ['syntax', 'echo'], relink: 12000,
+      chip: { every: [3600, 5000], dmg: 8, what: 'beam' }, mite: { every: [4500, 6500], travel: [9000, 11500], bite: 10, popX: 4, max: 4 } },
+    junction: { kind: 'snake', area: 'Junction yard', boss: 'Null Conductor', look: 7, hp: 2200, every: [7500, 10000], dmg: 22, windup: 4400, cars: 10, regrow: 13000,
+      chip: { every: [4000, 5500], dmg: 8, what: 'whip' }, mite: { every: [5000, 7000], travel: [9500, 12000], bite: 10, popX: 4, max: 3 } },
+  });
   const RUNS = {
     relay: { id: 'relay', name: 'Relay run', fights: ['relay', 'market', 'transit'] },
     deep: { id: 'deep', name: 'Deep run', fights: ['relay', 'market', 'transit', 'firmware', 'core'] },
+    mixed: { id: 'mixed', name: 'Mixed run', fights: ['relay', 'foundry', 'junction', 'mirror'] },
   };
   const DIFF = { easy: { hp: 0.7, dmg: 0.7 }, normal: { hp: 1, dmg: 1 }, hard: { hp: 1.35, dmg: 1.4 } };
   const ROLES = {
@@ -203,12 +214,12 @@
       fights.push({ fight: f, key: boss.key, kind: A.kind, area: A.area, boss: A.boss, startedAt: at, endedAt: null, won: false });
       for (const p of P.values()) setupPlayer(p);
       schedule(at + 6000 + r() * 3000, nextAttack);
-      if (A.kind === 'swarm') schedule(at + 2500, nextMite);
+      if (A.mite) schedule(at + (A.kind === 'swarm' ? 2500 : 7000), nextMite);
       if (A.chip) schedule(at + 5000 + r() * 2000, chip);
       if (A.kind === 'snake') schedule(at + A.regrow * (1 + 0.4 * (4 - n)), regrowCar);
       if (A.kind === 'golem') schedule(at + A.weakEvery[0] * 0.6, openCore);
       if (o.art && o.art.fight === f) schedule(at + (o.art.ms || 4000), artJoin);
-      emit({ type: 'fight', phase: 'start', fight: f, of: R.fights.length, key: boss.key, kind: A.kind, area: A.area, boss: A.boss, look: A.look, hp: boss.maxHp, foes: foes.map(foeView), at });
+      emit({ type: 'fight', phase: 'start', fight: f, of: R.fights.length, key: boss.key, kind: A.kind, adds: A.mite && A.kind !== 'swarm' ? 'mites' : null, area: A.area, boss: A.boss, look: A.look, hp: boss.maxHp, foes: foes.map(foeView), at });
     }
     const foeView = x => ({ id: x.id, kind: x.kind, name: x.name, word: x.word || null, hp: Math.max(0, Math.round(x.hp)), maxHp: x.maxHp, alive: x.alive, slot: x.slot, lane: x.lane || null, born: x.born || 0, land: x.land || 0, path: x.path || 0, regrowAt: x.regrowAt || 0 });
 
@@ -312,7 +323,7 @@
 
     // swarm: mites fly at one player each
     function nextMite() {
-      if (phase !== 'fight' || boss.kind !== 'swarm') return;
+      if (phase !== 'fight' || !boss.mite) return;
       const M = boss.mite;
       const ups = live();
       if (alive().filter(x => x.kind === 'mite').length < M.max && ups.length) {
@@ -462,7 +473,7 @@
         if (x.kind === 'mite') {
           x.alive = false; st.pops++; recent.set(x.word, t);
           emit({ type: 'foeGone', id: x.id, how: 'pop', by: p.id, at: t });
-          const q = foes.find(y => y.kind === 'queen' && y.alive);
+          const q = foes.find(y => y.kind === 'queen' && y.alive) || streamTarget(p);
           damage(p, q, s.letters * boss.mite.popX * dmgMult(), 'pop', { from: x.id });
         } else damage(p, x, x.hp, 'cut');
         return;
@@ -566,7 +577,7 @@
       const head = boss && boss.kind;
       return {
         phase, fight: f, of: R.fights.length, run: R.id, clock,
-        boss: boss && { key: boss.key, kind: head, name: boss.boss, area: boss.area, look: boss.look, hp: Math.max(0, bossHp()), maxHp: boss.maxHp },
+        boss: boss && { key: boss.key, kind: head, adds: boss.mite && head !== 'swarm' ? 'mites' : null, name: boss.boss, area: boss.area, look: boss.look, hp: Math.max(0, bossHp()), maxHp: boss.maxHp },
         foes: foes.filter(x => x.alive || x.regrowAt).map(foeView),
         weak: Math.max(0, weakUntil - clock), relink: relinkAt ? Math.max(0, relinkAt - clock) : 0,
         teamCombo, teamTier: tierOf(teamCombo), teamMult: +dmgMult().toFixed(2), meter, buffOffer: buffOffer && buffOffer.slice(), buffN,
@@ -624,7 +635,7 @@
       if (q && !q.shield && !q.down) T.push({ id: `s:${st.attack.id}`, word: q.handle, kind: 'shield', chance: 0.55 });
     }
     const kind = st.boss && st.boss.kind;
-    if (kind === 'swarm') {
+    {
       const mites = st.foes.filter(x => x.kind === 'mite' && x.alive).sort((a, b) => a.land - b.land);
       for (const m of mites) T.push({ id: `m:${m.id}`, word: m.word, kind: 'foe', chance: m.lane === id ? 0.9 : 0.3 });
     }

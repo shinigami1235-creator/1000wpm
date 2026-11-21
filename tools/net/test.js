@@ -248,6 +248,14 @@ function partyRun(runId, diff, seed, players, extra = {}) {
   ok(kinds === 'hydra,swarm,snake,golem,twins', 'five different fight kinds');
 }
 {
+  const players = [{ id: 'a', name: 'alpha_one', role: 'striker' }, { id: 'b', name: 'bravo', role: 'guard' }, { id: 'c', name: 'charlie', role: 'support' }];
+  const { r, ev } = partyRun('mixed', 'normal', 'p4', players);
+  console.log('  mixed run, 3 bots:', r.won ? 'won' : 'lost', r.fights.map(f => `${f.key} ${((f.endedAt - f.startedAt) / 1000).toFixed(0)}`).join(', '));
+  ok(r.won && r.cleared === 4, 'three bots clear the normal mixed run');
+  const golemFight = r.fights.find(f => f.key === 'foundry');
+  ok(ev.some(e => e.type === 'foe' && e.at > golemFight.startedAt && e.at < golemFight.endedAt), 'the Kiln Golem sends mites');
+}
+{
   // a slow team on hard goes down; teammates get revived on the way
   const players = [{ id: 'a', name: 'slowpoke', role: 'striker', wpm: 24 }, { id: 'b', name: 'snail', role: 'guard', wpm: 24 }, { id: 'c', name: 'turtle', role: 'striker', wpm: 26 }];
   const { r, ev } = partyRun('relay', 'hard', 'p3', players);
