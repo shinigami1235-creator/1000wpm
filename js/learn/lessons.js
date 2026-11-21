@@ -16,6 +16,7 @@ window.LEARN = (() => {
   const HOME_WORDS = 'as add ads all ask asks dad dads fad fall falls flag flags flash flask gal gas glad glass had half hall halls has hash lad lads lag lash lass sad salad salsa sash shall slash dash ash alas sag'.split(' ');
   const NUMBERS = ['room 204', '10 cats', '7 days', '24 hours', '365 days', 'the year 2026', '50 coins', '12 eggs', '3 cups', '60 seconds', '100 words', '8 lessons', '4 keys', 'page 38', '90 minutes', '15 tests', 'bus 61', '29 steps', 'flat 7b', '1 or 2'];
   const PUNCT = ['Yes, it is.', 'Who won?', 'Stop!', 'It\'s late.', 'I\'m here, Art.', 'Dad, wait!', 'Is it done?', 'Wow, that\'s fast.', 'Don\'t look down.', 'Ready? Go!', 'Tea, toast and jam.', 'She said yes.', 'We won!', 'Can you see it?', 'No, not yet.', 'Here it is.'];
+  const SYMBOLS = ['(yes)', '[1, 2, 3]', 'x = 5;', 'a + b', 'a - b', 'x * y', 'a / b', '"hello"', "'ok'", 'i++', '{ a: 1 }', '<b>', 'a != b', 'x >= 10', 'f(x)', 'list[0]', 'user_name', 'n += 2', '"a" + "b"', 'if (a > b)', 'x: 10;', '(a + b) * c', '[x, y]', '{ }', 'a == b', 'url/path', 'key: "value"'];
   const SENTENCES = [
     'The cat sat on the warm desk.', 'We type a little every day.', 'Rest your hands on the home row.', 'Look at the screen and keep going.',
     'She found her keys under the bed.', 'The bus was late again today.', 'He made tea and sat by the window.', 'My new keyboard is very quiet.',
@@ -146,7 +147,57 @@ window.LEARN = (() => {
       drill: () => LearnWords.long(16, { min: 6, max: 9 }).filter(w => !SKIP.has(w)).join(' '),
       pass: { acc: 97, wpm: 15 }, two: { acc: 98, wpm: 22 }, three: { acc: 100, wpm: 28 },
     },
+    {
+      id: 'symbols', title: 'Symbols and brackets', blurb: 'The keys chat, code and passwords use: brackets, = + - * / and quotes.',
+      guide: K => [
+        'Square and curly brackets sit right of P. Round brackets are Shift with 9 and 0.',
+        'Each pair uses one finger for both halves, so the closing bracket is the key next to the opening one.',
+        'Hold Shift with the other hand for ( ) { } < > + * and quotes.',
+        'Your right little finger covers most of these keys, so keep the other fingers on the home row while it reaches.',
+        'Go slow here. Speed on symbols comes last.',
+      ],
+      keys: () => '()[]{}<>=+-*/;:\'"_ ',
+      drill: K => pickN(SYMBOLS.filter(x => fit(K, x)), 12).join(' '),
+      pass: { acc: 90, wpm: 10 }, two: { acc: 94, wpm: 16 }, three: { acc: 97, wpm: 22 },
+    },
+    {
+      id: 'stamina', title: 'Long passage', blurb: 'A real paragraph from a book, capitals and all. Keep your pace to the end.',
+      guide: () => [
+        'This one is a full paragraph, so settle into a pace you can hold for a minute or two.',
+        'Read a few words ahead of where you are typing.',
+        'A mistake near the end costs as much as one at the start, so stay careful when you get tired.',
+      ],
+      keys: () => null,
+      drill: K => {
+        const P = window.PASSAGES;
+        const list = P ? P.LIST.filter(x => x.len === 'medium' && fit(K, x.text)) : [];
+        return list.length ? list[Math.floor(Math.random() * list.length)].text : pickN(SENTENCES.filter(x => fit(K, x)), 8).join(' ');
+      },
+      pass: { acc: 94, wpm: 25 }, two: { acc: 96, wpm: 32 }, three: { acc: 98, wpm: 40 },
+    },
   ];
+
+  // practice for the keys a player misses most: words that use them, one key after another,
+  // and the other keys (digits, punctuation) typed as part of a word
+  function weakDrill(K, keys, n = 26) {
+    const letters = keys.filter(k => /^[a-z]$/.test(k));
+    const words = letters.length ? LearnWords.only('abcdefghijklmnopqrstuvwxyz', { need: letters.join(''), min: 3, max: 8 }).filter(w => !SKIP.has(w) && fit(K, w)) : [];
+    const plain = LearnWords.common(40, { top: 300, min: 3, max: 6 });
+    const pools = new Map(keys.map(k => [k, []]));
+    const draw = k => {
+      let pool = pools.get(k);
+      if (!pool.length) pool.push(...shuffle(/^[a-z]$/.test(k) ? words.filter(w => w.includes(k)) : plain));
+      return pool.pop();
+    };
+    const out = [];
+    for (let i = 0; out.length < n && i < n * 3; i++) {
+      const k = keys[i % keys.length];
+      if (/^[a-z]$/.test(k)) { const w = draw(k); if (w) out.push(w); }
+      else if (/[0-9]/.test(k)) out.push(`${k}${Math.floor(Math.random() * 10)}${k}`);
+      else if (k !== ' ' && K.has(k)) { const w = draw(k); if (w) out.push(/[([{<"']/.test(k) ? k + w : w + k); }
+    }
+    return out.join(' ');
+  }
 
   // one tip per lesson, shown on its result. The map shows the ones marked map between groups.
   const TIPS = {
@@ -160,6 +211,8 @@ window.LEARN = (() => {
     sentences: { text: 'Hold Ctrl and press Backspace to delete the whole word.', map: true },
     speed: { text: 'Warm up with two easy minutes of common words before a timed test.' },
     accuracy: { text: 'Take a short break every 20 minutes and shake out your hands.', map: true },
+    symbols: { text: 'Brackets and quotes come in pairs, so check the closing one before you move on.' },
+    stamina: { text: 'Free typing has more passages to practise on, in four lengths.' },
   };
 
   // stars for a run: 0 is a fail. Accuracy is checked before speed.
@@ -189,5 +242,5 @@ window.LEARN = (() => {
     space: { name: 'Space', words: 'planet orbit comet moon star rocket galaxy nebula meteor crater gravity asteroid launch shuttle saturn jupiter mars venus mercury neptune telescope eclipse solar lunar cosmic satellite module capsule'.split(' ') },
   };
 
-  return { LESSONS, TIPS, stars, PLACEMENT, place, PACKS, SENTENCES, byId: id => LESSONS.find(l => l.id === id) };
+  return { LESSONS, TIPS, stars, PLACEMENT, place, PACKS, SENTENCES, weakDrill, byId: id => LESSONS.find(l => l.id === id) };
 })();

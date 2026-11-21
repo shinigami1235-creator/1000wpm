@@ -1,6 +1,6 @@
 // The typing box the academy and free typing share, built on TT.TypeText and TT.captureKeys.
 // LearnTyper.mount(stage, text, opts) returns { tt, focus(), set(text), destroy() }.
-// opts: label, onChar(ok, tt), onDone(tt, ms), onKey(key), onBack(tt)
+// opts: label, onChar(ok, tt, want), onDone(tt, ms), onKey(key), onBack(tt)   want is the character the text asked for
 // The box shows a fixed number of lines and scrolls so the caret stays on the second one.
 window.LearnTyper = (() => {
   function mount(stage, text, o = {}) {
@@ -26,10 +26,11 @@ window.LearnTyper = (() => {
       onChar(ch) {
         if (done) return;
         win.classList.remove('idle');
+        const want = tt.text[tt.pos];
         const ok = tt.input(ch);
         TT.click(ch === ' ');
         scroll();
-        if (o.onChar) o.onChar(ok, tt);
+        if (o.onChar) o.onChar(ok, tt, want);
         if (tt.done()) { done = true; if (o.onDone) o.onDone(tt, performance.now() - tt.startT); }
       },
       onBack(word) { if (done || !tt.startT) return; word ? tt.backWord() : tt.back(); scroll(); if (o.onBack) o.onBack(tt); },

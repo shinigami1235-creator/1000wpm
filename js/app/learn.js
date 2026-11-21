@@ -44,6 +44,24 @@ window.LearnPage = (() => {
     return fk;
   }
 
+  // ---------- weak keys ----------
+  // per-key results for a run, keyed by the character the text asked for (same as the typing test)
+  function noteKey(ks, want, ok) {
+    if (want === undefined || ok === null || ok === undefined) return;
+    const k = want === ' ' ? ' ' : want.toLowerCase();
+    const t = (ks[k] ||= [0, 0]);
+    t[ok ? 0 : 1]++;
+  }
+  // the keys missed most often, from every typing test and lesson on this device
+  function weakKeys(n = 4) {
+    const all = WPM.keyStats ? WPM.keyStats() : {};
+    return Object.entries(all).filter(([k, [ok, bad]]) => k !== ' ' && ok + bad >= 15 && bad >= 2)
+      .map(([k, [ok, bad]]) => ({ k, rate: bad / (ok + bad), n: ok + bad }))
+      .filter(x => x.rate >= 0.05).sort((a, b) => b.rate - a.rate).slice(0, n);
+  }
+  const pct = x => `${Math.round(x * 1000) / 10}%`;
+  const keyName = k => (k === ' ' ? 'space' : k);
+
   // ---------- map ----------
   function renderMap() {
     const p = prog(), e = UI.esc;
@@ -70,12 +88,13 @@ window.LearnPage = (() => {
       <div class="lx lx-map">
         <header class="lx-head">
           <h1>Academy</h1>
-          <p class="lx-lead">${LS().length} lessons that take you from the home row to full sentences. Pass a lesson to open the next one.</p>
+          <p class="lx-lead">${LS().length} lessons that take you from the home row to symbols and long passages. Pass a lesson to open the next one.</p>
           <div class="lx-acts">${main}${all || placedOut ? '' : '<a class="btn out" href="#/type/learn/placement">Take the placement test</a>'}</div>
           <p class="lx-note">${placedOut ? `Your placement test opened every lesson. The <a href="#/type">typing test</a>, <a href="#/play/race">the race</a> and <a href="#/play/breach">Breach</a> are the next step.`
             : all ? `Every lesson is passed. The <a href="#/type">typing test</a>, <a href="#/play/race">the race</a> and <a href="#/play/breach">Breach</a> are the next step.`
             : 'The placement test takes 1 minute and opens every lesson you can skip.'}</p>
         </header>
+        ${weakPanel()}
         <div class="lx-cols">
           <section class="lx-lessons" aria-labelledby="lx-l">
             <h2 id="lx-l">Lessons <span class="lx-count">${p.passed} of ${LS().length} passed, ${p.stars} of ${LS().length * 3} stars</span></h2>
@@ -89,6 +108,91 @@ window.LearnPage = (() => {
         </div>
       </div>`;
     keyboardBlock(el.querySelector('[data-kb]'), { hands: false });
+  }
+
+  function weakPanel() {
+    const w = weakKeys();
+    if (w.length < 2) return `<section class="lx-weak empty" aria-labelledby="lx-w"><h2 id="lx-w">Your weak keys</h2><p class="lx-sub">Finish a few lessons or typing tests and the keys you miss most show up here, with a drill for them.</p></section>`;
+    return `<section class="lx-weak" aria-labelledby="lx-w">
+      <div><h2 id="lx-w">Your weak keys</h2><p class="lx-sub">The keys you miss most, from every typing test and lesson on this device.</p></div>
+      <ol class="lx-wk">${w.map(x => `<li><kbd>${UI.esc(keyName(x.k))}</kbd><span>${pct(x.rate)} missed</span></li>`).join('')}</ol>
+      <a class="btn" href="#/type/learn/weak">Practise these keys</a>
+    </section>`;
+  }
+
+  // ---------- weak keys practice ----------
+  function renderWeak() {
+    const e = UI.esc;
+    const K = () => FingerKeys.info(layout());
+    const w = weakKeys();
+    if (w.length < 2) { location.hash = '#/type/learn'; return; }
+    const keys = w.map(x => x.k);
+    el.innerHTML = `
+      <div class="lx lx-lesson">
+        <nav class="lx-crumb" aria-label="Academy"><a href="#/type/learn">Academy</a><span>Weak keys</span></nav>
+        <h1>Your weak keys</h1>
+        <ul class="lx-guide">
+          <li>You miss ${w.map(x => `${e(keyName(x.k))} ${pct(x.rate)} of the time`).join(', ')}.</li>
+          <li>Every word below has at least one of them. Type slowly enough that you don't miss.</li>
+          <li>Watch which finger the keyboard lights up for each one.</li>
+        </ul>
+        <div class="lx-stage" data-stage></div>
+        <p class="lx-hint" data-hint></p>
+        <div class="lx-kbwrap" data-kb></div>
+      </div>`;
+    const fk = keyboardBlock(el.querySelector('[data-kb]'));
+    let box = null, offResult = null, ks = {};
+    function start() {
+      if (offResult) { offResult(); offResult = null; }
+      const stage = el.querySelector('[data-stage]');
+      stage.innerHTML = '';
+      if (box) box.destroy();
+      fk.focus([...keys, ' ']);
+      const text = LEARN.weakDrill(K(), keys);
+      ks = {};
+      box = LearnTyper.mount(stage, text, {
+        label: 'Weak keys practice',
+        onChar: (ok, tt, want) => { noteKey(ks, want, ok); fk.light(tt.text[tt.pos]); },
+        onBack: tt => fk.light(tt.text[tt.pos]),
+        onDone: (tt, ms) => finish(tt, ms),
+        onKey: key => { if (key === 'Tab' || key === 'Escape') start(); },
+      });
+      fk.light(text[0]);
+      el.querySelector('[data-hint]').innerHTML = `Pass at 90% accuracy. ${C.weak} coins a pass, up to ${C.weakDailyCap} a day. Press <kbd>Tab</kbd> for new words.`;
+    }
+    function finish(tt, ms) {
+      const wpm = Math.round((tt.correct / 5) / Math.max(ms, 1000) * 60000);
+      const acc = tt.accuracy();
+      const today = UI.day();
+      const l = WPM.learn();
+      const paid = l.weakDay && l.weakDay.on === today ? l.weakDay.coins : 0;
+      const coins = acc >= 90 ? Math.max(0, Math.min(C.weak, C.weakDailyCap - paid)) : 0;
+      if (coins) WPM.setLearn({ weakDay: { on: today, coins: paid + coins } });
+      // this run's misses on the weak keys next to the all-time rate
+      const rows = w.map(x => { const r = ks[x.k] || [0, 0]; const n = r[0] + r[1]; return { k: x.k, before: x.rate, now: n ? r[1] / n : 0, n }; });
+      WPM.record({ mode: 'learn-weak', wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), coins, keyStats: ks });
+      box.destroy(); box = null;
+      fk.light(null);
+      el.querySelector('[data-stage]').innerHTML = `
+        <div class="lx-result ${acc >= 90 ? 'pass' : 'fail'}" aria-live="polite">
+          <h2>${acc >= 90 ? 'Passed' : 'Not passed'}</h2>
+          <div class="lx-nums">
+            <div class="${acc >= 90 ? '' : 'miss'}"><b>${acc}%</b><span>Accuracy, pass 90%</span></div>
+            <div><b>${wpm}</b><span>Wpm</span></div>
+            ${coins ? `<div class="coin"><b>+${coins}</b><span>Coins</span></div>` : ''}
+          </div>
+          <table class="lx-wtable"><thead><tr><th scope="col">Key</th><th scope="col">Missed before</th><th scope="col">Missed this run</th></tr></thead>
+            <tbody>${rows.map(x => `<tr><td><kbd>${e(keyName(x.k))}</kbd></td><td>${pct(x.before)}</td><td class="${x.n && x.now < x.before ? 'green' : x.n ? 'red' : ''}">${x.n ? pct(x.now) : 'Not in this run'}</td></tr>`).join('')}</tbody></table>
+          <div class="lx-acts"><button class="btn" type="button" data-again>Go again</button><a class="btn out" href="#/type/learn">Academy</a></div>
+        </div>`;
+      el.querySelector('[data-hint]').innerHTML = 'Press <kbd>Tab</kbd> to go again.';
+      el.querySelector('[data-again]').addEventListener('click', start);
+      const onKey = ev => { if (ev.key === 'Tab') { ev.preventDefault(); start(); } };
+      document.addEventListener('keydown', onKey);
+      offResult = () => document.removeEventListener('keydown', onKey);
+    }
+    start();
+    stops.push(() => { if (box) box.destroy(); if (offResult) offResult(); });
   }
 
   // ---------- lesson ----------
@@ -111,7 +215,7 @@ window.LearnPage = (() => {
     const fk = keyboardBlock(kbHost);
     const paintGuide = () => { el.querySelector('[data-guide]').innerHTML = L.guide(K()).map(g => `<li>${e(g)}</li>`).join(''); };
     paintGuide();
-    let box = null, offResult = null;
+    let box = null, offResult = null, ks = {};
     const markLine = `Pass: ${L.pass.acc}% accuracy, then ${L.pass.wpm} wpm. 3 stars: ${L.three.acc}% and ${L.three.wpm} wpm.`;
 
     function start() {
@@ -122,9 +226,10 @@ window.LearnPage = (() => {
       const k = K();
       fk.focus(L.keys(k));
       const text = L.drill(k);
+      ks = {};
       box = LearnTyper.mount(stage, text, {
         label: `Lesson ${i + 1}, ${L.title}`,
-        onChar: (ok, tt) => fk.light(tt.text[tt.pos]),
+        onChar: (ok, tt, want) => { noteKey(ks, want, ok); fk.light(tt.text[tt.pos]); },
         onBack: tt => fk.light(tt.text[tt.pos]),
         onDone: (tt, ms) => finish(tt, ms),
         onKey: key => { if (key === 'Tab' || key === 'Escape') start(); },
@@ -145,7 +250,7 @@ window.LearnPage = (() => {
       if (st > prev.stars) coins += C.perNewStar * (st - prev.stars);
       const lessons = { ...now.lessons, [L.id]: { stars: Math.max(prev.stars, st), wpm: Math.max(prev.wpm || 0, wpm), acc: Math.max(prev.acc || 0, acc) } };
       WPM.setLearn({ lessons, open: Math.max(now.open, st ? i + 1 : 0) });
-      WPM.record({ mode: 'learn-' + L.id, wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), coins });
+      WPM.record({ mode: 'learn-' + L.id, wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), coins, keyStats: ks });
       if (st && window.WPM && WPM.track) WPM.track('lesson_pass', { lesson: L.id, wpm, acc, stars: st, first: !prev.stars });
       const allNow = LS().every(x => (lessons[x.id] || {}).stars);
       let bonus = 0;
@@ -280,9 +385,10 @@ window.LearnPage = (() => {
     const id = params[0] || '';
     const L = LEARN.byId(id);
     if (id === 'placement') renderPlacement();
+    else if (id === 'weak') renderWeak();
     else if (L) renderLesson(L);
     else renderMap();
-    document.title = `${id === 'placement' ? 'Placement test' : L ? L.title : 'Academy'} | lowercase`.toLowerCase();
+    document.title = `${id === 'placement' ? 'Placement test' : id === 'weak' ? 'Weak keys' : L ? L.title : 'Academy'} | lowercase`.toLowerCase();
     scrollTo(0, 0);
   }
 

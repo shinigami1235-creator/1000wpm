@@ -57,7 +57,7 @@ window.UI = (() => {
     const h = /^horde-(\d)$/.exec(m);
     // academy lessons are named from js/learn/lessons.js when the academy has loaded
     const L = /^learn-/.test(m) && window.LEARN ? LEARN.byId(m.slice(6)) : null;
-    const base = MODES[m] || (h ? `Breach ch. ${h[1]}` : /^learn-/.test(m) ? (L ? `Academy, ${L.title}` : 'Academy') : m);
+    const base = MODES[m] || (h ? `Breach ch. ${h[1]}` : /^learn-/.test(m) ? (L ? `Academy, ${L.title}` : m === 'learn-weak' ? 'Academy, weak keys' : 'Academy') : m);
     return difficulty && DIFF[difficulty] ? `${base}, ${DIFF[difficulty]}` : base;
   }
 
