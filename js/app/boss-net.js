@@ -3,9 +3,14 @@
 //
 //   WorldBossNet.connect({ id, name })    -> Promise<state>   join the current fight
 //   WorldBossNet.now()                    -> ms               the fight clock (server time)
-//   WorldBossNet.sendDamage(letters, opt) -> void             one correctly typed word from the stack
+//   WorldBossNet.sendDamage(letters, opt) -> void             one correctly typed word from the stack, or one spell hit
 //                                                             opt: { crit, jam } from the player's streak and missed blocks
-//   WorldBossNet.sendBlock(attackId, text)  -> Promise<{ ok }> the counter word typed before the hit
+//                                                             plus the combat layer's { mult, tier, pierce, color } and,
+//                                                             for a spell hit, { kind: 'spell', spell: id } with letters = its damage.
+//                                                             A server must check mult against the player's combo, statuses
+//                                                             and casts rather than trust it (see COMBAT.md).
+//   WorldBossNet.sendBlock(attackId, text, opt) -> Promise<{ ok }> the counter word typed before the hit
+//                                                             opt.grace: ms past the hit still allowed (cryo lock, up to 6000)
 //   WorldBossNet.sendReturn(shotId, word)   -> Promise<{ ok }> a thrown word sent back
 //   WorldBossNet.sendAddKill(addId, word)   -> Promise<{ ok }> an add destroyed
 //   WorldBossNet.onState(fn)              -> unsubscribe      fn(state), a few times a second
@@ -19,7 +24,7 @@
 //          phase, phaseAt: [ms per phase], shield: { id, hp, max } | null,
 //          weak: { until, mult } | null, blocks: { [attackId]: count }, addsDown: { [addId]: name },
 //          raiders: [{ id, name, damage, blocks, you }] }   raiders sorted by damage, highest first
-// hit:   { id, name, letters, dmg, kind: 'word' | 'return' | 'block' | 'add', crit, weak, shield, at, you }
+// hit:   { id, name, letters, dmg, kind: 'word' | 'return' | 'block' | 'add' | 'spell', crit, weak, shield, at, you, tier, spell, color }
 // event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'adds' | 'addDown' | 'impact' | 'defeat', ... }
 //
 // The phase is WorldBossRules.phaseOf(hp / maxHp) and the attacks come from
@@ -99,9 +104,11 @@ window.WorldBossNet = (() => {
       const t = now();
       const weak = R.weakMult(st, t) > 1;
       const base = kind === 'return' ? letters * R.RETURN_X : kind === 'block' ? letters * R.BLOCK_X : letters;
-      let dmg = Math.max(1, Math.round(base * R.multiplier(st, t, opts)));
+      // the combat layer's multiplier (combo tier, accuracy, speed, buffs) for words; spells arrive already multiplied
+      const cm = kind === 'word' ? Math.max(0.5, Math.min(8, +opts.mult || 1)) : 1;
+      let dmg = Math.max(1, Math.round(base * cm * R.multiplier(st, t, opts)));
       let toShield = 0;
-      if (st.shield) {
+      if (st.shield && !opts.pierce) {
         toShield = Math.min(dmg, st.shield.hp);
         st.shield.hp -= toShield;
         r.damage += toShield;
@@ -116,7 +123,8 @@ window.WorldBossNet = (() => {
       st.hp -= toHp;
       r.damage += toHp;
       dmg = toShield + toHp;
-      const h = { id, name: nameOf(r), letters, dmg, kind, crit: !!opts.crit, weak, shield: toShield > 0 && toHp === 0, at: t, you: id === 'you' };
+      const h = { id, name: nameOf(r), letters, dmg, kind, crit: !!opts.crit, weak, shield: toShield > 0 && toHp === 0, at: t, you: id === 'you',
+        tier: opts.tier || 0, spell: opts.spell || null, color: opts.color || null };
       emitHit(h);
       if (st.hp <= 0) {
         st.hp = 0; st.defeatedAt = t; st.lastHit = nameOf(r); st.shield = null;
@@ -242,11 +250,11 @@ window.WorldBossNet = (() => {
         return snapshot();
       },
       now,
-      sendDamage(letters, opts) { if (st) damage('you', Math.max(0, Math.round(letters)), 'word', opts || {}); },
-      async sendBlock(id, text) {
-        const t = now();
-        const e = st && findEvent(t, x => x.type === 'slam' && x.id === id);
-        if (!e || t >= e.hit || text !== e.word) return { ok: false };
+      sendDamage(letters, opts) { opts ||= {}; if (st) damage('you', Math.max(0, Math.round(letters)), opts.kind === 'spell' ? 'spell' : 'word', opts); },
+      async sendBlock(id, text, opts) {
+        const t = now(), grace = Math.max(0, Math.min(6000, (opts && opts.grace) || 0));
+        const e = st && R.eventsAt(st, t, grace).find(x => x.type === 'slam' && x.id === id);
+        if (!e || t >= e.hit + grace || text !== e.word) return { ok: false };
         return { ok: block('you', e) };
       },
       async sendReturn(id, word) {
@@ -308,7 +316,7 @@ window.WorldBossNet = (() => {
     connect: who => impl.connect(who),
     now: () => (impl.now ? impl.now() : Date.now()),
     sendDamage: (letters, opts) => impl.sendDamage(letters, opts),
-    sendBlock: (id, text) => impl.sendBlock(id, text),
+    sendBlock: (id, text, opts) => impl.sendBlock(id, text, opts),
     sendReturn: (id, word) => impl.sendReturn(id, word),
     sendAddKill: (id, word) => impl.sendAddKill(id, word),
     onState: fn => impl.onState(fn),

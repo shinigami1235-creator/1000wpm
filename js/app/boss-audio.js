@@ -9,6 +9,7 @@
 //   BossAudio.setOn(on)       follows the header sound button
 //   BossAudio.stop()          stops everything, for unmount
 //   BossAudio.renderFx(name)  renders a sound effect offline (for loudness checks)
+//   BossAudio.out()           { ac, bus }: the context and effects bus, for the combat sounds
 window.BossAudio = (() => {
   const TRACKS = ['wb-p1', 'wb-p2', 'wb-p3', 'wb-p4', 'wb-enrage'];
   const LOOP = 32 * 4 * 60 / 140, LOOP_AT = 0.5;
@@ -286,5 +287,6 @@ window.BossAudio = (() => {
 
   try { on = TT.soundOn(); } catch (e) {}
   const state = () => ({ ctx: ac ? ac.state : 'none', track: cur ? cur.name : fallback ? 'element' : '', on, want });
-  return { phase, victory, play, setOn, stop, unlock, renderFx, duck, state, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
+  function out() { ctx(); return { ac, bus: sfxBus }; }
+  return { phase, victory, play, setOn, stop, unlock, renderFx, duck, state, out, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
 })();

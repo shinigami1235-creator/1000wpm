@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="css/map.css">
 <link rel="stylesheet" href="css/learn.css">
 <link rel="stylesheet" href="css/progress.css">
+<link rel="stylesheet" href="css/combat.css">
 <script>/* the entrance plays once per session on #/home or no hash; js/app/intro.js runs it */(function(){var d=document.documentElement;try{if(/^(#\/?(home)?\/?)?$/.test(location.hash)&&!sessionStorage.getItem('wpm-intro-seen')){d.classList.add('intro','intro-cover');window.__introFS=setTimeout(function(){d.classList.remove('intro','intro-cover')},2500)}}catch(e){}})()</script>
 <script src="js/app/intro.js" async></script>
 <script type="importmap">
@@ -123,6 +124,8 @@
 <div class="toasts" id="toasts" role="region" aria-label="Notifications" aria-live="polite"></div>
 
 <script src="js/words.js"></script>
+<script src="js/wordbank-common.js"></script>
+<script src="js/wordbank.js"></script>
 <script src="js/core.js"></script>
 <script src="js/state.js"></script>
 <script src="js/keyboards.js"></script>
@@ -157,6 +160,13 @@
 <script src="js/app/free.js"></script>
 <script src="js/app/type-tabs.js"></script>
 <script src="js/app/play.js"></script>
+<script src="js/app/combat/bus.js"></script>
+<script src="js/app/combat/spells.js"></script>
+<script src="js/app/combat/combo.js"></script>
+<script src="js/app/combat/damage.js"></script>
+<script src="js/app/combat/engine.js"></script>
+<script src="js/app/combat/sfx.js"></script>
+<script src="js/app/combat/fx3d.js"></script>
 <script src="js/app/boss-rules.js"></script>
 <script src="js/app/boss-net.js"></script>
 <script src="js/app/boss-audio.js"></script>

@@ -19,17 +19,18 @@ window.WorldBossRules = (() => {
   // kinds:   which block attacks the boss uses (they look different and play the same)
   // phrase:  block words are two words long
   // heal:    HP a second each add heals while it lives
+  // diff:    word bank difficulty for the attack words (WordBank.meta score, 1 to 10)
   const PHASES = [
     { at: 1.00, name: 'Online',        cycle: 12000, wind: 5600, flight: 6500, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 1 }, intro: ['slam'], kinds: ['slam'], phrase: false, weakMult: 2 },
+      pool: { slam: 1 }, intro: ['slam'], kinds: ['slam'], phrase: false, weakMult: 2, diff: [2, 4] },
     { at: 0.75, name: 'Corrupted',     cycle: 11000, wind: 5000, flight: 6000, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 4, volley: 4, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2 },
+      pool: { slam: 4, volley: 4, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2, diff: [3, 5] },
     { at: 0.50, name: 'Memory leak',   cycle: 10000, wind: 4700, flight: 5600, shots: 4, adds: 3, heal: 60,
-      pool: { slam: 3, volley: 3, adds: 3, shield: 1 }, intro: ['adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2 },
+      pool: { slam: 3, volley: 3, adds: 3, shield: 1 }, intro: ['adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2, diff: [3, 6] },
     { at: 0.25, name: 'Kernel exposed', cycle: 9000,  wind: 5200, flight: 5000, shots: 4, adds: 3, heal: 80,
-      pool: { slam: 4, volley: 3, adds: 2, shield: 2 }, intro: ['slam'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2 },
+      pool: { slam: 4, volley: 3, adds: 2, shield: 2 }, intro: ['slam'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2, diff: [4, 6] },
     { at: 0.10, name: 'Kernel panic',  cycle: 7500,  wind: 4600, flight: 4400, shots: 5, adds: 4, heal: 100,
-      pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true },
+      pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true, diff: [4, 7] },
   ];
   const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload' };
 
@@ -66,8 +67,12 @@ window.WorldBossRules = (() => {
   }
 
   // ---------- words ----------
+  // Attack words come from the word bank: common words and the cyber pack, at the
+  // phase's difficulty. The pick is seeded by the attack's rng, so every raider gets
+  // the same words. Words in one attack start with different letters so the first
+  // key picks one. Without the word bank the old list in words.js is used.
+  const THEME = ['common', 'cyber'];
   let pools = null;
-  // names, places and short forms that slipped into the shared word list
   const SKIP = new Set(['henry', 'harry', 'smith', 'frank', 'luke', 'miller', 'ford', 'ireland', 'wales', 'turkey', 'asia', 'angeles', 'sydney', 'dallas',
     'zealand', 'kong', 'hong', 'san', 'jews', 'muslims', 'catholic', 'bbc', 'fbi', 'ceo', 'dna', 'ltd', 'pre', 'haha', 'thats', 'dude', 'kinda']);
   function pool(min, max) {
@@ -79,8 +84,12 @@ window.WorldBossRules = (() => {
     }
     return pools[k];
   }
-  // words in one attack start with different letters so the first key picks one
-  function pickWords(r, n, min, max, used = new Set()) {
+  function pickWords(r, n, min, max, used = new Set(), p = 0) {
+    if (window.WordBank) {
+      const out = WordBank.pick({ count: n, rng: r, minLen: min, maxLen: max, theme: THEME, difficulty: PHASES[p].diff, avoidFirstLetters: used, distinctFirst: true })
+        .filter(w => /^[a-z]+$/.test(w));
+      if (out.length === n) { out.forEach(w => used.add(w[0])); return out; }
+    }
     const list = pool(min, max), out = [];
     for (let i = 0; i < n; i++) {
       let w = list[Math.floor(r() * list.length)];
@@ -101,11 +110,11 @@ window.WorldBossRules = (() => {
     const P = PHASES[p];
     if (type === 'slam') {
       const kind = P.kinds[Math.floor(r() * P.kinds.length)];
-      const word = P.phrase ? pickWords(r, 2, 3, 5).join(' ') : pickWords(r, 1, 5, 7)[0];
+      const word = P.phrase ? pickWords(r, 2, 3, 5, new Set(), p).join(' ') : pickWords(r, 1, 5, 7, new Set(), p)[0];
       return { id, type, kind, word, start: c0, hit: c0 + P.wind, end: c0 + P.wind + 1400 };
     }
     if (type === 'volley') {
-      const n = P.shots, words = pickWords(r, n, 3, 5);
+      const n = P.shots, words = pickWords(r, n, 3, 5, new Set(), p);
       const shots = words.map((word, i) => {
         const launch = c0 + 1300 + i * 700;
         return { id: id + '.' + i, word, launch, arrive: launch + P.flight, lane: i };
@@ -113,7 +122,7 @@ window.WorldBossRules = (() => {
       return { id, type, start: c0, shots, end: shots[n - 1].arrive + 400 };
     }
     if (type === 'adds') {
-      const n = P.adds || 3, words = pickWords(r, n, 5, 8);
+      const n = P.adds || 3, words = pickWords(r, n, 5, 8, new Set(), p);
       const adds = words.map((word, i) => {
         const spawn = c0 + 1600 + i * 350;
         return { id: id + '.' + i, word, slot: i, spawn, until: spawn + ADD_LIFE };

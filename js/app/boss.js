@@ -3,6 +3,10 @@
 // (WorldBossRules), and the words those attacks carry show in their own slot
 // above the word stack: block, send back or destroy. The fight runs through
 // window.WorldBossNet (LocalDemo for now).
+// The combat layer (js/app/combat/, COMBAT.md) runs the combo, the spells and the
+// damage multipliers: clean words build a combo whose tiers upgrade the shot, and
+// combo 10, 25, 50, then every 25, offer spell words to cast. The word stack comes
+// from js/wordbank.js.
 Router.register('boss', (() => {
   // the rules, the boss and the audio are read in mount, so the order the scripts load in never matters
   let R, B, A, NAME, TIPS;
@@ -23,12 +27,13 @@ Router.register('boss', (() => {
     weak3: 'Hits on the open kernel deal triple damage.',
     stagger: `Six quick words in a row stagger ${name} and make your next three hits crits.`,
     start: 'Type the highlighted word and press Space. Each correct word deals one damage per letter.',
+    combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
+    spell: 'Type a green spell word with no typo to cast it. The offer goes after 15 seconds.',
   });
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug' };
   const STREAK_N = 6, STREAK_MS = 4500, STAGGER_CD = 8000, CRITS = 3, JAM_MS = 5000, ACTIVE_MS = 20000, LOCK_MS = 1200;
   const DMG_MILESTONES = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05];
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
-  const COMBO_MILESTONES = [25, 50, 100, 200];
 
   let el, scene, offs = [], timers = [], keys = null;
   let st = null;
@@ -38,6 +43,11 @@ Router.register('boss', (() => {
   let wordTimes = [], staggerAt = 0, critLeft = 0, jamUntil = 0, lockUntil = 0, lastKeyAt = 0, weakWas = false, shieldWas = false;
   let tipQ = [], tipUntil = 0, seenTips = new Set(), miles = new Set(), downTimer = 0, feedDirty = false;
   let labels = new Map(), misses = [], gone = new Map();
+  // the combat layer: this player's combo and spells, the sounds, the word stack's source
+  let me = null, cSnd = null, words = null, spellT = [], wordT0 = 0, grace = {}, frostMs = 0, castDmg = {}, avoid = new Set(), comboShown = false;
+  const STACK_DIFF = [[1, 4], [2, 4], [2, 5], [3, 5], [3, 6]];
+  const cSfx = (n, a) => { if (cSnd) cSnd.play(n, a); };
+  const later = (ms, fn) => { const id = setTimeout(() => { spellT = spellT.filter(x => x !== id); fn(); }, ms); spellT.push(id); };
 
   const q = k => el && el.querySelector(`[data-k="${k}"]`);
   const fmt = UI.fmt, esc = UI.esc;
@@ -48,7 +58,7 @@ Router.register('boss', (() => {
   const sfx = (n, a) => A.play(n, a);
 
   function newSession() {
-    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0 };
+    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0 };
     recorded = false;
   }
   function resetFight() {
@@ -56,14 +66,22 @@ Router.register('boss', (() => {
     feed = []; hist = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
+    spellT.forEach(clearTimeout); spellT = []; grace = {}; frostMs = 0; castDmg = {}; avoid = new Set(); comboShown = false;
+    if (me) me.reset();
   }
 
   function mount(root) {
     el = root;
     R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name; TIPS = tipsFor(NAME);
+    if (window.Combat && Combat.create) {
+      me = Combat.create({});
+      cSnd = Combat.Audio.create({ ctx: () => A.out().ac, out: () => A.out().bus, on: () => A.on });
+      wireCombat();
+    }
+    words = window.WordBank ? WordBank.stream({ theme: 'mix', difficulty: STACK_DIFF[0] }) : null;
     resetFight();
     try { seenTips = new Set(JSON.parse(localStorage.getItem('wpm-boss-tips') || '[]')); } catch (e) { seenTips = new Set(); }
-    stack = TT.randomWords(80);
+    stack = moreWords(80);
     // One centred column: HP, the arena, the attack slots, the word stack and a slim
     // strip with your numbers. The scoreboard, the live feed and the rest of your
     // stats sit in a drawer that Tab or the Scoreboard button opens.
@@ -92,6 +110,11 @@ Router.register('boss', (() => {
             <span class="wb-me" data-k="mestat"></span>
           </div>
           <ol class="wb-mini" data-k="mini" aria-label="Top raiders"></ol>
+          <div class="wb-combo" data-k="cbox" data-t="0" hidden aria-live="off">
+            <b data-k="cnum">0</b>
+            <span class="wb-combo-l"><span>Combo</span><em data-k="ctier">Bolt</em></span>
+            <i class="wb-cbar"><i data-k="cbar"></i><small data-k="cnext"></small></i>
+          </div>
           <p class="wb-tip" data-k="tip" aria-live="polite"></p>
           <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
           <div class="wb-banner" data-k="banner" hidden></div>
@@ -204,13 +227,21 @@ Router.register('boss', (() => {
   // ---------- typing ----------
   // A word goes to the first attack slot it matches, otherwise to the stack.
   function wordOf(t) { return t && t.kind ? t.word : stack[0]; }
+  // the spells on offer, as typing targets
+  function spellTargets() {
+    const o = me && me.offer();
+    if (!o) return [];
+    return o.spells.map(id => { const sp = Combat.spell(id); return { kind: 'spell', id: 'spell:' + id, word: sp.word, spell: sp, due: o.until, total: o.until - o.at }; });
+  }
   function retarget() {
-    if (target && target.kind && !mech.some(m => m.id === target.id)) target = null;
+    if (target && target.kind === 'spell' && !spellTargets().some(x => x.id === target.id)) target = null;
+    if (target && target.kind && target.kind !== 'spell' && !mech.some(m => m.id === target.id)) target = null;
     if (target && wordOf(target).startsWith(typed)) return;
-    const m = mech.find(x => x.word.startsWith(typed));
+    const m = mech.find(x => x.word.startsWith(typed)) || spellTargets().find(x => x.word.startsWith(typed));
     if (m) { target = m; return; }
     if (stack[0].startsWith(typed)) { target = { stack: true }; return; }
-    if (!target) target = { stack: true };
+    // a slip in the first letters of a spell word was more likely meant for the stack
+    if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
   }
   function onChar(ch) {
     if (!st || st.defeatedAt) return;
@@ -227,11 +258,14 @@ Router.register('boss', (() => {
       return;
     }
     sess.keys++;
+    if (!typed) wordT0 = t;
     typed += ch;
     retarget();
     const w = wordOf(target);
-    if (typed.length <= w.length && ch === w[typed.length - 1]) sess.good++;
+    const good = typed.length <= w.length && ch === w[typed.length - 1];
+    if (good) sess.good++;
     else clean = false;
+    if (me) me.key(good);
     TT.click(false);
     renderQueue();
     paintChips(true);
@@ -247,7 +281,9 @@ Router.register('boss', (() => {
     if (!typed || !st || st.defeatedAt) return;
     // an exact match wins, so a stack word that starts an attack word still counts
     const exact = mech.find(m => m.word === typed);
+    const spellHit = !exact && spellTargets().find(x => x.word === typed);
     if (exact) target = exact;
+    else if (spellHit) target = spellHit;
     else if (typed === stack[0]) target = { stack: true };
     else if (gone.has(typed) && performance.now() - gone.get(typed) < 3000) {
       // an attack word that just left the row: clear it without spending the stack word
@@ -258,18 +294,20 @@ Router.register('boss', (() => {
     } else if (!target) retarget();
     sess.keys++;                      // the space
     const t = now();
+    if (target && target.kind === 'spell') { castSpell(target.spell, clean && typed === target.word); return; }
     if (target && target.kind) {
       const m = target, ok = typed === m.word && t < m.due;
       if (!ok) misses.push({ typed, word: m.word, late: t >= m.due });
       typed = ''; target = null;
       if (ok) {
         sess.good++;
-        combo = clean ? combo + 1 : 0; best = Math.max(best, combo);
+        if (me) me.word({ letters: 0, clean });
+        else { combo = clean ? combo + 1 : 0; best = Math.max(best, combo); }
         streak(t);
         mine.add(m.id);
         if (m.kind === 'block') {
           sess.blocks++;
-          WorldBossNet.sendBlock(m.id, m.word);
+          WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0 });
           if (scene) scene.block(m.id);
           sfx('blockOk');
           pop('BLOCKED', 'cyan');
@@ -288,7 +326,8 @@ Router.register('boss', (() => {
           sfx('addKill');
         }
       } else {
-        sess.missed++; combo = 0;
+        sess.missed++;
+        if (me) me.miss('wrong'); else combo = 0;
         TT.click(true);
       }
       clean = true;
@@ -301,24 +340,33 @@ Router.register('boss', (() => {
       sess.good++;
       sess.letters += word.length;
       sess.words++;
-      combo = clean ? combo + 1 : 0;
-      best = Math.max(best, combo);
-      const crit = critLeft > 0;
-      if (crit) critLeft--;
-      WorldBossNet.sendDamage(word.length, { crit, jam: t < jamUntil });
+      if (me) {
+        // the combat layer sets the multiplier and the shot from the combo tier, accuracy, speed and buffs
+        const w = me.word({ letters: word.length, clean, ms: performance.now() - wordT0, useCrit: critLeft <= 0 });
+        const crit = critLeft > 0 ? (critLeft--, true) : w.crit;
+        const col = me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null;
+        WorldBossNet.sendDamage(word.length, { crit, jam: t < jamUntil, mult: w.mult, tier: w.tier, pierce: w.pierce, color: col });
+        if (w.tier >= 1) cSfx('shot' + Math.min(4, w.tier));
+      } else {
+        combo = clean ? combo + 1 : 0;
+        best = Math.max(best, combo);
+        const crit = critLeft > 0;
+        if (crit) critLeft--;
+        WorldBossNet.sendDamage(word.length, { crit, jam: t < jamUntil });
+      }
       TT.click(true);
       streak(t);
       milestone('combo', combo);
       if (combo && combo % 5 === 0) WPM.track('combo', { n: combo, mode: 'boss' });
     } else {
       sess.missed++;
-      combo = 0;
+      if (me) me.miss('wrong'); else combo = 0;
       misses.push({ typed, word });
     }
     hist.push({ word, ok });
     if (hist.length > 3) hist.shift();
     typed = ''; target = null; clean = true;
-    if (stack.length < 40) stack.push(...TT.randomWords(60));
+    if (stack.length < 40) stack.push(...moreWords(60));
     renderQueue();
     paintYou();
   }
@@ -334,6 +382,112 @@ Router.register('boss', (() => {
       pushFeed({ text: `You staggered ${NAME}`, cls: 'you' });
       tip('stagger');
     }
+  }
+
+  // ---------- combat: combo, spells and the word stack ----------
+  function moreWords(n) {
+    if (!words) return TT.randomWords(n);
+    // a stack word that is also the first word of an offered spell would make Space ambiguous
+    return words.next(n + 4).filter(w => !avoid.has(w)).slice(0, n);
+  }
+  function wireCombat() {
+    me.on('combo', c => { combo = c.combo; best = Math.max(best, c.best); paintCombo(c.reason === 'hurt' || c.reason === 'typo' || c.reason === 'wrong' || c.reason === 'fizzle'); });
+    me.on('tierUp', e => {
+      if (!el) return;
+      cSfx('tierUp', e.tier);
+      pop(e.name.toUpperCase(), 'green');
+      pushFeed({ text: `Combo ${e.combo}: ${e.name.toLowerCase()}`, cls: 'mile' });
+      tip('combo');
+      const b = q('cbox'); if (b) { b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); }
+    });
+    me.on('miss', e => { if (el && e.from >= 10) cSfx('break'); });
+    me.on('spellOffer', o => {
+      if (!el) return;
+      avoid = new Set(o.spells.map(x => x.word.split(' ')[0]));
+      stack = [stack[0], ...stack.slice(1).filter(w => !avoid.has(w))];
+      if (stack.length < 40) stack.push(...moreWords(60));
+      cSfx('offer');
+      tip('spell');
+      renderQueue(); paintChips(true);
+    });
+    me.on('offerEnd', () => { if (!el) return; if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
+    me.on('ward', () => { cSfx('ward'); if (scene) scene.fxEvent('ward'); });
+    me.on('guard', () => { if (!el) return; cSfx('guard'); if (scene) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: 'Quantum split kept your combo', cls: 'you' }); });
+    me.on('status', e => { if (!e.on && scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, false); if (el && st) paintMe(now()); });
+  }
+  // a spell word typed in full: cast it, or fizzle on a typo
+  function castSpell(sp, ok) {
+    typed = ''; target = null; clean = true;
+    const r = me.cast(sp.word, { clean: ok, shield: !!(st && st.shield) });
+    if (!r) { renderQueue(); paintChips(true); return; }
+    if (r.fizzled) {
+      sess.missed++;
+      cSfx('fizzle');
+      pop('FIZZLED', 'red');
+      pushFeed({ text: `${sp.word} fizzled on a typo`, cls: 'alert' });
+      renderQueue(); paintChips(true); paintYou();
+      return;
+    }
+    sess.good++; sess.casts++;
+    if (window.WPM && WPM.track) WPM.track('spell_cast', { spell: sp.id, mode: 'boss' });
+    const e = r.effect, t = now();
+    cSfx(sp.id);
+    if (sp.rarity >= 3) A.duck(0.5, sp.rarity >= 4 ? 3.2 : 2.4);
+    if (scene) scene.cast(sp.id, { hits: r.hits, effect: e });
+    pop(sp.word, 'spell');
+    if (sp.rarity >= 3) document.dispatchEvent(new CustomEvent('buddy', { detail: 'fast' }));
+    if (e.cleanse) jamUntil = 0;
+    if (e.debuff === 'freeze') freezeNext(e.ms);
+    if (e.returnShots) returnAll();
+    castDmg[sp.id] = 0;
+    const last = r.hits.length - 1;
+    r.hits.forEach((h, i) => later(h.at, () => {
+      if (!el || !st || st.defeatedAt) return;
+      WorldBossNet.sendDamage(h.amount, { kind: 'spell', spell: sp.id, pierce: r.pierce, jam: now() < jamUntil });
+      if (sp.strike) cSfx(sp.strike, h.power);
+      if (i === 0 && e.clearAdds) clearAdds();
+      if (i === last) later(300, () => { if (el) pushFeed({ text: `Your ${sp.word} dealt ${fmt(castDmg[sp.id] || 0)}`, cls: 'you' }); });
+    }));
+    if (!r.hits.length) pushFeed({ text: `You cast ${sp.word}`, cls: 'you' });
+    streak(t);
+    renderQueue(); paintChips(true); paintYou(); paintMe(t);
+  }
+  // cryo lock: the attack winding up now, or the next one, waits longer for you
+  function freezeNext(ms) {
+    const m = mech.find(x => x.kind === 'block' && !grace[x.id]);
+    if (m) { grace[m.id] = ms; if (scene) scene.freezeAttack(m.id); }
+    else frostMs = ms;
+    tick();
+  }
+  // neon nova: every live bug goes
+  function clearAdds() {
+    for (const m of mech.filter(x => x.kind === 'add')) {
+      mine.add(m.id); sess.adds++;
+      WorldBossNet.sendAddKill(m.id, m.word);
+      if (scene) scene.killAdd(m.id, true);
+    }
+    tick();
+  }
+  // packet storm: every packet in the air goes back
+  function returnAll() {
+    for (const m of mech.filter(x => x.kind === 'return')) {
+      mine.add(m.id); sess.returns++;
+      WorldBossNet.sendReturn(m.id, m.word);
+      if (scene) scene.returnShot(m.id);
+    }
+    tick();
+  }
+  function paintCombo(drop) {
+    const box = q('cbox'); if (!box || !me) return;
+    const c = me.state();
+    if (c.combo > 0) comboShown = true;
+    box.hidden = !comboShown;
+    q('cnum').textContent = c.combo;
+    q('ctier').textContent = c.name;
+    box.dataset.t = c.tier;
+    q('cbar').style.width = (100 * Math.min(1, c.progress)).toFixed(1) + '%';
+    q('cnext').textContent = c.next ? c.next : '';
+    if (drop) { box.classList.remove('drop'); void box.offsetWidth; box.classList.add('drop'); }
   }
 
   function renderQueue() {
@@ -380,32 +534,46 @@ Router.register('boss', (() => {
   function tick() {
     if (!el || !st) return;
     const t = now();
-    const evs = R.eventsAt(st, t, 800);
+    if (me) me.tick();
+    const evs = R.eventsAt(st, t, 800 + Math.max(0, ...Object.values(grace)));
     const list = [];
     for (const e of evs) {
       if (!sent.has(e.id)) {
         sent.add(e.id);
+        if (e.type === 'slam' && frostMs) { grace[e.id] = frostMs; frostMs = 0; if (scene) scene.freezeAttack(e.id); }
         if (scene) scene.event(e, t);
         if (e.type === 'slam') { sfx('windup', Math.min(2.5, (e.hit - t) / 1000)); tip(R.PHASES[st.phase].phrase ? 'phrase' : 'slam'); }
         if (e.type === 'volley') tip('volley');
         if (e.type === 'adds') tip('adds');
       }
       if (e.type === 'slam') {
-        if (t < e.hit && !mine.has(e.id)) {
-          list.push({ kind: 'block', id: e.id, word: e.word, due: e.hit, total: e.hit - e.start, ev: e });
-          const left = Math.ceil((e.hit - t) / 1000);
+        // cryo lock gives you extra time on one attack
+        const due = e.hit + (grace[e.id] || 0);
+        if (t < due && !mine.has(e.id)) {
+          list.push({ kind: 'block', id: e.id, word: e.word, due, total: due - e.start, ev: e });
+          const left = Math.ceil((due - t) / 1000);
           if (left <= 3 && warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
         }
-        if (t >= e.hit && !done.has(e.id)) {
+        if (t >= due && !done.has(e.id)) {
           done.add(e.id);
           if (mine.has(e.id)) sfx('impact', true);
           else if (active()) {
-            jamUntil = t + JAM_MS; combo = 0; sess.fails++;
-            if (scene) scene.hurt();
-            flashTint();
-            sfx('blockFail');
-            pop('HIT', 'red');
-            pushFeed({ text: `The ${R.ATTACK_NAME[e.kind]} hit you and halved your damage for 5s`, cls: 'alert' });
+            const stunned = me && me.status('stunned-target');
+            const r = me ? me.hurt('slam') : { blocked: false };
+            if (r.blocked) {
+              sfx('impact', true);
+              pop(stunned ? 'MISSED' : 'BLOCKED', 'cyan');
+              pushFeed({ text: stunned ? `The ${R.ATTACK_NAME[e.kind]} missed you during kernel panic` : `Safe mode blocked the ${R.ATTACK_NAME[e.kind]}`, cls: 'you' });
+            } else {
+              if (!(me && me.status('purge'))) jamUntil = t + JAM_MS;
+              if (!me) combo = 0;
+              sess.fails++;
+              if (scene) scene.hurt();
+              flashTint();
+              sfx('blockFail');
+              pop('HIT', 'red');
+              pushFeed({ text: me && me.status('purge') ? `The ${R.ATTACK_NAME[e.kind]} hit you` : `The ${R.ATTACK_NAME[e.kind]} hit you and halved your damage for 5s`, cls: 'alert' });
+            }
           } else sfx('impact', false);
         }
       } else if (e.type === 'volley') {
@@ -415,10 +583,14 @@ Router.register('boss', (() => {
           if (t >= s.arrive && !done.has(s.id)) {
             done.add(s.id);
             if (!mine.has(s.id) && active()) {
-              if (combo > 0) pushFeed({ text: 'A packet hit you and broke your combo', cls: 'alert' });
-              combo = 0;
-              if (scene) scene.hurt();
-              sfx('projHit');
+              const had = combo;
+              const r = me ? me.hurt('packet') : { blocked: false };
+              if (!r.blocked) {
+                if (had > 0) pushFeed({ text: 'A packet hit you and broke your combo', cls: 'alert' });
+                if (!me) combo = 0;
+                if (scene) scene.hurt();
+                sfx('projHit');
+              }
             }
           }
         }
@@ -458,22 +630,46 @@ Router.register('boss', (() => {
   function paintChips(force) {
     const row = q('chips'); if (!row || !st) return;
     const t = now();
-    const show = mech.slice(0, 5);
-    const key = show.map(m => m.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
+    const spells = st.defeatedAt ? [] : spellTargets();
+    const max = spells.length ? 3 : 5;
+    const show = mech.slice(0, max);
+    const key = show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
     if (force || key !== mechKey) {
       mechKey = key;
+      let html = '';
       if (!show.length) {
         const nx = st.defeatedAt ? null : R.nextEventAt(st, t);
-        row.innerHTML = nx ? `<span class="wb-next">Next attack in <b data-k="nexts">${Math.max(0, Math.ceil((nx - t) / 1000))}s</b></span>` : '';
+        html = nx ? `<span class="wb-next">Next attack in <b data-k="nexts">${Math.max(0, Math.ceil((nx - t) / 1000))}s</b></span>` : '';
       } else {
-        row.innerHTML = show.map((m, i) => {
+        html = show.map((m, i) => {
           const on = target && target.kind && target.id === m.id;
-          return `<span class="wb-chip ${m.kind}${i === 0 ? ' first' : ''}${on ? ' on' : ''}" data-id="${esc(m.id)}">
-            <small>${KIND[m.kind]}</small><span class="w">${lettersHtml(m.word, on ? typed : '', on)}</span>
+          return `<span class="wb-chip ${m.kind}${i === 0 ? ' first' : ''}${on ? ' on' : ''}${grace[m.id] ? ' frozen' : ''}" data-id="${esc(m.id)}">
+            <small>${grace[m.id] ? `Block +${Math.round(grace[m.id] / 1000)}s` : KIND[m.kind]}</small><span class="w">${lettersHtml(m.word, on ? typed : '', on)}</span>
             <i class="bar"><i></i></i><em class="secs"></em></span>`;
-        }).join('') + (mech.length > 5 ? `<span class="wb-more">+${mech.length - 5}</span>` : '');
+        }).join('') + (mech.length > max ? `<span class="wb-more">+${mech.length - max}</span>` : '');
       }
+      // the spells on offer sit after the attacks, in their own group
+      if (spells.length) {
+        html += `<span class="wb-spells" aria-label="Spells">` + spells.map(x => {
+          const on = target && target.kind === 'spell' && target.id === x.id;
+          return `<span class="wb-chip spell r${x.spell.rarity}${on ? ' on' : ''}" data-id="${esc(x.id)}" style="--sc:${x.spell.color}">
+            <small>${esc(x.spell.label)}</small><span class="w">${lettersHtml(x.word, on ? typed : '', on)}</span>
+            <i class="bar"><i></i></i><em class="secs"></em></span>`;
+        }).join('') + `</span>`;
+      }
+      row.innerHTML = html;
       paintLabels();
+    }
+    if (spells.length) {
+      const pn = performance.now();
+      for (const x of spells) {
+        const c = row.querySelector(`[data-id="${CSS.escape(x.id)}"]`);
+        if (!c) continue;
+        const left = Math.max(0, x.due - pn);
+        c.querySelector('.bar i').style.width = (100 * left / x.total).toFixed(1) + '%';
+        c.querySelector('.secs').textContent = Math.ceil(left / 1000) + 's';
+        c.classList.toggle('late', left < 4000);
+      }
     }
     if (!show.length) {
       const n = row.querySelector('[data-k="nexts"]');
@@ -493,7 +689,20 @@ Router.register('boss', (() => {
     const box = q('mestat'); if (!box) return;
     const bits = [];
     if (t < jamUntil) bits.push(`<span class="wb-flag jam">Damage halved <b>${Math.ceil((jamUntil - t) / 1000)}s</b></span>`);
-    if (critLeft > 0) bits.push(`<span class="wb-flag crit">Crit x2 on the next <b>${critLeft}</b> ${critLeft === 1 ? 'hit' : 'hits'}</span>`);
+    const crits = critLeft + ((me && me.status('crits') && me.status('crits').charges) || 0);
+    if (crits > 0) bits.push(`<span class="wb-flag crit">Crit x2 on the next <b>${crits}</b> ${crits === 1 ? 'hit' : 'hits'}</span>`);
+    if (me) {
+      const pn = performance.now();
+      for (const x of me.statuses()) {
+        const left = x.until ? Math.max(0, Math.ceil((x.until - pn) / 1000)) + 's' : '';
+        const f = {
+          ward: 'Safe mode', hyper: `Hyper thread x2 <b>${left}</b>`, root: `Root access x2 <b>${left}</b>`,
+          split: `Quantum split <b>${x.charges}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`,
+        }[x.name];
+        if (f) bits.push(`<span class="wb-flag buff ${x.name}">${f}</span>`);
+      }
+      if (frostMs || Object.keys(grace).some(id => !done.has(id) && !mine.has(id))) bits.push(`<span class="wb-flag buff cryo">Cryo lock</span>`);
+    }
     const html = bits.join('');
     if (box.innerHTML !== html) box.innerHTML = html;
   }
@@ -578,6 +787,7 @@ Router.register('boss', (() => {
       if (!fresh && ph > lastPhase) transition(ph);
       else { if (scene) scene.setPhase(ph, true); }
       if (!s.defeatedAt) A.phase(ph);
+      if (words) words.set({ difficulty: STACK_DIFF[ph] || STACK_DIFF[0] });
       lastPhase = ph;
       sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     }
@@ -609,6 +819,8 @@ Router.register('boss', (() => {
     if (h.you) {
       sess.dmg += h.dmg;
       WPM.track('boss_hit', { dmg: h.dmg, kind: h.kind || 'word', crit: !!h.crit });
+      if (h.kind === 'spell') castDmg[h.spell] = (castDmg[h.spell] || 0) + h.dmg;
+      if (h.kind === 'spell') { if (scene) scene.hit(h); else onImpact(h, null, null); milestone('dmg', meDamage()); return; }
       if (h.kind === 'return') pushFeed({ text: `You sent back a packet for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'block') pushFeed({ text: `You hit back for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'add') pushFeed({ text: `You deleted a bug and hit for ${h.dmg}`, cls: 'you' });
@@ -625,6 +837,7 @@ Router.register('boss', (() => {
   function onImpact(h, x, y) {
     if (!el) return;
     if (h.you) {
+      if (h.kind === 'spell') { number(h, x, y); return; }
       if (h.shield) sfx('shieldHit');
       else if (h.weak) sfx('weak');
       else if (h.crit || h.kind === 'block' || h.kind === 'return') sfx('crit');
@@ -660,8 +873,8 @@ Router.register('boss', (() => {
       x = stg.clientWidth * (0.42 + Math.random() * 0.16); y = stg.clientHeight * (0.35 + Math.random() * 0.2);
     }
     const s = document.createElement('span');
-    const big = h.crit || h.weak || h.kind === 'block' || h.kind === 'return';
-    s.className = 'dmg' + (h.you ? ' you' : '') + (h.you && big ? ' big' : '') + (h.shield ? ' sh' : '') + (h.kind === 'return' && h.you ? ' ret' : '');
+    const big = h.crit || h.weak || h.kind === 'block' || h.kind === 'return' || (h.kind === 'spell' && h.dmg >= 60) || h.tier >= 3;
+    s.className = 'dmg' + (h.you ? ' you' : '') + (h.you && big ? ' big' : '') + (h.shield ? ' sh' : '') + (h.kind === 'return' && h.you ? ' ret' : '') + (h.kind === 'spell' && h.you ? ' spell' : '') + (h.you && h.dmg >= 300 ? ' huge' : '');
     const tag = h.weak ? ` x${st && st.weak ? st.weak.mult : 2}` : h.crit ? ' crit' : '';
     s.textContent = '-' + h.dmg + (h.you ? tag : '');
     s.style.left = (x + (Math.random() - 0.5) * 70) + 'px';
@@ -717,8 +930,6 @@ Router.register('boss', (() => {
       }
     } else if (kind === 'blocks') {
       if (BLOCK_MILESTONES.includes(v) && v > 1 && !miles.has('b' + v)) { miles.add('b' + v); pushFeed({ text: `You blocked ${v} attacks`, cls: 'mile' }); sfx('milestone'); }
-    } else if (kind === 'combo') {
-      if (COMBO_MILESTONES.includes(v) && !miles.has('c' + v)) { miles.add('c' + v); pushFeed({ text: `Combo ${v}`, cls: 'mile' }); sfx('milestone'); pop(`COMBO ${v}`, 'green'); }
     }
   }
 
@@ -799,6 +1010,8 @@ Router.register('boss', (() => {
   // ---------- defeat ----------
   function down(instant) {
     mech = []; target = null; typed = '';
+    spellT.forEach(clearTimeout); spellT = [];
+    if (me) me.closeOffer('down');
     el.querySelector('.boss-type').classList.add('is-done');
     paintChips(true); renderQueue();
     for (const n of labels.values()) n.remove();
@@ -847,6 +1060,7 @@ Router.register('boss', (() => {
           <span><b>${sess.returns}</b> sent back</span>
           <span><b>${sess.adds}</b> bugs deleted</span>
           <span><b>${best}</b> best combo</span>
+          <span><b>${sess.casts}</b> ${sess.casts === 1 ? 'spell' : 'spells'} cast</span>
         </div>
         ${r && bonus ? `<p class="wb-bonus">Coins include ${[
           r.blockCoins ? `${r.blockCoins} for ${sess.blocks} ${sess.blocks === 1 ? 'block' : 'blocks'}` : '',
@@ -945,12 +1159,23 @@ Router.register('boss', (() => {
       renderFx: (n, a, s) => A.renderFx(n, a, s),
       feed: () => feed.slice(0, 12).map(f => f.text || `${f.name} hit for ${f.dmg}`),
       misses: () => misses.slice(-20),
+      combat: () => me && me.state(),
+      setCombo: n => me && me.debug.setCombo(n),
+      offer: ids => me && me.debug.offer(ids),
+      // casts a spell as if it had been offered and typed cleanly
+      cast: id => { const sp = Combat.spell(id); if (!sp || !me) return false; me.debug.offer([id]); typed = ''; target = null; castSpell(sp, true); return true; },
+      spells: () => Combat.SPELLS().map(x => x.id),
+      fx: () => { const i = scene && scene.info(); return i && i.fx; },
+      pause: on => scene && scene.pause(on),
     };
   }
 
   function unmount() {
     record(!!(st && st.defeatedAt));
     payOwed();
+    spellT.forEach(clearTimeout); spellT = [];
+    if (me) me.bus.clear();
+    me = null; cSnd = null; words = null;
     offs.forEach(f => f()); offs = [];
     timers.forEach(clearInterval); timers = [];
     clearTimeout(downTimer);
