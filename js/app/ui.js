@@ -37,6 +37,7 @@ window.UI = (() => {
     'race-art': 'Race vs Art', 'race-best': 'Race vs best', 'race-duo': 'Race, 2 players',
     'world-boss': 'World boss', 'breach-endless': 'Breach endless', 'breach-daily': 'Breach daily',
     rush: 'Boss rush',
+    superboss: 'Superboss',
   };
   const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   function modeName(m, difficulty) {
