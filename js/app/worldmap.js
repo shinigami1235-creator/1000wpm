@@ -639,7 +639,7 @@ window.WorldMap = (() => {
         paintLit(); feed(nodeLine(m.node));
       }));
     }
-    const nodeLine = n => `Keyspace grew: ${n.district ? `the ${e(n.name)} district` : e(n.name.replace('Node', 'node'))} is online after ${short(n.words)} words`;
+    const nodeLine = n => n.district ? `Keyspace grew: the ${e(n.name)} district is online after ${short(n.words)} words` : `Keyspace grew: a new node is online after ${short(n.words)} words`;
 
     // ---------- drawing ----------
     function frame(t) {
