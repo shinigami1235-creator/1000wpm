@@ -1,5 +1,6 @@
-// #/home: the race against Art, his numbers, a line pointing to the rest of the site,
-// the 3D keyboards, his videos and the section for brands.
+// #/home: the world map of where players are (js/app/worldmap.js), the race against Art,
+// his numbers, a line pointing to the rest of the site, the 3D keyboards, his videos and
+// the section for brands.
 // The layout follows the calm rules in css/site.css under .page-home.
 Router.register('home', (() => {
   const VIDEOS = [
@@ -18,8 +19,27 @@ Router.register('home', (() => {
     const e = UI.esc;
     el.innerHTML = `
       <div class="home">
-        <section class="hero-race" aria-labelledby="race-h">
-          <h1 id="race-h">Race Art</h1>
+        <section class="hero-map" aria-labelledby="map-h">
+          <div class="hm-frame">
+            <p class="hm-key"><span data-map-count></span><span class="hm-demo" hidden>Demo data</span></p>
+            <div class="hm-stage" data-map-stage>
+              <div class="hm-map" data-map>
+                <canvas aria-hidden="true"></canvas>
+                <div class="hm-dots" role="group" aria-label="Countries with players"></div>
+              </div>
+            </div>
+            <p class="hm-drag" hidden>Drag to see more</p>
+            <div class="hm-card" hidden aria-hidden="true"></div>
+            <div class="hm-intro">
+              <h1 id="map-h">A typing site by Art (@10000wpm) for anyone who wants to type faster.</h1>
+              <div class="hm-go"><a class="btn" href="#/type">Start typing</a><button class="hm-race" type="button" data-to-race>Race Art</button></div>
+            </div>
+          </div>
+          <p class="hm-ticker"><span class="hm-demo" hidden>Demo data</span><span class="hm-line" data-tick></span></p>
+        </section>
+
+        <section class="hero-race" id="race" aria-labelledby="race-h">
+          <h2 id="race-h">Race Art</h2>
           <div class="typebox idle" data-race tabindex="-1"></div>
           <div class="hr-bar">
             <div class="hr-pace">
@@ -85,7 +105,13 @@ Router.register('home', (() => {
         <p class="since">Art could have typed <b data-since>0</b> words since you opened this page.</p>
       </div>`;
 
+    stops.push(WorldMap.mount(el.querySelector('.hero-map')));
     stops.push(HeroRace.mount(el.querySelector('.hero-race')));
+    el.querySelector('[data-to-race]').addEventListener('click', () => {
+      const r = el.querySelector('.hero-race');
+      r.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      document.activeElement.blur();   // with nothing focused, the next key starts the race
+    });
     stops.push(KB3D.mount(el.querySelector('[data-stage]'), el.querySelector('[data-spec]')));
 
     const since = el.querySelector('[data-since]');

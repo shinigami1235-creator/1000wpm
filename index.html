@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/buddy.css">
 <link rel="stylesheet" href="css/avatar.css">
+<link rel="stylesheet" href="css/map.css">
 <script>/* the entrance plays once per session on #/home or no hash; js/app/intro.js runs it */(function(){var d=document.documentElement;try{if(/^(#\/?(home)?\/?)?$/.test(location.hash)&&!sessionStorage.getItem('wpm-intro-seen')){d.classList.add('intro','intro-cover');window.__introFS=setTimeout(function(){d.classList.remove('intro','intro-cover')},2500)}}catch(e){}})()</script>
 <script src="js/app/intro.js" async></script>
 <script type="importmap">
@@ -136,6 +137,8 @@
 <script src="js/app/avatar-creator.js"></script>
 <script src="js/app/router.js"></script>
 <script src="js/app/shell.js"></script>
+<script src="js/app/community.js"></script>
+<script src="js/app/worldmap.js"></script>
 <script src="js/app/home.js"></script>
 <script src="js/app/type.js"></script>
 <script src="js/app/play.js"></script>
