@@ -10,6 +10,30 @@ Otto Brenn wrote Fixword, the autocorrect every phone and computer in the city r
 ## Tone
 Arcade horror in the style of Typing of the Dead. Dark premise, no gore. The typos are glitch creatures made of code and fall apart into letters and voxels when shot.
 
+## Site story: the player's journey (approved by Gid, 21 Nov 2026, option A)
+Breach stays as Art's own story: the night the Fixword update pulled him into his stream chat, he followed it back to the core, rolled it back and became the Typemaster.
+
+The player is an ordinary person who gets pulled in later. The rollback ended the update, but every typo it gave a body to and nobody corrected is still in the network, and those leftovers have grown into Syntax Error, the world boss everyone fights together. Art stayed in the network to guide the people who keep falling in.
+
+What each part of the site is in the story:
+| Part of the site | In the story |
+|---|---|
+| Academy | Art's training for new arrivals |
+| Boss Rush | Art's gauntlet of copies of every boss he has beaten |
+| World Boss | Syntax Error, the leftovers of the update, fought by everyone at once |
+| Superboss | Art's live fights on his stream, which the player watches and supports |
+| PvP | Sparring between typists, and challenging Art himself |
+| Party | Runs with other people who fell in |
+| Breach | Art's own story, told as the run that made him the Typemaster |
+
+Art becomes an NPC guide on the site who can also talk with viewers. Tilde, the keycap buddy, stays as the player's companion.
+
+### Holes in the site story
+- The network has no name yet.
+- How the player falls in (what they were typing) is not written.
+- Whether the player can leave the network, and what being a Typemaster lets them do, is not written.
+- How Art's NPC lines relate to Art's real streams (live messages later, simulated now) is not decided.
+
 ## Places
 Each chapter is a network or system the update passed through, in reverse order from Art's stream back to its source. Each area has its own palette, floor grid, fog and music.
 
