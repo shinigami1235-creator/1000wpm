@@ -7,7 +7,8 @@
 window.FreePage = (() => {
   const F = () => window.LEARN_COINS.free;
   const SRC = [['common', 'Common words'], ['pack', 'Themed'], ['quotes', 'Quotes'], ['own', 'Your text']];
-  let el = null, box = null, opt, sess, paid, quoteI = -1, offs = [];
+  let el = null, box = null, opt, sess, paid, offs = [];
+  const recent = [];   // passages typed lately, so the next one is new
 
   const today = () => UI.day();
   function wallet() {
@@ -20,10 +21,14 @@ window.FreePage = (() => {
   function textFor() {
     if (opt.src === 'pack') return { text: LearnWords.pack(opt.pack, 40).join(' ') };
     if (opt.src === 'quotes') {
-      const Q = LEARN.QUOTES;
-      let i; do { i = Math.floor(Math.random() * Q.length); } while (i === quoteI && Q.length > 1);
-      quoteI = i;
-      return { text: Q[i][0], src: Q[i][1] };
+      // a passage from js/learn/passages.js in the picked category and length
+      let pool = PASSAGES.LIST.filter(p => (opt.cat === 'any' || p.cat === opt.cat) && (opt.len === 'any' || p.len === opt.len));
+      if (!pool.length) pool = PASSAGES.LIST.filter(p => opt.cat === 'any' || p.cat === opt.cat);
+      const fresh = pool.filter(p => !recent.includes(p));
+      if (fresh.length) pool = fresh; else recent.length = 0;
+      const p = pool[Math.floor(Math.random() * pool.length)];
+      recent.push(p); if (recent.length > 40) recent.shift();
+      return { text: p.text, src: p.src };
     }
     if (opt.src === 'own') return { text: TT.store.get('wpm-free-own', '') };
     return { text: LearnWords.common(50, { top: 1000 }).join(' ') };
@@ -31,7 +36,7 @@ window.FreePage = (() => {
 
   function mount(root) {
     el = root;
-    opt = { src: 'common', pack: '', stats: false, ...TT.store.get('wpm-free-opts', {}) };
+    opt = { src: 'common', pack: '', stats: false, cat: 'any', len: 'any', ...TT.store.get('wpm-free-opts', {}) };
     const packs = LearnWords.packs();
     if (!packs[opt.pack]) opt.pack = Object.keys(packs)[0] || '';
     newSession();
@@ -41,6 +46,8 @@ window.FreePage = (() => {
           <h1>Free typing</h1>
           <div class="lx-seg" role="group" aria-label="Text to type" data-src>${SRC.map(([v, n]) => `<button type="button" data-v="${v}">${n}</button>`).join('')}</div>
           <select class="fr-pack" aria-label="Themed pack" data-pack>${Object.entries(packs).map(([id, p]) => `<option value="${UI.esc(id)}">${UI.esc(p.name)}</option>`).join('')}</select>
+          <select class="fr-pack" aria-label="What to type" data-cat><option value="any">Everything</option>${PASSAGES.CATS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>
+          <select class="fr-pack" aria-label="Length" data-len><option value="any">Any length</option>${PASSAGES.LENGTHS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>
           <button class="fr-toggle" type="button" data-stats aria-pressed="false">Show stats</button>
         </div>
         <div class="fr-stage" data-stage></div>
@@ -55,6 +62,10 @@ window.FreePage = (() => {
     });
     q('[data-pack]').value = opt.pack;
     q('[data-pack]').addEventListener('change', ev => { save(); opt.pack = ev.target.value; store(); load(); });
+    q('[data-cat]').value = opt.cat; q('[data-len]').value = opt.len;
+    q('[data-cat]').addEventListener('change', ev => { save(); opt.cat = ev.target.value; lengths(); store(); load(); });
+    q('[data-len]').addEventListener('change', ev => { save(); opt.len = ev.target.value; store(); load(); });
+    lengths();
     q('[data-stats]').addEventListener('click', () => { opt.stats = !opt.stats; store(); paintStats(); if (box) box.focus(); });
     load();
     paintStats();
@@ -64,12 +75,23 @@ window.FreePage = (() => {
 
   function store() { TT.store.set('wpm-free-opts', opt); }
 
+  // lengths the picked category has none of can't be picked, e.g. no very long sayings
+  function lengths() {
+    const sel = el.querySelector('[data-len]');
+    for (const o of sel.options) {
+      if (o.value === 'any') continue;
+      o.disabled = !PASSAGES.LIST.some(p => p.len === o.value && (opt.cat === 'any' || p.cat === opt.cat));
+    }
+    if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) { opt.len = 'any'; sel.value = 'any'; }
+  }
+
   function load() {
     if (box) { box.destroy(); box = null; }
     const stage = el.querySelector('[data-stage]');
     stage.innerHTML = '';
     el.querySelectorAll('[data-src] button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === opt.src));
     el.querySelector('[data-pack]').hidden = opt.src !== 'pack';
+    el.querySelector('[data-cat]').hidden = el.querySelector('[data-len]').hidden = opt.src !== 'quotes';
     const { text, src } = textFor();
     const clean = (text || '').replace(/\s+/g, ' ').trim();
     el.querySelector('[data-from]').textContent = src || '';

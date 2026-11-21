@@ -189,21 +189,5 @@ window.LEARN = (() => {
     space: { name: 'Space', words: 'planet orbit comet moon star rocket galaxy nebula meteor crater gravity asteroid launch shuttle saturn jupiter mars venus mercury neptune telescope eclipse solar lunar cosmic satellite module capsule'.split(' ') },
   };
 
-  // public domain lines with where they come from
-  const QUOTES = [
-    ['Well done is better than well said.', 'Benjamin Franklin, Poor Richard\'s Almanack'],
-    ['Lost time is never found again.', 'Benjamin Franklin, Poor Richard\'s Almanack'],
-    ['Early to bed and early to rise, makes a man healthy, wealthy, and wise.', 'Benjamin Franklin, Poor Richard\'s Almanack'],
-    ['Brevity is the soul of wit.', 'William Shakespeare, Hamlet'],
-    ['There is nothing either good or bad, but thinking makes it so.', 'William Shakespeare, Hamlet'],
-    ['If music be the food of love, play on.', 'William Shakespeare, Twelfth Night'],
-    ['It is a capital mistake to theorize before one has data.', 'Arthur Conan Doyle, A Scandal in Bohemia'],
-    ['It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.', 'Jane Austen, Pride and Prejudice'],
-    ['All happy families are alike; each unhappy family is unhappy in its own way.', 'Leo Tolstoy, Anna Karenina'],
-    ['It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness.', 'Charles Dickens, A Tale of Two Cities'],
-    ['Whatever is worth doing at all is worth doing well.', 'Lord Chesterfield, Letters to His Son'],
-    ['Hope is the thing with feathers that perches in the soul.', 'Emily Dickinson'],
-  ];
-
-  return { LESSONS, TIPS, stars, PLACEMENT, place, PACKS, QUOTES, SENTENCES, byId: id => LESSONS.find(l => l.id === id) };
+  return { LESSONS, TIPS, stars, PLACEMENT, place, PACKS, SENTENCES, byId: id => LESSONS.find(l => l.id === id) };
 })();

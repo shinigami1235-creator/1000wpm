@@ -15,7 +15,7 @@ window.Lazy = (() => {
     kb: { js: ['js/keyboards.js', 'js/kb3d.js'] },
     race: { js: ['js/race.js', 'js/games.js'] },
     learn: { need: ['words'], css: ['css/learn.css'],
-      js: ['js/learn/coins.js', 'js/learn/wordsource.js', 'js/learn/keyboard.js', 'js/learn/lessons.js', 'js/learn/typer.js', 'js/app/learn.js', 'js/app/free.js', 'js/app/reel.js'] },
+      js: ['js/learn/coins.js', 'js/learn/passages.js', 'js/learn/wordsource.js', 'js/learn/keyboard.js', 'js/learn/lessons.js', 'js/learn/typer.js', 'js/app/learn.js', 'js/app/free.js', 'js/app/reel.js'] },
     net: { need: ['words', 'combat'], css: ['css/multi.css'],
       js: ['core', 'filter', 'chat-rules', 'chat-rooms', 'chat-lines', 'chat-sim', 'rating', 'typist', 'bot', 'duel-rules', 'party-rules', 'sim', 'ws', 'net']
         .map(f => `js/net/${f}.js`).concat('js/app/multi-ui.js') },

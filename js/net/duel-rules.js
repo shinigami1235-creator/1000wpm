@@ -22,7 +22,7 @@
     startMs: 3000,      // countdown before round 1
     breakMs: 4000,      // between rounds
     roundMs: 90000,     // a round that runs out of time goes to the side with more HP
-    shotMs: 260,        // a word's shot takes this long to land
+    shotMs: 380,        // a word's shot takes this long to land: long enough to read the word in flight
     multCap: 3.5,       // tier x accuracy x speed x buffs, capped lower than the boss's 6
     critX: 1.5,
     offerMs: 12000,

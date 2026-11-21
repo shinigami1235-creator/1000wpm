@@ -111,8 +111,8 @@ window.DuelScene = (() => {
 
     // ---------- fighters ----------
     const CARD_W = 3.1, CARD_H = 3.6;
-    const POS = [new V(-4.1, 0, 0.6), new V(4.1, 0, 0.6)];
-    const YAW = [0.42, -0.42];
+    const POS = [new V(-6.2, 0, 0.6), new V(6.2, 0, 0.6)];   // wide apart, so shots and hits have room to read
+    const YAW = [0.34, -0.34];
     const loader = new THREE.TextureLoader();
     const F = opts.sides.map((s, i) => {
       const g = new THREE.Group();
@@ -411,8 +411,8 @@ window.DuelScene = (() => {
       camera.aspect = w / h;
       // keep both cards in view on narrow screens
       const half = THREE.MathUtils.degToRad(camera.fov / 2);
-      const need = 6.4 / (Math.tan(half) * camera.aspect);
-      camPos.set(0, 4.2, Math.max(13.5, need + 1.5));
+      const need = 8.6 / (Math.tan(half) * camera.aspect);
+      camPos.set(0, 4.8, Math.max(17, need + 1.5));
       camera.position.copy(camPos); camera.lookAt(look); camera.updateProjectionMatrix();
     }
     const ro = new ResizeObserver(fit); ro.observe(host);
@@ -519,9 +519,9 @@ window.DuelScene = (() => {
       const kc = koCam >= 0 ? ease(koCamT) : 0;
       camAt.copy(camPos);
       if (!reduce) camAt.add(tmp.set(Math.sin(t * 0.23) * 0.6, Math.sin(t * 0.17) * 0.2, 0));
-      if (kc) camAt.lerp(tmp.copy(POS[koCam]).multiplyScalar(0.35).add(tmp2.set(0, 3.6, camPos.z * 0.82)), kc * 0.8);
+      if (kc) camAt.lerp(tmp.copy(POS[koCam]).multiplyScalar(0.18).add(tmp2.set(0, 3.8, camPos.z * 0.86)), kc * 0.7);
       lookAt.copy(look);
-      if (kc) lookAt.lerp(tmp.copy(POS[koCam]).setY(2.2), kc * 0.3);
+      if (kc) lookAt.lerp(tmp.copy(POS[koCam]).setY(2.2), kc * 0.2);
       camera.position.copy(camAt);
       if (shake > 0 && !reduce) camera.position.add(tmp.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, 0));
       const fov = 36 - punch * 3.5;
