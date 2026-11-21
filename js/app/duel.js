@@ -20,6 +20,8 @@ Router.register('duel', (() => {
   function mount(root, params) {
     el = root;
     off.push(Net.on('match', onMatch), Net.on('challenge', onChallenge), Net.on('presence', () => { if (mode === 'menu') paintOnline(); }));
+    // the fighters' portraits are 3D avatars: start loading them now, so they're ready by the countdown
+    if (window.Avatar) { Avatar.load(); Avatar.thumb(Avatar.mine(), 512, 512); }
     route(params || []);
   }
   function update(params) { stopFight(); route(params || []); }

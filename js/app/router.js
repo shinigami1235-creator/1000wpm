@@ -6,6 +6,29 @@ window.Router = (() => {
   let view = null, cur = null, curName = '';
 
   function register(name, page) { pages[name] = page; }
+  // a page whose scripts load on first visit (js/app/lazy.js). The stand-in shows
+  // "Loading", and once the scripts have run the real page is registered and mounted.
+  function lazy(name, group = 'page:' + name) {
+    if (pages[name]) return;
+    let live = false;
+    pages[name] = {
+      title: '',
+      lazy: true,
+      mount(el) {
+        live = true;
+        el.innerHTML = '<div class="loading-state">Loading</div>';
+        Lazy.need(group).then(() => {
+          if (live && curName === name && pages[name] && !pages[name].lazy) go(true);
+        }, e => {
+          console.error(e);
+          if (!live) return;
+          el.innerHTML = '<div class="loading-state">This page did not load. Check the connection. <button class="btn out sm" type="button">Reload</button></div>';
+          el.querySelector('button').addEventListener('click', () => location.reload());
+        });
+      },
+      unmount() { live = false; },
+    };
+  }
 
   function parse() {
     const [name = '', ...params] = location.hash.replace(/^#\/?/, '').split('/');
@@ -37,5 +60,5 @@ window.Router = (() => {
     go();
   }
 
-  return { register, get: name => pages[name], start, reload: () => go(true), current: () => curName };
+  return { register, lazy, get: name => pages[name], start, reload: () => go(true), current: () => curName };
 })();

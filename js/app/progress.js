@@ -323,7 +323,11 @@ window.Progress = (() => {
   }
   function resolve() {
     const pool = giftPool();
-    if (!pool) return;
+    if (!pool) {
+      // the room catalogue loads with the room; fetch it when a gift is waiting to be picked
+      if (p.reveal.some(g => !g.id && !g.coins) && window.Lazy) Lazy.need('room').then(resolve, () => {});
+      return;
+    }
     let changed = false;
     for (const g of p.reveal) {
       if (g.id || g.coins) continue;

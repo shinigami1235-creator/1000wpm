@@ -11,13 +11,13 @@ Router.register('play', (() => {
         <div class="title-block"><h1>Play_</h1><p>// GAMES</p></div>
       </div>
       <nav class="game-tabs" aria-label="Games">
-        <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3><p>Five chapters with a boss at the end of each, plus endless and a daily run.</p></a>
-        <a class="panel game-tab" href="#/play/race" data-g="race"><span class="label">&gt; GAME 02</span><h3>Race</h3><p>Your car's speed comes from your typing speed. Race Art, your best run or a friend.</p></a>
-        <a class="panel game-tab" href="#/play/rush" data-g="rush"><span class="label">&gt; GAME 03</span><h3>Boss rush</h3><p>Copies of every boss Art has beaten, one after another, each harder than the last.</p></a>
-        <a class="panel game-tab" href="#/superboss" data-g="superboss"><span class="label">&gt; LIVE</span><h3>Superboss</h3><p>Art fights these bosses on his stream. Watch, chat and send him support with your coins.</p></a>
-        <a class="panel game-tab" href="#/duel" data-g="duel"><span class="label">&gt; PVP</span><h3>Duel</h3><p>Type against another player, best of 3 rounds. Challenge Art at 204 wpm.</p></a>
-        <a class="panel game-tab" href="#/party" data-g="party"><span class="label">&gt; CO-OP</span><h3>Party</h3><p>Up to 4 players pick roles and fight through Keyspace together.</p></a>
-        <a class="panel game-tab" href="#/commons" data-g="commons"><span class="label">&gt; CHAT</span><h3>Open Port</h3><p>Chat rooms for the World Boss, duels, parties, learning and each region.</p></a>
+        <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3></a>
+        <a class="panel game-tab" href="#/play/race" data-g="race"><span class="label">&gt; GAME 02</span><h3>Race</h3></a>
+        <a class="panel game-tab" href="#/play/rush" data-g="rush"><span class="label">&gt; GAME 03</span><h3>Boss rush</h3></a>
+        <a class="panel game-tab" href="#/superboss" data-g="superboss"><span class="label">&gt; LIVE</span><h3>Superboss</h3></a>
+        <a class="panel game-tab" href="#/duel" data-g="duel"><span class="label">&gt; PVP</span><h3>Duel</h3></a>
+        <a class="panel game-tab" href="#/party" data-g="party"><span class="label">&gt; CO-OP</span><h3>Party</h3></a>
+        <a class="panel game-tab" href="#/commons" data-g="commons"><span class="label">&gt; CHAT</span><h3>Open Port</h3></a>
       </nav>
       <div data-game></div>`;
     update(params);
@@ -29,6 +29,9 @@ Router.register('play', (() => {
     stop();
     game = want;
     el.querySelectorAll('.game-tab').forEach(a => a.dataset.g === game ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+    // on narrow screens the row scrolls sideways, so bring the open game's tile into view
+    const tab = el.querySelector(`.game-tab[data-g="${game}"]`);
+    if (tab.scrollIntoView && el.querySelector('.game-tabs').scrollWidth > el.querySelector('.game-tabs').clientWidth) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const host = el.querySelector('[data-game]');
     host.innerHTML = '';
     if (game === 'breach') breach(host); else if (game === 'rush') rush(host); else race(host);

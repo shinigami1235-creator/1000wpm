@@ -472,10 +472,17 @@ body:has(.page-home) #rain { opacity: .05; }
 
 /* ---------- play ---------- */
 .play-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: end; margin-bottom: 16px; }
-.game-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-.game-tab { display: grid; gap: 6px; text-decoration: none; cursor: pointer; }
-.game-tab h3 { font: 700 24px/1 var(--f-head); text-transform: uppercase; letter-spacing: .04em; }
-.game-tab p { color: var(--ink-2); font-size: 15px; }
+/* the play hub: every mode in one row of name tiles. Each game explains itself in its own bar.
+   Narrow screens swipe the row sideways instead of stacking it above the game. */
+.game-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 16px; }
+.game-tab { display: grid; align-content: start; gap: 6px; padding: 12px 14px; text-decoration: none; cursor: pointer; }
+.game-tab h3 { font: 700 20px/1.05 var(--f-head); text-transform: uppercase; letter-spacing: .04em; }
+@media (max-width: 1000px) {
+  .game-tabs { grid-auto-columns: max-content; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin-inline: -4px; padding: 0 4px 2px; }
+  .game-tabs::-webkit-scrollbar { display: none; }
+  .game-tab { scroll-snap-align: start; }
+  .game-tab h3 { font-size: 18px; }
+}
 .game-tab[aria-current="page"] { border-color: var(--green); box-shadow: inset 0 0 30px rgba(57,255,136,.14); }
 .game-tab[aria-current="page"] h3 { color: var(--green); text-shadow: var(--glow); }
 .game-bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1015,7 +1022,7 @@ body:has(.page-boss) #rain { opacity: 0; }
 @media (max-width: 640px) {
   .page { padding: 14px 12px 36px; }
   .panel { padding: 14px 14px; }
-  .grid2, .grid3, .type-bottom, .prof, .game-tabs, .lb-side { grid-template-columns: 1fr; }
+  .grid2, .grid3, .type-bottom, .prof, .lb-side { grid-template-columns: 1fr; }
   .prof .col.mid-col { grid-row: auto; }
   .type-top { grid-template-columns: 1fr; }
   .type-top > .title-block { display: none; }

@@ -85,7 +85,7 @@ Router.register('leaderboard', (() => {
     if (T.id === 'rooms') return rooms(sub, el.querySelector('[data-board]'));
     if (T.id === 'duel') return window.MultiUI ? MultiUI.duelBoard(sub, el.querySelector('[data-board]')) : null;
     if (T.id === 'endless') return endless(sub, el.querySelector('[data-board]'));
-    if (T.id === 'rush') { if (window.RushBoard) RushBoard.render(sub, el.querySelector('[data-board]')); return; }
+    if (T.id === 'rush') { const b = el.querySelector('[data-board]'); Lazy.provide('RushBoard').then(() => { if (el && window.RushBoard && b.isConnected) RushBoard.render(sub, b); }); return; }
     if (T.id === 'boss') {
       const runs = WPM.sessions().filter(s => s.mode === 'world-boss');
       const total = runs.reduce((a, s) => a + (s.score || 0), 0);
@@ -131,8 +131,9 @@ Router.register('leaderboard', (() => {
   }
 
   // Waits for another agent's script to finish loading, then draws.
-  function when(test, draw, board) {
+  function when(test, draw, board, group) {
     if (test()) return draw();
+    if (group) Lazy.need(group).catch(e => console.warn(e));
     board.innerHTML = '<div class="loading-state">Loading</div>';
     let n = 0;
     poll = setInterval(() => {
@@ -165,7 +166,7 @@ Router.register('leaderboard', (() => {
           </tr></tbody>
         </table>
         <p class="empty"><a class="green" href="#/room">Open My Room</a> to add items or change its size.</p>`;
-    }, board);
+    }, board, 'room');
   }
 
   function endless(sub, board) {
@@ -194,7 +195,7 @@ Router.register('leaderboard', (() => {
             <td class="n num-col hide-sm">${r.wpm != null ? UI.fmt(r.wpm) : ''}</td><td class="n hide-sm">${UI.esc(UI.date(/^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date + 'T12:00' : r.date, false))}</td></tr>`).join('')}</tbody>
         </table>`
         : `<p class="empty">No ${endKind === 'daily' ? 'daily' : 'endless'} runs on ${d === 'easy' ? 'Easy' : d === 'hard' ? 'Hard' : 'Normal'} on this device yet. <a class="green" href="#/play/breach">Play Breach</a> and pick ${endKind === 'daily' ? 'Daily run' : 'Endless'} to get on the board.</p>`;
-    }, board);
+    }, board, 'breach');
   }
 
   function unmount() { clearInterval(poll); poll = 0; off.forEach(f => f()); off = []; el = null; }

@@ -242,11 +242,12 @@
       return { before, after: d.rating, delta: d.rating - before };
     }
 
-    function opponentFor(mode, oppId) {
+    function opponentFor(mode, oppId, salt = '') {
       if (mode === 'art') return Promise.resolve(ART);
       if (mode === 'player' && oppId) return getProfile(oppId);
       const L = host.level();
-      const r = rng('q:' + Date.now());
+      // salt: watch mode draws two bots in the same millisecond, which would make them the same bot
+      const r = rng('q:' + Date.now() + salt);
       // a bot at the player's level: within about 8% of their recent wpm
       const name = handle(r);
       const p = simProfile(name, { wpm: Math.max(20, Math.round(L.wpm * (0.92 + r() * 0.16))) });
@@ -263,7 +264,9 @@
       await wait(T.search != null ? T.search : mode === 'quick' ? delay(1200, 2600) : delay(300, 700));
       let players, you = 0, sides;
       if (mode === 'watch') {
-        const a = await opponentFor('quick'), b = await opponentFor('quick');
+        const a = await opponentFor('quick', null, ':a');
+        let b = await opponentFor('quick', null, ':b');
+        for (let i = 0; b.name === a.name && i < 5; i++) b = await opponentFor('quick', null, ':b' + i);
         players = [pub(a), pub(b)]; you = -1; sides = [true, true];
         players.forEach((p, i) => { p.typing = [a, b][i].typing; });
       } else {

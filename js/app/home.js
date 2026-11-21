@@ -151,7 +151,16 @@ Router.register('home', (() => {
       r.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
       document.activeElement.blur();   // with nothing focused, the next key starts the race
     });
-    stops.push(KB3D.mount(el.querySelector('[data-stage]'), el.querySelector('[data-spec]')));
+    // the keyboards sit far below the map, so three.js loads when they come near the screen
+    const stage = el.querySelector('[data-stage]');
+    let stopKb = null;
+    const near = new IntersectionObserver(([en]) => {
+      if (!en.isIntersecting) return;
+      near.disconnect();
+      stopKb = KB3D.mount(stage, el.querySelector('[data-spec]'));
+    }, { rootMargin: '600px 0px' });
+    near.observe(stage);
+    stops.push(() => { near.disconnect(); if (stopKb) stopKb(); });
 
     const since = el.querySelector('[data-since]');
     const opened = performance.now();
@@ -159,6 +168,19 @@ Router.register('home', (() => {
       since.textContent = UI.fmt(((performance.now() - opened) / 60000) * TT.ART_WPM);
     }, 250);
     stops.push(() => clearInterval(iv));
+    nudge(el);
+  }
+
+  // the line under the race for players with no runs, no placement test and no lessons yet.
+  // Hide keeps it hidden on this device.
+  function nudge(el) {
+    const l = WPM.learn();
+    if (WPM.sessions().length || l.placement || Object.keys(l.lessons || {}).length || TT.store.get('wpm-learn-nudge', '') === 'off') return;
+    const p = UI.el(`<p class="home-nudge"><span>New to typing? The <a href="#/type/learn">academy</a> teaches it from the home row.</span>
+      <button type="button" aria-label="Hide this line"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></p>`);
+    p.querySelector('button').addEventListener('click', () => { TT.store.set('wpm-learn-nudge', 'off'); p.remove(); });
+    const race = el.querySelector('.hero-race');
+    if (race) race.after(p); else el.prepend(p);
   }
 
   function unmount() {

@@ -5,7 +5,6 @@
    boxes with borders, colour only where it means something. */
 
 /* the play page gives the fight the whole width while a run is on */
-.page-play .game-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .page-play.rush-live { max-width: none; padding: 14px 20px 8px; }
 .page-play.rush-live :is(.play-head, .game-tabs) { display: none; }
 .rush.page-boss { --reserve: 398px; max-width: none; padding: 0; }
@@ -99,7 +98,6 @@
   .rush.page-boss { --reserve: 366px; }
 }
 @media (max-width: 1000px) {
-  .page-play .game-tabs { grid-template-columns: 1fr; }
   .rush-menu { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {

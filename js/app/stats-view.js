@@ -12,10 +12,7 @@
 // Modes are read by name, so a new mode (Boss Rush 'rush', Superboss 'superboss', PvP 'pvp')
 // shows up as soon as it saves runs with WPM.record.
 window.StatsView = (() => {
-  const NAMES = { rush: 'Boss Rush', superboss: 'Superboss', pvp: 'PvP', reel: 'Reel' };
-  // names for the modes other pages add, used everywhere a mode is named until those pages name them
-  const baseName = UI.modeName;
-  UI.modeName = (m, d) => { const n = baseName(m, d); return n === m && NAMES[m] ? NAMES[m] : n; };
+  // every mode's name is in UI.modeName (js/app/ui.js)
   const modeName = m => UI.modeName(m);
 
   // shifted characters count on the key they sit on

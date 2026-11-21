@@ -168,3 +168,35 @@ html.reel-on { overflow: hidden; }
   .reel-text .caret { transition: none; }
 }
 .reel-ov.ended :is(.reel-text, .reel-hud, .reel-brand) { visibility: hidden; }
+
+/* ---------- Type page tabs (js/app/type-tabs.js) and the academy line on the home page ---------- */
+.ty-tabs {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 28px;
+  margin: 0 auto 18px; padding: 0 2px;
+  font: 500 16px/1 var(--f-head);
+}
+.ty-tabs > a {
+  color: var(--ink-2); text-decoration: none; padding: 8px 0 9px;
+  border-bottom: 2px solid transparent; transition: color 150ms ease, border-color 150ms ease;
+}
+.ty-tabs > a:hover { color: var(--ink); }
+.ty-tabs > a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--green); }
+.ty-nudge { margin-left: auto; font: 400 14px/1.4 var(--f-head); color: var(--ink-2); }
+.ty-nudge a, .home-nudge a, .lx p a { color: var(--ink); text-decoration-color: rgba(215,245,227,.35); text-underline-offset: 3px; }
+.ty-nudge a:hover, .home-nudge a:hover, .lx p a:hover { color: var(--green); text-decoration-color: currentColor; }
+.page-type:has(.ty-learn, .ty-free) .ty-tabs { max-width: 1120px; }
+body:has(.ty-learn) #rain { opacity: .05; }
+body:has(.ty-free) #rain { opacity: .02; }
+
+/* the line under the race on the home page for players with no runs yet */
+.home-nudge {
+  display: flex; align-items: center; justify-content: center; gap: 10px; margin: 26px auto 0;
+  font: 400 14px/1.4 var(--f-head); color: var(--ink-2);
+}
+.home-nudge button {
+  display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 2px;
+  background: transparent; color: var(--ink-2); cursor: pointer;
+}
+.home-nudge button:hover { background: rgba(57,255,136,.08); color: var(--ink); }
+.home-nudge svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; fill: none; }
+

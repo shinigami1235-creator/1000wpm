@@ -5,13 +5,13 @@
 // to the academy.
 (() => {
   const test = Router.get && Router.get('type');
-  if (!test || !window.LearnPage || !window.FreePage) return;
+  if (!test) return;
 
-  const TABS = [['test', 'Typing test', '#/type'], ['learn', 'Academy', '#/type/learn'], ['free', 'Free typing', '#/type/free']];
-  // #/type/reel is the reel recorder in js/app/reel.js, shown as a fourth tab when loaded
-  if (window.ReelPage) TABS.push(['reel', 'Reel', '#/type/reel']);
+  // the academy, free typing and reel (#/type/reel, js/app/reel.js) load with the 'learn'
+  // group the first time one of their tabs opens, so the test itself starts light
+  const TABS = [['test', 'Typing test', '#/type'], ['learn', 'Academy', '#/type/learn'], ['free', 'Free typing', '#/type/free'], ['reel', 'Reel', '#/type/reel']];
   const pageOf = t => t === 'learn' ? LearnPage : t === 'free' ? FreePage : t === 'reel' ? ReelPage : test;
-  const tabOf = params => ['learn', 'free'].includes(params[0]) || (params[0] === 'reel' && window.ReelPage) ? params[0] : 'test';
+  const tabOf = params => ['learn', 'free', 'reel'].includes(params[0]) ? params[0] : 'test';
   let root = null, holder = null, cur = null, curTab = '';
 
   // a player with no runs, no placement test and no lessons yet
@@ -20,7 +20,9 @@
     return !WPM.sessions().length && !l.placement && !Object.keys(l.lessons || {}).length;
   }
 
+  let asked = 0;   // a tab that waits for its scripts opens only if no other tab was picked meanwhile
   function show(params) {
+    asked++;
     const t = tabOf(params);
     root.querySelectorAll('.ty-tabs a').forEach(a => {
       if (a.dataset.tab === t) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -29,7 +31,15 @@
     if (nudge) nudge.hidden = t !== 'test' || !isNew();
     if (t === curTab && cur) { if (cur.update) cur.update(params.slice(1)); return; }
     if (cur) { try { cur.unmount(); } catch (e) { console.error(e); } }
+    cur = null; curTab = '';
     holder.innerHTML = '';
+    if (t !== 'test' && !window.LearnPage) {
+      holder.innerHTML = '<div class="loading-state">Loading</div>';
+      const ask = asked;
+      Lazy.need('learn').then(() => { if (holder && ask === asked) show(params); },
+        e => { console.error(e); if (holder) holder.innerHTML = '<div class="loading-state">This tab did not load. Check the connection and reload.</div>'; });
+      return;
+    }
     const el = document.createElement('div');
     el.className = 'ty-' + t;
     holder.append(el);
@@ -51,26 +61,5 @@
     },
     update(params) { show(params || []); },
     unmount() { if (cur) { try { cur.unmount(); } catch (e) { console.error(e); } } cur = null; curTab = ''; root = holder = null; },
-  });
-
-  // names for the new run modes
-  const baseName = UI.modeName;
-  UI.modeName = (m, d) => {
-    if (/^learn-/.test(m)) { const L = LEARN.byId(m.slice(6)); return L ? `Academy, ${L.title}` : 'Academy'; }
-    if (m === 'placement') return 'Placement test';
-    if (m === 'free') return 'Free typing';
-    return baseName(m, d);
-  };
-
-  // home page line for new players, under the race. Hide stays hidden on this device.
-  addEventListener('wpm-route', ({ detail }) => {
-    if (detail.name !== 'home' || !isNew() || TT.store.get('wpm-learn-nudge', '') === 'off') return;
-    const page = document.querySelector('.page-home');
-    if (!page || page.querySelector('.home-nudge')) return;
-    const p = UI.el(`<p class="home-nudge"><span>New to typing? The <a href="#/type/learn">academy</a> teaches it from the home row.</span>
-      <button type="button" aria-label="Hide this line"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></p>`);
-    p.querySelector('button').addEventListener('click', () => { TT.store.set('wpm-learn-nudge', 'off'); p.remove(); });
-    const race = page.querySelector('.hero-race');
-    if (race) race.after(p); else page.prepend(p);
   });
 })();

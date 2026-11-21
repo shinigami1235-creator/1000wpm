@@ -357,9 +357,5 @@ window.ReelPage = (() => {
 
   function unmount() { if (ov) ov.close(); el = null; }
 
-  // the run mode's name on the profile and leaderboard
-  const baseName = UI.modeName;
-  UI.modeName = (m, d) => (m === 'reel' ? 'Reel' : baseName(m, d));
-
   return { title: 'Reel', mount, unmount, say };
 })();

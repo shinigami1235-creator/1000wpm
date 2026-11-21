@@ -2,7 +2,13 @@
 // figure straight away; the 3D module loads after the page has painted, renders each look
 // once on its shared offscreen renderer and swaps the real picture in. Pictures are cached
 // as data URLs keyed by a hash of the look, in memory and (small sizes) in localStorage.
+//
+// The 3D module (three.js, avatar.glb and the hair, about 3.5 MB) only loads on the pages
+// built around avatars, listed in RENDER_ON, or when a page asks for a picture with
+// thumb() or viewer(). Everywhere else a picture shows if it was rendered before and the
+// hooded figure shows if not, so the typing pages never wait on WebGL.
 window.Avatar = (() => {
+  const RENDER_ON = ['profile', 'u', 'duel', 'party'];
   const D = window.AvatarData;
   const mem = new Map();
   // v4: MakeHuman skins, eyes and brows; older cached pictures are dropped
@@ -13,6 +19,8 @@ window.Avatar = (() => {
 
   let mod = null, loading = null, started = false;
   const queue = [], waiters = new Map();
+  const later = new Map();   // asked for on a page that doesn't render; drawn if the <img> is still there when 3D loads
+  const renders = () => window.Router && RENDER_ON.includes(Router.current());
 
   // pictures are rendered at the screen's pixel density, so they stay sharp on phones
   const DPR = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
@@ -35,7 +43,13 @@ window.Avatar = (() => {
   function load() {
     if (loading) return loading;
     const url = new URL('js/app/avatar3d.js', document.baseURI).href;
-    loading = import(url).then(async m => { await m.ready; mod = m; pump(); return m; })
+    const parts = window.Lazy ? Lazy.need('avatarParts') : Promise.resolve();
+    loading = parts.then(() => import(url)).then(async m => {
+      await m.ready; mod = m;
+      for (const [k, q] of later) if (document.querySelector(`img[data-avk="${k}"]`)) queue.push(q);
+      later.clear();
+      pump(); return m;
+    })
       .catch(e => { console.warn('Avatar 3D did not load', e); });
     return loading;
   }
@@ -47,9 +61,11 @@ window.Avatar = (() => {
     if (document.readyState === 'complete') go(); else addEventListener('load', go, { once: true });
   }
 
-  function request(look, size, show, k) {
+  function request(look, size, show, k, force) {
     if (mem.has(k) || queue.some(q => q.k === k)) return;
-    queue.push({ look, size: px(size, show), show, k });
+    const q = { look, size: px(size, show), show, k };
+    if (!mod && !force && !renders()) { if (later.size < 200) later.set(k, q); return; }
+    queue.push(q);
     if (mod) pump(); else start();
   }
   let busy = false;
@@ -101,7 +117,7 @@ window.Avatar = (() => {
     return new Promise(res => {
       if (!waiters.has(k)) waiters.set(k, []);
       waiters.get(k).push(res);
-      request(look, size, show, k);
+      request(look, size, show, k, true);
     });
   }
 

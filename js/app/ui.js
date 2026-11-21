@@ -39,11 +39,14 @@ window.UI = (() => {
     rush: 'Boss rush',
     superboss: 'Superboss',
     duel: 'Duel', 'duel-art': 'Duel vs Art', party: 'Party run',
+    pvp: 'PvP', reel: 'Reel', free: 'Free typing', placement: 'Placement test',
   };
   const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   function modeName(m, difficulty) {
     const h = /^horde-(\d)$/.exec(m);
-    const base = MODES[m] || (h ? `Breach ch. ${h[1]}` : m);
+    // academy lessons are named from js/learn/lessons.js when the academy has loaded
+    const L = /^learn-/.test(m) && window.LEARN ? LEARN.byId(m.slice(6)) : null;
+    const base = MODES[m] || (h ? `Breach ch. ${h[1]}` : /^learn-/.test(m) ? (L ? `Academy, ${L.title}` : 'Academy') : m);
     return difficulty && DIFF[difficulty] ? `${base}, ${DIFF[difficulty]}` : base;
   }
 
@@ -214,6 +217,7 @@ window.UI = (() => {
   function waitFor(name, host, ready) {
     if (window[name]) { ready(window[name]); return () => {}; }
     host.innerHTML = '<div class="loading-state">Loading</div>';
+    if (window.Lazy) Lazy.provide(name).catch(e => { console.error(e); host.innerHTML = '<div class="loading-state">This did not load. Check the connection and reload.</div>'; });
     let stop = false;
     const iv = setInterval(() => {
       if (stop || !window[name]) return;
