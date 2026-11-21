@@ -44,6 +44,19 @@
 .avc-confirm[hidden] { display: none; }
 .avc-confirm span { flex: 1 1 180px; font: 400 15px/1.3 var(--f-label); color: var(--ink); }
 
+/* brow editor: head, peak and tail dots on the guide lines, thickness handles above them */
+.avbr-dots { position: absolute; inset: 0; pointer-events: none; }
+.avbr-dot {
+  position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%;
+  box-shadow: 0 0 0 1.5px #0a0f0c, 0 1px 4px rgba(0,0,0,.6);
+}
+.avbr-dot.head { background: #ffc73d; }
+.avbr-dot.peak { background: #5ae678; }
+.avbr-dot.tail { background: #4fa0ff; }
+.avbr-dot.headT, .avbr-dot.peakT { left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 2px; background: #fff; }
+.avbr-dot.on { transform-origin: center; box-shadow: 0 0 0 2px #fff, 0 0 12px var(--av-glow); }
+.avbr-dot.on.snap { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--av-glow); }
+
 /* sculpt: dots on the face, the point list and the tools */
 .avc-view.sculpting canvas { cursor: crosshair; }
 .avsc-dots { position: absolute; inset: 0; pointer-events: none; }

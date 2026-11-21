@@ -12,6 +12,8 @@ window.AvatarCreator = (() => {
   // what "Reset tab" puts back to DEFAULT besides the tab's sliders (sliders go by their group)
   const TAB_KEYS = { face: ['sk'], eyes: ['ec'], brows: ['bs', 'bc'], makeup: ['mk'], hair: ['h', 'hc', 'fh'], outfit: ['o', 'oc', 'op', 'gl'], gear: ['g'] };
   let el = null, look = null, savedKey = '', tab = 'face', view = null, off = [], savedTimer = 0, palette = null, guides = false;
+  // brow editor: guides on the preview with dots to drag (avatar-brows.js)
+  let browGuides = false, btool = null;
   // history: whole looks before each change; a drag or a run of wheel steps is one change
   let undoS = [], redoS = [], pending = null;
   // sculpt: the selected point, whether it is fixed, and the settings for new points
@@ -100,6 +102,8 @@ window.AvatarCreator = (() => {
     view.setGuides(guides && tab === 'face');
     tool = new (S().Tool)(view, sculptCtl);
     tool.setOn(tab === 'sculpt');
+    if (window.AvatarBrows) btool = new window.AvatarBrows.Tool(view, browCtl);
+    toolsOn();
     paintPane();
     const onMq = () => view && view.setReduce(reduce.matches);
     reduce.addEventListener('change', onMq);
@@ -184,6 +188,26 @@ window.AvatarCreator = (() => {
     box.querySelector('[data-confirm-yes]').focus();
   }
   function closeAsk() { confirmFn = null; if (el) el.querySelector('[data-confirm]').hidden = true; }
+
+  // ---------- the brow editor ----------
+  // a dot drag sets the brow sliders, so undo, redo and the resets cover it as they do sliders
+  const browCtl = {
+    look: () => look,
+    begin,
+    change(f) {
+      look = D.normalize({ ...look, f });
+      if (view) view.set(look);
+      if (el) el.querySelectorAll('[data-pane] input[data-s]').forEach(i => { i.value = D.fv(look.f, i.dataset.s); });
+      paintStatus();
+    },
+    end: () => end(),
+    revert() { if (!pending) return; look = pending; pending = null; if (view) view.set(look); paintPane(); },
+  };
+  function toolsOn() {
+    if (tool) tool.setOn(tab === 'sculpt');
+    if (btool) btool.setOn(tab === 'brows' && browGuides);
+    if (view) { view.still = tab === 'sculpt' || (tab === 'brows' && browGuides); view.kick(); }
+  }
 
   // ---------- sculpt ----------
   const pts = () => look.sc || [];
@@ -279,6 +303,7 @@ window.AvatarCreator = (() => {
     const act = ev.target.closest('[data-act]');
     if (act && act.dataset.act === 'balance') { const v = view && view.balanceThirds(look); if (v) set({ ...look, f: { ...look.f, ...v } }); return; }
     if (act && act.dataset.act === 'guides') { guides = !guides; act.setAttribute('aria-pressed', guides); if (view) view.setGuides(guides); return; }
+    if (act && act.dataset.act === 'browguides') { browGuides = !browGuides; act.setAttribute('aria-pressed', browGuides); toolsOn(); return; }
     const rst = ev.target.closest('[data-rst]');
     if (rst) { const t = rst.parentElement.querySelector('input[type=range]'); if (t) resetSlider(t); return; }
     const rt = ev.target.closest('[data-reset-tab]');
@@ -521,7 +546,9 @@ window.AvatarCreator = (() => {
         ${sliders('eyes')}`;
     } else if (tab === 'brows') {
       const match = `<button type="button" class="dot match" data-slot="bc" data-id="-1" aria-pressed="${look.bc < 0}" title="Match hair" style="--c:${D.HAIR_COLORS[look.hc].hex}"><span>Match hair</span></button>`;
-      h = `<div class="label avc-sub">Shape</div>
+      h = `<p class="avc-tip">Turn on Show guides, then drag the dots to reshape the brow.</p>
+        <div class="avc-prop"><button class="btn out sm" type="button" data-act="browguides" aria-pressed="${browGuides}">Show guides</button></div>
+        <div class="label avc-sub">Shape</div>
         <div class="avc-tiles">${D.PARTS.bs.map(p => tile('bs', p, look.bs === p.id, { ...look, bs: p.id, g: [] })).join('')}</div>
         <div class="label avc-sub">Brow colour</div>
         ${swatches('bc', D.HAIR_COLORS.filter(c => !c.price), look.bc, 'Brow colour', match)}
@@ -569,7 +596,7 @@ window.AvatarCreator = (() => {
     if (tab !== 'sculpt') h += `<div class="avc-tabfoot"><button class="btn out sm" type="button" data-reset-tab>Reset tab</button></div>`;
     pane.innerHTML = h;
     if (view) { view.setFocus(FOCUS.includes(tab)); view.setGuides(guides && tab === 'face'); }
-    if (tool) tool.setOn(tab === 'sculpt');
+    toolsOn();
     el.querySelector('[data-turn-hint]').textContent = tab === 'sculpt' ? 'Right-drag or two fingers to turn' : 'Drag to turn';
     pane.setAttribute('aria-label', TABS.find(t => t[0] === tab)[1]);
     paintStatus();
@@ -579,11 +606,12 @@ window.AvatarCreator = (() => {
     off.forEach(f => f()); off = [];
     clearTimeout(savedTimer); clearTimeout(flashT);
     if (tool) tool.dispose();
+    if (btool) btool.dispose();
     if (view) view.dispose();
-    view = null; tool = null; el = null; confirmFn = null;
+    view = null; tool = null; btool = null; el = null; confirmFn = null;
   }
 
   // for scripted tests
-  const peek = () => ({ look, sel, fixed, mirror, size, undo: undoS.length, redo: redoS.length, view, tool });
+  const peek = () => ({ look, sel, fixed, mirror, size, undo: undoS.length, redo: redoS.length, view, tool, btool, browGuides });
   return { mount, unmount, peek };
 })();
