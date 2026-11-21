@@ -14,7 +14,7 @@ The rules run in files with no DOM, so the server loads the same code as the pag
 | `js/net/core.js` | `NetCore`: string hash, seeded random numbers, event emitter |
 | `js/net/typist.js` | `NetTypist`: which word a key is aimed at (stream, spell, counter word, buff) and when a word is finished |
 | `js/net/duel-rules.js` | `DuelRules`: PvP damage, the PvP spell versions, rounds, the match result and `replay()` |
-| `js/net/party-rules.js` | `PartyRules`: roles, the team combo, boss attacks, buffs, Art's drop-in and the run result |
+| `js/net/party-rules.js` | `PartyRules`: roles, player HP and handles, the five fight kinds, boss attacks, buffs, Art's drop-in, the run result, and `view()` for bots |
 | `js/net/rating.js` | `NetRating`: Elo with a larger step for new players, bot ratings, rating tiers |
 | `js/net/filter.js` | `NetFilter`: the chat and name filter |
 | `js/net/chat-rules.js` | `ChatRules`: one check for a chat line (length, words, contact details, slow mode, repeats) and the typed wpm |
@@ -83,7 +83,7 @@ Net.challenges.accept(id)
 Net.challenges.decline(id)
 ```
 
-`Net.test({ ... })`, or `window.__netTest` set before the scripts load, speeds the sim up for automated tests: `search`, `hp`, `roundMs`, `startMs`, `breakMs`, `offerMs`, `botWpm`, `partyBotWpm`, `join`, `answer`, `accept`, `artChance`, `artFight`, `artMs`, `partyStartMs`, `clearMs`, `teamHp`, `bossHp`.
+`Net.test({ ... })`, or `window.__netTest` set before the scripts load, speeds the sim up for automated tests: `search`, `hp`, `roundMs`, `startMs`, `breakMs`, `offerMs`, `botWpm`, `partyBotWpm`, `join`, `answer`, `accept`, `artChance`, `artFight`, `artMs`, `partyStartMs`, `clearMs`, `teamHp` (each player's HP), `bossHp`, `partyFights` (a list of area keys that replaces the run's).
 
 ## Wire format
 
@@ -215,22 +215,33 @@ A room is either the player's saved layout (`{ v: 1, items: [{ id, x, y, z, rot,
 
 ### Party state and events
 
-State: `{ phase: 'count' | 'fight' | 'clear' | 'over', fight, of, run, clock, boss: { key, name, area, look, hp, maxHp }, teamHp, teamMax, teamCombo, teamTier, teamMult, meter, buffOffer, buffN, overclock, firewall, art, attack: { id, word, land, start } | null, players: [{ id, name, role, bot, typed, target, idx, combo, tier, acc, offer, offerUntil, statuses, stats }] }`.
+Each player has their own HP and a handle (a word made from their name) that teammates type to heal, shield or revive them. A fight is one of five kinds: `hydra`, `swarm`, `snake`, `golem`, `twins`; Mixed run areas add mites (`adds: 'mites'`). Rules and numbers are in the header of `js/net/party-rules.js`; `node tools/net/party-balance.js` plays bot teams at several speeds.
+
+State: `{ phase: 'count' | 'fight' | 'clear' | 'over', fight, of, run, clock, boss: { key, kind, adds, name, area, look, hp, maxHp }, foes: [{ id, kind: 'head' | 'twin' | 'queen' | 'golem' | 'car' | 'mite', name, word, hp, maxHp, alive, slot, lane, born, land, path, regrowAt }], weak, relink, teamCombo, teamTier, teamMult, meter, buffOffer, buffN, overclock, firewall, art, maxHp, attack: { id, word, land, start, target: playerId | 'team', from, dmg } | null, players: [{ id, name, role, bot, handle, hp, down, downLeft, shield, target, healIn, shieldIn, typed, idx, combo, tier, acc, offer, offerUntil, statuses, stats }] }`.
 
 | `type` | Fields |
 |---|---|
-| `fight` | `phase: 'start' \| 'clear', fight, of, key, area, boss, look, hp`, and at the start this player's `words` for the fight |
-| `attack` | `id, word, start, land, dmg` |
-| `block` | `id` (the attack), `by` (a player id or `'firewall'`) |
-| `impact` | `id, dmg, teamHp, teamCombo, from` |
-| `hit` | `id` (player), `dmg, kind: 'word' \| 'spell' \| 'counter', bossHp, tier, crit, spell` |
-| `cast` | `id, spell, hits, effect` |
-| `buffOffer` / `buff` | `buffs` / `buff, by, teamHp, until` |
+| `fight` | `phase: 'start' \| 'clear', fight, of, key, kind, adds, area, boss, look, hp, foes`, and at the start this player's `words` for the fight |
+| `attack` | `id, word, start, land, dmg, target, from` |
+| `block` | `id` (the attack), `by` (a player id or `'firewall'`), `target` |
+| `impact` | `id, dmg, target, teamCombo, from` |
+| `chip` | `what: 'spit' \| 'whip' \| 'quake' \| 'beam', from, targets, dmg`: small hits nobody can block |
+| `hurt` | `id, dmg, kind: 'aimed' \| 'slam' \| 'chip' \| 'bite', shielded, hp` |
+| `down` / `up` / `rebootStep` | `id, until` / `id, by, hp` / `id, until` |
+| `heal` / `shield` | `id` (who got it), `by, amount, hp, ready` |
+| `hit` | `id` (player), `foe, dmg, kind: 'word' \| 'spell' \| 'counter' \| 'pop' \| 'cut', foeHp, bossHp, tier, crit, spell` |
+| `foe` / `foeGone` | a new mite or car / `id, how: 'kill' \| 'pop' \| 'bite', by, lane` |
+| `aim` | `id, foe`: a player typed a head's or twin's name |
+| `regrowing` / `regrow` / `headGone` | hydra heads and twins coming back |
+| `relink` | `id, until`: twins, the other one has to fall by then |
+| `weak` | `on, until`: the golem's core is open |
+| `cast` | `id, spell, foe, hits, effect` |
+| `buffOffer` / `buff` | `buffs` / `buff, by, until` |
 | `teamCombo` | `combo, from, reason` |
-| `miss`, `typo`, `fizzle`, `counterMiss` | `id` and the word |
+| `miss`, `typo`, `fizzle`, `counterMiss`, `late` | `id` and the word; `late` is a mite or car word a teammate took first, with no penalty |
 | `art` | `on` |
 | `callout` | `text`, Art's line |
-| `end` | `won, fights, cleared, of, ms, art, artAt, teamBest, teamHp, players: [per player stats with wpm and acc]` |
+| `end` | `won, fights, cleared, of, ms, art, artAt, teamBest, players: [per player stats with wpm, acc, hp, heals, healed, shields, revives, pops, cuts, downs, taken]` |
 
 ## How the server checks results
 
