@@ -22,6 +22,8 @@ const H = window.AvatarHair.create({ THREE, loader, root: ROOT, prep });
 if (!window.AvatarCloth) await import('./avatar-cloth.js');
 const CL = window.AvatarCloth.create({ THREE, loader, root: ROOT, prep });
 const isCloth = pid => pid.startsWith('fit-') || pid.startsWith('acc-');
+// sculpt points (look.sc): pushed and pulled areas on top of the slider morphs, in avatar-sculpt.js
+const SC = (await import('./avatar-sculpt.js')).default;
 
 // ---------- reading the files ----------
 function vec3Array(attr, off, sc) {
@@ -393,7 +395,7 @@ export class Rig {
   // Applies a look. Items not loaded yet are skipped; call ensure() first to wait for them.
   set(look, { bare = false } = {}) {
     const L = D.normalize(look);
-    const shapeKey = JSON.stringify(L.f);
+    const shapeKey = JSON.stringify(L.f) + SC.key(L.sc);
     if (shapeKey !== this.shapeKey) {
       this.shapeKey = shapeKey; this.shapeStamp = (this.shapeStamp || 0) + 1;
       const pos = this.pos, base = this.A.base, dl = this.delta;
@@ -409,6 +411,7 @@ export class Rig {
         const w = Math.abs(v) * (s.id === 'vline' ? 1 - 0.35 * Math.max(0, -(L.f.sex || 0)) / 100 : 1), idx = m.idx, d = m.d;
         for (let i = 0; i < idx.length; i++) { const k = idx[i] * 3; pos[k] += w * d[i * 3]; pos[k + 1] += w * d[i * 3 + 1]; pos[k + 2] += w * d[i * 3 + 2]; }
       }
+      SC.apply(this, L.sc);
       for (let i = 0; i < pos.length; i++) dl[i] = pos[i] - base[i];
       computeNormals(pos, this.allIndex, this.A.weld, this.nrm);
       this.posAttr.needsUpdate = true; this.nrmAttr.needsUpdate = true;
@@ -621,7 +624,7 @@ export class Viewer {
     this.raf = 0;
     if (!this.alive) return;
     // a slow sway while nobody is dragging, unless the player asked for reduced motion
-    const sway = !this.reduce && !this.dragging && t - this.idle > 2500;
+    const sway = !this.reduce && !this.still && !this.dragging && t - this.idle > 2500;
     const yaw = this.yaw + (sway ? Math.sin((t - this.idle) / 2600) * 0.22 : 0);
     turn(this.rig.group, yaw);
     // close up (the makeup and mouth tabs) eases in from the bust view
@@ -634,6 +637,7 @@ export class Viewer {
     beforeRender(this.cam);
     this.r.setRenderTarget(null);
     this.r.render(this.scene, this.cam);
+    if (this.onFrame) this.onFrame();   // the sculpt tool's dots (avatar-sculpt.js)
     if ((sway || this.focus !== fzT) && document.visibilityState === 'visible') this.kick();
   }
   setReduce(v) { this.reduce = v; this.kick(); }

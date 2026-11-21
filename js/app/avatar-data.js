@@ -9,6 +9,8 @@
 //           browS: 0, lipC: 0, lipS: 0, lineC: 0, lineS: 0, glossS: 0 } }
 // f holds slider values from -100 to 100 (missing means 0, except V-shape: see fv). Fields added later have
 // defaults, so looks saved before them still load.
+// sc (optional, left out when empty) holds sculpt points: [{ v: vertex, d: [dx, dy, dz], r: size, m: 1 }],
+// offsets and size in thousandths of a model unit, m: 1 when mirrored (avatar-sculpt.js).
 window.AvatarData = (() => {
   // the first 21 sliders keep their order: the seeded generator draws them in this order
   const SLIDERS = [
@@ -238,8 +240,31 @@ window.AvatarData = (() => {
     L.mk = normalizeMk(src.mk);
     L.g = [...new Set(Array.isArray(L.g) ? L.g : [])].filter(id => part('g', id));
     L.g = withGear(L, null).g;
+    const sc = normalizeSc(src.sc);
+    if (sc) L.sc = sc; else delete L.sc;
     L.v = 1;
     return L;
+  }
+  // Sculpt points: at most 16, each a whole vertex index, a size from 60 to 600 and an offset no
+  // longer than half its size (avatar-sculpt.js clamps further where it knows the face).
+  const SC_MAX = 16, SC_RMIN = 60, SC_RMAX = 600;
+  function normalizeSc(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    for (const p of raw) {
+      if (out.length >= SC_MAX) break;
+      if (!p || typeof p !== 'object') continue;
+      const v = Math.round(+p.v);
+      if (!(v >= 0 && v < 65536)) continue;
+      const r = clamp(Math.round(+p.r) || 250, SC_RMIN, SC_RMAX);
+      let d = [0, 1, 2].map(j => (Array.isArray(p.d) && Math.round(+p.d[j])) || 0);
+      const len = Math.hypot(...d), max = r / 2;
+      if (len > max) d = d.map(x => Math.round(x * max / len));
+      const q = { v, d, r };
+      if (p.m) q.m = 1;
+      out.push(q);
+    }
+    return out.length ? out : null;
   }
   // Makeup saved before strengths had a style per layer ('none' was off) and painted every
   // layer at full strength: those load at about 60%, gloss lipstick keeps a gloss.
@@ -345,7 +370,7 @@ window.AvatarData = (() => {
     const L = normalize(look);
     const f = Object.keys(L.f).sort().map(k => `${k}:${L.f[k]}`).join(',');
     const mk = Object.keys(MK_DEFAULT).map(k => L.mk[k]).join(',');
-    return `${L.sk}|${L.h}|${L.hc}|${L.fh}|${L.g.join(',')}|${L.o}|${L.gl}|${f}|${L.ec}|${L.bs}|${L.bc}|${L.oc}|${mk}${L.op === 'stripe' ? '|stripe' : ''}`;
+    return `${L.sk}|${L.h}|${L.hc}|${L.fh}|${L.g.join(',')}|${L.o}|${L.gl}|${f}|${L.ec}|${L.bs}|${L.bc}|${L.oc}|${mk}${L.op === 'stripe' ? '|stripe' : ''}${L.sc ? '|sc:' + L.sc.map(p => `${p.v},${p.d.join(',')},${p.r}${p.m ? 'm' : ''}`).join(';') : ''}`;
   }
   function hash(look) {
     const s = typeof look === 'string' ? look : stable(look);
@@ -442,6 +467,6 @@ window.AvatarData = (() => {
 
   return {
     SLIDERS, LIP_SLIDERS, SKIN, HAIR_COLORS, EYE_COLORS, EYE_ORDER, FACIAL_HAIR, OUTFIT_COLORS, GLOWS, MAKEUP, MK_LAYERS, MK_DEFAULT, MK_PRESETS, PARTS, PATTERN_OUTFITS, SLOT_NAME, DEFAULT, GOLD_LEVEL, HOOD_BLOCKS,
-    items, itemId, part, lockOf, normalize, fv, normalizeMk, presetMk, presetOf, freeMk, mkHex, usable, unownedParts, withGear, stable, hash, random, rng,
+    items, itemId, part, lockOf, normalize, normalizeSc, fv, normalizeMk, presetMk, presetOf, freeMk, mkHex, usable, unownedParts, withGear, stable, hash, random, rng,
   };
 })();
