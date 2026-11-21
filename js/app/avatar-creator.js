@@ -8,7 +8,7 @@ window.AvatarCreator = (() => {
     ['hair', 'Hair'], ['outfit', 'Outfit'], ['gear', 'Accessories']];
   // tabs whose changes are small on the face: the view moves in close
   const FOCUS = ['eyes', 'makeup', 'mouth'];
-  let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0, palette = null;
+  let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0, palette = null, guides = false;
   const e = s => UI.esc(s);
   const fmt = n => UI.fmt(n);
 
@@ -75,6 +75,7 @@ window.AvatarCreator = (() => {
     view.resize();
     view.set(look);
     view.setFocus(FOCUS.includes(tab));
+    view.setGuides(guides && tab === 'face');
     const onMq = () => view && view.setReduce(reduce.matches);
     reduce.addEventListener('change', onMq);
     off.push(() => reduce.removeEventListener('change', onMq));
@@ -104,6 +105,9 @@ window.AvatarCreator = (() => {
       // the V-shape default follows the face's sex until someone sets it
       const vl = t.dataset.s === 'sex' && el.querySelector('input[data-s="vline"]');
       if (vl) vl.value = D.fv(look.f, 'vline');
+      // the same slider can show twice (Eye width and spacing are under Proportions too)
+      el.querySelectorAll(`input[data-s="${t.dataset.s}"]`).forEach(x => { if (x !== t) x.value = t.value; });
+      el.querySelectorAll('[data-lp]').forEach(b => b.setAttribute('aria-pressed', b.dataset.lp === D.lipPresetOf(look.f)));
     }
     if (view) view.set(look);
     paintStatus();
@@ -117,6 +121,12 @@ window.AvatarCreator = (() => {
   function onPick(ev) {
     const buy = ev.target.closest('[data-buy]');
     if (buy) return doBuy(buy.dataset.buy);
+    // lip presets, Balance thirds and the proportion guides
+    const lp = ev.target.closest('[data-lp]');
+    if (lp) return set({ ...look, f: D.withLipPreset(look.f, lp.dataset.lp) });
+    const act = ev.target.closest('[data-act]');
+    if (act && act.dataset.act === 'balance') { const v = view && view.balanceThirds(look); if (v) set({ ...look, f: { ...look.f, ...v } }); return; }
+    if (act && act.dataset.act === 'guides') { guides = !guides; act.setAttribute('aria-pressed', guides); if (view) view.setGuides(guides); return; }
     const b = ev.target.closest('[data-slot]');
     if (!b || b.disabled) return;
     const slot = b.dataset.slot, id = b.dataset.id;
@@ -284,7 +294,15 @@ window.AvatarCreator = (() => {
     const pane = el.querySelector('[data-pane]');
     let h = '';
     if (tab === 'face') {
-      h = `${sliders('face')}
+      h = `<div class="label avc-sub">Proportions</div>
+        ${sliders('prop', D.PROP_SLIDERS)}
+        <div class="avc-prop">
+          <button class="btn out sm" type="button" data-act="balance">Balance thirds</button>
+          <button class="btn out sm" type="button" data-act="guides" aria-pressed="${guides}">Show guides</button>
+        </div>
+        <p class="dim avc-tip">The guides mark the thirds at the hairline, brows, nose base and chin, and the fifths at the sides of the face and the eye corners.</p>
+        <div class="label avc-sub">Shape</div>
+        ${sliders('face')}
         <div class="label avc-sub">Skin tone</div>
         <div class="avc-skins" role="group" aria-label="Skin tone">${D.SKIN.map((c, i) => `<button type="button" class="skin" data-slot="sk" data-id="${i}" aria-pressed="${look.sk === i}" aria-label="Skin tone ${i + 1} of ${D.SKIN.length}" style="--c:${c}"></button>`).join('')}</div>`;
     } else if (tab === 'eyes') {
@@ -302,7 +320,10 @@ window.AvatarCreator = (() => {
     } else if (tab === 'nose') {
       h = sliders(tab);
     } else if (tab === 'mouth') {
-      h = `${sliders('mouth', D.LIP_SLIDERS).replace('avs-list', 'avs-list wide')}
+      const lp = D.lipPresetOf(look.f);
+      h = `<div class="label avc-sub">Presets</div>
+        <div class="mkp-row lp" role="group" aria-label="Lip presets">${D.LIP_PRESETS.map(p => `<button type="button" class="mkp" data-lp="${p.id}" aria-pressed="${lp === p.id}">${e(p.name)}</button>`).join('')}</div>
+        ${D.LIP_GROUPS.map(([name, list]) => `<div class="label avc-sub">${name}</div>${sliders('mouth', list).replace('avs-list', 'avs-list wide')}`).join('')}
         <p class="dim avc-tip">Lip colour, liner and gloss are on the Makeup tab.</p>`;
     } else if (tab === 'makeup') {
       h = makeupPane();
@@ -335,7 +356,7 @@ window.AvatarCreator = (() => {
         ${lv < D.GOLD_LEVEL ? `<p class="dim avc-tip">Gold glow unlocks at level ${D.GOLD_LEVEL}. You are level ${lv}.</p>` : ''}`;
     }
     pane.innerHTML = h;
-    if (view) view.setFocus(FOCUS.includes(tab));
+    if (view) { view.setFocus(FOCUS.includes(tab)); view.setGuides(guides && tab === 'face'); }
     pane.setAttribute('aria-label', TABS.find(t => t[0] === tab)[1]);
     paintStatus();
   }
