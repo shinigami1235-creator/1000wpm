@@ -1,21 +1,29 @@
 // #/profile/avatar: the avatar creator. A large 3D view you turn by dragging, sliders for
 // the face, and a grid of options for brows, makeup, hair, outfits and accessories, each
 // shown on your own avatar. Free parts are ready to use; the rest show their price and can
-// be tried on, then bought here or in the shop.
+// be tried on, then bought here or in the shop. The Sculpt tab pushes and pulls points on the
+// face (avatar-sculpt.js). Undo and redo cover every change, resets included.
 window.AvatarCreator = (() => {
   const D = window.AvatarData;
-  const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['brows', 'Brows'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['makeup', 'Makeup'],
+  const TABS = [['face', 'Face'], ['eyes', 'Eyes'], ['brows', 'Brows'], ['nose', 'Nose'], ['mouth', 'Mouth'], ['sculpt', 'Sculpt'], ['makeup', 'Makeup'],
     ['hair', 'Hair'], ['outfit', 'Outfit'], ['gear', 'Accessories']];
   // tabs whose changes are small on the face: the view moves in close
-  const FOCUS = ['eyes', 'brows', 'makeup', 'mouth'];
-  let el = null, look = null, savedKey = '', hist = [], tab = 'face', view = null, off = [], dragFrom = null, savedTimer = 0, palette = null, guides = false;
+  const FOCUS = ['eyes', 'brows', 'makeup', 'mouth', 'sculpt'];
+  // what "Reset tab" puts back to DEFAULT besides the tab's sliders (sliders go by their group)
+  const TAB_KEYS = { face: ['sk'], eyes: ['ec'], brows: ['bs', 'bc'], makeup: ['mk'], hair: ['h', 'hc', 'fh'], outfit: ['o', 'oc', 'op', 'gl'], gear: ['g'] };
+  let el = null, look = null, savedKey = '', tab = 'face', view = null, off = [], savedTimer = 0, palette = null, guides = false;
+  // history: whole looks before each change; a drag or a run of wheel steps is one change
+  let undoS = [], redoS = [], pending = null;
+  // sculpt: the selected point, whether it is fixed, and the settings for new points
+  let sel = -1, fixed = false, mirror = true, size = 250, tool = null, flash = '', flashT = 0, confirmFn = null;
+  const S = () => window.AvatarSculpt;
   const e = s => UI.esc(s);
   const fmt = n => UI.fmt(n);
 
   function mount(root) {
     el = root;
     look = Avatar.mine();
-    savedKey = D.stable(look); hist = [];
+    savedKey = D.stable(look); undoS = []; redoS = []; pending = null; sel = -1; fixed = false;
     el.innerHTML = `
       <div class="avc">
         <div class="panel shop-hero avc-head">
@@ -24,7 +32,7 @@ window.AvatarCreator = (() => {
         </div>
         <div class="avc-main">
           <section class="panel hot avc-stage" aria-label="Preview">
-            <div class="ph">// PREVIEW<span class="meta">Drag to turn</span></div>
+            <div class="ph">// PREVIEW<span class="meta" data-turn-hint>Drag to turn</span></div>
             <div class="avc-view" data-view><div class="loading-state">Loading</div></div>
             <div class="avc-turn">
               <button class="btn out sm" type="button" data-turn="-1" aria-label="Turn left">&lt;</button>
@@ -36,8 +44,15 @@ window.AvatarCreator = (() => {
               <a class="btn out sm" href="#/profile">Back to profile</a>
               <span class="grow"></span>
               <button class="btn out sm" type="button" data-rand>Randomise</button>
-              <button class="btn out sm" type="button" data-undo>Undo</button>
+              <button class="btn out sm" type="button" data-undo aria-keyshortcuts="Control+Z">Undo</button>
+              <button class="btn out sm" type="button" data-redo aria-keyshortcuts="Control+Y">Redo</button>
+              <button class="btn out sm" type="button" data-reset-face>Reset face</button>
               <button class="btn sm" type="button" data-save>Save</button>
+            </div>
+            <div class="avc-confirm" data-confirm hidden role="alertdialog" aria-labelledby="avc-confirm-q">
+              <span id="avc-confirm-q" data-confirm-q></span>
+              <button class="btn sm" type="button" data-confirm-yes></button>
+              <button class="btn out sm" type="button" data-confirm-no>Cancel</button>
             </div>
             <p class="avc-note" data-note role="status"></p>
             <div class="seg avc-tabs" role="tablist" aria-label="Parts">
@@ -50,12 +65,19 @@ window.AvatarCreator = (() => {
     el.querySelector('.avc-tabs').addEventListener('click', ev => { const b = ev.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; paintPane(); } });
     el.querySelector('[data-rand]').addEventListener('click', randomise);
     el.querySelector('[data-undo]').addEventListener('click', undo);
+    el.querySelector('[data-redo]').addEventListener('click', redo);
+    el.querySelector('[data-reset-face]').addEventListener('click', () => ask('Reset the face sliders and sculpt points?', 'Reset face', resetFace));
+    el.querySelector('[data-confirm-yes]').addEventListener('click', () => { const f = confirmFn; closeAsk(); if (f) f(); });
+    el.querySelector('[data-confirm-no]').addEventListener('click', closeAsk);
     el.querySelector('[data-save]').addEventListener('click', save);
     el.querySelectorAll('[data-turn]').forEach(b => b.addEventListener('click', () => view && view.rotate(+b.dataset.turn * 0.5)));
     const pane = el.querySelector('[data-pane]');
     pane.addEventListener('input', onSlider);
     pane.addEventListener('change', onSliderDone);
     pane.addEventListener('click', onPick);
+    pane.addEventListener('dblclick', ev => { if (ev.target.matches('input[type=range]')) resetSlider(ev.target); });
+    document.addEventListener('keydown', onKey);
+    off.push(() => document.removeEventListener('keydown', onKey));
     el.querySelector('[data-note]').addEventListener('click', ev => { const b = ev.target.closest('[data-buy]'); if (b) doBuy(b.dataset.buy); });
     off.push(WPM.on('coins', () => { if (!el) return; el.querySelector('[data-coins]').textContent = fmt(WPM.coins()); paintPane(); }));
     off.push(WPM.on('inventory', () => el && paintPane()));
@@ -76,23 +98,154 @@ window.AvatarCreator = (() => {
     view.set(look);
     view.setFocus(FOCUS.includes(tab));
     view.setGuides(guides && tab === 'face');
+    tool = new (S().Tool)(view, sculptCtl);
+    tool.setOn(tab === 'sculpt');
+    paintPane();
     const onMq = () => view && view.setReduce(reduce.matches);
     reduce.addEventListener('change', onMq);
     off.push(() => reduce.removeEventListener('change', onMq));
   }
 
   // ---------- state ----------
-  function set(next, record = true) {
-    if (record) { hist.push(D.normalize(look)); if (hist.length > 60) hist.shift(); }
+  const same = (a, b) => JSON.stringify(D.normalize(a)) === JSON.stringify(D.normalize(b));
+  function record(prev) {
+    if (same(prev, look)) return;
+    undoS.push(prev); if (undoS.length > 80) undoS.shift();
+    redoS = [];
+  }
+  function set(next, rec = true) {
+    end();
+    const prev = look;
     look = D.normalize(next);
+    if (rec) record(prev);
+    fixSel();
     if (view) view.set(look);
     paintPane();
   }
-  function undo() { if (!hist.length) return; look = hist.pop(); if (view) view.set(look); paintPane(); }
+  // a change that runs over many events (a slider or point drag, wheel steps) is one undo step
+  function begin() { if (!pending) pending = D.normalize(look); }
+  function end(repaint = false) {
+    if (!pending) return;
+    record(pending); pending = null;
+    if (repaint) paintPane(); else paintStatus();
+  }
+  function step(from, to) {
+    end();
+    if (!from.length) return;
+    to.push(look); look = from.pop();
+    fixSel();
+    if (view) view.set(look);
+    paintPane();
+  }
+  const undo = () => step(undoS, redoS);
+  const redo = () => step(redoS, undoS);
+  function fixSel() {
+    const n = (look.sc || []).length;
+    if (sel >= n) sel = -1;
+    if (sel < 0) fixed = false;
+  }
+  function onKey(ev) {
+    if (!el || ev.altKey) return;
+    const t = ev.target;
+    if (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && t.type !== 'range'))) return;
+    const k = (ev.key || '').toLowerCase();
+    if (ev.ctrlKey || ev.metaKey) {
+      if (k === 'z' && !ev.shiftKey) { ev.preventDefault(); undo(); }
+      else if (k === 'y' || (k === 'z' && ev.shiftKey)) { ev.preventDefault(); redo(); }
+      return;
+    }
+    if (k === 'escape' && confirmFn) { closeAsk(); return; }
+    if (k === 'f' && !ev.shiftKey && tab === 'sculpt') { ev.preventDefault(); toggleFix(); }
+  }
+
+  // ---------- resets ----------
+  function resetSlider(t) {
+    if (t.dataset.mk) return set({ ...look, mk: { ...look.mk, [t.dataset.mk + 'S']: D.MK_DEFAULT[t.dataset.mk + 'S'] } });
+    if (t.dataset.s) { const f = { ...look.f }; delete f[t.dataset.s]; return set({ ...look, f }); }
+    if (t.dataset.sc === 'r') return setSize(250, true);
+    if (t.dataset.sc === 'depth') return setDepth(0, true);
+  }
+  function resetTab(id) {
+    const next = { ...look, f: { ...look.f } };
+    for (const s of D.SLIDERS) if (s.group === id || (id === 'face' && s.group === 'prop')) delete next.f[s.id];
+    for (const k of TAB_KEYS[id] || []) next[k] = D.DEFAULT[k];
+    // the brow shape goes back to the one that suits the face
+    if (id === 'brows') delete next.bs;
+    if (id === 'hair') return set(D.withGear(next, null));
+    set(next);
+  }
+  // every face slider and the sculpt back to default; hair, outfit, skin, makeup and colours stay
+  function resetFace() { const next = { ...look, f: {} }; delete next.sc; sel = -1; set(next); }
+  function ask(q, yes, fn) {
+    const box = el.querySelector('[data-confirm]');
+    box.querySelector('[data-confirm-q]').textContent = q;
+    box.querySelector('[data-confirm-yes]').textContent = yes;
+    box.hidden = false; confirmFn = fn;
+    box.querySelector('[data-confirm-yes]').focus();
+  }
+  function closeAsk() { confirmFn = null; if (el) el.querySelector('[data-confirm]').hidden = true; }
+
+  // ---------- sculpt ----------
+  const pts = () => look.sc || [];
+  const sculptCtl = {
+    state: () => ({ sc: pts(), sel, fixed, mirror, size }),
+    select(i) { sel = i; paintPane(); },
+    change(sc, i, { live = false } = {}) {
+      look = D.normalize({ ...look, sc });
+      sel = i;
+      if (view) view.set(look);
+      if (live && tab === 'sculpt') paintSculptLive(); else paintPane();
+    },
+    begin, end: () => end(tab === 'sculpt'),
+    // a gesture that turned out to be a two-finger turn: back to how it started, no undo step
+    revert() {
+      if (!pending) return;
+      look = pending; pending = null;
+      fixSel();
+      if (view) view.set(look);
+      paintPane();
+    },
+    note(text) { flash = text; clearTimeout(flashT); flashT = setTimeout(() => { flash = ''; paintStatus(); }, 3000); paintStatus(); },
+  };
+  function toggleFix() {
+    if (sel < 0) { fixed = false; sculptCtl.note('Select a point to fix it.'); return; }
+    fixed = !fixed;
+    paintPane(); if (view) view.kick();
+  }
+  function scEdit(fn, rec = true) {
+    const sc = pts().map(p => ({ ...p, d: p.d.slice() }));
+    if (!sc[sel]) return;
+    fn(sc[sel]);
+    const out = view ? S().limit(view.rig.A, sc, sel) : sc;
+    if (rec) set({ ...look, sc: out });
+    else sculptCtl.change(out, sel, { live: true });
+  }
+  // depth: how far the point sits out (+) or in (-) along the face, in thousandths
+  function depthOf(p) { const n = S().normalAt(view.rig.A, p.v); return p.d[0] * n[0] + p.d[1] * n[1] + p.d[2] * n[2]; }
+  function setDepth(v, rec) {
+    if (!view || sel < 0) return;
+    scEdit(p => { const n = S().normalAt(view.rig.A, p.v), k = v - depthOf(p); p.d = p.d.map((x, j) => x + n[j] * k); }, rec);
+  }
+  function setSize(v, rec) {
+    size = v;
+    if (sel < 0 || !view) return paintSculptLive();
+    scEdit(p => { p.r = v; }, rec);
+  }
+  function sculptAct(a) {
+    if (a === 'reset') return scEdit(p => { p.d = [0, 0, 0]; });
+    if (a === 'del') { const sc = pts().filter((_, i) => i !== sel); sel = -1; return set({ ...look, sc }); }
+    if (a === 'clear') {
+      const n = pts().length;
+      return ask(`Delete all ${n} point${n === 1 ? '' : 's'}?`, 'Clear all points', () => { sel = -1; const next = { ...look }; delete next.sc; set(next); });
+    }
+  }
+
   function onSlider(ev) {
     const t = ev.target;
     if (!t.matches('input[type=range]')) return;
-    if (!dragFrom) dragFrom = D.normalize(look);
+    begin();
+    if (t.dataset.sc === 'r') return setSize(+t.value, false);
+    if (t.dataset.sc === 'depth') return setDepth(+t.value, false);
     if (t.dataset.mk) {
       look = D.normalize({ ...look, mk: { ...look.mk, [t.dataset.mk + 'S']: +t.value } });
       const row = t.closest('.mkr');
@@ -113,9 +266,8 @@ window.AvatarCreator = (() => {
     paintStatus();
   }
   function onSliderDone(ev) {
-    if (!ev.target.matches('input[type=range]') || !dragFrom) return;
-    hist.push(dragFrom); dragFrom = null;
-    paintStatus();
+    if (!ev.target.matches('input[type=range]')) return;
+    end();
   }
 
   function onPick(ev) {
@@ -127,6 +279,21 @@ window.AvatarCreator = (() => {
     const act = ev.target.closest('[data-act]');
     if (act && act.dataset.act === 'balance') { const v = view && view.balanceThirds(look); if (v) set({ ...look, f: { ...look.f, ...v } }); return; }
     if (act && act.dataset.act === 'guides') { guides = !guides; act.setAttribute('aria-pressed', guides); if (view) view.setGuides(guides); return; }
+    const rst = ev.target.closest('[data-rst]');
+    if (rst) { const t = rst.parentElement.querySelector('input[type=range]'); if (t) resetSlider(t); return; }
+    const rt = ev.target.closest('[data-reset-tab]');
+    if (rt) return resetTab(tab);
+    const scp = ev.target.closest('[data-scp]');
+    if (scp) { sel = +scp.dataset.scp; paintPane(); if (view) view.kick(); return; }
+    const sct = ev.target.closest('[data-sct]');
+    if (sct && !sct.disabled) {
+      if (sct.dataset.sct === 'fix') return toggleFix();
+      mirror = !mirror;
+      if (sel >= 0) return scEdit(p => { if (mirror) p.m = 1; else delete p.m; });
+      return paintPane();
+    }
+    const sca = ev.target.closest('[data-sca]');
+    if (sca && !sca.disabled) return sculptAct(sca.dataset.sca);
     const b = ev.target.closest('[data-slot]');
     if (!b || b.disabled) return;
     const slot = b.dataset.slot, id = b.dataset.id;
@@ -165,6 +332,7 @@ window.AvatarCreator = (() => {
   }
 
   function randomise() {
+    sel = -1;
     const r = D.random(Math.floor(Math.random() * 1e9));
     const pickUsable = (slot, list, fallback) => {
       const ok = list.filter(p => !D.lockOf(slot, p.id));
@@ -203,12 +371,17 @@ window.AvatarCreator = (() => {
     const bad = unowned();
     const note = el.querySelector('[data-note]');
     const save = el.querySelector('[data-save]');
-    el.querySelector('[data-undo]').disabled = !hist.length;
+    el.querySelector('[data-undo]').disabled = !undoS.length && !pending;
+    el.querySelector('[data-redo]').disabled = !redoS.length;
     if (bad.some(x => x.l.price)) {
       const paid = bad.filter(x => x.l.price), names = paid.map(x => x.name);
       note.innerHTML = `${e(`Buy ${list(names)} or take ${names.length > 1 ? 'them' : 'it'} off to save.`)} ${paid.map(x => `<button class="btn sm" type="button" data-buy="${D.itemId(x.slot, x.id)}">Buy ${e(x.name)} for ${fmt(x.l.price)}</button>`).join(' ')}`;
       note.className = 'avc-note bad';
       save.disabled = true;
+    } else if (flash) {
+      note.textContent = flash;
+      note.className = 'avc-note';
+      save.disabled = D.stable(look) === savedKey;
     } else {
       note.textContent = D.stable(look) === savedKey ? '' : 'Not saved yet.';
       note.className = 'avc-note';
@@ -242,9 +415,11 @@ window.AvatarCreator = (() => {
       return `<button type="button" class="dot${l ? ' locked' : ''}" data-slot="${slot}" data-id="${c.id}" aria-pressed="${current === c.id}" title="${e(c.name)}${l && l.price ? ` (${fmt(l.price)} coins)` : ''}" style="--c:${c.hex}"></button>`;
     }).join('')}</div>`;
   }
+  // each slider has a small reset button; double-clicking the slider resets it too
+  const rstBtn = name => `<button type="button" class="avs-rst" data-rst aria-label="Reset ${e(name.toLowerCase())}" title="Reset">&#x21BA;</button>`;
   function sliders(group, list = D.SLIDERS.filter(s => s.group === group)) {
     return `<div class="avs-list">${list.map(s => `
-      <label class="avs"><span>${e(s.name)}</span><input type="range" min="${s.min}" max="100" step="1" value="${D.fv(look.f, s.id)}" data-s="${s.id}"></label>`).join('')}</div>`;
+      <div class="avs"><label for="avs-${s.id}">${e(s.name)}</label><input id="avs-${s.id}" type="range" min="${s.min}" max="100" step="1" value="${D.fv(look.f, s.id)}" data-s="${s.id}">${rstBtn(s.name)}</div>`).join('')}</div>`;
   }
   // eye colours as named swatches, each a small iris with its pupil
   function eyeColours() {
@@ -278,7 +453,7 @@ window.AvatarCreator = (() => {
     return `<div class="mkr${v ? '' : ' off'}">
       <span class="mkr-n">${e(m.name)}</span>${sw}
       <input type="range" min="0" max="100" step="1" value="${v}" data-mk="${layer}" aria-label="${e(m.name)} strength">
-      <output>${v}%</output>${shapes}${pal}
+      <output>${v}%</output>${rstBtn(m.name)}${shapes}${pal}
     </div>`;
   }
   function makeupPane() {
@@ -286,6 +461,40 @@ window.AvatarCreator = (() => {
       <div class="mkp-row" role="group" aria-label="Makeup presets">${D.MK_PRESETS.map(presetChip).join('')}</div>
       ${MK_ROWS.map(([layer, head]) => `${head ? `<div class="label avc-sub">${head}</div>` : ''}${mkRow(layer)}`).join('')}
       <p class="dim avc-tip">Strength sliders are free. Dimmed colours cost coins.</p>`;
+  }
+
+  function sculptPane() {
+    const sc = pts(), p = sc[sel], ready = !!view;
+    const max = p && ready ? Math.round(S().maxOffset(view.rig.A, p)) : 125, dep = p && ready ? Math.round(depthOf(p)) : 0;
+    const rows = sc.map((q, i) => `<button type="button" class="avsc-row" data-scp="${i}" aria-pressed="${i === sel}">
+      <i aria-hidden="true"></i><span>Point ${i + 1}</span>${q.m ? '<span class="dim">Mirrored</span>' : ''}${i === sel && fixed ? '<span class="avsc-tag">Fixed</span>' : ''}</button>`).join('');
+    return `<p class="avc-tip avsc-how">Click the face to add a point, then drag it.</p>
+      <div class="avsc-tools">
+        <button type="button" class="btn out sm avsc-fix" data-sct="fix" aria-pressed="${fixed}" aria-keyshortcuts="F" title="F"${p ? '' : ' disabled'}>Fix point</button>
+        <button type="button" class="btn out sm" data-sct="mirror" aria-pressed="${mirror}">Mirror</button>
+      </div>
+      <div class="avs-list">
+        <div class="avs"><label for="avsc-r">Size</label><input id="avsc-r" type="range" min="${S() ? S().RMIN : 60}" max="${S() ? S().RMAX : 600}" step="10" value="${p ? p.r : size}" data-sc="r">${rstBtn('Size')}</div>
+        <div class="avs"><label for="avsc-d">Depth</label><input id="avsc-d" type="range" min="${-max}" max="${max}" step="1" value="${dep}" data-sc="depth" title="Shift-drag or scroll on the face"${p ? '' : ' disabled'}>${rstBtn('Depth')}</div>
+      </div>
+      <div class="label avc-sub avsc-head">Points<span class="dim">${sc.length} of ${S() ? S().MAXN : 16}</span></div>
+      ${rows ? `<div class="avsc-list" role="group" aria-label="Points">${rows}</div>` : ''}
+      <div class="avsc-acts">
+        <button type="button" class="btn out sm" data-sca="reset"${p ? '' : ' disabled'}>Reset point</button>
+        <button type="button" class="btn out sm" data-sca="del"${p ? '' : ' disabled'}>Delete point</button>
+        <button type="button" class="btn out sm danger" data-sca="clear"${sc.length ? '' : ' disabled'}>Clear all points</button>
+      </div>`;
+  }
+  // during a drag only the two sliders follow the point
+  function paintSculptLive() {
+    if (!el || tab !== 'sculpt') return;
+    const p = pts()[sel], r = el.querySelector('#avsc-r'), d = el.querySelector('#avsc-d');
+    if (r && document.activeElement !== r) r.value = p ? p.r : size;
+    if (d && p && view && document.activeElement !== d) {
+      const max = Math.round(S().maxOffset(view.rig.A, p));
+      d.min = -max; d.max = max; d.value = Math.round(depthOf(p));
+    }
+    paintStatus();
   }
 
   function paintPane() {
@@ -325,6 +534,8 @@ window.AvatarCreator = (() => {
         <div class="mkp-row lp" role="group" aria-label="Lip presets">${D.LIP_PRESETS.map(p => `<button type="button" class="mkp" data-lp="${p.id}" aria-pressed="${lp === p.id}">${e(p.name)}</button>`).join('')}</div>
         ${D.LIP_GROUPS.map(([name, list]) => `<div class="label avc-sub">${name}</div>${sliders('mouth', list).replace('avs-list', 'avs-list wide')}`).join('')}
         <p class="dim avc-tip">Lip colour, liner and gloss are on the Makeup tab.</p>`;
+    } else if (tab === 'sculpt') {
+      h = sculptPane();
     } else if (tab === 'makeup') {
       h = makeupPane();
     } else if (tab === 'hair') {
@@ -355,18 +566,24 @@ window.AvatarCreator = (() => {
         <div class="avc-cards">${D.GLOWS.map(g => card('gl', g, look.gl === g.id, sw(g.hex), g.lock && lv < D.GOLD_LEVEL ? `Level ${D.GOLD_LEVEL}` : '')).join('')}</div>
         ${lv < D.GOLD_LEVEL ? `<p class="dim avc-tip">Gold glow unlocks at level ${D.GOLD_LEVEL}. You are level ${lv}.</p>` : ''}`;
     }
+    if (tab !== 'sculpt') h += `<div class="avc-tabfoot"><button class="btn out sm" type="button" data-reset-tab>Reset tab</button></div>`;
     pane.innerHTML = h;
     if (view) { view.setFocus(FOCUS.includes(tab)); view.setGuides(guides && tab === 'face'); }
+    if (tool) tool.setOn(tab === 'sculpt');
+    el.querySelector('[data-turn-hint]').textContent = tab === 'sculpt' ? 'Right-drag or two fingers to turn' : 'Drag to turn';
     pane.setAttribute('aria-label', TABS.find(t => t[0] === tab)[1]);
     paintStatus();
   }
 
   function unmount() {
     off.forEach(f => f()); off = [];
-    clearTimeout(savedTimer);
+    clearTimeout(savedTimer); clearTimeout(flashT);
+    if (tool) tool.dispose();
     if (view) view.dispose();
-    view = null; el = null;
+    view = null; tool = null; el = null; confirmFn = null;
   }
 
-  return { mount, unmount };
+  // for scripted tests
+  const peek = () => ({ look, sel, fixed, mirror, size, undo: undoS.length, redo: redoS.length, view, tool });
+  return { mount, unmount, peek };
 })();
