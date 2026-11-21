@@ -694,9 +694,14 @@ window.WordBank = (() => {
 
   // ---------- common bands from the generated file ----------
   const C = window.WORDBANK_COMMON;
-  const BANDS = C ? C.bands.map(b => b.split(' ')) : [];
-  const LONG = C ? C.long.split(' ') : [];
-  if (!C && window.WORDS) { BANDS.push(window.WORDS.common); LONG.push(...window.WORDS.long); }
+  // The site's players are mostly teenagers, so words that read as rude or crude on a stream
+  // or in a duel are dropped from every list, whatever their everyday meaning.
+  const TEEN_OFF = new Set(('anal anus butt butts bra bras penis vagina abortion idiot idiots stupid dumb ugly ' +
+    'suck sucks sucked sucking sucker nude naked sexy sex sexual porn boobs breast breasts nipple drunk').split(' '));
+  const teenOk = w => !String(w).toLowerCase().split(/[^a-z]+/).some(x => TEEN_OFF.has(x));
+  const BANDS = C ? C.bands.map(b => b.split(' ').filter(teenOk)) : [];
+  const LONG = C ? C.long.split(' ').filter(teenOk) : [];
+  if (!C && window.WORDS) { BANDS.push(window.WORDS.common.filter(teenOk)); LONG.push(...window.WORDS.long.filter(teenOk)); }
 
   // ---------- difficulty ----------
   // QWERTY: finger 0-7 from left pinky to right pinky, row 0 top letters, 1 home, 2 bottom
