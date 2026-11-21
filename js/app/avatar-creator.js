@@ -32,7 +32,7 @@ window.AvatarCreator = (() => {
         </div>
         <div class="avc-main">
           <section class="panel hot avc-stage" aria-label="Preview">
-            <div class="ph">// PREVIEW<span class="meta">Drag to turn</span></div>
+            <div class="ph">// PREVIEW<span class="meta" data-turn-hint>Drag to turn</span></div>
             <div class="avc-view" data-view><div class="loading-state">Loading</div></div>
             <div class="avc-turn">
               <button class="btn out sm" type="button" data-turn="-1" aria-label="Turn left">&lt;</button>
@@ -549,6 +549,7 @@ window.AvatarCreator = (() => {
     pane.innerHTML = h;
     if (view) view.setFocus(FOCUS.includes(tab));
     if (tool) tool.setOn(tab === 'sculpt');
+    el.querySelector('[data-turn-hint]').textContent = tab === 'sculpt' ? 'Right-drag or two fingers to turn' : 'Drag to turn';
     pane.setAttribute('aria-label', TABS.find(t => t[0] === tab)[1]);
     paintStatus();
   }

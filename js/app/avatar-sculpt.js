@@ -124,6 +124,9 @@ function limit(A, sc, i) {
 function apply(rig, sc) {
   if (!sc || !sc.length) return;
   const A = rig.A, G = prep(A), P = rig.pos, skin = G.skin;
+  // a point whose vertex isn't on this mesh's skin (a hand-edited save, say) is left out
+  sc = sc.filter(p => p.v < G.first.length && G.first[A.weld[p.v]] >= 0);
+  if (!sc.length) return;
   // the eyes before: centre, outer radius, and how far each lid vertex sits from the centre
   const eyes = G.eyes.map(e => {
     const c = mean(P, e.ball);
@@ -198,8 +201,13 @@ class Tool {
   get rig() { return this.view.rig; }
   face() { return this.rig.group.children.find(m => m.isMesh && m.material === this.rig.M.skin); }
 
-  // the face vertex under a screen point, or -1
+  // the face vertex under a screen point, or -1; a ray that lands exactly on a vertex can slip
+  // between its triangles, so a miss tries again a pixel off
   pick(cx, cy) {
+    for (const [ox, oy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]) { const v = this.pick1(cx + ox, cy + oy); if (v >= 0) return v; }
+    return -1;
+  }
+  pick1(cx, cy) {
     const b = this.el.getBoundingClientRect(), m = this.face();
     if (!m) return -1;
     _ndc.set(((cx - b.left) / b.width) * 2 - 1, -((cy - b.top) / b.height) * 2 + 1);
