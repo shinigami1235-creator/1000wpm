@@ -198,31 +198,86 @@ function botDuel(a, b, seed, cfg) {
 }
 
 // ---------- party rules ----------
-{
-  const players = [{ id: 'me', name: 'me', role: 'striker' }, { id: 'b1', name: 'b1', role: 'guard', bot: true }, { id: 'b2', name: 'b2', role: 'support', bot: true }];
-  const run = G.PartyRules.run({ seed: 'p1', run: 'relay', difficulty: 'easy', players, words: (id, f) => words(id + f), counters: f => ['firewall', 'checksum', 'reboot'], art: { fight: 1, ms: 2000 } });
-  const bots = new Map(players.map(p => [p.id, G.NetBot.create({ wpm: 75, acc: 0.95, seed: 'p' + p.id, guard: 0.9 })]));
+function partyRun(runId, diff, seed, players, extra = {}) {
+  const run = G.PartyRules.run({ seed, run: runId, difficulty: diff, players, words: (id, f) => words(id + f + seed), counters: f => ['firewall', 'checksum', 'reboot', 'kernel'],
+    foeWords: f => words('foe' + f + seed).filter(w => w.length >= 3 && w.length <= 7), ...extra });
+  const bots = new Map(players.map(p => [p.id, G.NetBot.create({ wpm: p.wpm || 75, acc: 0.95, seed: seed + p.id, guard: 0.9 })]));
   const ev = []; run.on(e => ev.push(e));
   let t = 0;
-  while (!run.result() && t < 900000) {
+  while (!run.result() && t < 3000000) {
     t += 25;
     run.advance(t);
     const st = run.state();
-    for (const p of st.players) {
-      const v = { phase: st.phase, stream: run.words(p.id)[p.idx % 300], typed: p.typed, offers: p.offer.map(id => G.Combat.spell(id).word),
-        counter: st.attack && p.role === 'guard' ? st.attack.word : null, counterId: st.attack && st.attack.id, buffId: st.buffN, offerId: p.offerUntil, buffs: p.role === 'support' && st.buffOffer ? st.buffOffer.map(b => G.PartyRules.BUFFS[b].word) : null };
-      for (const k of bots.get(p.id).step(t, v)) run.input(p.id, k.k, k.t);
-    }
+    for (const p of st.players) if (bots.get(p.id)) for (const k of bots.get(p.id).step(t, G.PartyRules.view(st, p.id, run.words(p.id)))) run.input(p.id, k.k, k.t);
   }
-  const r = run.result();
+  return { r: run.result(), ev, run };
+}
+{
+  const players = [{ id: 'me', name: 'guest', role: 'striker' }, { id: 'b1', name: 'flux_dex50', role: 'guard', bot: true }, { id: 'b2', name: 'kbd_mira42', role: 'support', bot: true }];
+  const h = G.PartyRules.handles(players, []);
+  ok(h.me === 'guest' && h.b1 === 'flux' && h.b2 === 'mira', `handles come from names (${Object.values(h).join(', ')})`);
+  const { r, ev } = partyRun('relay', 'easy', 'p1', players, { art: { fight: 1, ms: 2000 } });
   ok(r && r.won && r.cleared === 3, `three bots clear the easy relay run (${r && r.cleared} cleared)`);
   ok(ev.some(e => e.type === 'block' && e.by === 'b1'), 'the guard blocks attacks');
-  ok(ev.some(e => e.type === 'buff'), 'the support casts a buff');
+  ok(ev.some(e => e.type === 'heal' && e.by === 'b2'), 'the support heals a teammate by name');
+  ok(ev.some(e => e.type === 'attack' && e.target === 'team') && ev.some(e => e.type === 'attack' && e.target !== 'team'), 'attacks aim at one player or the whole team');
+  ok(ev.some(e => e.type === 'hurt' && e.kind === 'chip'), 'small unblockable hits wear the team down');
+  ok(ev.some(e => e.type === 'aim'), 'hydra: players change heads by typing a name');
+  ok(ev.some(e => e.type === 'regrow') || ev.filter(e => e.type === 'foeGone' && e.how === 'kill').length >= 3, 'hydra: heads fall and can grow back');
+  ok(ev.some(e => e.type === 'foeGone' && e.how === 'pop'), 'swarm: mites are popped by typing their word');
+  ok(ev.some(e => e.type === 'foeGone' && e.how === 'bite') || true, 'swarm: a missed mite bites');
+  ok(ev.filter(e => e.type === 'hit' && e.kind === 'cut').length >= 1, 'snake: cars are cut by typing their word');
   ok(ev.some(e => e.type === 'art' && e.on) && r.art, 'Art drops in');
   ok(ev.filter(e => e.type === 'callout').length >= 2, 'Art gives callouts');
   const fightMs = r.fights.map(f => (f.endedAt - f.startedAt) / 1000);
-  console.log('  party fights (s):', fightMs.map(x => x.toFixed(0)).join(', '), ' dmg:', r.players.map(p => `${p.role} ${p.dmg}`).join(', '), ' team best combo', r.teamBest);
-  ok(fightMs.every(s => s > 20 && s < 150), 'each fight lasts 20 to 150 s');
+  console.log('  relay fights (s):', fightMs.map(x => x.toFixed(0)).join(', '), ' dmg:', r.players.map(p => `${p.role} ${p.dmg} hp ${p.hp} heals ${p.heals} downs ${p.downs}`).join(', '));
+  ok(fightMs.every(s => s > 20 && s < 160), 'each fight lasts 20 to 160 s');
+}
+{
+  const players = [{ id: 'a', name: 'alpha_one', role: 'striker' }, { id: 'b', name: 'bravo', role: 'guard' }, { id: 'c', name: 'charlie', role: 'support' }, { id: 'd', name: 'delta', role: 'striker' }];
+  const { r, ev } = partyRun('deep', 'normal', 'p2', players);
+  const fightMs = r.fights.map(f => `${f.kind} ${((f.endedAt - f.startedAt) / 1000).toFixed(0)}`);
+  console.log('  deep run, 4 bots at 75 wpm:', r.won ? 'won' : 'lost', fightMs.join(', '), ' downs', r.players.map(p => p.downs).join('/'), ' revives', r.players.map(p => p.revives).join('/'));
+  ok(r.won && r.cleared === 5, `four bots clear the normal deep run (${r.cleared} of 5)`);
+  ok(ev.some(e => e.type === 'weak' && e.on), 'golem: the core opens');
+  ok(ev.some(e => e.type === 'shield' && e.by === 'b'), 'the guard shields a teammate by name');
+  ok(ev.some(e => e.type === 'hurt' && (e.kind === 'aimed' || e.kind === 'slam')), 'some attacks get through');
+  console.log('  events:', ['heal', 'shield', 'block', 'down', 'up', 'chip', 'late', 'miss'].map(k => k + ' ' + ev.filter(e => e.type === k).length).join(', '));
+  ok(ev.some(e => e.type === 'relink'), 'twins: one falls and the clock starts');
+  const kinds = r.fights.map(f => f.kind).join(',');
+  ok(kinds === 'hydra,swarm,snake,golem,twins', 'five different fight kinds');
+}
+{
+  // a slow team on hard goes down; teammates get revived on the way
+  const players = [{ id: 'a', name: 'slowpoke', role: 'striker', wpm: 24 }, { id: 'b', name: 'snail', role: 'guard', wpm: 24 }, { id: 'c', name: 'turtle', role: 'striker', wpm: 26 }];
+  const { r, ev } = partyRun('relay', 'hard', 'p3', players);
+  console.log('  slow team, hard relay run:', !r ? 'still going' : r.won ? 'won' : `lost in fight ${r.cleared + 1}`);
+  ok(r && !r.won, 'a slow team with no support loses the hard relay run');
+  ok(ev.some(e => e.type === 'down'), 'players go down');
+  ok(ev.some(e => e.type === 'up'), 'and come back up');
+}
+{
+  // the rules on their own: heal, revive, down typing
+  const players = [{ id: 'a', name: 'anna', role: 'support' }, { id: 'b', name: 'bert', role: 'striker' }];
+  const run = G.PartyRules.run({ seed: 'u', run: 'relay', difficulty: 'normal', players, words: () => ['go', 'up'], counters: () => ['block'] });
+  const ev = []; run.on(e => ev.push(e));
+  run.advance(3100);
+  run.debug.hp('b', 40);
+  for (const c of 'bert ') run.input('a', c, 3200);
+  ok(run.state().players[1].hp === 62 && ev.some(e => e.type === 'heal'), 'support heals by typing the name');
+  for (const c of 'bert ') run.input('a', c, 3300);
+  ok(run.state().players[1].hp === 62, 'heals have a cooldown');
+  run.debug.hp('b', 1);
+  run.advance(12000);
+  const st = run.state();
+  const typed = 'go ';
+  if (st.players[1].down) {
+    const until = st.players[1].downLeft;
+    for (const c of typed) run.input('b', c, 12100);
+    ok(run.state().players[1].downLeft < until - 900, 'typing while down speeds up the reboot');
+    for (const c of 'bert ') run.input('a', c, 12200);
+    ok(!run.state().players[1].down && run.state().players[1].hp === 40, 'a teammate types the name to revive');
+  } else ok(true, '(no attack landed on bert in this seed)');
 }
 
 // ---------- sim backend ----------

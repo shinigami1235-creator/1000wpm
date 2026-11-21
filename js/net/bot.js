@@ -7,7 +7,7 @@
 //   const bot = NetBot.create({ wpm: 72, acc: 0.95, seed: 'x', spell: 0.6 });
 //   bot.step(now, view) -> [{ t, k }]   the keys due by now, in order
 //   view: { phase: 'fight' | ..., stream: 'word', typed: '', offers: ['data spike'], offerId, counter: 'block' | null, counterId,
-//           buffs: ['patch'] | null, buffId, locked: ms, fog: n }
+//           buffs: ['patch'] | null, buffId, locked: ms, fog: n, tasks: [{ id, word, kind, chance }] }
 //   The ids tell a new offer, attack or buff offer apart from an earlier one with the same words.
 //
 // Bots are always shown as bots in the interface. Their names come from NetSim.
@@ -81,6 +81,12 @@
       if (v.counter && !seen.has(ck)) {
         seen.add(ck);
         if (r() < (o.guard != null ? o.guard : 0.85)) return { word: v.counter, kind: 'counter', delay: react[0] + r() * (react[1] - react[0]) };
+      }
+      // party tasks: revive, heal, shield, pop a mite, cut a car, change aim
+      for (const tk of v.tasks || []) {
+        if (seen.has(tk.id)) continue;
+        seen.add(tk.id);
+        if (r() < tk.chance) return { word: tk.word, kind: tk.kind, delay: react[0] * 0.7 + r() * (react[1] - react[0]) * 0.8 };
       }
       if (v.buffs && v.buffs.length && !seen.has(bk)) {
         seen.add(bk);

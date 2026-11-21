@@ -327,7 +327,7 @@
     function partySession(l) {
       const seed = l.id + ':' + Date.now();
       const r = rng(seed);
-      const R = root.PartyRules.RUNS[l.run];
+      const R = T.partyFights ? { fights: T.partyFights } : root.PartyRules.RUNS[l.run];
       const artChance = T.artChance != null ? T.artChance : 0.35;
       const art = r() < artChance ? { fight: T.artFight != null ? T.artFight : Math.min(R.fights.length - 1, r() < 0.6 ? 1 : Math.floor(r() * R.fights.length)), ms: T.artMs || 4000 + r() * 6000 } : null;
       const L = host.level();
@@ -339,22 +339,16 @@
         return lists.get(k);
       };
       const counters = f => { const k = 'c:' + f; if (!lists.has(k)) lists.set(k, host.words(`${seed}:${k}`, { count: 30, difficulty: [2, 6], theme: 'cyber' })); return lists.get(k); };
+      // mite and car words: short, so a mite can be popped before it lands
+      const foeWords = f => { const k = 'm:' + f; if (!lists.has(k)) lists.set(k, host.words(`${seed}:${k}`, { count: 80, difficulty: [1, 4] }).filter(w => w.length >= 3 && w.length <= 7)); return lists.get(k); };
       const players = l.players.map(p => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot }));
-      const run = root.PartyRules.run({ seed, run: l.run, difficulty: l.difficulty, players, words, counters, art, config: { ...(T.partyStartMs != null ? { startMs: T.partyStartMs } : {}), ...(T.clearMs != null ? { clearMs: T.clearMs } : {}), ...(T.teamHp ? { teamHp: T.teamHp } : {}) } });
+      const run = root.PartyRules.run({ seed, run: l.run, difficulty: l.difficulty, players, words, counters, foeWords, art, fights: T.partyFights, config: { ...(T.partyStartMs != null ? { startMs: T.partyStartMs } : {}), ...(T.clearMs != null ? { clearMs: T.clearMs } : {}), ...(T.teamHp ? { teamHp: T.teamHp } : {}) } });
       if (T.bossHp) { const orig = run.advance; let set = -1; run.advance = t => { orig(t); const st = run.state(); if (st.phase === 'fight' && st.fight !== set) { set = st.fight; run.debug.bossHp(T.bossHp); } }; }
       const bots = new Map(l.players.filter(p => p.bot).map(p => [p.id, root.NetBot.create({ wpm: T.partyBotWpm || (p.typing ? p.typing.wpm : L.wpm), acc: p.typing ? p.typing.acc : 0.94, seed: seed + p.id, spell: 0.6, guard: 0.82 })]));
       const info = { id: nid('P'), kind: 'party', seed, run: l.run, difficulty: l.difficulty, lobby: l.id, players: l.players.map(p => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot, level: p.level })), you: 'me', art: !!art, startedAt: Date.now() };
       const t0 = now();
       let lastState = -1e9, ended = false;
-      const view = id => {
-        const st = run.state(), p = st.players.find(x => x.id === id);
-        const list = run.words(id);
-        const offers = (p.offer || []).slice().sort((a, b) => root.Combat.spell(b).rarity - root.Combat.spell(a).rarity).map(x => root.Combat.spell(x).word);
-        const canCounter = p.role === 'guard' || !st.players.some(x => x.role === 'guard');
-        return { phase: st.phase, stream: list[p.idx % Math.max(1, list.length)] || '', typed: p.typed, offers, offerId: p.offerUntil,
-          counter: st.attack && canCounter ? st.attack.word : null, counterId: st.attack && st.attack.id,
-          buffs: p.role === 'support' && st.buffOffer ? st.buffOffer.map(b => root.PartyRules.BUFFS[b].word) : null, buffId: st.buffN, locked: 0, fog: 0 };
-      };
+      const view = id => root.PartyRules.view(run.state(), id, run.words(id));
       const S = {
         kind: 'party', info, run, t0,
         clock: () => now() - t0,

@@ -12,7 +12,7 @@ Router.register('party', (() => {
   const e = s => UI.esc(s);
   const R = () => PartyRules;
   const ROLE_ICON = { striker: 'bolt', guard: 'lock', support: 'flame' };
-  let el = null, off = [], view = '', run = null, words = [], scene = null, keys = null, ty = null, onDoc = null, raf = 0, lastState = null, endShown = false;
+  let el = null, off = [], view = '', run = null, words = [], scene = null, keys = null, ty = null, onDoc = null, onSound = null, onResize = null, raf = 0, lastState = null, endShown = false;
   let create = { run: 'relay', difficulty: 'normal' };
 
   function mount(root, params) {
@@ -173,7 +173,7 @@ Router.register('party', (() => {
       ? `<div class="seg" data-run role="group" aria-label="Run">${Object.values(R().RUNS).map(x => `<button type="button" data-v="${x.id}" aria-pressed="${x.id === l.run}">${e(x.name)}</button>`).join('')}</div>
          <div class="seg" data-diff role="group" aria-label="Difficulty" style="margin-top:8px">${['easy', 'normal', 'hard'].map(d => `<button type="button" data-v="${d}" aria-pressed="${d === l.difficulty}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div>`
       : `<p>${e(R().RUNS[l.run].name)}, ${e(l.difficulty)}</p>`;
-    rp.insertAdjacentHTML('beforeend', `<ol class="pa-areas">${R().RUNS[l.run].fights.map(k => `<li><b>${e(R().AREAS[k].boss)}</b><span class="dim">${e(R().AREAS[k].area)}</span></li>`).join('')}</ol>`);
+    rp.insertAdjacentHTML('beforeend', `<ol class="pa-areas">${R().RUNS[l.run].fights.map(k => `<li><b>${e(R().AREAS[k].boss)}</b><span class="dim">${e(R().KINDS[R().AREAS[k].kind])}, ${e(R().AREAS[k].area)}</span></li>`).join('')}</ol>`);
     if (l.isHost) {
       rp.querySelector('[data-run]').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) Net.lobbies.setRun({ run: b.dataset.v }); });
       rp.querySelector('[data-diff]').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) Net.lobbies.setRun({ difficulty: b.dataset.v }); });
@@ -207,28 +207,44 @@ Router.register('party', (() => {
     if (m.type === 'end') return end(m);
   }
 
-  const simIndex = id => { const others = run.players.filter(p => p.id !== 'me'); return 'sim' + Math.max(0, others.findIndex(p => p.id === id)); };
+  const COLORS = ['#3ee6ff', '#f2b330', '#ff7ad9'];
+  const colorOf = id => { if (id === 'me') return '#39ff88'; const others = run.players.filter(p => p.id !== 'me'); return COLORS[Math.max(0, others.findIndex(p => p.id === id)) % COLORS.length]; };
+  const HOW = {
+    hydra: 'Type a head\'s name to aim at it. A head grows back unless the others fall soon after.',
+    swarm: 'Type a mite\'s word before it reaches the player it flies at.',
+    snake: 'Type the last two cars\' words to cut them off. A shorter train hits softer.',
+    golem: 'When the core opens, everything does double damage.',
+    twins: 'Type a name to aim. Drop both within 12 s of each other or the first one comes back.',
+  };
+  const ROLE_HOW = {
+    striker: 'Your words hit 1.3 times harder.',
+    guard: 'Type the red word to block. Type a teammate\'s name to shield them.',
+    support: 'Type a teammate\'s name to heal them. Buffs show up when the meter fills.',
+  };
 
   function startRun(info) {
     if (run && run.id === info.id) return;
     stopRun();
-    view = 'run'; run = info; endShown = false;
+    view = 'run'; run = info; endShown = false; fightKind = ''; music = '';
     lastState = info.state || null;
     words = (Net.match.current() || {}).words || info.words || [];
     location.hash = '#/party/lobby';
+    const me = run.players.find(p => p.id === 'me');
     el.innerHTML = `
       <div class="pa-run">
         <header class="pa-top">
-          <div class="pa-boss"><span class="label" data-area></span><h2 data-boss></h2></div>
+          <div class="pa-boss"><span class="label" data-area></span><h2><span data-boss></span> <em class="pa-kind" data-kind></em></h2></div>
           <div class="du-hp boss" data-bhp><i></i><b class="num"></b></div>
           <span class="label" data-fight></span>
         </header>
+        <p class="pa-how"><span data-how></span> <span class="dim">${e(ROLE_HOW[me.role])}</span></p>
         <section class="pa-stage" data-stage aria-label="The fight">
+          <div class="pa-tags" data-tags aria-hidden="true"></div>
           <div class="du-nums" data-nums aria-hidden="true"></div>
-          <ol class="pa-team" data-team aria-label="Team"></ol>
-          <div class="pa-teambox"><span class="label">Team</span><div class="du-hp team" data-thp><i></i><b class="num"></b></div><span class="pa-tc"><b class="num" data-tc>0</b> team combo <em data-tm>x1.00</em></span></div>
+          <div class="pa-status" data-status></div>
           <div class="pa-art" data-art hidden><span class="mu-av art">${MultiUI.LOGO}</span><p data-call></p></div>
           <div class="du-banner" data-banner aria-live="polite"></div>
+          <ol class="pa-team" data-team aria-label="Team"></ol>
         </section>
         <section class="du-type" aria-label="Your words">
           <div class="du-chips" data-chips></div>
@@ -239,16 +255,22 @@ Router.register('party', (() => {
         </section>
         <div class="du-strip">
           <span><b class="num" data-s="role"></b></span><span><b class="num" data-s="dmg">0</b> damage</span><span><b class="num" data-s="wpm">0</b> wpm</span>
-          <span><b class="num" data-s="acc">100%</b> accuracy</span>
+          <span><b class="num" data-s="acc">100%</b> accuracy</span><span><b class="num" data-tc>0</b> team combo <em data-tm>x1.00</em></span>
           <button class="btn out sm" type="button" data-leave>Leave run</button>
         </div>
         <p class="du-note">Teammates marked Bot are simulated until the server is live.</p>
         <div class="du-end" data-end hidden></div>
       </div>`;
     const stage = el.querySelector('[data-stage]');
-    scene = BossScene.mount(stage, { raid: run.players.length - 1, onImpact: (h, x, y) => { if (x != null) MultiUI.pop(el.querySelector('[data-nums]'), x, y, String(h.dmg), h.you ? 'out' : 'team'); } });
+    buildTeam();
+    scene = PartyScene.mount(stage, {
+      now: () => Net.match.clock(),
+      color: colorOf,
+      lane: id => lanes.get(id) || null,
+      onImpact: (h, x, y) => { if (x != null) MultiUI.pop(el.querySelector('[data-nums]'), x, y, String(h.dmg), h.you ? 'out' : 'team'); },
+      onFrame: placeTags,
+    });
     el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); Net.lobbies.leave().then(() => { location.hash = '#/party'; browser(); }); });
-    const me = run.players.find(p => p.id === 'me');
     ty = NetTypist.create({
       stream: () => { const st = lastState; if (!st || !words.length) return ''; const p = st.players.find(x => x.id === 'me'); return p ? words[p.idx % words.length] || '' : ''; },
       extras: () => targets(),
@@ -256,25 +278,135 @@ Router.register('party', (() => {
     const box = el.querySelector('[data-box]');
     keys = TT.captureKeys(box, { label: 'Type the words to attack', onChar: ch => key(ch), onBack: w => key(w ? 'CtrlBackspace' : 'Backspace') });
     onDoc = ev => {
+      if (window.RushAudio) RushAudio.unlock();
       if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length !== 1) return;
       const a = document.activeElement;
       if (a && a !== document.body && a.id !== 'view') return;
       ev.preventDefault(); keys.focus(); key(ev.key);
     };
     document.addEventListener('keydown', onDoc);
+    onSound = ev => { if (window.RushAudio) RushAudio.setOn(!!(ev.detail && ev.detail.on)); };
+    addEventListener('wpm-sound', onSound);
+    onResize = () => measureLanes();
+    addEventListener('resize', onResize);
     setTimeout(() => keys && keys.focus(), 60);
     el.querySelector('[data-s="role"]').textContent = R().ROLES[me.role].name;
+    if (window.RushAudio) RushAudio.unlock();
     const tick = () => { raf = requestAnimationFrame(tick); paint(); };
     raf = requestAnimationFrame(tick);
   }
 
-  // the words this player may type besides the stream: the counter word (guards), buffs (supports), spells
+  // ---------- the team strip: one card per player, in the arena ----------
+  const lanes = new Map();
+  function buildTeam() {
+    const ol = el.querySelector('[data-team]');
+    ol.innerHTML = run.players.map(p => `<li class="pa-card${p.id === 'me' ? ' is-me' : ''}" data-p="${e(p.id)}" style="--pc:${colorOf(p.id)}">
+      <div class="pa-c-top">${MultiUI.img(p, 68, 30)}<span class="pa-c-name">${MultiUI.name(p)}</span><span class="pa-c-role">${UI.icon(ROLE_ICON[p.role])}${e(R().ROLES[p.role].name)}</span></div>
+      <div class="pa-hp"><i></i><b class="num"></b></div>
+      <div class="pa-c-bot"><span class="pa-handle" data-h></span><span class="pa-c-st" data-st></span></div>
+    </li>`).join('');
+    measureLanes();
+  }
+  function measureLanes() {
+    const stage = el && el.querySelector('[data-stage]'); if (!stage) return;
+    const sr = stage.getBoundingClientRect();
+    for (const li of el.querySelectorAll('[data-p]')) { const r = li.getBoundingClientRect(); lanes.set(li.dataset.p, { x: r.left + r.width / 2 - sr.left, y: r.top - sr.top }); }
+  }
+  function paintTeam(st) {
+    const me = st.players.find(x => x.id === 'me');
+    const typed = ty ? ty.state().typed : '';
+    for (const p of st.players) {
+      const li = el.querySelector(`[data-p="${CSS.escape(p.id)}"]`); if (!li) continue;
+      const f = Math.max(0, Math.min(1, p.hp / (st.maxHp || 100)));
+      const aimed = st.attack && (st.attack.target === p.id || st.attack.target === 'team') && !p.down;
+      li.classList.toggle('down', p.down);
+      li.classList.toggle('low', !p.down && f < 0.35);
+      li.classList.toggle('aimed', !!aimed);
+      li.classList.toggle('shielded', p.shield);
+      const bar = li.querySelector('.pa-hp');
+      bar.querySelector('i').style.width = (f * 100).toFixed(1) + '%';
+      bar.querySelector('b').textContent = p.down ? '0' : p.hp;
+      // what typing this player's handle does for you right now
+      let act = '', label = '';
+      if (me && !me.down) {
+        const healer = me.role === 'support' || !st.players.some(x => x.role === 'support');
+        if (p.down && p.id !== 'me') { act = 'revive'; label = 'Revive'; }
+        else if (!p.down && healer && p.hp < st.maxHp && me.healIn <= 0) { act = 'heal'; label = 'Heal'; }
+        else if (!p.down && me.role === 'guard' && p.id !== 'me' && !p.shield && me.shieldIn <= 0) { act = 'shield'; label = 'Shield'; }
+      }
+      const on = act && typed && p.handle.startsWith(typed);
+      const h = `${label ? `<small>${label}</small>` : ''}<b>${e(p.handle)}</b>`;
+      const hs = li.querySelector('[data-h]');
+      if (hs.dataset.v !== h) { hs.innerHTML = h; hs.dataset.v = h; }
+      hs.className = `pa-handle${act ? ' act ' + act : ''}${on ? ' on' : ''}`;
+      let stx = '';
+      if (p.down) stx = `Down, back in ${Math.ceil(p.downLeft / 1000)} s`;
+      else if (aimed) stx = `Hit in ${Math.max(0, (st.attack.land - st.clock) / 1000).toFixed(1)} s`;
+      else if (p.shield) stx = 'Shielded';
+      else if (p.target) { const fo = st.foes.find(x => x.id === p.target); if (fo && (fo.kind === 'head' || fo.kind === 'twin')) stx = `On ${fo.name}`; }
+      const sx = li.querySelector('[data-st]');
+      if (sx.textContent !== stx) sx.textContent = stx;
+    }
+  }
+
+  // ---------- word tags over the foes ----------
+  const tagEls = new Map();
+  function paintTags(st) {
+    const box = el.querySelector('[data-tags]'); if (!box) return;
+    const me = st.players.find(x => x.id === 'me') || {};
+    const s = ty ? ty.state() : { typed: '', target: null };
+    const want = new Set();
+    for (const f of st.foes) {
+      if (!f.alive) continue;
+      let word = '', cls = '', sub = '';
+      if (f.kind === 'mite') { word = f.word; cls = 'mite'; const left = (f.land - st.clock) / 1000; sub = f.lane === 'me' ? 'at you' : (st.players.find(p => p.id === f.lane) || {}).name || ''; if (left < 2.5) cls += ' close'; }
+      else if (f.kind === 'car') {
+        const cars = st.foes.filter(x => x.kind === 'car' && x.alive);
+        const i = cars.indexOf(f);
+        if (i < cars.length - 2) continue;
+        word = f.word; cls = 'car';
+      } else if (f.kind === 'head' && st.boss.kind === 'hydra' || f.kind === 'twin') {
+        word = f.name; cls = 'aim' + (me.target === f.id ? ' mine' : '');
+        const n = st.players.filter(p => p.target === f.id && !p.down);
+        sub = `<span class="pa-tag-hp"><i style="width:${(100 * f.hp / f.maxHp).toFixed(0)}%"></i></span>${n.map(p => `<i class="dot" style="background:${colorOf(p.id)}"></i>`).join('')}`;
+      } else continue;
+      want.add(f.id);
+      let t = tagEls.get(f.id);
+      if (!t) { t = document.createElement('div'); t.className = 'pa-tag'; box.append(t); tagEls.set(f.id, t); }
+      const mine = s.target && s.target.id && s.target.id.endsWith(':' + f.id);
+      const html = `<span class="pa-tag-w">${mine ? letters(word, s.typed) : e(word)}</span>${sub ? `<span class="pa-tag-s">${f.kind === 'mite' ? e(sub) : sub}</span>` : ''}`;
+      if (t.dataset.v !== html) { t.innerHTML = html; t.dataset.v = html; }
+      t.className = `pa-tag ${cls}${mine ? ' typing' : ''}`;
+    }
+    for (const [id, t] of tagEls) if (!want.has(id)) { t.remove(); tagEls.delete(id); }
+  }
+  function placeTags() {
+    if (!scene || !tagEls.size) return;
+    const at = scene.anchors();
+    for (const [id, t] of tagEls) {
+      const a = at.get(id);
+      if (!a) { t.style.visibility = 'hidden'; continue; }
+      t.style.visibility = '';
+      t.style.transform = `translate(${a.x.toFixed(1)}px, ${a.y.toFixed(1)}px) translate(-50%, -100%)`;
+    }
+  }
+
+  // the words this player may type besides the stream; the rules decide what they do
   function targets() {
-    const st = lastState; if (!st) return [];
-    const p = st.players.find(x => x.id === 'me'); if (!p) return [];
+    const st = lastState; if (!st || st.phase !== 'fight') return [];
+    const p = st.players.find(x => x.id === 'me'); if (!p || p.down) return [];
     const out = [];
-    const canCounter = p.role === 'guard' || !st.players.some(x => x.role === 'guard');
-    if (st.attack && canCounter) out.push({ id: 'counter:' + st.attack.id, word: st.attack.word, kind: 'counter' });
+    const guardUp = st.players.some(x => x.role === 'guard' && !x.down);
+    if (st.attack && (p.role === 'guard' || !guardUp)) out.push({ id: 'counter:' + st.attack.id, word: st.attack.word, kind: 'counter' });
+    for (const f of st.foes) if (f.alive && f.kind === 'mite') out.push({ id: 'foe:' + f.id, word: f.word, kind: 'foe' });
+    if (st.boss && st.boss.kind === 'snake') for (const f of st.foes.filter(x => x.kind === 'car' && x.alive).slice(-2)) out.push({ id: 'foe:' + f.id, word: f.word, kind: 'foe' });
+    if (st.boss && (st.boss.kind === 'hydra' || st.boss.kind === 'twins')) for (const f of st.foes) if (f.alive) out.push({ id: 'aim:' + f.id, word: f.name, kind: 'aim' });
+    const healer = p.role === 'support' || !st.players.some(x => x.role === 'support');
+    for (const q of st.players) {
+      if (q.down && q.id !== 'me') out.push({ id: 'revive:' + q.id, word: q.handle, kind: 'revive' });
+      else if (!q.down && healer && q.hp < st.maxHp && p.healIn <= 0) out.push({ id: 'heal:' + q.id, word: q.handle, kind: 'heal' });
+      else if (!q.down && p.role === 'guard' && q.id !== 'me' && !q.shield && p.shieldIn <= 0) out.push({ id: 'shield:' + q.id, word: q.handle, kind: 'shield' });
+    }
     if (st.buffOffer && p.role === 'support') for (const b of st.buffOffer) out.push({ id: 'buff:' + b, word: R().BUFFS[b].word, kind: 'buff' });
     for (const id of p.offer || []) out.push({ id: 'spell:' + id, word: Combat.spell(id).word, kind: 'spell', spell: id });
     return out;
@@ -289,32 +421,70 @@ Router.register('party', (() => {
     if (r && r.key) TT.click(false);
     const cur = Net.match.current(); if (cur && cur.state) lastState = cur.state;
     paintWords();
+    if (lastState) { paintTags(lastState); paintTeam(lastState); }
   }
 
+  // ---------- sound ----------
+  let music = '';
+  function playMusic(name) { if (!window.RushAudio || music === name) return; music = name; RushAudio.music(name); }
+  const sfx = (n, a) => { if (window.RushAudio) RushAudio.play(n, a); };
+  const cSfx = (n, a) => { const c = window.RushAudio && RushAudio.combat(); if (c) c.play(n, a); };
+
   function who(id) { return run.players.find(p => p.id === id) || { id, name: id }; }
+  const nameOf = id => (id === 'me' ? 'You' : who(id).name);
+  let fightKind = '';
   function event(ev) {
     const now = Net.match.clock();
+    const st = lastState;
     switch (ev.type) {
       case 'fight':
         if (ev.phase === 'start') {
           if (ev.words) words = ev.words;
-          scene.revive(); scene.setPhase(ev.look, true); scene.setFrac(1, true);
+          fightKind = ev.kind;
+          scene.setFight({ kind: ev.kind, look: ev.look, foes: ev.foes });
           ty.reset();
+          for (const t of tagEls.values()) t.remove(); tagEls.clear();
+          el.querySelector('[data-how]').textContent = HOW[ev.kind] || '';
+          el.querySelector('[data-kind]').textContent = R().KINDS[ev.kind] || '';
           banner(`${ev.boss}`, 'round', 1800);
-        } else { scene.defeat(false); banner(ev.fight + 1 < (lastState ? lastState.of : 3) ? 'Cleared. Next fight soon.' : 'Run cleared', 'won', 3000); }
+          playMusic('stage' + (ev.look + 1));
+          sfx('roar');
+          measureLanes();
+        } else {
+          scene.clear();
+          sfx('defeat');
+          if (window.RushAudio) RushAudio.sting();
+          banner(ev.fight + 1 < (st ? st.of : 3) ? 'Cleared. Next fight soon.' : 'Run cleared', 'won', 3000);
+        }
         break;
       case 'hit': {
-        const st = lastState;
-        if (ev.kind === 'spell') { if (scene) scene.hit({ id: simIndex(ev.id), you: ev.id === 'me', kind: 'spell', dmg: ev.dmg }); }
-        else scene.hit({ id: ev.id === 'me' ? 'you' : simIndex(ev.id), you: ev.id === 'me', kind: ev.kind === 'counter' ? 'block' : 'word', dmg: ev.dmg, tier: ev.tier || 0, crit: ev.crit, color: ev.id === 'me' ? null : undefined });
-        if (st && st.boss) scene.setFrac(Math.max(0, ev.bossHp / st.boss.maxHp));
+        if (ev.kind === 'spell') break;
+        const you = ev.id === 'me';
+        scene.shot({ id: ev.id, foe: ev.foe, you, dmg: ev.dmg, tier: ev.tier || 0, crit: ev.crit, kind: ev.kind });
+        if (you) { if (ev.tier >= 1) cSfx('shot' + Math.min(4, ev.tier)); sfx(ev.crit ? 'crit' : 'hit'); }
+        if (st && st.of && ev.bossHp != null && st.fight === st.of - 1 && st.boss && ev.bossHp / st.boss.maxHp < 0.35) playMusic('boss');
         break;
       }
-      case 'cast': scene.cast(ev.spell, { hits: ev.hits.map(h => ({ at: Math.max(0, h.at - now), amount: h.dmg })), effect: ev.effect }); if (ev.id === 'me') { banner(MultiUI.spellName(ev.spell), 'spell mine', 1100); WPM.track('spell_cast', { spell: ev.spell, mode: 'party' }); } break;
-      case 'attack': scene.event({ id: ev.id, type: 'slam', kind: 'slam', start: ev.start, hit: ev.land, end: ev.land + 700 }, now); break;
-      case 'block': if (ev.id) scene.block(ev.id); pop(ev.by === 'firewall' ? 'Firewall blocked it' : `${ev.by === 'me' ? 'You' : who(ev.by).name} blocked it`, 'block'); break;
-      case 'impact': scene.hurt(); pop(`Team hit, -${ev.dmg}`, 'in'); break;
-      case 'buff': pop(`${who(ev.by).name}: ${R().BUFFS[ev.buff].text}`, 'buff'); break;
+      case 'cast': scene.cast(ev.spell, { from: ev.id, foe: ev.foe, hits: ev.hits.map(h => ({ at: Math.max(0, h.at - now), amount: h.dmg })), effect: ev.effect }); if (ev.id === 'me') { banner(MultiUI.spellName(ev.spell), 'spell mine', 1100); cSfx(ev.spell); } break;
+      case 'attack': sfx('windup', Math.min(2.5, (ev.land - ev.start) / 1000)); if (ev.target === 'me' || ev.target === 'team') sfx('warn'); break;
+      case 'block': scene.block({ id: ev.id, by: ev.by }); pop(ev.by === 'firewall' ? 'Firewall blocked it' : `${nameOf(ev.by)} blocked it`, 'block'); sfx('blockOk'); break;
+      case 'impact': scene.attackLands({ id: ev.id, target: ev.target }); sfx('impact', false); break;
+      case 'chip': scene.chip(ev); break;
+      case 'hurt':
+        if (ev.id === 'me') { const b = el.querySelector('[data-stage]'); b.classList.remove('ouch'); void b.offsetWidth; b.classList.add('ouch'); }
+        lanePop(ev.id, `-${ev.dmg}`, ev.shielded ? 'block' : 'in');
+        break;
+      case 'down': scene.down(ev.id); pop(ev.id === 'me' ? 'You are down. Keep typing to reboot faster.' : `${who(ev.id).name} is down. Type ${who(ev.id).handle || handleOf(ev.id)} to bring them back.`, 'in'); sfx('blockFail'); break;
+      case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.heal(ev.id); sfx('milestone'); break;
+      case 'heal': scene.heal(ev.id); lanePop(ev.id, `+${ev.amount}`, 'heal'); if (ev.by === 'me' || ev.id === 'me') sfx('weakOpen'); break;
+      case 'shield': scene.shield(ev.id); lanePop(ev.id, 'Shield', 'block'); if (ev.by === 'me' || ev.id === 'me') sfx('shieldUp'); break;
+      case 'foeGone': scene.foeGone(ev.id, ev.how); if (ev.how === 'pop' || ev.how === 'kill') sfx('addKill'); if (ev.how === 'bite') sfx('projHit'); break;
+      case 'foe': if (fightKind === 'swarm') sfx('addSpawn'); break;
+      case 'regrow': scene.regrow(ev.id); pop(fightKind === 'twins' ? 'It came back' : 'A head grew back', 'in'); sfx('roar'); break;
+      case 'relink': banner('12 s to drop the other one', 'tier', 2200); break;
+      case 'weak': if (ev.on) { banner('Core open: double damage', 'tier', 2000); sfx('weakOpen'); } break;
+      case 'buff': pop(`${nameOf(ev.by)}: ${R().BUFFS[ev.buff].text}`, 'buff'); sfx('shieldUp'); break;
+      case 'late': if (ev.id === 'me') pop('Taken already', 'block'); break;
       case 'art': {
         const box = el.querySelector('[data-art]'); box.hidden = false;
         banner('Art joined your run', 'art', 2600);
@@ -326,7 +496,9 @@ Router.register('party', (() => {
       default: break;
     }
   }
-  function pop(text, cls) { const s = el.querySelector('[data-stage]'); MultiUI.pop(el.querySelector('[data-nums]'), s.clientWidth / 2, s.clientHeight * 0.72, text, cls + ' wide'); }
+  const handleOf = id => { const p = lastState && lastState.players.find(x => x.id === id); return p ? p.handle : ''; };
+  function pop(text, cls) { const s = el.querySelector('[data-stage]'); MultiUI.pop(el.querySelector('[data-nums]'), s.clientWidth / 2, s.clientHeight * 0.42, text, cls + ' wide'); }
+  function lanePop(id, text, cls) { const L = lanes.get(id); if (!L) return; MultiUI.pop(el.querySelector('[data-nums]'), L.x, L.y - 8, text, cls); }
   let bannerT = 0;
   function banner(text, cls, ms) {
     const b = el && el.querySelector('[data-banner]'); if (!b) return;
@@ -343,28 +515,33 @@ Router.register('party', (() => {
     const cur = Net.match.current();
     if (cur && cur.info && cur.info.id === run.id) lastState = cur.state;
     const st = lastState; if (!st) return;
+    if (scene) scene.sync(st);
     if (st.boss) {
       el.querySelector('[data-area]').textContent = st.boss.area;
       el.querySelector('[data-boss]').textContent = st.boss.name;
       bar(el.querySelector('[data-bhp]'), st.boss.hp, st.boss.maxHp, UI.fmt(st.boss.hp));
     }
     el.querySelector('[data-fight]').textContent = st.phase === 'count' ? 'Get ready' : `Fight ${Math.max(1, st.fight + 1)} of ${st.of}`;
-    bar(el.querySelector('[data-thp]'), st.teamHp, st.teamMax, `${st.teamHp}`);
     el.querySelector('[data-tc]').textContent = st.teamCombo;
     el.querySelector('[data-tm]').textContent = `x${st.teamMult.toFixed(2)}`;
     el.querySelector('[data-tm]').className = st.teamMult > 1 ? 'green' : '';
-    el.querySelector('[data-team]').innerHTML = st.players.map(p => {
-      const pl = who(p.id);
-      return `<li class="${p.id === 'me' ? 'is-me' : ''}">${MultiUI.img(pl, 68, 30)}<span class="pa-tn">${MultiUI.name(pl)}</span>
-        <span class="pa-tr">${UI.icon(ROLE_ICON[p.role], 'green')}${e(R().ROLES[p.role].name)}</span>
-        <span class="pa-tv"><b class="num">${UI.fmt(p.stats.dmg)}</b> dmg</span><span class="pa-tv"><b class="num">${Math.round(p.acc)}%</b></span><span class="pa-tv"><b class="num">${p.combo}</b> combo</span></li>`;
-    }).join('') + (st.art ? `<li class="art"><span class="mu-av art" style="width:30px;height:30px">${MultiUI.LOGO}</span><span class="pa-tn"><span class="mu-name">Art</span>${MultiUI.tag({ art: true })}</span><span class="pa-tr">Team damage x1.2</span><span class="pa-tv">Rewards x1.5</span></li>` : '');
+    paintTeam(st);
+    paintTags(st);
+    const status = [];
+    if (st.weak > 0) status.push(`<span class="pa-st gold">Core open <b class="num">${(st.weak / 1000).toFixed(1)} s</b></span>`);
+    if (st.relink > 0) status.push(`<span class="pa-st red">Drop the other one <b class="num">${(st.relink / 1000).toFixed(1)} s</b></span>`);
+    if (st.overclock > 0) status.push(`<span class="pa-st cyan">Overclock <b class="num">${(st.overclock / 1000).toFixed(1)} s</b></span>`);
+    if (st.firewall) status.push('<span class="pa-st cyan">Firewall up</span>');
+    if (st.art) status.push(`<span class="pa-st art">${MultiUI.LOGO}Art is in</span>`);
+    const sb = el.querySelector('[data-status]'), sh = status.join('');
+    if (sb.dataset.v !== sh) { sb.innerHTML = sh; sb.dataset.v = sh; }
     const mine = st.players.find(p => p.id === 'me');
     if (mine) {
       el.querySelector('[data-s="dmg"]').textContent = UI.fmt(mine.stats.dmg);
       const ms = st.clock > 0 ? st.clock : 1;
       el.querySelector('[data-s="wpm"]').textContent = Math.round(mine.stats.chars / 5 / (ms / 60000)) || 0;
       el.querySelector('[data-s="acc"]').textContent = Math.round(mine.acc) + '%';
+      el.querySelector('.pa-run').classList.toggle('me-down', mine.down);
     }
     paintWords(); paintChips();
   }
@@ -385,17 +562,18 @@ Router.register('party', (() => {
     const cur = tg && tg.kind !== 'stream' ? `<span class="du-w cur ${tg.kind}">${letters(tg.word, s.typed)}</span>` : `<span class="du-w cur">${letters(list[p.idx % list.length], s.typed)}</span>`;
     const next = [];
     for (let n = 1; n < 7; n++) next.push(`<span class="du-w next">${e(list[(p.idx + n) % list.length])}</span>`);
-    line.innerHTML = `<div class="du-cur">${cur}</div><div class="du-next">${next.join('')}</div>`;
+    const html = `<div class="du-cur">${cur}</div><div class="du-next">${next.join('')}</div>`;
+    if (line.dataset.v !== html) { line.innerHTML = html; line.dataset.v = html; }
   }
   function letters(w, typed) {
     let out = '';
     for (let i = 0; i < Math.max(w.length, typed.length); i++) {
       const c = w[i], t = typed[i];
-      const ch = x => e(x === ' ' ? ' ' : x);
+      const ch = x => e(x === ' ' ? ' ' : x);
       if (t == null) out += `<i class="${i === typed.length ? 'at' : ''}">${ch(c)}</i>`;
       else out += `<i class="${t === c ? 'ok' : 'bad'}">${ch(c || t)}</i>`;
     }
-    return out + (typed.length >= w.length ? '<i class="caret"> </i>' : '');
+    return out + (typed.length >= w.length ? '<i class="caret"> </i>' : '');
   }
   function paintChips() {
     const st = lastState, box = el && el.querySelector('[data-chips]');
@@ -403,16 +581,19 @@ Router.register('party', (() => {
     const p = st.players.find(x => x.id === 'me'); if (!p) return;
     const typed = ty.state().typed;
     const chips = [];
-    const canCounter = p.role === 'guard' || !st.players.some(x => x.role === 'guard');
+    const guardUp = st.players.some(x => x.role === 'guard' && !x.down);
+    const canCounter = !p.down && (p.role === 'guard' || !guardUp);
     if (st.attack) {
       const left = Math.max(0, (st.attack.land - st.clock) / 1000);
+      const at = st.attack.target === 'team' ? 'Everyone' : st.attack.target === 'me' ? 'You' : who(st.attack.target).name;
       chips.push(canCounter
-        ? `<span class="mu-chip block${typed && st.attack.word.startsWith(typed) ? ' on' : ''}"><small>Block</small><b>${e(st.attack.word)}</b><em class="num">${left.toFixed(1)}s</em></span>`
-        : `<span class="mu-chip wait"><small>Attack in</small><b class="num">${left.toFixed(1)}s</b><em>Your guard blocks it</em></span>`);
+        ? `<span class="mu-chip block${typed && st.attack.word.startsWith(typed) ? ' on' : ''}"><small>Block, hits ${e(at)}</small><b>${e(st.attack.word)}</b><em class="num">${left.toFixed(1)}s</em></span>`
+        : `<span class="mu-chip wait"><small>Hit on ${e(at)} in</small><b class="num">${left.toFixed(1)}s</b><em>Your guard blocks it</em></span>`);
     }
+    if (p.down) chips.push(`<span class="mu-chip down"><small>You are down</small><b class="num">${Math.ceil(p.downLeft / 1000)}s</b><em>Each clean word takes a second off</em></span>`);
     if (st.buffOffer && p.role === 'support') for (const b of st.buffOffer) chips.push(`<span class="mu-chip buff${typed && R().BUFFS[b].word.startsWith(typed) ? ' on' : ''}"><small>Buff</small><b>${e(R().BUFFS[b].word)}</b><em>${e(R().BUFFS[b].text)}</em></span>`);
     else if (p.role === 'support') chips.push(`<span class="mu-chip meter"><small>Team meter</small><b class="num">${Math.round(st.meter)}%</b></span>`);
-    for (const id of p.offer || []) { const sp = Combat.spell(id); chips.push(`<span class="mu-chip r${sp.rarity}${typed && sp.word.startsWith(typed) ? ' on' : ''}" style="--sc:${sp.color}"><small>${e(Combat.RARITY[sp.rarity].name)}</small><b>${e(sp.word)}</b><em>${e(sp.label)}</em></span>`); }
+    for (const id of p.offer || []) { const sp = Combat.spell(id); chips.push(`<span class="mu-chip r${sp.rarity}${typed && sp.word.startsWith(typed) ? ' on' : ''}" style="--sc:${sp.color}"><small>${e(Combat.RARITY[sp.rarity].name)}</small><b>${e(sp.word)}</b></span>`); }
     const html = chips.join('');
     if (box.innerHTML !== html) box.innerHTML = html;
   }
@@ -433,14 +614,15 @@ Router.register('party', (() => {
     }
     WPM.track('party_run', { run: run.run, difficulty: run.difficulty, won: !!r.won, cleared: r.cleared, role: mine.role, dmg: mine.dmg || 0, art: !!r.art });
     const lostAt = !r.won && r.fights && r.fights.length ? r.fights[r.fights.length - 1] : null;
+    if (!r.won) { if (window.RushAudio) RushAudio.stop(); sfx('defeat'); }
     box.hidden = false;
     box.innerHTML = `<div class="panel hot du-end-card" role="dialog" aria-labelledby="pa-end-t">
       <h2 id="pa-end-t" class="${r.won ? 'green' : 'red'}">${r.won ? 'Run cleared' : `The team went down in ${e(lostAt ? lostAt.area : 'the run')}`}</h2>
       <p class="dim">${r.cleared} of ${r.of} fights cleared in ${UI.clock(Math.round((r.ms || 0) / 1000))}. Best team combo ${r.teamBest}.${r.art ? ' Art joined the run and rewards were 1.5 times.' : ''}</p>
       ${reward ? `<p class="dim">You earned ${reward.coins} coins and ${reward.xp} XP.</p>` : ''}
-      <div class="du-tw"><table class="du-sum pa-sum"><thead><tr><th scope="col">Player</th><th scope="col">Role</th><th scope="col" class="r">Damage</th><th scope="col" class="r">wpm</th><th scope="col" class="r">Accuracy</th><th scope="col" class="r hide-sm">Best combo</th><th scope="col" class="r hide-sm">Blocks</th><th scope="col" class="r hide-sm">Buffs</th><th scope="col" class="hide-sm">Spells</th></tr></thead>
+      <div class="du-tw"><table class="du-sum pa-sum"><thead><tr><th scope="col">Player</th><th scope="col">Role</th><th scope="col" class="r">Damage</th><th scope="col" class="r">wpm</th><th scope="col" class="r">Accuracy</th><th scope="col" class="r hide-sm">Healed</th><th scope="col" class="r hide-sm">Blocks</th><th scope="col" class="r hide-sm">Revives</th><th scope="col" class="r hide-sm">Downs</th><th scope="col" class="hide-sm">Spells</th></tr></thead>
         <tbody>${(r.players || []).slice().sort((a, b) => b.dmg - a.dmg).map(p => `<tr class="${p.id === 'me' ? 'is-me' : ''}"><td>${MultiUI.name(who(p.id))}</td><td>${e(R().ROLES[p.role].name)}</td>
-          <td class="num r">${UI.fmt(p.dmg)}</td><td class="num r">${p.wpm}</td><td class="num r">${p.acc}%</td><td class="num r hide-sm">${p.bestCombo}</td><td class="num r hide-sm">${p.blocks}</td><td class="num r hide-sm">${p.buffs}</td>
+          <td class="num r">${UI.fmt(p.dmg)}</td><td class="num r">${p.wpm}</td><td class="num r">${p.acc}%</td><td class="num r hide-sm">${p.healed || 0}</td><td class="num r hide-sm">${p.blocks}</td><td class="num r hide-sm">${p.revives || 0}</td><td class="num r hide-sm">${p.downs || 0}</td>
           <td class="sp hide-sm">${p.spells.length ? p.spells.map(MultiUI.spellName).map(e).join(', ') : 'None'}</td></tr>`).join('')}</tbody></table></div>
       <ol class="pa-fights">${(r.fights || []).map(f => `<li class="${f.won ? 'w' : 'l'}"><b>${e(f.boss)}</b><span class="dim">${e(f.area)}</span><span class="num">${f.won ? UI.clock(Math.round((f.endedAt - f.startedAt) / 1000)) : 'Lost'}</span></li>`).join('')}</ol>
       <div class="row"><button class="btn" type="button" data-back>Back to the lobby</button><a class="btn out" href="#/party" data-out>Leave</a></div>
@@ -454,6 +636,10 @@ Router.register('party', (() => {
     cancelAnimationFrame(raf); raf = 0;
     if (scene) { scene.dispose(); scene = null; }
     if (onDoc) { document.removeEventListener('keydown', onDoc); onDoc = null; }
+    if (onSound) { removeEventListener('wpm-sound', onSound); onSound = null; }
+    if (onResize) { removeEventListener('resize', onResize); onResize = null; }
+    if (window.RushAudio) RushAudio.stop();
+    tagEls.clear(); lanes.clear();
     keys = null; ty = null; run = null; lastState = null;
     clearTimeout(bannerT);
   }
