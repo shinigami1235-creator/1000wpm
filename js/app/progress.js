@@ -13,9 +13,12 @@ window.Progress = (() => {
   addEventListener('pagehide', () => { if (saveT) { clearTimeout(saveT); WPM.saveProgress(); } });
   let p = null, booted = false;
 
-  // The modes in this build. A new mode registers its own events when its script loads.
+  // The modes in this build. Page scripts load on first visit (js/app/lazy.js), so every
+  // mode's events are listed here too, or a new player's first daily draw would leave them out.
+  // A mode still registers its own when its script loads.
   WPM.events.register('run', 'type_test', 'race_done', 'boss_hit', 'boss_win', 'breach_stage', 'breach_endless',
-    'combo', 'item_buy', 'room_save', 'signin', 'task_done', 'gift_open');
+    'combo', 'item_buy', 'room_save', 'signin', 'task_done', 'gift_open',
+    'lesson_pass', 'pvp_win', 'pvp_match', 'party_run', 'chat_message', 'superboss_win', 'support_sent', 'rush_boss', 'rush_run');
 
   // ---------- dates ----------
   const parse = d => { const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd, 12); };

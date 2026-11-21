@@ -1,6 +1,6 @@
 # 10000wpm
 
-Sample website for Art, who posts speed typing on Instagram as @10000wpm. Open `index.html` in a browser with an internet connection since the 3D keyboards and fonts load online. Breach's music loops cleanly when the site runs from a web server such as GitHub Pages and loops with a short gap when opened as a file.
+Sample website for Art, who posts speed typing on Instagram as @10000wpm. Run it from a web server: GitHub Pages, or `python -m http.server` in this folder and then http://localhost:8000. Opened straight from the folder (a `file://` address), Chrome blocks the 3D scenes, the avatars, the fonts and the boss music, since it won't load modules, fonts or audio from disk. Nothing loads from another company's server: three.js is in `lib/three/` and the fonts are in `fonts/`.
 
 ## Pages
 
@@ -22,7 +22,8 @@ Every run calls `WPM.record` once when it ends and earns coins and XP. Coins, XP
 
 ## Structure
 
-- `index.html` holds the nav, the page frame, the icons and the script tags. Pages draw into `<main id="view">`.
+- `index.html` holds the nav, the page frame, the icons, the scripts every page needs and the Content-Security-Policy. Pages draw into `<main id="view">`. After editing any inline `<script>` in it, run `node .github/csp-tag.mjs index.html --write`, or that script is blocked.
+- `js/app/lazy.js` loads each page's scripts and styles the first time the page opens, from the groups listed at its top. A new page or mode goes into a group there, and `Router.lazy(name)` in `index.html` registers it. Avatars render in 3D only on the profile, player profiles, duels and parties; elsewhere they show a picture rendered before or the hooded figure (`js/app/avatar.js`).
 - `css/site.css` holds the colours, fonts and layout, with the tokens from `SPEC.md` at the top.
 - `js/app/router.js` reads the hash and mounts one page at a time. Each page registers `{ title, mount(el, params), unmount(), update?(params) }`. Leaving a page calls its `unmount`, which stops its timers, games and WebGL. `#/play/race` passes `['race']` to the play page.
 - `js/app/shell.js` runs the parts that stay put: coins and avatar in the nav, the sound button, the mobile menu, toasts for coins, level ups and achievements and the falling-code background. The background stops when the tab is hidden or the player prefers reduced motion.

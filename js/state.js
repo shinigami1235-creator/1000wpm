@@ -28,7 +28,13 @@ window.WPM = (() => {
 
   let data;
   try { data = { ...blank(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { data = blank(); }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
+  // a save the browser refuses (private browsing, full storage) is shown once, so nobody
+  // plays on thinking their coins are kept
+  let saveFailed = false;
+  const save = () => {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); saveFailed = false; }
+    catch (e) { if (!saveFailed) { saveFailed = true; console.warn('progress not saved', e); emit('save-failed', e); } }
+  };
 
   // ---------- events ----------
   const subs = {};

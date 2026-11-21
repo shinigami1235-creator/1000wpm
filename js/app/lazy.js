@@ -100,5 +100,13 @@ window.Lazy = (() => {
     (g.need || []).forEach(prefetch);
   }
 
+  // a pointer over a link, or focus on it, warms that page's files before the click
+  const warm = ev => {
+    const a = ev.target.closest && ev.target.closest('a[href^="#/"]');
+    if (a) prefetch('page:' + a.getAttribute('href').slice(2).split('/')[0]);
+  };
+  document.addEventListener('pointerover', warm, { passive: true });
+  document.addEventListener('focusin', warm);
+
   return { need, provide, prefetch, groups: G };
 })();

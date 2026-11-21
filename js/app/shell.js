@@ -59,6 +59,7 @@
   WPM.on('coins', ({ delta, reason }) => {
     if (delta > 0 && REASON[reason] !== null) toast('t-coin', `${UI.coin()}<span><b>+${UI.fmt(delta)}</b> coins${REASON[reason] ?? ''}</span>`);
   });
+  WPM.on('save-failed', () => toast('t-ach', `${UI.icon('lock', 'gold')}<span>This browser isn't saving your progress. Private browsing or full storage stops it.</span>`, 8000));
   WPM.on('level', ({ level }) => toast('t-level', `${UI.icon('bolt', 'green')}<span>Level <b>${level}</b></span>`, 4000));
   WPM.on('achievement', a => toast('t-ach', `${UI.icon('crown', 'gold')}<span>Achievement: <b>${UI.esc(a.name)}</b></span>`, 4500));
   window.Toast = toast;

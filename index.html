@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-dtUZqOUfNO8jdYazo9ivzkfycy7LnAoz0wcLNv008uE=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-m28h7wwkGTophxzCXiZDveBytnwZx55IpwxOn+aoG7U=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>10000WPM</title>
 <meta name="description" content="Race Art's 204 wpm, take a typing test, play Breach and decorate your room with coins you earn by typing.">
 <meta name="theme-color" content="#040806">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23040806'/%3E%3Cpath d='M18 50 L32 12 L46 50 M26 43 L32 28 L38 43' fill='none' stroke='%2339ff88' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/chakra-petch-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/site.css">
 <link rel="stylesheet" href="css/buddy.css">
 <link rel="stylesheet" href="css/avatar.css">
@@ -20,8 +20,8 @@
 <script src="js/app/intro.js" async></script>
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three": "./lib/three/build/three.module.min.js",
+  "three/addons/": "./lib/three/examples/jsm/"
 } }
 </script>
 </head>

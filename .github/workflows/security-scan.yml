@@ -1,0 +1,51 @@
+name: Security scan
+
+# Runs on GitHub's machines on every push. Red here doesn't take the site down.
+# Blocking: leaked keys (whole history), the CSP on index.html, the chat filter test.
+# Report only: Semgrep and harden-scan, which flag every innerHTML in 2.5 MB of code;
+# read their logs when changing code that shows text from players.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 2 * * 1"     # every Monday, catches newly found holes in old code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  leaked-keys:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0     # the whole history, so deleted keys are found too
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  site-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # an edited inline <script> in index.html stops running until the CSP is rewritten:
+      # node .github/csp-tag.mjs index.html --write
+      - run: node .github/csp-tag.mjs index.html --check
+      - run: node .github/test-chat-rules.mjs
+
+  report:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node .github/harden-scan.mjs . || true
+      - run: docker run --rm -v "$PWD:/src" semgrep/semgrep semgrep scan --config p/javascript --metrics=off --exclude lib --exclude design || true

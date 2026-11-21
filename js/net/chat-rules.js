@@ -33,7 +33,9 @@
   };
 
   // ---------- contact details ----------
-  const LINK = /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.|\s?\(dot\)\s?|\s?\[dot\]\s?)(?:com|net|org|gg|io|me|ly|co|tv|xyz|ru|ph|th|app|link|site|club|info|biz|be|to)\b/i;
+  // a dot with spaces on both sides ("evil . com") or the word dot before a common ending ("evil dot com")
+  // counts too; a sentence that ends and a new one that starts ("home. me too") doesn't
+  const LINK = /\b(?:https?:\/\/|www\s*\.)\S+|\b[a-z0-9-]+(?:\.|\s+\.\s+|\s?\(dot\)\s?|\s?\[dot\]\s?)(?:com|net|org|gg|io|me|ly|co|tv|xyz|ru|ph|th|app|link|site|club|info|biz|be|to)\b|\b[a-z0-9-]+\s+dot\s+(?:com|net|org|io|xyz|ru|ph|th|gg)\b/i;
   const EMAIL = /[a-z0-9._%+-]+\s*(?:@|\(at\)|\[at\])\s*[a-z0-9-]+\s*(?:\.|\(dot\)|\[dot\]|\s+dot\s+)\s*[a-z]{2,}/i;
   const MAILHOST = /\b(?:gmail|yahoo|hotmail|outlook|icloud|proton(?:mail)?)\b/i;
   // seven or more digits with only spaces, dots, dashes, brackets or a plus between them
