@@ -4,8 +4,11 @@
 window.WPM = (() => {
   const KEY = 'wpm-player-v1';
   const ART_BEST = 204;
+  // The clock every progress date comes from. Tests set window.__wpmNow to a function
+  // returning a timestamp to step through days.
+  const now = () => (typeof window.__wpmNow === 'function' ? new Date(window.__wpmNow()) : new Date());
   // Calendar day in the player's own time zone, so a streak day ends at their midnight.
-  const day = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const day = (d = now()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const blank = () => ({
     profile: { name: 'Guest', avatar: 0, joined: day(), theme: 'terminal' },
@@ -19,6 +22,7 @@ window.WPM = (() => {
     room: null,                 // room layout, written by the room editor
     totals: { keys: 0, correct: 0, words: 0, ms: 0 },
     learn: {},                  // academy progress and free typing coins, see js/app/learn.js
+    prog: {},                   // sign-in streak, tasks, counters and visual bonuses, owned by js/app/progress.js
   });
 
   let data;
@@ -29,6 +33,23 @@ window.WPM = (() => {
   const subs = {};
   function on(ev, fn) { (subs[ev] ||= []).push(fn); return () => { subs[ev] = subs[ev].filter(f => f !== fn); }; }
   function emit(ev, payload) { (subs[ev] || []).forEach(f => { try { f(payload); } catch (e) { console.error(e); } }); }
+
+  // ---------- progress events ----------
+  // Every mode reports what the player did with WPM.track(name, payload). Daily tasks and
+  // achievements listen for these and never for the pages themselves. A mode calls
+  // WPM.events.register(name) when its script loads so tasks for it join the daily draw.
+  // PROGRESS.md lists the names and payloads.
+  const known = new Set();
+  const events = {
+    register(...names) { for (const n of names.flat()) if (n && !known.has(n)) { known.add(n); emit('event-registered', n); } },
+    known: n => (n === undefined ? [...known] : known.has(n)),
+  };
+  function track(name, payload = {}) {
+    events.register(name);
+    const e = { name, ...payload, at: now().toISOString() };
+    emit('track', e);
+    return e;
+  }
 
   // ---------- levels ----------
   // Level n needs 100 * n^1.5 XP more than level n-1.
@@ -68,7 +89,7 @@ window.WPM = (() => {
   function record(run) {
     const today = day();
     const words = run.correct / 5;
-    const s = { ...run, at: new Date().toISOString() };
+    const s = { ...run, at: now().toISOString() };
     data.sessions.push(s);
     if (data.sessions.length > 500) data.sessions.splice(0, data.sessions.length - 500);
     data.totals.keys += run.keys || 0;
@@ -89,7 +110,10 @@ window.WPM = (() => {
     save();
     addCoins(coins, 'typing');
     addXP(xp);
-    const unlocked = checkAchievements(s);
+    const unlocked = [];
+    const offA = on('achievement', a => unlocked.push(a.id));
+    track('run', { ...s, newBest });
+    offA();
     emit('session', { run: s, coins, xp, newBest, unlocked });
     return { coins, xp, newBest, unlocked };
   }
@@ -97,13 +121,13 @@ window.WPM = (() => {
   // ---------- streak ----------
   function streak() {
     const set = new Set(data.days);
-    const d = new Date();
+    const d = now();
     const iso = day;
     if (!set.has(iso(d))) d.setDate(d.getDate() - 1);   // today not played yet still keeps yesterday's streak
     let n = 0;
     while (set.has(iso(d))) { n++; d.setDate(d.getDate() - 1); }
     const week = [];
-    const w = new Date();
+    const w = now();
     for (let i = 6; i >= 0; i--) { const x = new Date(w); x.setDate(w.getDate() - i); week.push({ date: iso(x), played: set.has(iso(x)) }); }
     return { days: n, week };
   }
@@ -119,32 +143,18 @@ window.WPM = (() => {
   }
 
   // ---------- achievements ----------
-  const ACH = [
-    { id: 'first', name: 'First run', text: 'Finish one typing run.', test: () => data.sessions.length >= 1 },
-    { id: 'wpm60', name: '60 wpm', text: 'Type 60 wpm in any run.', test: s => s.wpm >= 60 },
-    { id: 'wpm100', name: '100 wpm', text: 'Type 100 wpm in any run.', test: s => s.wpm >= 100 },
-    { id: 'wpm150', name: '150 wpm', text: 'Type 150 wpm in any run.', test: s => s.wpm >= 150 },
-    { id: 'beatart', name: 'Faster than Art', text: `Type more than Art's ${ART_BEST} wpm.`, test: s => s.wpm > ART_BEST },
-    { id: 'clean', name: 'Clean run', text: 'Finish a run of 30 seconds or more at 100% accuracy.', test: s => s.acc >= 100 && s.ms >= 30000 },
-    { id: 'streak7', name: '7 day streak', text: 'Type on 7 days in a row.', test: () => streak().days >= 7 },
-    { id: 'streak30', name: '30 day streak', text: 'Type on 30 days in a row.', test: () => streak().days >= 30 },
-    { id: 'words10k', name: '10,000 words', text: 'Type 10,000 correct words in total.', test: () => data.totals.correct / 5 >= 10000 },
-    { id: 'horde1', name: 'Off the air', text: 'Clear chapter 1 of Breach.', test: s => s.mode === 'horde-1' && s.cleared },
-    { id: 'horde5', name: 'Rollback', text: 'Clear the last chapter of Breach.', test: s => s.mode === 'horde-5' && s.cleared },
-    { id: 'racewin', name: 'Overtake', text: 'Win a race against Art.', test: s => s.mode === 'race-art' && s.won },
-    { id: 'collector', name: 'Collector', text: 'Own 10 items from the shop.', test: () => data.owned.length >= 14 },
-    { id: 'level10', name: 'Level 10', text: 'Reach level 10.', test: () => levelInfo().level >= 10 },
-  ];
-  function checkAchievements(s) {
-    const out = [];
-    for (const a of ACH) {
-      if (data.achievements[a.id]) continue;
-      if (a.test(s || {})) { data.achievements[a.id] = day(); out.push(a.id); emit('achievement', a); }
-    }
-    if (out.length) { save(); addCoins(out.length * 100, 'achievement'); }
-    return out;
+  // The list and the checks live in js/app/progress.js, which hands them over with
+  // WPM.useAchievements({ list }). Unlocks are stored here as id -> date.
+  let achList = () => [];
+  function useAchievements(p) { achList = p.list; }
+  function unlock(id, meta = { id }, quiet = false) {
+    if (data.achievements[id]) return false;
+    data.achievements[id] = day(); save();
+    if (!quiet) emit('achievement', { id, ...meta });
+    return true;
   }
-  const achievements = () => ACH.map(a => ({ id: a.id, name: a.name, text: a.text, unlocked: data.achievements[a.id] || null }));
+  const unlockedOn = id => data.achievements[id] || null;
+  const achievements = () => achList();
 
   // ---------- inventory and room ----------
   function owns(id) { return data.owned.includes(id); }
@@ -153,11 +163,18 @@ window.WPM = (() => {
     if (!spend(item.price)) return { ok: false, reason: 'coins' };
     data.owned.push(item.id); save();
     emit('inventory', { id: item.id });
-    checkAchievements();
+    track('item_buy', { id: item.id, price: item.price });
     return { ok: true };
   }
+  // An item given for free, such as a gift.
+  function grant(id, reason = 'gift') {
+    if (owns(id)) return false;
+    data.owned.push(id); save();
+    emit('inventory', { id, reason });
+    return true;
+  }
   function getRoom() { return data.room; }
-  function setRoom(room) { data.room = room; save(); emit('room', room); }
+  function setRoom(room) { data.room = room; save(); emit('room', room); track('room_save', { items: room && Array.isArray(room.items) ? room.items.length : 0 }); }
 
   // ---------- profile ----------
   function profile() { return { ...data.profile }; }
@@ -171,8 +188,12 @@ window.WPM = (() => {
   function reset() { data = blank(); save(); emit('reset', null); }
   function exportData() { return JSON.stringify(data); }
 
+  // The progress module's own saved state. It changes the object and then calls saveProgress().
+  const progress = () => (data.prog ||= {});
+
   return {
-    ART_BEST, on, record, stats, streak, levelInfo, achievements,
+    ART_BEST, on, record, track, events, now, day, progress, saveProgress: save,
+    useAchievements, unlock, unlockedOn, grant, stats, streak, levelInfo, achievements,
     coins: () => data.coins, addCoins, spend, addXP, xp: () => data.xp,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),

@@ -54,9 +54,10 @@
     setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, ms);
     next = setTimeout(() => { next = 0; pump(); }, 700);
   }
-  const REASON = { typing: '', 'level up': ' for the level', achievement: ' for the achievement' };
+  // null: js/app/progress-ui.js shows its own toast for these
+  const REASON = { typing: '', 'level up': ' for the level', achievement: ' for the achievement', streak: null, task: null, weekly: null, gift: null, 'free typing': null };
   WPM.on('coins', ({ delta, reason }) => {
-    if (delta > 0 && reason !== 'free typing') toast('t-coin', `${UI.coin()}<span><b>+${UI.fmt(delta)}</b> coins${REASON[reason] ?? ''}</span>`);
+    if (delta > 0 && REASON[reason] !== null) toast('t-coin', `${UI.coin()}<span><b>+${UI.fmt(delta)}</b> coins${REASON[reason] ?? ''}</span>`);
   });
   WPM.on('level', ({ level }) => toast('t-level', `${UI.icon('bolt', 'green')}<span>Level <b>${level}</b></span>`, 4000));
   WPM.on('achievement', a => toast('t-ach', `${UI.icon('crown', 'gold')}<span>Achievement: <b>${UI.esc(a.name)}</b></span>`, 4500));

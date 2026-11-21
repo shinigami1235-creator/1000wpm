@@ -309,6 +309,7 @@ Router.register('boss', (() => {
       TT.click(true);
       streak(t);
       milestone('combo', combo);
+      if (combo && combo % 5 === 0) WPM.track('combo', { n: combo, mode: 'boss' });
     } else {
       sess.missed++;
       combo = 0;
@@ -607,6 +608,7 @@ Router.register('boss', (() => {
     const t = performance.now();
     if (h.you) {
       sess.dmg += h.dmg;
+      WPM.track('boss_hit', { dmg: h.dmg, kind: h.kind || 'word', crit: !!h.crit });
       if (h.kind === 'return') pushFeed({ text: `You sent back a packet for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'block') pushFeed({ text: `You hit back for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'add') pushFeed({ text: `You deleted a bug and hit for ${h.dmg}`, cls: 'you' });
@@ -902,6 +904,7 @@ Router.register('boss', (() => {
       ms: Math.round(Math.max(sess.active, 1000)),
       score: Math.round(sess.dmg || sess.letters),
     });
+    if (atKill && sess.words > 0) WPM.track('boss_win', { dmg: Math.round(sess.dmg || 0) });
     r.blockCoins = Math.min(60, sess.blocks * 3);
     r.killCoins = atKill && sess.words > 0 ? 20 : 0;
     r.bonus = r.blockCoins + r.killCoins;

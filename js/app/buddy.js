@@ -543,6 +543,6 @@
   });
   if (html.classList.contains('intro')) waitForIntro(); else appear(false);
 
-  window.Buddy = { NAME, hidden: () => away, setHidden };
+  window.Buddy = { NAME, hidden: () => away, setHidden, say: (text, prio = 2) => say(text, prio) };
   requestAnimationFrame(frame);
 })();

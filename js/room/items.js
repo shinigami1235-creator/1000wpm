@@ -1286,6 +1286,10 @@
     load, create, thumbnail,
     dims: id => dims.get(id) || null,
     sizes: SIZES,
+    // Adds an item from another file, such as the gift-only items in gift-items.js.
+    // An item with gift: true never shows in the shop.
+    add(it) { it.wall = !!it.wall; catalog.push(it); byId.set(it.id, it); },
+    K_,
     // The size a layout uses. Layouts saved before sizes existed use room-s.
     sizeOf(layout = window.WPM && WPM.getRoom()) {
       return SIZES.find(z => layout && z.id === layout.size) || SIZES[0];

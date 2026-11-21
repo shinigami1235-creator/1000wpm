@@ -68,6 +68,7 @@ window.HeroRace = (() => {
       const youMs = now - tt.startT;
       const behind = ((youMs - artMs) / 1000).toFixed(1);
       const r = WPM.record({ mode: 'race-art', wpm: w, acc: tt.accuracy(), correct: tt.correct, keys: tt.typed, ms: Math.round(youMs), won: w >= ART });
+      WPM.track('race_done', { opp: 'art', wpm: w, acc: tt.accuracy(), won: w >= ART });
       const earned = ` You earned ${r.coins} coins and ${r.xp} XP.`;
       hint.innerHTML = (w >= ART
         ? `You beat Art with ${w} wpm and ${tt.accuracy()}% accuracy.`

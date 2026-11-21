@@ -294,6 +294,7 @@ Router.register('type', (() => {
     const acc = tt.accuracy();
     const key = modeKey();
     const r = WPM.record({ mode: key, wpm, acc, correct: tt.correct, keys: tt.typed, ms: Math.round(ms) });
+    WPM.track('type_test', { mode: key, wpm, acc, correct: tt.correct, ms: Math.round(ms) });
     el.q('wpm').textContent = wpm;
     el.q('time').textContent = UI.clock(ms / 1000) + (opt.mode === 'time' ? ` / ${UI.clock(opt.secs)}` : '');
     paintProgress(1);

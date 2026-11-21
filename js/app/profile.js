@@ -1,30 +1,25 @@
 // #/profile: name, avatar, level, coins, stats, wpm chart, recent sessions,
-// streak, achievements and the progress reset.
+// the daily loop from js/app/progress-ui.js and the progress reset.
 Router.register('profile', (() => {
-  const ACH_ICON = {
-    first: 'flag', wpm60: 'bolt', wpm100: 'bolt', wpm150: 'bolt', beatart: 'crown', clean: 'target',
-    streak7: 'cal', streak30: 'flame', words10k: 'key', horde1: 'target', horde5: 'target',
-    racewin: 'flag', collector: 'cube', level10: 'crown',
-  };
-  const DAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  let el, off = [], span = 30, onResize = null, host = null, creator = false;
+  let el, off = [], span = 30, onResize = null, host = null, creator = false, jump = false;
 
   function mount(root, params) {
     el = root; host = root;
     if (window.AvatarCreator && params && params[0] === 'avatar') { creator = true; AvatarCreator.mount(el); return; }
+    jump = !!(params && params[0] === 'progress');
     paint();
     off.push(WPM.on('profile', paint), WPM.on('session', paint), WPM.on('coins', paint));
+    if (window.Progress) off.push(Progress.on('ready', paint), Progress.on('achievements', paint), Progress.on('many', paint));
     onResize = () => drawChart();
     addEventListener('resize', onResize);
   }
 
   function paint() {
     if (!el) return;
-    const p = WPM.profile(), st = WPM.stats(), lv = WPM.levelInfo(), sk = WPM.streak();
+    const p = WPM.profile(), st = WPM.stats(), lv = WPM.levelInfo();
     const achs = WPM.achievements(), got = achs.filter(a => a.unlocked).length;
     const typed = WPM.sessions().filter(s => s.wpm != null);
     const recent = WPM.sessions().slice(-8).reverse();
-    const today = UI.day();
     const e = UI.esc;
     el.innerHTML = `
       <div class="prof">
@@ -97,19 +92,7 @@ Router.register('profile', (() => {
         </div>
 
         <div class="col">
-          <section class="panel hot">
-            <div class="ph">// TYPING STREAK</div>
-            <div class="streak-top">${UI.icon('cal', 'green').replace('<svg', '<svg style="width:40px;height:40px"')}<div><b>${sk.days} ${sk.days === 1 ? 'DAY' : 'DAYS'}</b><div class="label">Current streak</div></div></div>
-            <div class="week">${sk.week.map(d => {
-              const wd = new Date(d.date + 'T12:00:00').getDay();
-              return `<div><span>${DAY[wd]}</span><i class="${d.played ? 'on' : ''} ${d.date === today ? 'today' : ''}" title="${e(d.date)}">${d.played ? '✓' : ''}</i></div>`;
-            }).join('')}</div>
-          </section>
-          <section class="panel">
-            <div class="ph">// ACHIEVEMENTS<span class="meta">${got} / ${achs.length}</span></div>
-            <div class="achs">${achs.map(a => `<div class="ach ${a.unlocked ? 'on' : ''}" title="${e(a.text)}${a.unlocked ? ' Unlocked ' + e(a.unlocked) + '.' : ''}">
-              <div class="hex">${UI.icon(a.unlocked ? ACH_ICON[a.id] || 'crown' : 'lock')}</div><span>${e(a.name)}</span></div>`).join('')}</div>
-          </section>
+          ${window.ProgressUI ? '<div class="prof-side" data-prog-side></div>' : ''}
           <section class="panel">
             <div class="ph">// PROGRESS</div>
             <p class="dim" style="margin-bottom:12px">Coins, XP, runs and items are saved in this browser.</p>
@@ -121,6 +104,7 @@ Router.register('profile', (() => {
           </section>` : ''}
         </div>
       </div>
+      ${window.ProgressUI ? '<div data-prog-wide></div>' : ''}
       <dialog class="confirm" data-dialog aria-labelledby="reset-title">
         <form method="dialog">
           <h2 id="reset-title">Reset progress?</h2>
@@ -143,6 +127,7 @@ Router.register('profile', (() => {
     if (bt) bt.addEventListener('click', () => { Buddy.setHidden(!Buddy.hidden()); paint(); });
     dlg.addEventListener('close', () => { if (dlg.returnValue === 'reset') WPM.reset(); });
     drawChart(typed);
+    if (window.ProgressUI) { off.push(ProgressUI.profile(el, jump)); jump = false; }
   }
 
   function drawChart() {
