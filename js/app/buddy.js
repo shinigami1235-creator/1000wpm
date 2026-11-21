@@ -24,7 +24,7 @@
   const fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const phone = () => innerWidth < 760;
   const route = () => (window.Router && Router.current()) || 'home';
-  const gameRoute = () => route() === 'play' || route() === 'boss';
+  const gameRoute = () => route() === 'play' || route() === 'boss' || route() === 'superboss';
   const BASE = 80;                                   // the rig is drawn at 80px and scaled
   const SIZE = () => phone() ? 56 : gameRoute() ? 56 : 76;
   const CORNER = () => phone() ? 56 : 58;

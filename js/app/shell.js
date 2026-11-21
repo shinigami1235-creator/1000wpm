@@ -103,7 +103,7 @@
       if (d.y > innerHeight && Math.random() > .96) d.y = -COL * Math.random() * 20;
     }
   }
-  const calm = () => window.Router && Router.current() === 'boss';
+  const calm = () => window.Router && ['boss', 'superboss'].includes(Router.current());
   let wasCalm = false;
   function run() {
     cancelAnimationFrame(raf); raf = 0;

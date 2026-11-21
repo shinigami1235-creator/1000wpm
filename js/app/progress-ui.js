@@ -204,7 +204,7 @@ window.ProgressUI = (() => {
   const SOURCE = { streak: n => `Gift for day ${n} of your streak`, month: () => 'Gift for the new month', run: () => 'Gift after your run' };
   function canReveal() {
     const r = window.Router && Router.current();
-    if (revealing || r === 'play' || r === 'boss' || r === 'type') return false;  // typing pages: the gift waits for the next page
+    if (revealing || r === 'play' || r === 'boss' || r === 'type' || r === 'superboss') return false;  // typing pages: the gift waits for the next page
     if (document.documentElement.classList.contains('intro') || document.querySelector('dialog[open]')) return false;
     return Date.now() - lastKey > 2500;
   }
@@ -285,7 +285,7 @@ window.ProgressUI = (() => {
     setTimeout(() => {
       if (!window.Buddy || !Buddy.say || Buddy.hidden()) return;
       const r2 = window.Router && Router.current();
-      if (r2 === 'play' || r2 === 'boss') return;
+      if (r2 === 'play' || r2 === 'boss' || r2 === 'superboss') return;
       P.setSaid(day);
       Buddy.say(r.n === 1 ? 'Your three tasks for today are under the flame.' : `${r.n} days in a row now.`, 2);
     }, 4200);

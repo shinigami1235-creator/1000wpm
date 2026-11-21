@@ -47,4 +47,15 @@ window.REWARDS = {
     giftOnlyShare: 0.35,      // chance the gift is a gift-only item while any are left
     allOwnedCoins: 200,       // paid instead when every possible gift is owned
   },
+
+  // Superboss (js/app/superboss.js, SUPERBOSS.md). Viewers pay these in coins to send
+  // an item to the streamer's fight. Support items help, chaos items make it harder.
+  superboss: {
+    support: { shield: 40, overclock: 60, heal: 30, slowmo: 50, hype: 25 },
+    chaos: { fog: 35, shuffle: 15, speed: 45 },
+    hypeGoal: 300,      // coins of support that fill the hype train; a hype item counts 3 times its price
+    hypeItemK: 3,
+    // coins the streamer gets for a win, by difficulty, on top of the usual typing coins
+    win: { casual: 40, normal: 80, hard: 140, typemaster: 220, brutal: 320 },
+  },
 };
