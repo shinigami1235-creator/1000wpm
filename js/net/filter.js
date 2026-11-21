@@ -32,17 +32,22 @@
   const squeeze = s => s.replace(/(.)\1+/g, '$1');
   const letters = s => squeeze(fold(s).replace(/[^a-z]/g, ''));
 
+  // A stem whose squeezed form is under 4 letters matches only as written, since "nigg"
+  // squeezed is "nig" and would block night, knight and tonight. The doubled-letter spelling
+  // with the double squeezed out is caught by name.
+  const stemIn = (f, sq) => STEMS.some(s => { const q = squeeze(s); return f.includes(s) || (q.length >= 4 && sq.includes(q)); })
+    || (/niger(?!ia)/.test(sq) && f !== 'niger');
   function badToken(tok) {
     const f = fold(tok).replace(/[^a-z]/g, '');
     if (!f) return false;
     const sq = squeeze(f);
     if (WORDS.has(f) || WORDS.has(sq)) return true;
-    return STEMS.some(s => f.includes(s) || sq.includes(squeeze(s)));
+    return stemIn(f, sq);
   }
   // a word spelled out with spaces or dots, like "f u c k" or "s.h.i.t"
   function spaced(text) {
     const runs = String(text).match(/(?:\b[a-z0-9@$]\b[\s._-]*){3,}/gi) || [];
-    return runs.some(r => { const l = letters(r); return STEMS.some(s => l.includes(squeeze(s))) || WORDS.has(l); });
+    return runs.some(r => { const l = letters(r); return stemIn(l, l) || WORDS.has(l); });
   }
 
   function blocked(text) {

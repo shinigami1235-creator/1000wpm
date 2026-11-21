@@ -39,6 +39,21 @@
 //   Net.profiles.visit(id)                 -> { profile, room }      also counts the visit on the server
 //   Net.profiles.online()                  -> [Player]
 //
+//   Net.lobbies.invite(playerId)           -> Invite { id, to, status }   makes a lobby first if you have none; 'invite' events follow
+//
+//   Net.chat.rooms()                      not a promise; the areas and rooms from js/net/chat-rooms.js
+//   Net.chat.enter()                       -> { mode: 'full' | 'quick' | 'off', allowed: [roomId] | null, rooms: { id: { members, seq } } }
+//   Net.chat.exit()
+//   Net.chat.join(room)                    -> { room, members: [Player], offline: [Player], history: [ChatMessage], posts: [Post] | null }
+//   Net.chat.leave(room)
+//   Net.chat.send({ room, text, wpm, quick, reply }) -> ChatMessage
+//   Net.chat.post({ run, difficulty, skill: [lo, hi] }) -> Post      the Party finder; opens a lobby for you
+//   Net.chat.people(room)                  not a promise; who is online in the room
+//   Net.chat.mute(id, on) / muted()        kept on this device and sent to the server
+//   Net.chat.report({ player, name, room, reason, lines })
+//   events: 'chat.msg' ChatMessage, 'chat.rooms' { rooms }, 'chat.people' { room, join, leave, offline },
+//           'chat.post' Post, 'chat.unpost' { id }, 'chat.delete' { room, id }
+//
 //   Net.challenges.send(id)                -> Challenge { id, from, to, status }
 //   Net.challenges.accept(id) / decline(id)
 //   'challenge' events: Challenge with status 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'
@@ -49,6 +64,7 @@ window.Net = (() => {
   const BACKEND = 'sim';
   const WS_URL = 'wss://api.10000wpm.com/ws';   // placeholder until the domain and server exist
 
+  const MUTES = 'wpm-chat-mutes';
   const bus = NetCore.emitter();
   let impl = null, me = null, conn = null;
   const T = { ...(window.__netTest || {}) };
@@ -56,10 +72,12 @@ window.Net = (() => {
   // what the backends need from the page: words, the player's level, their public profile
   const host = {
     emit: (ev, p) => {
-      if (ev === 'chat' && p && p.text) p = { ...p, text: NetFilter.clean(p.text).text };
+      if ((ev === 'chat' || ev === 'chat.msg') && p && p.text) p = { ...p, text: NetFilter.clean(p.text).text };
       bus.emit(ev, p);
     },
     now: () => performance.now(),
+    hidden: () => document.hidden,
+    me: () => me,
     test: T,
     words(seed, { count = 120, difficulty = [2, 5], theme = 'common' } = {}) {
       if (window.WordBank) return WordBank.pick({ count, difficulty, theme, seed, minLen: 2, maxLen: 9 }).map(w => (typeof w === 'string' ? w : w.text || w.word || String(w)));
@@ -120,6 +138,7 @@ window.Net = (() => {
         if (!c.text) return Promise.resolve(null);
         return impl.lobbies.chat(c.text);
       }),
+      invite: need(id => impl.lobbies.invite(id)),
       start: need(() => impl.lobbies.start()),
       current: () => (impl ? impl.lobbies.current() : null),
     },
@@ -139,6 +158,26 @@ window.Net = (() => {
       get: need(id => impl.profiles.get(id)),
       visit: need(id => impl.profiles.visit(id)),
       online: need(() => impl.profiles.online()),
+    },
+    chat: {
+      rooms: () => window.CHAT_ROOMS,
+      enter: need(() => impl.chat.enter()),
+      exit: () => (impl && conn ? impl.chat.exit() : Promise.resolve()),
+      join: need(room => impl.chat.join(room)),
+      leave: room => (impl && conn ? impl.chat.leave(room) : Promise.resolve()),
+      send: need(o => impl.chat.send(o || {})),
+      post: need(o => impl.chat.post(o || {})),
+      people: room => (impl ? impl.chat.people(room) : []),
+      // a mute stays on this device even before the server keeps it
+      mute(id, on) {
+        const m = new Set(host.store.get(MUTES, []));
+        if (on) m.add(id); else m.delete(id);
+        host.store.set(MUTES, [...m]);
+        if (impl && conn) impl.chat.mute(id, !!on).catch(() => {});
+        return [...m];
+      },
+      muted: () => host.store.get(MUTES, []),
+      report: need(r => impl.chat.report(r || {})),
     },
     challenges: {
       send: need(id => impl.challenges.send(id)),

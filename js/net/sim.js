@@ -109,13 +109,13 @@
       const r = rng('lob:' + Math.floor(Date.now() / 6e5));
       const out = [];
       const n = 5 + Math.floor(r() * 3);
-      for (let i = 0; i < n; i++) {
-        const size = 1 + Math.floor(r() * 4);
-        const roles = ['guard', 'support', 'striker', 'striker'];
-        const players = Array.from({ length: size }, (_, k) => botMember(r, roles[k]));
-        out.push({ id: 'L' + hash('l' + i + players[0].id).toString(36), name: `${players[0].name}'s run`, host: players[0].id, run: r() < 0.65 ? 'relay' : 'deep', difficulty: pick(r, ['easy', 'normal', 'normal', 'hard']), players, max: 4, status: size === 4 && r() < 0.5 ? 'running' : 'open', chat: [] });
-      }
+      for (let i = 0; i < n; i++) out.push(oneLobby(r, i, 1 + Math.floor(r() * 4)));
       return out;
+    }
+    function oneLobby(r, i, size) {
+      const roles = ['guard', 'support', 'striker', 'striker'];
+      const players = Array.from({ length: size }, (_, k) => botMember(r, roles[k]));
+      return { id: 'L' + hash('l' + i + players[0].id).toString(36), name: `${players[0].name}'s run`, host: players[0].id, run: r() < 0.65 ? 'relay' : 'deep', difficulty: pick(r, ['easy', 'normal', 'normal', 'hard']), players, max: 4, status: size === 4 && r() < 0.5 ? 'running' : 'open', chat: [] };
     }
     const summary = l => ({ id: l.id, name: l.name, host: l.host, hostName: (l.players.find(p => p.id === l.host) || {}).name, run: l.run, difficulty: l.difficulty, players: l.players.map(p => ({ id: p.id, name: p.name, bot: p.bot, role: p.role })), count: l.players.length, max: l.max, status: l.status, art: false });
     const full = l => l && { ...summary(l), players: l.players.map(p => ({ ...p })), chat: l.chat.slice(-50), you: 'me', isHost: l.host === 'me' };
@@ -432,8 +432,51 @@
       return c;
     }
 
+    // ---------- the shared room's chat (js/net/chat-sim.js) ----------
+    // the Party finder posts come from these lobbies
+    let api = null;
+    const chat = root.NetChatSim ? root.NetChatSim.create(host, {
+      simProfile, handle,
+      lobbyList: () => lobbies.filter(l => l.host !== 'me').map(summary),
+      myLobby: () => (lobby && lobby.host === 'me' ? summary(lobby) : null),
+      addLobby() {
+        if (lobbies.length >= 12) { const i = lobbies.findIndex(l => l !== lobby); if (i >= 0) lobbies.splice(i, 1); }
+        lobbies.push(oneLobby(Math.random, Date.now(), 1 + Math.floor(Math.random() * 3)));
+        emit('lobbies', lobbies.map(summary));
+      },
+      createLobby: o => api.lobbies.create(o),
+    }) : null;
+
+    // ---------- party invites: a simulated player answers after a moment ----------
+    function invite(to) {
+      if (!lobby) { lobby = myLobby({}); say(lobby, null, 'Lobby open. Empty seats fill with bots until real players can join.'); lobbyChanged(); }
+      const l = lobby;
+      if (l.players.some(p => p.id === to)) return Promise.reject(new Error('Already in your party.'));
+      if (l.players.length >= l.max) return Promise.reject(new Error('Your party is full.'));
+      if (l.status !== 'open') return Promise.reject(new Error('Your party is in a run.'));
+      const sp = simProfile(to);
+      const inv = { id: nid('I'), to, toName: to, toBot: true, lobby: l.id, status: 'pending', at: Date.now() };
+      emit('invite', { ...inv });
+      setTimeout(() => {
+        const yes = T.inviteAccept != null ? T.inviteAccept : Math.random() < 0.8;
+        if (yes && lobby === l && l.status === 'open' && l.players.length < l.max && !l.players.some(p => p.id === to)) {
+          const have = l.players.map(p => p.role);
+          const role = ['guard', 'support', 'striker'].find(x => !have.includes(x)) || 'striker';
+          const b = { id: to, name: to, bot: true, role, ready: false, level: sp.level, rating: sp.duel.rating, typing: sp.typing };
+          l.players.push(b);
+          say(l, null, `${to} (bot) joined as ${root.PartyRules.ROLES[role].name.toLowerCase()}.`);
+          setTimeout(() => { if (l.players.includes(b)) { b.ready = true; lobbyChanged(); } }, delay(800, 2000));
+          lobbyChanged();
+          emit('invite', { ...inv, status: 'accepted' });
+        } else {
+          emit('invite', { ...inv, status: 'declined', reason: lobby === l ? 'busy' : 'closed' });
+        }
+      }, T.answer != null ? T.answer : delay(1200, 2800));
+      return Promise.resolve({ ...inv });
+    }
+
     // ---------- the backend object ----------
-    return {
+    return api = {
       connect(m) {
         me = m;
         if (!presence.length) presence = makePresence();
@@ -442,14 +485,17 @@
         return Promise.resolve({ id: 'me', name: me.name, sim: true });
       },
       disconnect() {
+        if (chat) chat.leave();
         if (session) session.leave();
         if (lobby) { lobby.closed = true; lobby = null; }
         clearInterval(timer); timer = 0;
       },
       reset() { rec = blankRec(); host.store.del(STORE); },
+      chat,
       presence: () => presence.map(p => ({ ...p })),
       lobbies: {
         list: () => Promise.resolve(lobbies.map(summary)),
+        invite,
         create(o) {
           if (lobby) this.leave();
           lobby = myLobby(o);

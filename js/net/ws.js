@@ -2,13 +2,14 @@
 // every message is one JSON object { v: 1, t: type, id?: request id, d: payload }.
 // A request carries an id and the server answers with { t: 'ok' | 'err', id, d }.
 // Everything else the server sends is an event: presence, lobbies, lobby, chat, match,
-// challenge, notice.
+// challenge, invite, notice, and for the chat rooms chat.msg, chat.rooms, chat.people, chat.post,
+// chat.unpost and chat.delete.
 //
 // Nothing here runs until Net.BACKEND is 'ws'. Until the server is up, connect() fails
 // and the pages show that the server is offline.
 (function (root) {
   function create(host, url) {
-    let ws = null, open = null, n = 0, me = null, presence = [], lobby = null, match = null, clockOff = 0;
+    let ws = null, open = null, n = 0, me = null, presence = [], lobby = null, match = null, clockOff = 0, room = null, people = new Map();
     const pending = new Map();
 
     function connect(m) {
@@ -45,6 +46,10 @@
       }
       if (msg.t === 'presence') presence = msg.d || [];
       if (msg.t === 'lobby') lobby = msg.d;
+      if (msg.t === 'chat.people' && msg.d && msg.d.room === room) {
+        for (const id of msg.d.leave || []) people.delete(id);
+        for (const p of msg.d.join || []) people.set(p.id, p);
+      }
       if (msg.t === 'match') {
         const d = msg.d || {};
         if (d.type === 'start') { match = { info: d, state: d.state }; clockOff = host.now() - (d.clock || 0); }
@@ -68,6 +73,7 @@
         kick: id => send('lobby.kick', { id }),
         setRun: o => send('lobby.run', o),
         chat: text => send('lobby.chat', { text }),
+        invite: to => send('lobby.invite', { to }),
         start: () => send('lobby.start'),
         current: () => lobby,
       },
@@ -77,6 +83,17 @@
         leave: () => send('match.leave', { id: match && match.info.id }),
         current: () => match,
         clock: () => host.now() - clockOff,
+      },
+      chat: {
+        enter: () => send('chat.enter'),
+        exit: () => send('chat.exit').catch(() => {}),
+        join: id => send('chat.join', { room: id }).then(d => { room = id; people = new Map((d.members || []).map(p => [p.id, p])); return d; }),
+        leave: id => send('chat.leave', { room: id }).catch(() => {}).then(() => { if (room === id) { room = null; people.clear(); } }),
+        send: o => send('chat.send', o),
+        post: o => send('chat.post', o),
+        people: id => (id === room ? [...people.values()] : []),
+        mute: (id, on) => send('chat.mute', { id, on }),
+        report: r => send('chat.report', r),
       },
       results: {
         record: () => send('results.record'),
