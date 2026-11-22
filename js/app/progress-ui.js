@@ -204,7 +204,7 @@ window.ProgressUI = (() => {
   const SOURCE = { streak: n => `Gift for day ${n} of your streak`, month: () => 'Gift for the new month', run: () => 'Gift after your run' };
   function canReveal() {
     const r = window.Router && Router.current();
-    if (revealing || ['play', 'boss', 'type', 'superboss', 'duel', 'party'].includes(r)) return false;  // typing pages: the gift waits for the next page
+    if (revealing || (window.UI && UI.playing && UI.playing()) || ['play', 'boss', 'type', 'superboss', 'duel', 'party'].includes(r)) return false;  // typing pages: the gift waits for the next page
     if (document.documentElement.classList.contains('intro') || document.querySelector('dialog[open]')) return false;
     return Date.now() - lastKey > 2500;
   }

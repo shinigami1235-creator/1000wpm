@@ -1039,6 +1039,9 @@ window.BossScene = (() => {
 
     // ---------- loop ----------
     let at = 0, last = nowS();
+    // compile every shader now, hidden pooled effects included, so the first hit, spell or status
+    // effect in a fight doesn't stall a frame while its shader compiles
+    try { renderer.compile(scene, camera); } catch (e) {}
     renderer.setAnimationLoop(() => {
       const t = nowS();
       let dt = Math.min(0.05, t - last); last = t;

@@ -190,7 +190,8 @@ window.DuelScene = (() => {
       m.visible = false; m.renderOrder = order; scene.add(m); return m;
     };
     const GN = 56;
-    const glyphs = Array.from({ length: GN }, () => ({ s: sprite(null), tr: [sprite(glowTex, 0.5, 7), sprite(glowTex, 0.25, 7)], on: false, t: 0, delay: 0, dur: 0.2, a: new V(), c: new V(), b: new V(), size: 0.6, spin: 0, cb: null }));
+    const glyphs = Array.from({ length: GN }, () => ({ s: sprite(glowTex),   // a map from the start: swapping null for a texture recompiles the shader
+      tr: [sprite(glowTex, 0.5, 7), sprite(glowTex, 0.25, 7)], on: false, t: 0, delay: 0, dur: 0.2, a: new V(), c: new V(), b: new V(), size: 0.6, spin: 0, cb: null }));
     let gI = 0;
     const bez = (out, g, u) => {
       const v = 1 - u;
@@ -598,6 +599,9 @@ window.DuelScene = (() => {
     let alive = true, last = performance.now(), t = 0;
     const camAt = new V(), lookAt = new V();
     const ease = u => 1 - Math.pow(1 - u, 3);
+    // compile every shader now, hidden pooled effects included, so the first hit, spell or status
+    // effect in a fight doesn't stall a frame while its shader compiles
+    try { renderer.compile(scene, camera); } catch (e) {}
     renderer.setAnimationLoop(() => {
       if (!alive || document.hidden || !visible) { last = performance.now(); return; }
       const nowT = performance.now();

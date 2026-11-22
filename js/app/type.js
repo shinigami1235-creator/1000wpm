@@ -127,7 +127,7 @@ Router.register('type', (() => {
       keys.el.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true }));
     };
     document.addEventListener('keydown', stopKey);
-    onResize = () => { if (tt && !ended) { tt.place(tt.caret, tt.pos); scroll(); } drawChart(); };
+    onResize = () => { if (tt && !ended) { tt.invalidate(); tt.place(tt.caret, tt.pos); scroll(); } drawChart(); };
     addEventListener('resize', onResize);
     reset();
     document.fonts.ready.then(() => { if (el && tt && !running && !ended) reset(); });
@@ -178,7 +178,7 @@ Router.register('type', (() => {
     clearInterval(iv);
     stopTab();
     if (window.Focus) Focus.end();
-    running = false; ended = false; startT = 0; samples = []; hist = []; raws = []; ks = {};
+    running = false; ended = false; startT = 0; UI.play('type', false); samples = []; hist = []; raws = []; ks = {};
     paintOpts(); paintRecords();
     const stage = el.q('stage');
     stage.innerHTML = '';
@@ -236,7 +236,7 @@ Router.register('type', (() => {
   }
 
   function start() {
-    running = true;
+    running = true; UI.play('type', true);
     startT = performance.now();
     let lastSample = startT;
     hist = [{ t: startT, c: 0, k: 0 }];
@@ -302,7 +302,7 @@ Router.register('type', (() => {
   // Keep the caret on the second line once the first line is done.
   function scroll() {
     const p = tt.xy(tt.pos);
-    const lh = parseFloat(getComputedStyle(tt.el).lineHeight) || 40;
+    const lh = tt.lineH();
     const row = Math.floor((p.y + p.h / 2) / lh);
     tt.el.style.transform = `translateY(${-Math.max(0, row - 1) * lh}px)`;
   }
@@ -313,7 +313,7 @@ Router.register('type', (() => {
     const now = performance.now();
     const ms = opt.mode === 'time' ? opt.secs * 1000 : now - startT;
     if (opt.mode === 'time') hist.push({ t: now, c: tt.correct, k: tt.typed });
-    running = false; ended = true;
+    running = false; ended = true; UI.play('type', false);
     if (window.Focus) Focus.end();
     const wpm = Math.round((tt.correct / 5) / (ms / 60000));
     const raw = Math.round((tt.typed / 5) / (ms / 60000));

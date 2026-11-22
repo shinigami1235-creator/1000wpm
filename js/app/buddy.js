@@ -443,7 +443,13 @@
   }
 
   // ---------- motion: a damped spring toward the perch, every frame ----------
-  const viewH = () => window.visualViewport ? visualViewport.height : innerHeight;
+  // the visible height, kept up to date by resize events: reading it every frame made the
+  // browser lay the page out again every frame while someone was typing
+  let vhNow = window.visualViewport ? visualViewport.height : innerHeight;
+  const readVH = () => { vhNow = window.visualViewport ? visualViewport.height : innerHeight; };
+  if (window.visualViewport) visualViewport.addEventListener('resize', readVH);
+  addEventListener('resize', readVH);
+  const viewH = () => vhNow;
   let offY = 0;
   function frame(nowT) {
     requestAnimationFrame(frame);
@@ -456,7 +462,10 @@
     if (away) return;
     if (mode === 'drag') { paint(); return; }
     const t = performance.now();
-    if (t - lastChoose > (phone() ? 400 : 180) || !cur) { lastChoose = t; choose(vh); }
+    // while a fight or a timed run is on it stays where it is: finding a new spot reads the
+    // layout and probes the page, which costs a frame when the page changes every frame
+    const still = window.UI && UI.playing && UI.playing() && cur;
+    if (!still && (t - lastChoose > (phone() ? 400 : 180) || !cur)) { lastChoose = t; choose(vh); }
     let tg = target(vh);
     if (!tg && cur) { choose(vh); tg = target(vh); }
     let tx, ty, ts;

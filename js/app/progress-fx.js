@@ -48,9 +48,9 @@
   }
   // three specks off the letter just typed
   function spark(tt, i) {
-    const s = tt.spans[i];
-    if (!s) return;
-    const x = s.offsetLeft + s.offsetWidth / 2, y = s.offsetTop + s.offsetHeight * 0.45;
+    if (!tt.spans[i]) return;
+    const p = tt.xy(i);
+    const x = p.x + p.w / 2, y = p.y + p.h * 0.45;
     for (let k = 0; k < 3; k++) {
       const n = document.createElement('i');
       n.className = 'fx-spark';

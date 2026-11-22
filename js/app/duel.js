@@ -312,6 +312,7 @@ Router.register('duel', (() => {
 
   function round(ev) {
     if (ev.phase === 'start') {
+      UI.play('duel', true);
       scene.revive();
       if (ty) ty.reset();
       fog = 0;
@@ -464,6 +465,7 @@ Router.register('duel', (() => {
   function end(m) {
     if (endShown) return;
     endShown = true;
+    UI.play('duel', false);
     const r = m.result || {};
     const me = info.you, P = info.players;
     const won = me >= 0 && r.winner === me, lost = me >= 0 && r.winner === 1 - me;
@@ -519,6 +521,7 @@ Router.register('duel', (() => {
 
   // ---------- leaving ----------
   function stopFight() {
+    UI.play('duel', false);
     cancelAnimationFrame(raf); raf = 0;
     if (mode === 'fight' && !endShown) Net.match.leave();
     if (scene) { scene.dispose(); scene = null; }

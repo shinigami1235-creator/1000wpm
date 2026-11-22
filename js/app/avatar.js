@@ -62,18 +62,33 @@ window.Avatar = (() => {
   }
 
   function request(look, size, show, k, force) {
-    if (mem.has(k) || queue.some(q => q.k === k)) return;
-    const q = { look, size: px(size, show), show, k };
+    if (mem.has(k)) return;
+    const had = queue.find(q => q.k === k);
+    if (had) { if (force) had.force = true; return; }
+    const q = { look, size: px(size, show), show, k, force: !!force };
     if (!mod && !force && !renders()) { if (later.size < 200) later.set(k, q); return; }
     queue.push(q);
     if (mod) pump(); else start();
   }
   let busy = false;
+  // one picture at a time. A picture is a full 3D render and a read-back on the main thread, so
+  // while a fight is on (UI.playing) only pictures the fight asked for (thumb()) are drawn, and
+  // pictures nobody shows any more are dropped.
+  const wanted = q => q.force || waiters.has(q.k) || document.querySelector(`img[data-avk="${q.k}"]`);
+  function next() {
+    for (let i = queue.length - 1; i >= 0; i--) if (!wanted(queue[i])) queue.splice(i, 1);
+    const playing = window.UI && UI.playing && UI.playing();
+    const i = playing ? queue.findIndex(q => q.force) : 0;
+    return i >= 0 && queue.length ? queue.splice(i, 1)[0] : null;
+  }
+  addEventListener('wpm-playing', ev => { if (!ev.detail.on) pump(); });
   function pump() {
     if (busy || !mod || !queue.length) return;
+    const item = next();
+    if (!item) return;
     busy = true;
     setTimeout(async () => {
-      const { look, size, show, k } = queue.shift();
+      const { look, size, show, k } = item;
       let url = null;
       try { url = await mod.thumb(look, size, { show }); } catch (e) { console.warn('avatar thumbnail', e); }
       if (url) { mem.set(k, url); persist(k, url, size); fill(k, url); }

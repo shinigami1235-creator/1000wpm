@@ -576,6 +576,9 @@ window.SuperScene = (() => {
 
     // ---------- the frame ----------
     let paused = false, slowK = 1, lastT = performance.now();
+    // compile every shader now, hidden pooled effects included, so the first hit, spell or status
+    // effect in a fight doesn't stall a frame while its shader compiles
+    try { renderer.compile(scene, camera); } catch (e) {}
     renderer.setAnimationLoop(() => {
       const nowMs = performance.now();
       // rdt is real time for fades, so a slow frame never leaves a tint or a flash on screen

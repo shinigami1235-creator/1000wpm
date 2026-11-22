@@ -79,6 +79,13 @@ window.TT = (() => {
   }
 
   // ---- typing text ----
+  // Letter positions are measured once per text and reused: reading a letter's position right
+  // after marking it ok or bad made the browser lay the whole passage out again on every key.
+  // Marking only changes colour and underline, so the positions hold until the text, the box's
+  // size or the font changes.
+  const geoRO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(es => { for (const e of es) if (e.target.__tt) e.target.__tt.geo = null; }) : null;
+  const live = new Set();
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { for (const t of live) t.geo = null; });
   class TypeText {
     constructor(host) {
       this.host = host;
@@ -91,7 +98,21 @@ window.TT = (() => {
       this.ghost.hidden = true;
       host.appendChild(this.el);
       this.el.append(this.caret, this.ghost);
+      this.geo = null;
+      this.el.__tt = this;
+      if (geoRO) geoRO.observe(this.el);
+      live.add(this);
     }
+    // every letter's box in one pass, which is one layout
+    measure() {
+      const n = this.spans.length, g = { x: new Float32Array(n), y: new Float32Array(n), w: new Float32Array(n), h: new Float32Array(n) };
+      for (let i = 0; i < n; i++) { const s = this.spans[i]; g.x[i] = s.offsetLeft; g.y[i] = s.offsetTop; g.w[i] = s.offsetWidth; g.h[i] = s.offsetHeight; }
+      this.geo = g; this.lh = 0;
+      return g;
+    }
+    invalidate() { this.geo = null; this.lh = 0; }
+    // the text's line height, read once per layout
+    lineH() { if (!this.lh || !this.geo) this.lh = parseFloat(getComputedStyle(this.el).lineHeight) || 40; return this.lh; }
     set(text) {
       this.text = text;
       this.pos = 0;
@@ -114,16 +135,20 @@ window.TT = (() => {
         if (ch === ' ') word = null;
       }
       this.el.insertBefore(frag, this.caret);
+      this.geo = null;
       this.place(this.caret, 0);
       this.ghost.hidden = true;
     }
     // x,y of the left edge of char i, relative to the text box
     xy(i) {
       const last = this.spans.length - 1;
-      const s = this.spans[Math.min(i, last)];
-      if (!s) return { x: 0, y: 0, h: 20 };
-      const x = i > last ? s.offsetLeft + s.offsetWidth : s.offsetLeft;
-      return { x, y: s.offsetTop, h: s.offsetHeight };
+      if (last < 0) return { x: 0, y: 0, h: 20 };
+      if (!this.el.isConnected) { live.delete(this); return { x: 0, y: 0, h: 20 }; }
+      live.add(this);
+      const g = this.geo || this.measure();
+      const k = Math.min(i, last);
+      const x = i > last ? g.x[k] + g.w[k] : g.x[k];
+      return { x, y: g.y[k], h: g.h[k] || 20, w: g.w[k] };
     }
     place(node, i) {
       const p = this.xy(i);
@@ -200,6 +225,7 @@ window.TT = (() => {
     marble: { lp: 2600, knock: 520, kGain: .35, nGain: .4,  len: .03 },
   };
   let profile = PROFILES.creamy;
+  const clickBufs = new Map();
   function setProfile(name) { profile = PROFILES[name] || PROFILES.creamy; }
   function click(big = false, up = false) {
     if (!on) return;
@@ -210,10 +236,18 @@ window.TT = (() => {
       const p = profile;
       const vary = 0.92 + Math.random() * 0.16;
       const len = p.len * (big ? 1.6 : 1) * (up ? 0.6 : 1);
-      const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * len), ac.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-      const src = ac.createBufferSource(); src.buffer = buf;
+      // four noise bursts per length, made once and reused, so typing makes no garbage
+      const bk = Math.round(len * 1e4);
+      let set = clickBufs.get(bk);
+      if (!set) {
+        set = Array.from({ length: 4 }, () => {
+          const b = ac.createBuffer(1, Math.ceil(ac.sampleRate * len), ac.sampleRate), d = b.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+          return b;
+        });
+        clickBufs.set(bk, set);
+      }
+      const src = ac.createBufferSource(); src.buffer = set[Math.floor(Math.random() * set.length)];
       const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = p.lp * vary * (up ? 1.4 : 1);
       const g = ac.createGain(); g.gain.value = p.nGain * (up ? 0.4 : 1) * 0.6;
       src.connect(f).connect(g).connect(ac.destination);

@@ -99,7 +99,7 @@ window.HeroRace = (() => {
       keys.focus();
       keys.el.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true }));
     }
-    const onResize = () => tt.place(tt.caret, tt.pos);
+    const onResize = () => { tt.invalidate(); tt.place(tt.caret, tt.pos); };
     document.addEventListener('keydown', onKey);
     addEventListener('resize', onResize);
     document.fonts.ready.then(() => { if (alive && mode === 'demo') reset(true); });

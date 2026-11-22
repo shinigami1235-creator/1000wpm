@@ -551,6 +551,9 @@ window.RushScene = (() => {
     let at = 0, last = nowS();
     const pose = { wind: 0, atk: 0, stun: false, move: false, heat: 0 };
     let frames = 0;
+    // compile every shader now, hidden pooled effects included, so the first hit, spell or status
+    // effect in a fight doesn't stall a frame while its shader compiles
+    try { renderer.compile(scene, camera); } catch (e) {}
     renderer.setAnimationLoop(() => {
       const t = nowS();
       let dt = Math.min(0.05, t - last); last = t;

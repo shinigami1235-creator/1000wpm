@@ -441,6 +441,7 @@ Router.register('party', (() => {
     switch (ev.type) {
       case 'fight':
         if (ev.phase === 'start') {
+          UI.play('party', true);
           if (ev.words) words = ev.words;
           fightKind = ev.kind;
           scene.setFight({ kind: ev.kind, look: ev.look, foes: ev.foes });
@@ -616,6 +617,7 @@ Router.register('party', (() => {
     }
     WPM.track('party_run', { run: run.run, difficulty: run.difficulty, won: !!r.won, cleared: r.cleared, role: mine.role, dmg: mine.dmg || 0, art: !!r.art });
     const lostAt = !r.won && r.fights && r.fights.length ? r.fights[r.fights.length - 1] : null;
+    UI.play('party', false);
     if (!r.won) { if (window.RushAudio) RushAudio.stop(); sfx('defeat'); }
     box.hidden = false;
     box.innerHTML = `<div class="panel hot du-end-card" role="dialog" aria-labelledby="pa-end-t">
@@ -641,6 +643,7 @@ Router.register('party', (() => {
     if (onSound) { removeEventListener('wpm-sound', onSound); onSound = null; }
     if (onResize) { removeEventListener('resize', onResize); onResize = null; }
     if (window.RushAudio) RushAudio.stop();
+    UI.play('party', false);
     tagEls.clear(); lanes.clear();
     keys = null; ty = null; run = null; lastState = null;
     clearTimeout(bannerT);

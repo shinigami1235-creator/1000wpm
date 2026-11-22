@@ -224,8 +224,11 @@ window.PartyScene = (() => {
     // ---------- camera and the team line ----------
     const camBase = new V(0, 6.2, 23), camLook = new V(0, 4.6, -1);
     let teamZ = 9;
+    let W = 600, H = 400;
+    const laneCache = new Map();
     function fit() {
       const w = host.clientWidth || 600, h = host.clientHeight || 400;
+      W = w; H = h; laneCache.clear();
       renderer.setSize(w, h, false); composer.setSize(w, h); bloom.resolution.set(w / 2, h / 2);
       camera.aspect = w / h;
       const half = THREE.MathUtils.degToRad(21);
@@ -240,15 +243,20 @@ window.PartyScene = (() => {
     fit();
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new V(0, 0, 1), 0);
     // a player's card on the floor line in front of the camera
+    // the host's size comes from fit(), and each lane is worked out once a frame: reading the
+    // page's layout here, several times a frame, made the browser lay the page out again each time
     function laneAt(id, out) {
+      const hit = laneCache.get(id);
+      if (hit) return out.copy(hit);
       const L = opts.lane ? opts.lane(id) : null;
-      const w = host.clientWidth || 600, h = host.clientHeight || 400;
+      const w = W, h = H;
       const x = L ? L.x : w / 2, y = h * 0.96;
       ndc.set(x / w * 2 - 1, -(y / h * 2 - 1));
       ray.setFromCamera(ndc, camera);
       plane.constant = -teamZ;
       if (!ray.ray.intersectPlane(plane, out)) out.set(0, 0.5, teamZ);
       out.y = Math.max(0.4, out.y);
+      laneCache.set(id, out.clone());
       return out;
     }
     const colorOf = id => C(opts.color ? opts.color(id) : '#39ff88');
@@ -716,6 +724,8 @@ window.PartyScene = (() => {
       if (kind === 'swarm') mites = miteLayer(out => cre.source(out));
       else if (f.adds === 'mites') { const main = (f.foes || [])[0]; mites = miteLayer(out => cre.hitPos(main && main.id, out).add(v4.set(0, 1, 1))); }
       if (fx) fx.clear();
+      // the new creature's shaders compile before its first frame, not during the fight
+      try { renderer.compile(scene, camera); } catch (e) {}
     }
 
     // ---------- the attack being wound up ----------
@@ -818,7 +828,7 @@ window.PartyScene = (() => {
 
     const _s = new V();
     function screen(p) {
-      const w = host.clientWidth, h = host.clientHeight;
+      const w = W, h = H;
       _s.copy(p).project(camera);
       if (_s.z > 1) return null;
       return { x: (_s.x + 1) / 2 * w, y: (1 - _s.y) / 2 * h };
@@ -838,12 +848,16 @@ window.PartyScene = (() => {
 
     // ---------- the frame ----------
     let lastT = nowS();
+    // compile every shader now, hidden pooled effects included, so the first hit, spell or status
+    // effect in a fight doesn't stall a frame while its shader compiles
+    try { renderer.compile(scene, camera); } catch (e) {}
     renderer.setAnimationLoop(() => {
       if (!visible || document.hidden) { lastT = nowS(); return; }
       const t = nowS();
       let dt = Math.min(0.05, t - lastT); lastT = t;
       if (performance.now() < hitStop) dt *= 0.15;
       T.value = t;
+      laneCache.clear();
       if (cre) cre.update(dt, t);
       if (mites) mites.update(dt, t);
       drawAttack(t);

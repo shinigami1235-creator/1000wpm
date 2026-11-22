@@ -12,7 +12,8 @@ for (const C of [window.CanvasRenderingContext2D, window.OffscreenCanvasRenderin
 // Small helpers shared by the pages: HTML building, avatars, the line chart and number formats.
 window.UI = (() => {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmt = n => Math.round(n || 0).toLocaleString('en-US');
+  const NF = new Intl.NumberFormat('en-US');
+  const fmt = n => NF.format(Math.round(n || 0));
   const icon = (id, cls = '') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
   const coin = () => icon('coin');
 
@@ -239,5 +240,26 @@ window.UI = (() => {
     return () => { stop = true; clearInterval(iv); };
   }
 
-  return { day, esc, fmt, icon, coin, el, time, clock, date, modeName, AVATARS, avatar, meImg, lineChart, waitFor };
+  // ---------- playing: background work waits while a fight or a timed run is on ----------
+  // Pages switch it on when play starts and off when it ends; a route change clears it.
+  // Avatar portraits, Tilde moving to a new spot and gift reveals all wait for it to go off,
+  // since each of them can take a frame or more on the main thread.
+  //   UI.play(who, on)   UI.playing() -> bool   event 'wpm-playing' { on }
+  const players = new Set();
+  function setPlaying() {
+    const on = players.size > 0;
+    if (document.documentElement.classList.contains('playing') === on) return;
+    document.documentElement.classList.toggle('playing', on);
+    dispatchEvent(new CustomEvent('wpm-playing', { detail: { on } }));
+  }
+  function play(who, on) { if (on) players.add(who); else players.delete(who); setPlaying(); }
+  addEventListener('wpm-route', ev => {
+    players.clear();
+    // the World Boss, the Superboss and the Play games are play from the moment they open
+    const n = ev.detail && ev.detail.name;
+    if (n === 'boss' || n === 'superboss' || (n === 'play' && ev.detail.params && ev.detail.params.length)) players.add('route');
+    setPlaying();
+  });
+
+  return { day, esc, fmt, icon, coin, el, time, clock, date, modeName, AVATARS, avatar, meImg, lineChart, waitFor, play, playing: () => players.size > 0 };
 })();

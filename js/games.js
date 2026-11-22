@@ -171,7 +171,7 @@ window.RaceGame = (() => {
     document.addEventListener('keydown', forward);
     prepare();
     let alive = true;
-    document.fonts.ready.then(() => { if (alive && !running) { view.fit(); tt.place(tt.caret, tt.pos); } });
+    document.fonts.ready.then(() => { if (alive && !running) { view.fit(); tt.invalidate(); tt.place(tt.caret, tt.pos); } });
 
     return {
       focus: () => keys.focus(),
