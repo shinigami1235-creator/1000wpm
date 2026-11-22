@@ -246,7 +246,6 @@ Router.register('party', (() => {
           <div class="pa-status" data-status></div>
           <div class="pa-art" data-art hidden><span class="mu-av art">${MultiUI.LOGO}</span><p data-call></p></div>
           <div class="du-banner" data-banner aria-live="polite"></div>
-          <ol class="pa-team" data-team aria-label="Team"></ol>
         </section>
         <section class="du-type" aria-label="Your words">
           <div class="du-chips" data-chips></div>
@@ -255,6 +254,7 @@ Router.register('party', (() => {
             <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
           </div>
         </section>
+        <ol class="pa-team" data-team aria-label="Team"></ol>
         <div class="du-strip">
           <span><b class="num" data-s="role"></b></span><span><b class="num" data-s="dmg">0</b> damage</span><span><b class="num" data-s="wpm">0</b> wpm</span>
           <span><b class="num" data-s="acc">100%</b> accuracy</span><span><b class="num" data-tc>0</b> team combo <em data-tm>x1.00</em></span>
@@ -298,7 +298,7 @@ Router.register('party', (() => {
     raf = requestAnimationFrame(tick);
   }
 
-  // ---------- the team strip: one card per player, in the arena ----------
+  // ---------- the team strip: one card per player, under your words ----------
   const lanes = new Map();
   function buildTeam() {
     const ol = el.querySelector('[data-team]');
@@ -312,7 +312,7 @@ Router.register('party', (() => {
   function measureLanes() {
     const stage = el && el.querySelector('[data-stage]'); if (!stage) return;
     const sr = stage.getBoundingClientRect();
-    for (const li of el.querySelectorAll('[data-p]')) { const r = li.getBoundingClientRect(); lanes.set(li.dataset.p, { x: r.left + r.width / 2 - sr.left, y: r.top - sr.top }); }
+    for (const li of el.querySelectorAll('[data-p]')) { const r = li.getBoundingClientRect(); lanes.set(li.dataset.p, { x: r.left + r.width / 2 - sr.left, y: Math.min(r.top - sr.top, sr.height - 36) }); }
   }
   function paintTeam(st) {
     const me = st.players.find(x => x.id === 'me');

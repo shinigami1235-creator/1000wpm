@@ -292,7 +292,7 @@
 .pa-top .du-hp { height: 10px; margin-bottom: 4px; }
 .pa-top .du-hp > i { background: var(--red); box-shadow: 0 0 10px rgba(255,77,94,.5); }
 .pa-top .du-hp > b { top: -20px; left: auto; right: 0; font: 600 var(--t-m)/1 var(--f-mono); color: var(--ink); }
-.pa-stage { --stage-h: clamp(340px, calc(100svh - 360px), 640px); position: relative; height: var(--stage-h); overflow: hidden; background: #010503; }
+.pa-stage { --stage-h: clamp(300px, calc(100svh - 470px), 600px); position: relative; height: var(--stage-h); overflow: hidden; background: #010503; }
 .pa-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .pa-art { position: absolute; right: 10px; bottom: 10px; z-index: 3; display: flex; align-items: center; gap: 10px; max-width: min(380px, 50%); padding: 8px 10px; background: var(--scrim); box-shadow: inset 0 0 0 1px rgba(62,230,255,.45); }
 .pa-art .mu-av { width: 40px; height: 40px; flex: none; }
@@ -388,7 +388,7 @@
 /* party run: the team strip, foe tags and status */
 .pa-how { margin: -4px 0 0; font-size: var(--t-s); color: var(--ink); }
 .pa-kind { margin-left: 8px; padding: 2px 8px; font: 500 var(--t-xs)/1.4 var(--f-label); font-style: normal; letter-spacing: .04em; color: var(--ink-2); border: 1px solid var(--line-2); vertical-align: middle; }
-.pa-team { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; list-style: none; margin: 0; padding: 26px 12px 10px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 230px); justify-content: center; gap: 10px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.78) 40%); pointer-events: none; }
+.pa-team { list-style: none; margin: 0; padding: 4px 0 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 230px); justify-content: center; gap: 10px; }
 .pa-card { --pc: var(--green); position: relative; display: grid; gap: 6px; padding: 8px 10px; background: rgba(2,9,6,.86); border: 1px solid var(--line); border-top: 2px solid var(--pc); transition: border-color 160ms, opacity 200ms; }
 .pa-card.is-me { box-shadow: 0 0 0 1px var(--pc), 0 0 22px -8px var(--pc); }
 .pa-c-top { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
@@ -431,19 +431,19 @@
 .pa-tag.car { border-color: rgba(62,230,255,.6); }
 .pa-tag.aim.mine { border-color: var(--green); box-shadow: 0 0 14px -6px var(--green); }
 .pa-tag.typing { border-color: #fff; z-index: 1; }
-.pa-status { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; gap: 8px; pointer-events: none; }
+.pa-status { position: absolute; top: 10px; left: 10px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
 .pa-st { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--scrim); font-size: var(--t-s); border: 1px solid var(--line-2); white-space: nowrap; }
 .pa-st b { font-weight: 600; }
 .pa-st.gold { color: var(--amber); border-color: var(--amber); } .pa-st.red { color: var(--red); border-color: var(--red); } .pa-st.cyan { color: var(--cyan); }
 .pa-st.art svg { width: 16px; height: 16px; }
-.pa-art { bottom: auto; top: 54px; }
+.pa-art { bottom: auto; top: 10px; }
 .pa-stage.ouch::after { content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none; box-shadow: inset 0 0 70px rgba(255,77,94,.55); animation: pa-ouch 420ms ease-out forwards; }
 @keyframes pa-ouch { to { opacity: 0; } }
 .pa-run.me-down .du-words { opacity: .7; }
 .mu-chip.down { --sc: var(--amber); background: rgba(242,157,48,.1); }
 @media (prefers-reduced-motion: reduce) { .pa-card.aimed, .pa-handle.revive { animation: none; } .pa-stage.ouch::after { animation-duration: 1ms; } }
 @media (max-width: 760px) {
-  .pa-team { grid-auto-columns: minmax(0, 1fr); padding: 18px 6px 6px; gap: 5px; }
+  .pa-team { grid-auto-columns: minmax(0, 1fr); padding: 4px 0 0; gap: 5px; }
   .pa-card { padding: 5px 6px; gap: 4px; }
   .pa-c-top { grid-template-columns: 22px minmax(0, 1fr); gap: 5px; }
   .pa-c-top img, .pa-c-top .mu-av { width: 22px; height: 22px; }

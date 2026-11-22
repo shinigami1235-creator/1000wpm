@@ -262,7 +262,7 @@ window.PartyScene = (() => {
     const colorOf = id => C(opts.color ? opts.color(id) : '#39ff88');
 
     // ---------- creatures ----------
-    let cre = null, kind = '', foes = new Map(), st = null, deadAt = -9;
+    let cre = null, kind = '', foes = new Map(), st = null, deadAt = -9, feintAt = 0;
     const holder = new THREE.Group(); scene.add(holder);
     const v1 = new V(), v2 = new V(), v3 = new V(), v4 = new V();
     const bez = (a, c, b, u, out) => out.set(
@@ -303,7 +303,7 @@ window.PartyScene = (() => {
         hitPos(id, out) { const h = byFoe(id); return h ? out.copy(h.head.position) : out.set(0, 4, -3); },
         hit(id, k) { const h = byFoe(id); if (h) h.mat.uniforms.uHit.value = Math.min(1.5, h.mat.uniforms.uHit.value + k); },
         charge(id, k) { const h = byFoe(id); if (h) h.charge = k; },
-        lunge(id, at) { const h = byFoe(id); if (h) { h.lunge = 1; h.lungeTo.copy(at); } },
+        lunge(id, at, k = 1) { const h = byFoe(id); if (h && (k >= 1 || h.lunge < 0.3)) { h.lunge = 1; h.lk = k; h.lungeTo.copy(at); } },
         gone(id) { const h = byFoe(id); if (h) { h.alive = false; burst(h.head.position, 30, 8, pal.a, { up: 0.5 }); } },
         regrow(id) { const h = byFoe(id); if (h) { h.alive = true; h.mat.uniforms.uHit.value = 1.5; } },
         update(dt, t) {
@@ -312,11 +312,12 @@ window.PartyScene = (() => {
             const f = [...foes.values()].find(x => x.slot === h.i);
             if (f) { h.gone = !f.alive && !f.regrowAt; if (f.alive) h.alive = true; }
             h.fall += ((h.alive ? 0 : 1) - h.fall) * Math.min(1, dt * (h.alive ? 3 : 2.2));
-            h.lunge = Math.max(0, h.lunge - dt * 2.6);
+            h.lunge = Math.max(0, h.lunge - dt * ((h.lk || 1) < 1 ? 3.6 : 2.4));
             h.bite = Math.max(0, h.bite - dt * 3);
             const sway = still * (1 - h.fall);
-            h.pos.set(h.rest.x + Math.sin(t * 0.9 + h.i * 2.1) * 0.7 * sway, h.rest.y + Math.sin(t * 1.3 + h.i) * 0.4 * sway - h.charge * -1.2, h.rest.z + Math.cos(t * 0.7 + h.i) * 0.4 * sway - h.charge * 1.6);
-            if (h.lunge > 0) h.pos.lerp(h.lungeTo, Math.sin(h.lunge * Math.PI) * 0.55);
+            h.pos.set(h.rest.x + Math.sin(t * 1.7 + h.i * 2.1) * 1.0 * sway, h.rest.y + Math.sin(t * 2.3 + h.i) * 0.6 * sway - h.charge * -1.2, h.rest.z + Math.cos(t * 1.3 + h.i) * 0.6 * sway - h.charge * 1.6);
+            h.pos.x += Math.sin(t * 47 + h.i) * 0.16 * h.charge * still;   // trembles while it winds up
+            if (h.lunge > 0) h.pos.lerp(h.lungeTo, Math.sin(h.lunge * Math.PI) * 0.88 * (h.lk || 1));
             // a fallen head lies on the floor in front of the body
             v1.set(h.rest.x * 0.9, 0.7, 1.6 + h.i % 2);
             h.pos.lerp(v1, smooth(h.fall));
@@ -370,11 +371,11 @@ window.PartyScene = (() => {
         gone() {},
         regrow() {},
         update(dt, t) {
-          qPos.set(Math.sin(t * 0.4) * 2.2 * still, 7.4 + Math.sin(t * 0.9) * 0.5 * still, -6);
+          qPos.set(Math.sin(t * 0.9) * 3.2 * still, 7.4 + Math.sin(t * 1.7) * 0.8 * still, -6 + Math.sin(t * 0.6) * 1.2 * still);
           queen.position.copy(qPos);
           queen.rotation.y = Math.sin(t * 0.5) * 0.25 * still;
           hood.rotation.y += dt * 0.3;
-          cache.forEach((c, k) => { const a = t * 0.8 + k / cache.length * Math.PI * 2; c.position.set(Math.cos(a) * 3.8, Math.sin(a * 2 + k) * 0.5, Math.sin(a) * 2.2); c.rotation.set(a, a * 0.7, 0); });
+          cache.forEach((c, k) => { const a = t * 1.5 + k / cache.length * Math.PI * 2; c.position.set(Math.cos(a) * 3.8, Math.sin(a * 2 + k) * 0.5, Math.sin(a) * 2.2); c.rotation.set(a, a * 0.7, 0); });
           tailPts.forEach(p => { p.k = (p.k + dt * 0.35) % 1; p.s.position.set(Math.sin(p.k * 9 + t) * 0.6 * p.k, -1.8 - p.k * 4.2, -p.k * 1.4); p.s.material.opacity = (1 - p.k) * 0.7; p.s.scale.setScalar(0.9 * (1 - p.k * 0.6)); });
           arms.forEach((a, k) => { a.rotation.x += (Math.sin(t * 1.5 + k) * 0.25 - a.rotation.x) * Math.min(1, dt * 3); });
           qHit = Math.max(0, qHit - dt * 4);
@@ -412,7 +413,7 @@ window.PartyScene = (() => {
       holder.add(g);
       const hist = []; let travel = 0;
       const pathAt = (tt, out) => out.set(Math.sin(tt * 0.36) * 10.5, 0, -4.5 + Math.sin(tt * 0.72) * 4.2);
-      let tt = 0, charge = 0, lunge = 0, whip = 0, hHit = 0;
+      let tt = 0, charge = 0, lunge = 0, lk = 1, whip = 0, hHit = 0;
       // lay the trail the train has already run, so the cars start strung out behind the head
       for (let k = -400; k <= 0; k++) { const p = pathAt(k * 0.05, new V()); const l = hist[hist.length - 1]; travel += l ? l.p.distanceTo(p) : 0; hist.push({ p, at: travel }); }
       const lungeTo = new V(), hp = new V();
@@ -431,7 +432,7 @@ window.PartyScene = (() => {
         hitPos(id, out) { const x = cars.get(id); return x && !x.dead ? out.copy(x.m.position).add(v4.set(0, 0.9, 0)) : out.copy(head.position).add(v4.set(0, 1, 0)); },
         hit(id) { const x = cars.get(id); if (x) x.mat.uniforms.uHit.value = 1.3; else hHit = 1.3; },
         charge(id, k) { charge = k; },
-        lunge(id, at) { lunge = 1; lungeTo.copy(at); },
+        lunge(id, at, k = 1) { if (k >= 1 || lunge < 0.3) { lunge = 1; lk = k; lungeTo.copy(at); } },
         chip() { whip = 1; },
         gone(id, how) {
           const x = cars.get(id); if (!x) return;
@@ -441,11 +442,12 @@ window.PartyScene = (() => {
         },
         regrow() {},
         update(dt, t) {
-          tt += dt * (0.9 + 0.25 * (1 - order().length / 12)) * still;
+          tt += dt * (1.4 + 0.4 * (1 - order().length / 12)) * still;
           pathAt(tt, hp);
           charge = Math.max(0, charge);
-          lunge = Math.max(0, lunge - dt * 2.4); whip = Math.max(0, whip - dt * 2);
-          if (lunge > 0) hp.lerp(lungeTo, Math.sin(lunge * Math.PI) * 0.6);
+          lunge = Math.max(0, lunge - dt * (lk < 1 ? 3.6 : 2.4)); whip = Math.max(0, whip - dt * 2);
+          if (lunge > 0) hp.lerp(lungeTo, Math.sin(lunge * Math.PI) * 0.88 * lk);
+          hp.x += Math.sin(t * 50) * 0.18 * charge * still;
           const prev = head.position.clone();
           head.position.copy(hp);
           head.position.y = 0.05 + charge * 1.2 + Math.abs(Math.sin(t * 4)) * 0.08;
@@ -525,7 +527,7 @@ window.PartyScene = (() => {
         hitPos(id, out) { return weakOn ? core.getWorldPosition(out) : out.set(g.position.x, 6, g.position.z + 1); },
         hit(id, k) { hit = Math.min(1.5, hit + k); },
         charge(id, k) { charge = k; },
-        lunge(id, at) { slam = 1; v1.copy(at); },
+        lunge(id, at, k = 1) { if (k < 1) { stomp = 1; shake = Math.max(shake, 0.25); } else { slam = 1; v1.copy(at); } },
         chip() { stomp = 1; },
         weak(on) { weakOn = on; },
         gone() { burst(v1.set(0, 6, -3), 60, 10, C(pal.a), { up: 0.6, size: 0.4 }); },
@@ -534,8 +536,11 @@ window.PartyScene = (() => {
           slam = Math.max(0, slam - dt * 2.2); stomp = Math.max(0, stomp - dt * 3);
           if (slam > 0.85 && slam - dt * 2.2 <= 0.85) { ring(v2.set(0, 0, 0), C(pal.a), 12, 0.6); shake = Math.max(shake, 0.7); }
           weakK += ((weakOn ? 1 : 0) - weakK) * Math.min(1, dt * 5);
-          const breathe = Math.sin(t * 1.4) * 0.12 * still;
+          const breathe = Math.sin(t * 2.4) * 0.16 * still;
           torso.position.y = 4.1 + breathe - stomp * 0.3;
+          torso.position.x = Math.sin(t * 45) * 0.09 * charge * still;
+          g.position.x = Math.sin(t * 0.8) * 1.6 * still;
+          g.rotation.y = Math.sin(t * 0.8 + 1) * 0.12 * still;
           torso.rotation.x = -charge * 0.25 + Math.sin(slam * Math.PI) * 0.35;
           for (const A of arms) {
             const up = charge * 2.6 - Math.sin(slam * Math.PI) * 1.2;
@@ -547,7 +552,7 @@ window.PartyScene = (() => {
           core.scale.setScalar(1 + weakK * (0.5 + Math.sin(t * 10) * 0.12));
           core.rotation.y += dt * (1 + weakK * 5);
           core.material.color.copy(C(pal.c, 1.6)).lerp(GOLD, weakK);
-          head.rotation.y = Math.sin(t * 0.5) * 0.3 * still;
+          head.rotation.y = Math.sin(t * 1.1) * 0.35 * still;
           visor.material.color.copy(C(pal.eye, 1.6)).lerp(RED, charge);
           hit = Math.max(0, hit - dt * 4); mat.uniforms.uHit.value = hit; dark.uniforms.uHit.value = hit * 0.6;
           mat.uniforms.uCol.value.copy(C(pal.a)).lerp(RED, charge * 0.6);
@@ -581,7 +586,7 @@ window.PartyScene = (() => {
         hitPos(id, out) { const s = bySlot(id); return s ? out.copy(s.grp.position) : out.set(0, 5, -3); },
         hit(id, k) { const s = bySlot(id); if (s) s.hit = Math.min(1.5, s.hit + k); },
         charge(id, k) { const s = bySlot(id); if (s) s.charge = k; },
-        lunge(id, at) { const s = bySlot(id); if (s) { s.lunge = 1; s.lungeTo.copy(at); } },
+        lunge(id, at, k = 1) { const s = bySlot(id); if (s && (k >= 1 || s.lunge < 0.3)) { s.lunge = 1; s.lk = k; s.lungeTo.copy(at); } },
         gone(id) { const s = bySlot(id); if (s) { s.alive = false; burst(s.grp.position, 36, 9, C(s.i ? pal.c : pal.a), { up: 0.3 }); } },
         regrow(id) { const s = bySlot(id); if (s) { s.alive = true; s.hit = 1.5; } },
         update(dt, t) {
@@ -589,10 +594,10 @@ window.PartyScene = (() => {
             const f = [...foes.values()].find(x => x.slot === s.i);
             if (f) s.alive = f.alive;
             s.k += ((s.alive ? 0 : 1) - s.k) * Math.min(1, dt * 3);
-            s.lunge = Math.max(0, s.lunge - dt * 2.5);
-            const ph = t * 0.8 + (s.i ? 0.5 : 0);
-            s.grp.position.set(s.home.x + Math.sin(ph) * 0.6 * still * (s.i ? -1 : 1), s.home.y + Math.sin(ph * 1.3) * 0.5 * still + s.charge * 0.8, s.home.z);
-            if (s.lunge > 0) s.grp.position.lerp(s.lungeTo, Math.sin(s.lunge * Math.PI) * 0.35);
+            s.lunge = Math.max(0, s.lunge - dt * ((s.lk || 1) < 1 ? 3.6 : 2.4));
+            const ph = t * 1.5 + (s.i ? 0.5 : 0);
+            s.grp.position.set(s.home.x + Math.sin(ph) * 1.3 * still * (s.i ? -1 : 1) + Math.sin(t * 46 + s.i) * 0.15 * s.charge * still, s.home.y + Math.sin(ph * 1.3) * 0.8 * still + s.charge * 0.8, s.home.z + Math.cos(ph * 0.7) * 0.8 * still);
+            if (s.lunge > 0) s.grp.position.lerp(s.lungeTo, Math.sin(s.lunge * Math.PI) * 0.7 * (s.lk || 1));
             s.grp.rotation.y += dt * (0.6 + s.charge * 3) * (s.i ? -1 : 1);
             // a fallen twin comes apart into a slow ring of pieces
             s.parts.forEach((p, k) => {
@@ -858,6 +863,13 @@ window.PartyScene = (() => {
       if (performance.now() < hitStop) dt *= 0.15;
       T.value = t;
       laneCache.clear();
+      // the boss never just waits: every 1.4 to 2.6 s one of them snaps at a random player
+      if (cre && cre.lunge && st && st.players && !reduce && t > feintAt) {
+        feintAt = t + 1.4 + Math.random() * 1.2;
+        const up = st.players.filter(p => !p.down);
+        const foe = [...foes.values()].filter(f => f.alive && f.kind !== 'mite' && !(atk && atk.from === f.id));
+        if (up.length && foe.length) { laneAt(up[Math.floor(Math.random() * up.length)].id, v1); cre.lunge(foe[Math.floor(Math.random() * foe.length)].id, v1, 0.42); }
+      }
       if (cre) cre.update(dt, t);
       if (mites) mites.update(dt, t);
       drawAttack(t);
