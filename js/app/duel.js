@@ -45,8 +45,8 @@ Router.register('duel', (() => {
       </div>
       <div class="du-menu">
         <div class="du-modes">
-          <a class="panel du-mode" href="#/duel/quick"><span class="label">&gt; Quick match</span><h3>A bot at your level</h3><p>Matched to your wpm from your last 20 runs.</p></a>
-          <a class="panel du-mode art" href="#/duel/art"><span class="label">&gt; Challenge Art</span><h3>Art's ghost, 204 wpm</h3><p>His pace from the race ghost, with spells.</p></a>
+          <a class="panel du-mode" href="#/duel/quick"><span class="label">&gt; Quick match</span><h3>A bot near your MMR</h3><p>Picked within about 100 MMR of yours.</p></a>
+          <a class="panel du-mode art" href="#/duel/art"><span class="label">&gt; Challenge Art</span><h3>Art's ghost, ${NetRating.ART} MMR</h3><p>His pace from the race ghost, with spells.</p></a>
           <a class="panel du-mode" href="#/duel/watch"><span class="label">&gt; Watch</span><h3>Two bots duel</h3><p>See how the accuracy rings and spells work before you play.</p></a>
         </div>
         <section class="panel du-rec" aria-label="Your duel record"><div class="ph">// YOUR RECORD<span class="meta">THIS DEVICE</span></div><div data-rec><div class="loading-state">Loading</div></div></section>
@@ -59,6 +59,7 @@ Router.register('duel', (() => {
             <li>Clean words build your combo and power up your shots. A typo drops it one tier.</li>
             <li>Spells come up at combo 6, 15, 25, 40 and 50. Type one in full to cast it.</li>
             <li>Each round starts at ${DuelRules.CONFIG.hp} HP. Drop the other side to 0 to win it. A round that runs ${DuelRules.CONFIG.roundMs / 1000} seconds goes to the side with more HP.</li>
+            <li>Winning raises your MMR and losing lowers it. Beat someone above you and you gain more; lose to them and you drop less.</li>
             <li>Shop items are looks only and never change a duel.</li>
           </ul>
           <details class="du-spells"><summary>Spells in a duel</summary>
@@ -80,7 +81,7 @@ Router.register('duel', (() => {
       const t = NetRating.tier(r.rating);
       const last = r.history.slice(-4).reverse();
       box.innerHTML = `
-        <div class="du-rating"><b class="big">${r.rating}</b><span class="mu-tier ${t.id}">${t.name}</span></div>
+        <div class="du-rating"><b class="big">${r.rating}</b><span class="label">MMR</span><span class="mu-tier ${t.id}">${t.name}</span></div>
         <dl class="kv">
           <dt>Wins</dt><dd>${r.wins}</dd><dt>Losses</dt><dd>${r.losses}</dd>
           <dt>Best streak</dt><dd>${r.bestStreak}</dd><dt>Vs Art</dt><dd>${r.vsArt.w} won, ${r.vsArt.l} lost</dd>
@@ -96,7 +97,7 @@ Router.register('duel', (() => {
     const ST = { idle: 'Online', duel: 'In a duel', run: 'In a party run', typing: 'Typing test' };
     ul.innerHTML = list.map(p => `<li>
       <a class="mu-who" href="${MultiUI.link(p)}">${MultiUI.img(p, 68, 34)}<span>${MultiUI.name(p)}</span></a>
-      <span class="mu-st ${p.status}">${ST[p.status] || ''}</span><span class="num dim">${p.rating}</span>
+      <span class="mu-st ${p.status}">${ST[p.status] || ''}</span><span class="num dim">${p.rating} MMR</span>
       <a class="btn out sm" href="#/duel/vs/${encodeURIComponent(p.id)}"${p.status === 'idle' ? '' : ' aria-disabled="true" tabindex="-1"'}>Challenge</a></li>`).join('');
   }
 
@@ -162,7 +163,7 @@ Router.register('duel', (() => {
     const side = (k, cls) => {
       const p = P[k];
       return `<div class="du-side ${cls}">
-        <div class="du-id"><a class="mu-who" href="${MultiUI.link(p)}" ${me >= 0 ? 'tabindex="-1"' : ''}>${MultiUI.img(p, 68, 34)}<span>${MultiUI.name(p)}</span></a><span class="num dim">${p.art ? '' : p.rating}</span></div>
+        <div class="du-id"><a class="mu-who" href="${MultiUI.link(p)}" ${me >= 0 ? 'tabindex="-1"' : ''}>${MultiUI.img(p, 68, 34)}<span>${MultiUI.name(p)}</span></a><span class="num dim">${p.art ? NetRating.ART : p.rating} MMR</span></div>
         <div class="du-hp" data-hp="${k}"><i></i><b class="num">${DuelRules.CONFIG.hp}</b></div>
         <div class="du-pips" data-pips="${k}" aria-label="Rounds won"><i></i><i></i></div>
       </div>`;
@@ -181,6 +182,11 @@ Router.register('duel', (() => {
           <div class="du-flags l" data-flags="0"></div><div class="du-flags r" data-flags="1"></div>
           <div class="du-opp" data-opp aria-hidden="true"></div>
           <div class="du-banner" data-banner aria-live="polite"></div>
+          <div class="du-load" data-load role="status">
+            <p class="label" data-load-t>Loading the arena</p>
+            <ul>${[0, 1].map(k => `<li data-rd="${k}"><span>${MultiUI.name(P[k])}</span><em>Loading</em></li>`).join('')}</ul>
+            ${info.stakes ? `<p class="du-stakes"><span>Win <b class="green">${sign(info.stakes.win)}</b> MMR</span><span>Lose <b class="red">${sign(info.stakes.loss)}</b> MMR</span></p>` : ''}
+          </div>
         </section>
         <section class="du-type" aria-label="${me >= 0 ? 'Your words' : 'Words'}">
           <div class="du-chips" data-chips></div>
@@ -199,7 +205,13 @@ Router.register('duel', (() => {
         <div class="du-end" data-end hidden></div>
       </div>`;
     const stage = el.querySelector('[data-stage]');
+    UI.play('duel', true);
     scene = DuelScene.mount(stage, { sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k] })) });
+    // load and play every effect once behind the cover, then tell the server this side is ready.
+    // The countdown starts only when both sides are; a stuck load gives up after 12 seconds.
+    const chars = [...new Set(info.words.flat().join('') + Combat.SPELLS().map(x => x.word).join(''))].join('');
+    const at = info;
+    Promise.race([scene.warm(chars), new Promise(r => setTimeout(r, 12000))]).then(() => { if (info === at && mode === 'fight') Net.match.ready(); });
     el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); if (me < 0) location.hash = '#/duel'; });
     lastState = info.state;
     if (me >= 0) {
@@ -346,7 +358,11 @@ Router.register('duel', (() => {
     clearTimeout(bannerT); bannerT = setTimeout(() => { if (b.isConnected) b.className = 'du-banner'; }, ms);
   }
 
+  const sign = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n);
+
   // ---------- drawing ----------
+  // rewriting the same markup 16 times a second makes the browser restyle it every time
+  const put = (node, html) => { if (node && node._html !== html) { node._html = html; node.innerHTML = html; } };
   function loop() {
     cancelAnimationFrame(raf);
     const tick = () => { raf = requestAnimationFrame(tick); if (mode === 'fight') paint(); };
@@ -361,6 +377,18 @@ Router.register('duel', (() => {
     if (cur && cur.info && info && cur.info.id === info.id) lastState = cur.state;
     const st = lastState;
     if (!st || !el) return;
+    const cover = el.querySelector('[data-load]');
+    if (cover) {
+      if (st.phase !== 'load') cover.remove();
+      else {
+        const rd = st.ready || [false, false];
+        rd.forEach((r, k) => { const li = cover.querySelector(`[data-rd="${k}"]`); li.classList.toggle('ok', !!r); li.querySelector('em').textContent = r ? 'Ready' : 'Loading'; });
+        const me = info.you;
+        cover.querySelector('[data-load-t]').textContent = me >= 0 && rd[me] && !rd[1 - me] ? `Waiting for ${info.players[1 - me].name}` : 'Loading the arena';
+        el.querySelector('[data-round]').textContent = 'Loading';
+        return;
+      }
+    }
     const clockEl = el.querySelector('[data-clock]');
     const t = st.phase === 'fight' ? st.roundMs - (st.clock - st.roundAt) : st.phase === 'count' ? (st.roundAt || 0) - st.clock : st.phase === 'break' ? st.breakUntil - st.clock : 0;
     clockEl.textContent = UI.clock ? UI.clock(Math.max(0, Math.ceil(t / 1000))) : String(Math.ceil(t / 1000));
@@ -385,7 +413,7 @@ Router.register('duel', (() => {
       if (s.locked > 0) flags.push(['debuff', `Locked ${(s.locked / 1000).toFixed(1)}s`]);
       if (s.frozen > 0) flags.push(['debuff', 'Frozen, half damage']);
       if (s.fog > 0) flags.push(['debuff', `Blurred ${s.fog}`]);
-      el.querySelector(`[data-flags="${k}"]`).innerHTML = flags.map(([c, x]) => `<span class="mu-flag ${c}">${x}</span>`).join('');
+      put(el.querySelector(`[data-flags="${k}"]`), flags.map(([c, x]) => `<span class="mu-flag ${c}">${x}</span>`).join(''));
     });
     const me = info.you >= 0 ? info.you : 0;
     const mine = st.sides[me];
@@ -419,7 +447,7 @@ Router.register('duel', (() => {
     };
     const next = [];
     for (let n = 0; n < 4; n++) next.push(list[(s.idx + n) % list.length] || '');   // the word you are on and three to read ahead
-    line.innerHTML = `<div class="du-cur">${onSpell ? `<span class="du-w cur spell">${letters(target.word, typed)}</span>` : word(curW, 0)}</div><div class="du-next">${next.slice(1).map((w, n) => word(w, n + 1)).join('')}</div>`;
+    put(line, `<div class="du-cur">${onSpell ? `<span class="du-w cur spell">${letters(target.word, typed)}</span>` : word(curW, 0)}</div><div class="du-next">${next.slice(1).map((w, n) => word(w, n + 1)).join('')}</div>`);
     line.classList.toggle('locked', s.locked > 0);
   }
   function letters(w, typed) {
@@ -439,7 +467,7 @@ Router.register('duel', (() => {
     const s = st.sides[k];
     const list = info.words[Math.max(1, st.round)] || info.words[1];
     const w = s.target && s.target.kind === 'spell' ? s.target.word : list[s.idx % list.length] || '';
-    box.innerHTML = `<span class="label">${e(info.players[k].name)} is typing</span><span class="du-ow">${letters(w, s.typed || '')}</span>`;
+    put(box, `<span class="label">${e(info.players[k].name)} is typing</span><span class="du-ow">${letters(w, s.typed || '')}</span>`);
   }
   function paintChips() {
     const st = lastState, box = el && el.querySelector('[data-chips]');
@@ -468,6 +496,16 @@ Router.register('duel', (() => {
     UI.play('duel', false);
     const r = m.result || {};
     const me = info.you, P = info.players;
+    if (r.cancelled) {
+      const box = el.querySelector('[data-end]');
+      if (r.reason === 'left') { location.hash = '#/duel'; return; }
+      if (!box) return;
+      box.hidden = false;
+      box.innerHTML = `<div class="panel hot du-end-card" role="dialog" aria-labelledby="du-end-t"><h2 id="du-end-t">Duel cancelled</h2>
+        <p class="dim">The arena didn't load on ${me >= 0 && (lastState && lastState.ready && lastState.ready[me]) ? e(P[1 - me].name) + "'s side" : 'this device'}. Nobody's MMR changed.</p>
+        <div class="row"><a class="btn" href="#/duel">Back to duels</a></div></div>`;
+      return;
+    }
     const won = me >= 0 && r.winner === me, lost = me >= 0 && r.winner === 1 - me;
     let reward = null;
     if (me >= 0) {
@@ -492,7 +530,7 @@ Router.register('duel', (() => {
     box.hidden = false;
     box.innerHTML = `<div class="panel hot du-end-card" role="dialog" aria-labelledby="du-end-t">
       <h2 id="du-end-t" class="${won ? 'green' : lost ? 'red' : ''}">${e(title)}</h2>
-      ${rt ? `<p class="du-end-rt"><span class="label">Rating</span><b class="num">${rt.after}</b><em class="${rt.delta >= 0 ? 'green' : 'red'}">${rt.delta >= 0 ? '+' : ''}${rt.delta}</em></p>` : ''}
+      ${rt ? `<p class="du-end-rt"><span class="label">MMR</span><b class="num">${rt.after}</b><em class="${rt.delta >= 0 ? 'green' : 'red'}">${rt.delta >= 0 ? '+' : ''}${rt.delta}</em></p>` : ''}
       ${reward ? `<p class="dim">You earned ${reward.coins} coins and ${reward.xp} XP.</p>` : ''}
       ${r.rounds && r.rounds.length ? `<div class="du-tw"><table class="du-sum">
         <thead><tr><th></th>${[0, 1].map(k => `<th scope="col">${MultiUI.name(P[k])}</th>`).join('')}</tr></thead>

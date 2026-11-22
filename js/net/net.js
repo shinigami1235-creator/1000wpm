@@ -27,6 +27,7 @@
 //
 //   Net.match.queue({ mode, opponent, challenge }) -> MatchInfo   mode: 'quick' | 'art' | 'player' | 'watch'
 //   Net.match.input(k, t)                  not a promise; one key at t ms on the match clock
+//   Net.match.ready()                      not a promise; this client has loaded the arena (duels hold at phase 'load' until both sides send it)
 //   Net.match.leave()                      leaving a duel before the end counts as a loss
 //   Net.match.current()                    not a promise; { info, state } or null
 //   'match' events: { type: 'start' | 'state' | 'event' | 'end', ... }, see NET.md
@@ -151,6 +152,7 @@ window.Net = (() => {
     match: {
       queue: need(o => impl.match.queue(o || { mode: 'quick' })),
       input: (k, t) => { if (impl) impl.match.input(k, t); },
+      ready: () => { if (impl) impl.match.ready(); },
       leave: () => (impl ? impl.match.leave() : Promise.resolve()),
       current: () => (impl ? impl.match.current() : null),
       clock: () => (impl ? impl.match.clock() : 0),

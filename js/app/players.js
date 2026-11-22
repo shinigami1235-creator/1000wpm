@@ -77,8 +77,8 @@ Router.register('u', (() => {
         </section>
         <section class="panel" aria-label="Duels">
           <div class="ph">// DUELS${me ? '<span class="meta">THIS DEVICE</span>' : ''}</div>
-          ${d.rating ? `<div class="du-rating"><b class="big">${d.rating}</b>${t ? `<span class="mu-tier ${t.id}">${t.name}</span>` : ''}</div>` : ''}
-          ${art ? '<p class="dim">Art\'s rating is fixed at 2400 while his matches are simulated.</p>' : `<dl class="kv">
+          ${d.rating ? `<div class="du-rating"><b class="big">${d.rating}</b><span class="label">MMR</span>${t ? `<span class="mu-tier ${t.id}">${t.name}</span>` : ''}</div>` : ''}
+          ${art ? '<p class="dim">Art\'s MMR is fixed at 2400 while his matches are simulated.</p>' : `<dl class="kv">
             <dt>Wins</dt><dd>${d.wins || 0}</dd><dt>Losses</dt><dd>${d.losses || 0}</dd>
             <dt>Best streak</dt><dd>${d.bestStreak || 0}</dd><dt>Vs Art</dt><dd>${d.vsArt ? `${d.vsArt.w} won, ${d.vsArt.l} lost` : '-'}</dd>
           </dl>`}

@@ -80,6 +80,7 @@
       match: {
         queue: o => send('match.queue', o),
         input: (k, t) => fire('match.input', { id: match && match.info.id, k, t }),
+        ready: () => fire('match.ready', { id: match && match.info.id }),
         leave: () => send('match.leave', { id: match && match.info.id }),
         current: () => match,
         clock: () => host.now() - clockOff,

@@ -311,17 +311,35 @@ function partyRun(runId, diff, seed, players, extra = {}) {
   // a quick duel where the player types a few words and then stops; the bot wins
   const info = await sim.match.queue({ mode: 'quick' });
   ok(info.players[1].bot && info.you === 0, 'quick match finds a bot opponent');
+  // the match holds at 'load' with the clock at 0 until this client says it has loaded
+  for (let n = 0; n < 50; n++) { fake += 20; sim._session().pump(fake); }
+  ok(sim.match.current().state.phase === 'load' && sim.match.clock() === 0, 'the duel waits for the player to load');
+  ok(sim.match.current().state.ready[1] === true && sim.match.current().state.ready[0] === false, 'the bot is ready, the player is not yet');
+  sim.match.input('x', fake);
+  ok(sim._session().m.log[0].length === 0, 'keys before the countdown do nothing');
+  sim.match.ready();
+  ok(sim.match.current().state.phase === 'count', 'both ready: the countdown starts');
+  const go = fake;
   const list = info.words[1];
   let i = 0;
   while (sim._session() && fake < 600000) {
     fake += 20;
     sim._session() && sim._session().pump(fake);
-    if (fake > 3200 && fake < 8000 && fake % 400 === 0 && sim._session()) { for (const c of list[i] + ' ') sim.match.input(c, fake); i++; }
+    if (fake - go > 3200 && fake - go < 8000 && fake % 400 === 0 && sim._session()) { for (const c of list[i] + ' ') sim.match.input(c, fake - go); i++; }
   }
   const end = (seen.match || []).find(e => e.type === 'end');
   ok(end && end.result.winner === 1 && end.rating.delta < 0, 'the bot wins and the rating drops');
   const rec = await sim.results.record();
-  ok(rec.games === 1 && rec.losses === 1 && rec.rating === 1200 + end.rating.delta, 'the record is saved');
+  const placed = G.NetRating.ofBot(70, 0.95);
+  ok(rec.games === 1 && rec.losses === 1 && rec.rating === placed + end.rating.delta, 'the record is saved, from the placement MMR');
+  ok(Math.abs(info.players[1].rating - placed) <= 110, 'quick match picks a bot within about 100 MMR');
+  ok(info.stakes && info.stakes.loss === end.rating.delta, 'the stakes shown before the duel match the result');
+  ok(Math.abs(G.NetRating.ofBot(G.NetRating.wpmFor(1500, 0.96), 0.96) - 1500) < 1, 'wpmFor is the inverse of ofBot');
+  {
+    const up = G.NetRating.update(1200, 1600, 1, 20), down = G.NetRating.update(1200, 1600, 0, 20);
+    const up2 = G.NetRating.update(1200, 900, 1, 20), down2 = G.NetRating.update(1200, 900, 0, 20);
+    ok(up.delta > up2.delta && -down.delta < -down2.delta, 'beating a higher MMR gains more, losing to one costs less');
+  }
   const rp = G.DuelRules.replay({ seed: info.seed, words: r => info.words[r] || info.words[1], logs: end.log, config: info.config });
   ok(rp.result().winner === end.result.winner && rp.result().sides[1].dmg === end.result.sides[1].dmg, 'the sim result matches a replay of its logs');
 
@@ -332,10 +350,19 @@ function partyRun(runId, diff, seed, players, extra = {}) {
   await new Promise(r => setTimeout(r, 20));
   ok(seen.challenge.some(x => x.id === c.id && x.status === 'accepted'), 'Art accepts a challenge');
   const ai = await sim.match.queue({ mode: 'art', challenge: c.id });
+  sim.match.ready();
   while (sim._session() && fake < 1200000) { fake += 20; sim._session() && sim._session().pump(fake); }
   const r2 = await sim.results.record();
   ok(r2.vsArt.l === 1 && r2.games === 2, 'a loss to Art goes in the record vs Art');
   ok(r2.history[1].opp.art && r2.history[1].opp.rating === 2400, 'history keeps the opponent');
+
+  // leaving while the arena loads cancels the duel and leaves the record alone
+  const before = (await sim.results.record()).games;
+  seen.match = [];
+  await sim.match.queue({ mode: 'quick' });
+  sim.match.leave();
+  const cx = seen.match.find(e => e.type === 'end');
+  ok(cx && cx.result.cancelled && !cx.rating && (await sim.results.record()).games === before, 'leaving before the countdown cancels without a loss');
 
   // profiles and visits
   const p = await sim.profiles.visit('kbd_mira42');

@@ -163,6 +163,20 @@
   font: 700 clamp(28px, 4vw, 52px)/1 var(--f-head); letter-spacing: .02em; color: var(--ink);
   text-shadow: 0 3px 0 #000, 0 0 24px rgba(0,0,0,.9); opacity: 0; white-space: nowrap;
 }
+.du-load {
+  position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 14px;
+  background: #020604; text-align: center;
+}
+.du-load ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; min-width: min(320px, 80vw); }
+.du-load li { display: flex; justify-content: space-between; gap: 24px; padding: 8px 12px; border: 1px solid var(--line); font: 400 var(--t-s)/1.2 var(--f-head); color: var(--ink-2); }
+.du-load li em { font: 600 var(--t-xs)/1.2 var(--f-mono); font-style: normal; color: var(--ink-3); animation: du-blink 1.1s steps(2) infinite; }
+.du-load li.ok { border-color: rgba(57,255,136,.45); color: var(--ink); }
+.du-load li.ok em { color: var(--green); animation: none; }
+@keyframes du-blink { 50% { opacity: .35; } }
+.du-stakes { margin: 4px 0 0; display: flex; gap: 22px; font: 400 var(--t-s)/1.2 var(--f-head); color: var(--ink-2); }
+.du-stakes span { display: flex; align-items: baseline; gap: 6px; }
+.du-stakes b { font: 600 var(--t-m)/1 var(--f-mono); }
+.du-rating .label { margin-left: -8px; align-self: flex-end; padding-bottom: 4px; }
 .du-banner.on { opacity: 1; animation: du-ban 300ms var(--ease-out); }
 .du-banner.won { color: var(--green); } .du-banner.lost { color: var(--red); }
 .du-banner.spell { font-family: var(--f-mono); font-weight: 600; font-size: clamp(24px, 3vw, 40px); top: 22%; }

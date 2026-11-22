@@ -13,6 +13,7 @@
 //   sc.aura(side, name, on)           'ward' | 'hyper' | 'root' | 'split'
 //   sc.setLook(side, look), sc.setHp(side, frac), sc.ko(side), sc.revive()
 //   sc.screen(side, out)              host pixels above a fighter, for numbers and labels
+//   sc.warm(chars) -> Promise<bool>     before the countdown: letters, portraits, shaders, one frame of every effect
 //   sc.dispose()
 window.DuelScene = (() => {
   let libs = null;
@@ -47,6 +48,8 @@ window.DuelScene = (() => {
       ko: side => impl && impl.ko(side),
       revive: () => impl && impl.revive(),
       screen: (side, out) => (impl ? impl.screen(side, out) : null),
+      // resolves true once the arena has loaded and played every effect once (false if it failed)
+      warm: chars => ctl.ready.then(ok => (ok && impl ? impl.warm(chars) : false)).catch(() => false),
       info: () => (impl ? impl.info() : null),
       dispose() { gone = true; if (impl) impl.dispose(); impl = null; },
     };
@@ -114,6 +117,10 @@ window.DuelScene = (() => {
     const POS = [new V(-6.2, 0, 0.6), new V(6.2, 0, 0.6)];   // wide apart, so shots and hits have room to read
     const YAW = [0.34, -0.34];
     const loader = new THREE.TextureLoader();
+    // the card starts with a plain white map, so the portrait arriving later swaps a texture
+    // instead of building a new shader mid-countdown
+    const blank = own(new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1));
+    blank.colorSpace = THREE.SRGBColorSpace; blank.needsUpdate = true;
     const F = opts.sides.map((s, i) => {
       const g = new THREE.Group();
       g.position.copy(POS[i]);
@@ -131,7 +138,7 @@ window.DuelScene = (() => {
       // the portrait card
       const card = new THREE.Group(); card.position.y = 0.45 + CARD_H / 2; g.add(card);
       // the hooded figure stands in until the 3D portrait is rendered
-      const mat = own(new THREE.MeshBasicMaterial({ color: '#d8d8d8', transparent: true }));
+      const mat = own(new THREE.MeshBasicMaterial({ color: '#d8d8d8', transparent: true, map: blank }));
       const plane = new THREE.Mesh(own(new THREE.PlaneGeometry(CARD_W, CARD_H)), mat);
       if (i === 1) plane.scale.x = -1;            // mirrored so both fighters face the middle
       card.add(plane);
@@ -145,7 +152,7 @@ window.DuelScene = (() => {
       // a tint panel over the card for flashes, stun, freeze and the KO
       const tintMat = own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
       const tint = new THREE.Mesh(own(new THREE.PlaneGeometry(CARD_W, CARD_H)), tintMat); tint.position.z = 0.01; card.add(tint);
-      return { g, card, plane, mat, tintMat, brMat, beam, ring, col, base: card.position.clone(), kick: 0, kickDir: i ? 1 : -1, flash: 0, flashCol: new THREE.Color('#ffffff'), stun: 0, freeze: 0, fog: 0, hp: 1, ko: 0, koT: 0, tex: null, seq: 0, glitch: 0, lt: 9, lp: 0, recoil: 0, drop: 0, broken: null };
+      return { g, card, plane, mat, tintMat, brMat, beam, ring, col, base: card.position.clone(), kick: 0, kickDir: i ? 1 : -1, flash: 0, flashCol: new THREE.Color('#ffffff'), stun: 0, freeze: 0, fog: 0, hp: 1, ko: 0, koT: 0, tex: null, seq: 0, looked: Promise.resolve(), glitch: 0, lt: 9, lp: 0, recoil: 0, drop: 0, broken: null };
     });
 
     // ---------- combat effects ----------
@@ -172,7 +179,7 @@ window.DuelScene = (() => {
     // land one after another as quick ticks, and the last one carries the hit.
     const glyphTex = new Map();
     let fontOk = !document.fonts;
-    if (document.fonts) document.fonts.load('600 96px "JetBrains Mono"').then(() => { fontOk = true; glyphTex.forEach(t => t.dispose()); glyphTex.clear(); }, () => { fontOk = true; });
+    if (document.fonts) document.fonts.load('600 96px "JetBrains Mono"').then(() => { fontOk = true; for (const [k, x] of glyphTex) if (k.endsWith('~')) { x.dispose(); glyphTex.delete(k); } }, () => { fontOk = true; });
     function glyph(ch) {
       const key = ch + (fontOk ? '' : '~');
       if (!glyphTex.has(key)) {
@@ -516,23 +523,25 @@ window.DuelScene = (() => {
       return tex;
     }
 
+    // f.looked settles once the final portrait is on the card (or failed), for warm() to wait on
     function setLook(i, look) {
       const f = F[i], seq = ++f.seq;
-      if (look && look.art) { f.plane.scale.x = 1; if (f.tex) f.tex.dispose(); f.tex = artTexture(); f.mat.map = f.tex; f.mat.needsUpdate = true; return; }
-      if (!look || !window.Avatar) return;
-      if (!f.tex) loader.load(Avatar.fallback(look, 256), tex => { if (!alive || seq !== f.seq || f.tex) { tex.dispose(); return; } tex.colorSpace = THREE.SRGBColorSpace; f.tex = tex; f.mat.map = tex; f.mat.needsUpdate = true; });
-      Avatar.thumb(look, 512, 512).then(url => {
-        if (seq !== f.seq || !alive) return;
+      const put = tex => { if (f.tex) f.tex.dispose(); f.tex = tex; f.mat.map = tex; };
+      if (look && look.art) { f.plane.scale.x = 1; put(artTexture()); f.looked = Promise.resolve(); return; }
+      if (!look || !window.Avatar) { f.looked = Promise.resolve(); return; }
+      if (!f.tex) loader.load(Avatar.fallback(look, 256), tex => { if (!alive || seq !== f.seq || f.tex) { tex.dispose(); return; } tex.colorSpace = THREE.SRGBColorSpace; put(tex); });
+      f.looked = Avatar.thumb(look, 512, 512).then(url => new Promise(res => {
+        if (seq !== f.seq || !alive) return res();
         loader.load(url, tex => {
-          if (!alive) { tex.dispose(); return; }
+          if (!alive || seq !== f.seq) { tex.dispose(); return res(); }
           tex.colorSpace = THREE.SRGBColorSpace;
-          if (f.tex) f.tex.dispose();
           f.plane.scale.x = i ? -1 : 1;
-          f.tex = tex; f.mat.map = tex; f.mat.needsUpdate = true;
-        });
-      }).catch(() => {});
+          put(tex); res();
+        }, undefined, () => res());
+      })).catch(() => {});
     }
     function setHp(i, frac) { F[i].hp = Math.max(0, Math.min(1, frac)); }
+    const koGeo = [];
     // the KO: slow motion, the camera leans in and the card breaks into pieces of the portrait
     function ko(i) {
       const f = F[i];
@@ -547,10 +556,14 @@ window.DuelScene = (() => {
       const cols = 6, rows = 7, w = CARD_W / cols, h = CARD_H / rows;
       const grp = new THREE.Group(); grp.scale.x = f.plane.scale.x; f.card.add(grp);
       const list = [];
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-        const geo = new THREE.PlaneGeometry(w * 0.98, h * 0.98), uv = geo.attributes.uv;
+      // the pieces' shapes are made once and reused, so a KO uploads nothing new
+      if (!koGeo.length) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const geo = own(new THREE.PlaneGeometry(w * 0.98, h * 0.98)), uv = geo.attributes.uv;
         for (let k = 0; k < uv.count; k++) uv.setXY(k, (c + uv.getX(k)) / cols, (r + uv.getY(k)) / rows);
-        const m = new THREE.Mesh(geo, f.mat);
+        koGeo.push(geo);
+      }
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const m = new THREE.Mesh(koGeo[r * cols + c], f.mat);
         const x = -CARD_W / 2 + (c + 0.5) * w, y = -CARD_H / 2 + (r + 0.5) * h;
         m.position.set(x, y, 0.02);
         list.push({ m, v: new V(x * rnd(1.4, 2.8) + rnd(-0.6, 0.6), y * rnd(0.5, 1.2) + rnd(0.3, 1.8), rnd(0.2, 2.5)), r: new V(rnd(-5, 5), rnd(-5, 5), rnd(-7, 7)) });
@@ -562,7 +575,7 @@ window.DuelScene = (() => {
     // a new round: the cards come back together and drop onto their pads
     function revive() {
       F.forEach((f, i) => {
-        if (f.broken) { f.broken.list.forEach(x => x.m.geometry.dispose()); f.card.remove(f.broken.grp); f.broken = null; f.card.children.forEach(ch => { ch.visible = true; }); }
+        if (f.broken) { f.card.remove(f.broken.grp); f.broken = null; f.card.children.forEach(ch => { ch.visible = true; }); }
         f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0; f.poison = 0; f.fog = 0; f.ice = 0; f.wasFrozen = false;
         f.drop = reduce ? 0 : 1;
         if (reduce) ringAt(i, f.col, 3, 0.5);
@@ -712,12 +725,54 @@ window.DuelScene = (() => {
     });
     const tmpCol = new THREE.Color(), RED = new THREE.Color('#ff4d5e');
 
+    // ---------- warm-up before the countdown ----------
+    // Everything that is slow the first time it happens is done here, behind the loading cover:
+    // the letter textures, both portraits, every shader, and one real frame of every effect.
+    // compile() alone isn't enough on Windows, where the graphics driver finishes some shaders
+    // only on their first draw, so each effect is played once and then cleared.
+    const frames = n => new Promise(res => { let k = 0; const f = () => (++k >= n || !alive ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    async function warm(chars = '') {
+      if (document.fonts) { try { await document.fonts.load('600 96px "JetBrains Mono"'); } catch (e) {} }
+      fontOk = true;
+      const set = new Set(('abcdefghijklmnopqrstuvwxyz0123456789-\'.,>' + chars).replace(/\s/g, ''));
+      for (const ch of set) renderer.initTexture(glyph(ch));
+      for (const x of [blank, glowTex, shardTex, beamTex, frostTex]) renderer.initTexture(x);
+      await Promise.race([Promise.all(F.map(f => f.looked)), new Promise(r => setTimeout(r, 8000))]);
+      if (!alive) return false;
+      F.forEach(f => { if (f.tex) renderer.initTexture(f.tex); });
+      try { await renderer.compileAsync(scene, camera); } catch (e) {}
+      if (!alive) return false;
+      // the rehearsal: every shot tier from both sides, the reactions, statuses, spells and a KO
+      const word = [...set].join('').slice(0, 16);
+      for (let tier = 0; tier <= 4; tier++) for (const side of [0, 1]) shot(side, tier, null, { word, crit: tier === 4, ms: 300 });
+      F.forEach((f, i) => { ['typo', 'block', 'poison', 'poisonTick', 'flash'].forEach(k => react(i, k)); react(i, i ? 'freeze' : 'stun', 1); react(1 - i, 'fog', 1); });
+      if (fx) {
+        for (const name of ['ward', 'hyper', 'root', 'split']) aura(0, name, true);
+        for (const id of fx.SPELLS) { const sp = window.Combat && Combat.spell(id); cast(0, id, [{ at: performance.now() + 120, dmg: 1 }], (sp && sp.effect) || {}); }
+      }
+      await frames(40);
+      F.forEach((f, i) => { react(i, i ? 'stun' : 'freeze', 1); react(i, 'cleanse'); });
+      ko(0); ko(1);
+      await frames(20);
+      // put everything back as it was
+      if (fx) { for (const name of ['ward', 'hyper', 'root', 'split']) aura(0, name, false); fx.clear(); }
+      for (const g of glyphs) { g.on = false; g.cb = null; g.s.visible = false; g.tr.forEach(x => { x.visible = false; }); }
+      for (const p of parts) { p.s.visible = false; p.life = 0; }
+      for (const w of rings) w.m.visible = false;
+      for (const B of beams) { B.on = false; B.core.visible = B.glow.visible = false; }
+      revive();
+      F.forEach(f => { f.drop = 0; f.kick = f.recoil = f.flash = f.glitch = f.lt = 0; f.lt = 9; f.ice = 0; f.frost.visible = false; f.arcs.visible = false; });
+      stopUntil = slowUntil = 0; shake = punch = 0; koCam = -1; koCamT = 0;
+      await frames(2);
+      return alive;
+    }
+
     function dispose() {
       alive = false;
       renderer.setAnimationLoop(null);
       ro.disconnect(); io.disconnect();
       if (fx) fx.dispose();
-      F.forEach(f => { if (f.tex) f.tex.dispose(); if (f.broken) f.broken.list.forEach(x => x.m.geometry.dispose()); });
+      F.forEach(f => { if (f.tex) f.tex.dispose(); });
       glyphTex.forEach(x => x.dispose());
       keep.forEach(x => { try { x.dispose(); } catch (e) {} });
       composer.dispose();
@@ -725,7 +780,7 @@ window.DuelScene = (() => {
       renderer.domElement.remove();
     }
 
-    return { shot, cast, react, aura, setLook, setHp, ko, revive, screen, dispose, info: () => ({ fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length }) };
+    return { shot, cast, react, aura, setLook, setHp, ko, revive, screen, warm, dispose, info: () => ({ fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length }) };
   }
 
   return { mount };

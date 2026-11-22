@@ -15,7 +15,7 @@ The rules run in files with no DOM, so the server loads the same code as the pag
 | `js/net/typist.js` | `NetTypist`: which word a key is aimed at (stream, spell, counter word, buff) and when a word is finished |
 | `js/net/duel-rules.js` | `DuelRules`: PvP damage, the PvP spell versions, rounds, the match result and `replay()` |
 | `js/net/party-rules.js` | `PartyRules`: roles, player HP and handles, the five fight kinds, boss attacks, buffs, Art's drop-in, the run result, and `view()` for bots |
-| `js/net/rating.js` | `NetRating`: Elo with a larger step for new players, bot ratings, rating tiers |
+| `js/net/rating.js` | `NetRating`: MMR (Elo with a larger step for new players), bot MMR from typing and back, tiers |
 | `js/net/filter.js` | `NetFilter`: the chat and name filter |
 | `js/net/chat-rules.js` | `ChatRules`: one check for a chat line (length, words, contact details, slow mode, repeats) and the typed wpm |
 | `js/net/chat-rooms.js` | `CHAT_ROOMS`: the areas and rooms at #/commons, as data |
@@ -66,7 +66,8 @@ Net.chat.report({ player, name, room, reason, lines })
 
 Net.match.queue({ mode, opponent, challenge })  // -> MatchInfo   mode: 'quick' | 'art' | 'player' | 'watch'
 Net.match.input(k, t)                   // not a promise: one key at t ms on the match clock
-Net.match.leave()                       // leaving a duel early is a loss
+Net.match.ready()                       // not a promise: this client has loaded the arena (see "Loading before the countdown")
+Net.match.leave()                       // leaving a duel early is a loss; leaving while it loads cancels it
 Net.match.current()                     // not a promise: { info, state, words? } or null
 Net.match.clock()                       // not a promise: ms on the match clock
 
@@ -117,6 +118,7 @@ Each WebSocket message is one JSON object:
 | `lobby.start` | `{}` | `MatchInfo` |
 | `match.queue` | `{ mode, opponent?, challenge? }` | `MatchInfo` |
 | `match.input` | `{ id, k, t }` | none |
+| `match.ready` | `{ id }` | none |
 | `match.leave` | `{ id }` | `{}` |
 | `results.record` | `{}` | `DuelRecord` |
 | `results.party` | `{}` | `PartyRecord` |
@@ -164,7 +166,7 @@ LobbySummary { id, name, host, hostName, run: 'relay' | 'deep', difficulty: 'eas
 Lobby        LobbySummary + { players: [{ id, name, bot, role, ready, level }], chat: [ChatMessage], you, isHost }
 ChatMessage  { id, from, name, bot, system, text, at }      system lines have no from
 MatchInfo    duel:  { id, kind: 'duel', mode, seed, you: 0 | 1 | -1, players: [DuelPlayer, DuelPlayer], difficulty: [lo, hi],
-                      words: [[], round1, round2, ...], config, challenge, startedAt }     you -1 is a spectator
+                      words: [[], round1, round2, ...], config, challenge, startedAt, stakes: { win, draw, loss } }     you -1 is a spectator (no stakes)
              party: { id, kind: 'party', seed, run, difficulty, lobby, players: [{ id, name, role, bot, level }], you, art, startedAt }
 DuelPlayer   { id, name, bot, art, rating, level, country }
 Challenge    { id, from, fromName, to, toName, status: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled', reason?, at }
@@ -185,11 +187,18 @@ A room is either the player's saved layout (`{ v: 1, items: [{ id, x, y, z, rot,
 ### Duel state (`match` state for `kind: 'duel'`)
 
 ```js
-{ phase: 'count' | 'fight' | 'break' | 'over', round, clock, roundAt, roundMs, breakUntil, wins: [a, b], hpMax,
+{ phase: 'load' | 'count' | 'fight' | 'break' | 'over', round, clock, roundAt, roundMs, breakUntil, wins: [a, b], hpMax,
+  ready: [a, b],   // only in 'load'
   sides: [{ hp, idx, typed, target, clean, combo, tier, acc, offer: [spellId], offerUntil,
             statuses: [{ name, until, charges }], fog, frozen, locked, immune, reflect,
             stats: { keys, good, words, wrong, typos, chars, dmg, taken, blocks, bestCombo, spells, fizzles }, liveWpm }] }
 ```
+
+### Loading before the countdown
+
+A duel starts in phase `'load'` with the match clock held at 0. Each client loads the arena, plays every effect once behind a cover so nothing is built for the first time mid-fight, then sends `match.ready`. The server starts the clock, and with it the 3-second countdown, only once both players have sent it. While loading, `state.ready` says which sides are done, and keys are ignored. A spectator's ready doesn't hold the players.
+
+If a side hasn't sent `match.ready` 30 seconds after the match was made, the server ends it with `result: { cancelled: true, reason: 'load' }`. Leaving during `'load'` ends it with `{ cancelled: true, reason: 'left' }`. A cancelled duel changes nobody's MMR or record.
 
 `idx` is the side's place in the round's word list. `typed` is what that side has typed into the current word, so spectators and the opponent see typos as they happen.
 
@@ -258,7 +267,11 @@ The client is never trusted with damage, HP or a result. It sends only keys (`ma
 ## Fairness
 
 - Shop items, coin purchases and subscriptions are looks only. Nothing a player owns changes damage, HP, spells or words in a duel or a party run. Duels use the same `DuelRules.CONFIG` for both sides, and the server must reject any client-side config.
-- Quick match pairs a player with someone near their rating (a bot near their recent wpm in the sim).
+- Rating is shown to players as **MMR**. It is Elo (`js/net/rating.js`): a result moves it by `k * (score - expected)`, so beating a higher MMR gains more than beating a lower one, and losing to a higher MMR costs less. `k` is 40 for a player's first 10 duels, then 24, then 16 from 2000.
+- A player's first duel starts from the MMR their typing stands for (`NetRating.ofBot(wpm, acc)` from their recent runs, between 800 and 1800) instead of a flat 1200, so a fast typist isn't paired with slow players for weeks.
+- `MatchInfo.stakes = { win, draw, loss }` is what each result would change the player's MMR by. The loading cover shows it.
+- Quick match pairs a player with someone within about 100 MMR (in the sim, a bot typing at the speed that MMR stands for).
+- Other players' wpm isn't shown on the duel page or the player card, only their MMR. Their wpm is on their profile.
 - Art's duels are a ghost on his 204 wpm race pace (the same shape `TT.paceTimes` gives his race ghost), labelled Ghost, with a fixed rating of 2400. No recorded run of Art exists in the site yet. `NetBot.ART_TAPE = [ms between keys]` replaces the pace with a real key log once one is recorded.
 
 ## Bots

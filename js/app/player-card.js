@@ -38,7 +38,7 @@ window.PlayerCard = (() => {
     const me = p.id === 'me';
     let muted = Net.chat.muted().includes(p.id);
     const tier = p.rating ? NetRating.tier(p.rating) : null;
-    const facts = [p.country ? MultiUI.country(p.country) : '', p.level ? `Level ${p.level}` : '', p.wpm ? `${p.wpm} wpm average` : ''].filter(Boolean).join(', ');
+    const facts = [p.country ? MultiUI.country(p.country) : '', p.level ? `Level ${p.level}` : ''].filter(Boolean).join(', ');
     const link = MultiUI.link(p);
     box = UI.el(`<div class="panel hot pc" role="dialog" aria-label="${e(p.name)}">
       <div class="pc-top">
@@ -46,7 +46,7 @@ window.PlayerCard = (() => {
         <div class="pc-id">
           <p class="pc-name"><b>${e(p.name)}</b>${MultiUI.tag(p)}</p>
           ${facts ? `<p class="dim">${e(facts)}</p>` : ''}
-          ${tier ? `<p><span class="mu-tier ${tier.id}">${tier.name}</span> <span class="num dim">${p.rating}</span></p>` : ''}
+          ${tier ? `<p><span class="mu-tier ${tier.id}">${tier.name}</span> <span class="num dim">${p.rating} MMR</span></p>` : ''}
         </div>
         <button class="icon-btn pc-x" type="button" data-x aria-label="Close">x</button>
       </div>

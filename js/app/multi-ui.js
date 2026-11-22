@@ -110,14 +110,14 @@ window.MultiUI = (() => {
       const hist = r.history.slice(-8).reverse();
       board.innerHTML = `
         <div class="lb-boss mu-duelstats">
-          <div><span class="label">Rating</span><span class="mu-rt"><b class="mid">${r.rating}</b><span class="mu-tier ${t.id}">${t.name}</span></span></div>
+          <div><span class="label">MMR</span><span class="mu-rt"><b class="mid">${r.rating}</b><span class="mu-tier ${t.id}">${t.name}</span></span></div>
           <div><span class="label">Wins</span><b class="mid">${r.wins}</b></div>
           <div><span class="label">Losses</span><b class="mid">${r.losses}</b></div>
           <div><span class="label">Best streak</span><b class="mid">${r.bestStreak}</b></div>
           <div><span class="label">Vs Art</span><b class="mid">${r.vsArt.w}-${r.vsArt.l}</b></div>
         </div>
         <table class="board">
-          <thead><tr><th>#</th><th>Typist</th><th class="num-col">Rating</th><th class="num-col">Your wins</th><th class="num-col hide-sm">Your losses</th></tr></thead>
+          <thead><tr><th>#</th><th>Typist</th><th class="num-col">MMR</th><th class="num-col">Your wins</th><th class="num-col hide-sm">Your losses</th></tr></thead>
           <tbody>${rows.map((x, i) => `<tr class="${x.me ? 'mine-best' : x.p.art ? 'art' : ''}">
             <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
             <td><div class="who"><a class="mu-who" href="${link(x.p)}">${img(x.p, 68, 34)}<span>${name(x.p)}</span></a></div></td>
@@ -135,7 +135,7 @@ window.MultiUI = (() => {
       if (!host.isConnected) return;
       const t = NetRating.tier(r.rating);
       host.innerHTML = `<div class="ph">// DUELS AND PARTY</div>
-        <div class="du-rating"><b class="mid">${r.rating}</b><span class="mu-tier ${t.id}">${t.name}</span></div>
+        <div class="du-rating"><b class="mid">${r.rating}</b><span class="label">MMR</span><span class="mu-tier ${t.id}">${t.name}</span></div>
         <dl class="kv"><dt>Duels won</dt><dd>${r.wins} of ${r.games}</dd><dt>Best streak</dt><dd>${r.bestStreak}</dd><dt>Vs Art</dt><dd>${r.vsArt.w} won, ${r.vsArt.l} lost</dd>
           <dt>Party runs</dt><dd>${p.wins} cleared of ${p.runs}</dd></dl>
         <div class="row" style="margin-top:12px"><a class="btn out sm" href="#/u/me">How others see you</a><a class="btn out sm" href="#/duel">Duel</a><a class="btn out sm" href="#/party">Party</a></div>`;

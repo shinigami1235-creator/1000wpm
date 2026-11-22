@@ -174,34 +174,60 @@
       const lists = Array.from({ length: 6 }, (_, r) => r ? host.words(`${info.seed}:${r}`, { count: 160, difficulty: info.difficulty }) : []);
       const m = root.DuelRules.match({ seed: info.seed, words: r => lists[r] || lists[1], config: cfg });
       info.words = lists; info.config = m.cfg;
-      const t0 = now();
+      // the clock holds at 0 until every side has loaded the arena and said ready, so nobody's
+      // countdown starts while their machine is still busy. A bot is ready after a short load;
+      // the player (or a spectator) sends match.ready. A side that never loads cancels the duel.
+      let t0 = 0, waiting = true;
+      const made = now();
+      const ready = sides.map(b => (b ? made + delay(600, 1800) : 0));   // bots: the time they finish loading
+      const isReady = i => (sides[i] ? now() >= ready[i] : ready[i] === true);
+      const watcher = { ready: info.you >= 0 };   // a spectator's own client loads too
       const bots = sides.map((b, i) => (b ? botFor(players[i], `${info.seed}:bot${i}`) : null));
       let lastState = -1e9, ended = false;
+      const loadState = () => ({ ...m.state(), phase: 'load', clock: 0, ready: [0, 1].map(isReady) });
       const S = {
-        kind: 'duel', info, m, t0,
-        clock: () => now() - t0,
+        kind: 'duel', info, m,
+        get t0() { return t0; },
+        clock: () => (waiting ? 0 : now() - t0),
+        ready() {
+          if (info.you >= 0) ready[info.you] = true; else watcher.ready = true;
+          S.pump(now());
+        },
         stepBots(t) {
           // a bot plans one word per step, so a slow or throttled loop asks it again until it is caught up
           bots.forEach((b, i) => { if (!b) return; for (let n = 0; n < 12; n++) { const ks = b.step(t, viewOf(m, i)); if (!ks.length) break; for (const k of ks) m.input(i, k.k, k.t); } });
         },
         pump(tn) {
           if (ended) return;
+          if (waiting) {
+            if ([0, 1].every(isReady) && watcher.ready) {
+              waiting = false; t0 = tn;
+              emit('match', { type: 'state', id: info.id, kind: 'duel', state: m.state() });
+            } else {
+              if (tn - made > (T.loadMs || 30000)) { ended = true; return finish({ winner: -1, cancelled: true, reason: 'load', wins: [0, 0], rounds: [], sides: [{}, {}] }); }
+              if (tn - lastState >= 250) { lastState = tn; emit('match', { type: 'state', id: info.id, kind: 'duel', state: loadState() }); }
+              return;
+            }
+            lastState = -1e9;
+          }
           const t = tn - t0;
           S.stepBots(t);
           m.advance(t);
           if (t - lastState >= 100) { lastState = t; emit('match', { type: 'state', id: info.id, kind: 'duel', state: m.state() }); }
         },
         input(k, t) {
-          if (ended || info.you < 0) return;
+          if (ended || waiting || info.you < 0) return;
           const tn = now() - t0;
           t = Math.min(tn, Math.max(0, t == null ? tn : t));
           S.stepBots(t);
           m.input(info.you, k, t);
         },
-        state: () => m.state(),
+        state: () => (waiting ? loadState() : m.state()),
         leave() {
           if (ended) return;
           ended = true;
+          // leaving before the countdown is a cancel, not a loss
+          if (waiting) return finish({ winner: -1, cancelled: true, reason: 'left', wins: [0, 0], rounds: [], sides: [{}, {}] });
           const st = m.state();
           finish({ winner: info.you >= 0 ? 1 - info.you : -1, forfeit: info.you, wins: st.wins, rounds: [], sides: [{}, {}] });
         },
@@ -212,7 +238,7 @@
       });
       function finish(result) {
         let rating = null;
-        if (info.you >= 0) rating = recordDuel(info, players, result);
+        if (info.you >= 0 && !result.cancelled) rating = recordDuel(info, players, result);
         const out = { type: 'end', id: info.id, kind: 'duel', result, rating, log: m.log, verified: true };
         emit('match', out);
         session = null;
@@ -248,17 +274,22 @@
       const L = host.level();
       // salt: watch mode draws two bots in the same millisecond, which would make them the same bot
       const r = rng('q:' + Date.now() + salt);
-      // a bot at the player's level: within about 8% of their recent wpm
-      const name = handle(r);
-      const p = simProfile(name, { wpm: Math.max(20, Math.round(L.wpm * (0.92 + r() * 0.16))) });
-      p.typing = { wpm: p.stats.avgWpm, acc: Math.max(0.86, Math.min(0.99, L.acc + (r() - 0.5) * 0.03)) };
-      p.duel.rating = root.NetRating.ofBot(p.typing.wpm, p.typing.acc);
+      // matchmaking is by MMR: a bot within 100 of the player's, typing at the speed that MMR stands for
+      const target = Math.max(600, rec.duel.rating + Math.round((r() - 0.5) * 200));
+      const acc = Math.max(0.86, Math.min(0.99, L.acc + (r() - 0.5) * 0.03));
+      const wpm = Math.max(20, Math.min(230, Math.round(root.NetRating.wpmFor(target, acc))));
+      const p = simProfile(handle(r), { wpm });
+      p.typing = { wpm, acc };
+      p.duel.rating = root.NetRating.ofBot(wpm, acc);
       return Promise.resolve(p);
     }
     const pub = p => ({ id: p.id, name: p.name, bot: !!p.bot, art: !!p.art, rating: p.art ? root.NetRating.ART : p.duel.rating, level: p.level, country: p.country, lookSeed: p.lookSeed || null, wpm: p.typing ? p.typing.wpm : null });
 
     async function queue({ mode = 'quick', opponent, challenge } = {}) {
       if (session) session.leave();
+      // placement: a first duel starts from the MMR the player's typing stands for, not a flat 1200,
+      // so a fast typist isn't matched with slow bots for their first twenty games
+      if (!rec.duel.games && !rec.duel.placed) { const L = host.level(); rec.duel.rating = Math.max(800, Math.min(1800, root.NetRating.ofBot(L.wpm, L.acc))); rec.duel.placed = true; save(); }
       const id = nid('D');
       const seed = id + ':' + Date.now();
       await wait(T.search != null ? T.search : mode === 'quick' ? delay(1200, 2600) : delay(300, 700));
@@ -278,6 +309,11 @@
       const slow = Math.min(...players.map(p => (p.typing ? p.typing.wpm : host.level().wpm)));
       const difficulty = slow > 110 ? [3, 7] : slow > 70 ? [2, 6] : [1, 5];
       const info = { id, kind: 'duel', mode, seed, you, players, difficulty, challenge: challenge || null, startedAt: Date.now() };
+      // what a win, a draw or a loss would do to the player's MMR, shown before the countdown
+      if (you >= 0) {
+        const opp = players[1 - you], oppR = opp.art ? root.NetRating.ART : opp.rating;
+        info.stakes = Object.fromEntries([['win', 1], ['draw', 0.5], ['loss', 0]].map(([k, sc]) => [k, root.NetRating.update(rec.duel.rating, oppR, sc, rec.duel.games).delta]));
+      }
       session = duelSession(info, players, sides);
       startLoop();
       emit('match', { type: 'start', ...info, state: session.state() });
@@ -573,6 +609,7 @@
       match: {
         queue: o => (o && o.mode === 'party' ? Promise.reject(new Error('Start a party run from a lobby.')) : queue(o)),
         input: (k, t) => { if (session) session.input(k, t); },
+        ready: () => { if (session && session.ready) session.ready(); },
         leave() { if (session) session.leave(); return Promise.resolve(); },
         current: () => (session ? { info: session.info, state: session.state(), words: session.kind === 'party' ? session.run.words('me') : undefined } : null),
         clock: () => (session ? session.clock() : 0),
