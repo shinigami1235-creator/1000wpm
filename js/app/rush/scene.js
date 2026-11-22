@@ -9,6 +9,10 @@
 //   s.setSign(text)          The Signboard's sign
 //   s.gifts(ids, due)  s.giftGone(id)  s.packet(id, due)  s.returnShot(id)  s.packetHit(id)
 //   s.speakers(on)  s.speakerOff(order)
+//   s.sig(id, kind, due)  s.sigDone(id)  s.sigHit(id)  s.sigGone(id)   the signature move's objects
+//                            (sign, page, byte, decoy, mute, popup); screen('sig:<id>') places their word
+//   s.stage(n)               a new phase: the boss grows, glitches and moves faster
+//   s.lunge()                a short lunge at you, for each signature attack
 //   s.hit(h)                 a word's shot from your marker; onImpact(h, x, y) when it lands
 //   s.cast(id, { hits, effect })  s.aura(name, on)  s.fxEvent(kind)  s.react(kind, power, extra)
 //   s.hurt()  s.defeat()  s.screen(key, out)  s.pause(on)  s.info()  s.dispose()
@@ -50,7 +54,8 @@ window.RushScene = (() => {
       dispose: () => { gone = true; if (impl) impl.dispose(); impl = null; },
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
-      'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause']) ctl[n] = (...a) => call(n, ...a);
+      'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
+      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
 
@@ -383,6 +388,7 @@ window.RushScene = (() => {
     // gifts and packets flying at you
     const boxGeo = own(new THREE.BoxGeometry(0.8, 0.8, 0.8)), boxEdge = own(new THREE.EdgesGeometry(boxGeo));
     const giftLine = own(new THREE.LineBasicMaterial({ color: C('#a35bff', 2) })), pktLine = own(new THREE.LineBasicMaterial({ color: C('#3ee6ff', 2.2) }));
+    const badLine = own(new THREE.LineBasicMaterial({ color: C('#ff4d5e', 2.4) }));
     const pool = Array.from({ length: 8 }, () => {
       const g = new THREE.Group(); g.add(new THREE.Mesh(boxGeo, DARK)); const e = new THREE.LineSegments(boxEdge, giftLine); g.add(e);
       g.visible = false; scene.add(g);
@@ -392,12 +398,13 @@ window.RushScene = (() => {
     function launch(id, kind, due, slotI) {
       const p = pool.find(x => !x.id) || pool[0];
       p.id = id; p.kind = kind; p.back = -1;
-      p.e.material = kind === 'packet' ? pktLine : giftLine;
+      p.e.material = kind === 'packet' ? pktLine : kind === 'decoy' ? badLine : giftLine;
       coreWorld(p.from);
       if (kind === 'gift') p.to.set((slotI - 1) * 3.2, 2.2 + (slotI === 1 ? 0.8 : 0), 5.4);
+      else if (kind === 'decoy') p.to.copy(YOU).add(v1.set(rnd(-2.2, 2.2), rnd(0.2, 1.6), -0.8));
       else p.to.copy(YOU).add(v1.set(rnd(-1.4, 1.4), rnd(0.4, 1.4), -0.6));
       p.t0 = nowS(); p.t1 = p.t0 + Math.max(0.6, (due - performance.now()) / 1000);
-      p.g.visible = true; p.g.scale.setScalar(kind === 'packet' ? 0.55 : 0.8);
+      p.g.visible = true; p.g.scale.setScalar(kind === 'packet' || kind === 'decoy' ? 0.55 : 0.8);
     }
     function drop(id) { const p = flyer(id); if (p) { p.id = ''; p.g.visible = false; } }
 
@@ -408,6 +415,94 @@ window.RushScene = (() => {
       return { s, on: false, t: 0, from: new V(), h: null };
     });
     let boltI = 0;
+
+    // ---------- the signature moves ----------
+    // Falling signs, pages sliding along the floor, packets and lit speakers. The word on each
+    // is a tag the page places with screen('sig:<id>'). Materials and shapes are shared, so a
+    // new one builds no shader.
+    const sigObj = new Map();
+    const signGeo = own(new THREE.BoxGeometry(2.6, 1.15, 0.2)), signEdge = own(new THREE.EdgesGeometry(signGeo));
+    const signLine = own(new THREE.LineBasicMaterial({ color: C('#ffb347', 2.4) }));
+    const signFace = own(new THREE.MeshBasicMaterial({ color: C('#ff5f9e', 0.35), transparent: true, opacity: 0.8 }));
+    const shadowGeo = own(new THREE.CircleGeometry(1.5, 32)), faceGeo = own(new THREE.PlaneGeometry(2.3, 0.85));
+    const shadowMat = own(new THREE.MeshBasicMaterial({ color: '#ff4d5e', transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const pageGeo = own(new THREE.PlaneGeometry(1.6, 1.1));
+    const pageMat = own(new THREE.MeshBasicMaterial({ color: C('#e9ffe0', 1.1), side: THREE.DoubleSide, transparent: true, opacity: 0.95,
+      map: canvasTex(256, 176, (c, w, h) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1b2a22'; for (let i = 0; i < 6; i++) c.fillRect(20, 22 + i * 24, i % 3 === 2 ? 120 : 214, 9); }) }));
+    const pageEdge = own(new THREE.LineBasicMaterial({ color: C('#c8ff3d', 2.2) })), pageEdgeGeo = own(new THREE.EdgesGeometry(pageGeo));
+    let stageN = 1, coneNext = 0;
+    // hidden copies of each new shape, so the shader warm-up before the first frame covers them
+    { const w = new THREE.Group(); w.visible = false;
+      w.add(new THREE.Mesh(signGeo, DARK), new THREE.LineSegments(signEdge, signLine), new THREE.Mesh(faceGeo, signFace), new THREE.Mesh(shadowGeo, shadowMat),
+        new THREE.Mesh(pageGeo, pageMat), new THREE.LineSegments(pageEdgeGeo, pageEdge), new THREE.LineSegments(boxEdge, badLine));
+      scene.add(w); }
+    function sigAdd(id, kind, due) {
+      const t0 = nowS(), t1 = t0 + Math.max(0.6, ((due || performance.now()) - performance.now()) / 1000);
+      if (kind === 'byte' || kind === 'decoy') { launch(id, kind === 'byte' ? 'packet' : 'decoy', due, 0); sigObj.set(id, { kind, t0, t1 }); return; }
+      if (kind === 'mute') {
+        const cones = fig && fig.P.cones;
+        let k = -1;
+        if (cones) for (let n = 0; n < cones.length; n++) { const i = (coneNext + n) % cones.length; if (!cones[i].userData.on) { k = i; break; } }
+        if (k >= 0) { cones[k].userData.on = true; coneNext = k + 1; }
+        sigObj.set(id, { kind, cone: k, t0, t1 });
+        return;
+      }
+      if (kind === 'popup') { sigObj.set(id, { kind, t0, t1 }); return; }
+      const g = new THREE.Group(), o = { kind, g, t0, t1, from: new V(), to: new V(), pop: -1 };
+      if (kind === 'sign') {
+        g.add(new THREE.Mesh(signGeo, DARK)); g.add(new THREE.LineSegments(signEdge, signLine));
+        const face = new THREE.Mesh(faceGeo, signFace); face.position.z = 0.11; g.add(face);
+        o.to.set(rnd(-2.6, 2.6), 1.2, YOU.z - rnd(1.2, 2.4));
+        o.from.set(o.to.x * 1.4 + rnd(-1, 1), 13, o.to.z - 4);
+        o.shadow = new THREE.Mesh(shadowGeo, shadowMat); o.shadow.rotation.x = -Math.PI / 2; o.shadow.position.set(o.to.x, 0.04, o.to.z); scene.add(o.shadow);
+      } else {
+        g.add(new THREE.Mesh(pageGeo, pageMat)); g.add(new THREE.LineSegments(pageEdgeGeo, pageEdge));
+        coreWorld(o.from); o.from.x += rnd(-2.6, 2.6); o.from.y = 1; o.from.z += 1;
+        o.to.set(rnd(-2.4, 2.4), 0.6, YOU.z - 0.6);
+      }
+      g.position.copy(o.from); scene.add(g);
+      sigObj.set(id, o);
+    }
+    function sigRemove(id, how) {
+      const o = sigObj.get(id); if (!o) return;
+      if (o.kind === 'byte' || o.kind === 'decoy') {
+        if (how === 'done' && o.kind === 'byte') { const p = flyer(id); if (p) { p.pos.copy(p.g.position); p.back = 0; } }
+        else drop(id);
+        sigObj.delete(id); return;
+      }
+      if (o.kind === 'mute') { const c = fig && fig.P.cones && fig.P.cones[o.cone]; if (c) c.userData.on = false; sigObj.delete(id); return; }
+      if (!o.g) { sigObj.delete(id); return; }
+      if (how === 'done') { o.pop = 0; return; }   // bursts, then goes in the loop
+      sigFree(id, o);
+    }
+    function sigFree(id, o) { scene.remove(o.g); if (o.shadow) scene.remove(o.shadow); sigObj.delete(id); }
+    function sigClear() { for (const [id, o] of [...sigObj]) { if (o.g) sigFree(id, o); else if (o.kind === 'mute') sigRemove(id); else sigObj.delete(id); } }
+    function drawSigs(t, dt) {
+      for (const [id, o] of sigObj) {
+        if (!o.g) continue;
+        if (o.pop >= 0) {
+          o.pop += dt / 0.22;
+          o.g.scale.setScalar(1 + o.pop * 0.8);
+          o.g.children.forEach(c => { if (c.material && c.material.opacity !== undefined) c.visible = Math.random() > o.pop; });
+          if (o.shadow) o.shadow.visible = false;
+          if (o.pop >= 1) sigFree(id, o);
+          continue;
+        }
+        const k = clamp((t - o.t0) / (o.t1 - o.t0), 0, 1);
+        if (o.kind === 'sign') {
+          // drops into view, hangs swaying while it creeps lower, then falls the last stretch
+          const y = k < 0.12 ? 12 - (k / 0.12) * 5.6 : k < 0.72 ? 6.4 - (k - 0.12) / 0.6 * 1.8 : 4.6 - Math.pow((k - 0.72) / 0.28, 2) * 3.4;
+          o.g.position.set(o.from.x + (o.to.x - o.from.x) * k, y, o.from.z + (o.to.z - o.from.z) * k);
+          o.g.rotation.set(Math.sin(t * 3 + o.to.x) * 0.15 * (1 - k), Math.sin(t * 2) * 0.2, Math.sin(t * 2.5 + o.to.z) * 0.12);
+          o.shadow.scale.setScalar(0.3 + 0.9 * k);
+          shadowMat.opacity = 0.18 + 0.4 * k;
+        } else {
+          o.g.position.lerpVectors(o.from, o.to, k);
+          o.g.position.y = 0.35 + Math.abs(Math.sin(t * 7 + o.to.x)) * 0.25;
+          o.g.rotation.set(-0.9 + Math.sin(t * 6 + o.to.x) * 0.25, Math.sin(t * 2) * 0.3, Math.sin(t * 5) * 0.1);
+        }
+      }
+    }
 
     // ---------- post: bloom in WebGL; tint, dim, vignette and glitch in a CSS layer over the canvas ----------
     const composer = new EffectComposer(renderer);
@@ -503,6 +598,8 @@ window.RushScene = (() => {
       scene.add(fig.root);
       if (s.mark > 1) fig.root.position.z = -0.5;
       introT = 0; dying = -1; enraged = false; windOn = false; frac = 1; shieldF = null; heat = 0; moveOn = false;
+      stageN = 1; sigClear(); coneNext = 0;
+      if (fig.P.cones) fig.P.cones.forEach(c => { c.userData.on = false; });
       charge.visible = false; halo.visible = false; dome.visible = false;
       pool.forEach(p => { p.id = ''; p.g.visible = false; });
       if (fx) fx.clear();
@@ -553,7 +650,7 @@ window.RushScene = (() => {
     let frames = 0;
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
-    try { renderer.compile(scene, camera); } catch (e) {}
+    try { renderer.compile(scene, camera); if (renderer.initTexture) renderer.initTexture(pageMat.map); } catch (e) {}
     renderer.setAnimationLoop(() => {
       const t = nowS();
       let dt = Math.min(0.05, t - last); last = t;
@@ -581,7 +678,7 @@ window.RushScene = (() => {
           const k = Math.min(1, dying / 1.3);
           fig.root.visible = Math.random() > k * 0.5;
           fig.root.scale.set(fig.scale * (1 + k * 0.25), fig.scale * Math.max(0.02, 1 - k * k), fig.scale * (1 + k * 0.25));
-        } else fig.root.scale.setScalar(Math.max(0.01, s));
+        } else fig.root.scale.setScalar(Math.max(0.01, s * (1 + 0.07 * (stageN - 1))));
         // wind-up builds over its length, the slam lunges forward
         const wk = windOn ? clamp((performance.now() - windAt) / Math.max(1, windMs), 0, 1) : 0;
         pose.wind += (wk - pose.wind) * Math.min(1, dt * 8);
@@ -591,7 +688,9 @@ window.RushScene = (() => {
         if (dying < 0) fig.anim(at, adt, pose);
         recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt; recoil = clamp(recoil, -0.6, 0.4);
         fig.root.position.z = (slotNow && slotNow.mark > 1 ? -0.5 : 0) + recoil;
-        fig.root.position.x = enraged && !calm ? Math.sin(t * 31) * 0.04 : 0;
+        // the boss never stands still: it sways across the arena, faster each phase
+        const drift = reduce ? 0 : Math.sin(at * (0.45 + 0.22 * (stageN - 1))) * (1.1 + 0.4 * (stageN - 1)) * (stunned ? 0.2 : 1);
+        fig.root.position.x = drift + (enraged && !calm ? Math.sin(t * 31) * 0.04 : 0);
         // edges: red through a wind-up, blue while frozen, brighter on a hit
         flash = Math.max(0, flash - dt * 3.5);
         for (const m of lineMats) {
@@ -601,6 +700,7 @@ window.RushScene = (() => {
           if (stunned) m.color.multiplyScalar(0.6);
           if (flash) m.color.multiplyScalar(1 + flash * 0.8);
           if (enraged) m.color.lerp(c1.setRGB(2.6, 0.5, 0.5), 0.25);
+          else if (stageN === 3) m.color.lerp(c1.setRGB(2.4, 0.7, 0.5), 0.15 + 0.1 * Math.sin(t * 5));
         }
         // shared parts
         coreWorld(v2);
@@ -639,6 +739,7 @@ window.RushScene = (() => {
         b.s.position.lerpVectors(b.from, v1, Math.min(1, b.t));
         if (b.t >= 1) { b.on = false; b.s.visible = false; b.land(v1.clone()); }
       }
+      drawSigs(t, dt);
       if (fx) fx.update(adt);
       // camera shake and post
       shake = Math.max(0, shake - dt * 2.2);
@@ -657,7 +758,14 @@ window.RushScene = (() => {
       if (key === 'core') coreWorld(v1);
       else if (key === 'top') { coreWorld(v1); v1.y += 3.2; }
       else if (key === 'you') v1.copy(YOU);
-      else { const p = flyer(key); if (!p) return null; v1.copy(p.g.position); }
+      else if (key.startsWith('sig:')) {
+        const id = key.slice(4), o = sigObj.get(id);
+        if (!o) return null;
+        if (o.kind === 'byte' || o.kind === 'decoy') { const p = flyer(id); if (!p) return null; v1.copy(p.g.position); v1.y += 0.9; }
+        else if (o.kind === 'mute') { const c = fig && fig.P.cones && fig.P.cones[o.cone]; if (!c) { coreWorld(v1); v1.y -= 2; } else { c.getWorldPosition(v1); v1.y -= 1.1; } }
+        else if (o.g) { v1.copy(o.g.position); v1.y += o.kind === 'sign' ? 1.1 : 0.7; }
+        else return null;
+      } else { const p = flyer(key); if (!p) return null; v1.copy(p.g.position); }
       v1.project(camera);
       if (v1.z > 1) return null;
       out.x = (v1.x * 0.5 + 0.5) * host.clientWidth; out.y = (-v1.y * 0.5 + 0.5) * host.clientHeight;
@@ -710,8 +818,15 @@ window.RushScene = (() => {
         if (fx) fx.cast('neon-nova', { caster, target, hits: [], effect: {} });
         dying = 0; windOn = false; shake = Math.max(shake, 1); glitchK = 1; glitchUntil = nowS() + 0.8;
         pool.forEach(p => { p.id = ''; p.g.visible = false; });
+        sigClear();
       },
       pause: on => { paused = !!on; },
+      sig: (id, kind, due) => { sigAdd(id, kind, due); atkT = Math.max(atkT, 0.5); },
+      sigDone: id => sigRemove(id, 'done'),
+      sigHit: id => { sigRemove(id, 'hit'); shake = Math.max(shake, 0.35); },
+      sigGone: id => sigRemove(id, 'gone'),
+      stage: n => { stageN = n; shake = Math.max(shake, 0.9); glitchK = 1; glitchUntil = nowS() + 0.7; recoilV += 1.2; if (canFlash()) flash = 1; },
+      lunge: () => { atkT = Math.max(atkT, 0.5); },
       screen,
       info: () => ({ frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
       dispose,

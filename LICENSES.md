@@ -14,6 +14,10 @@ The time zone to country table in the same file comes from the IANA time zone da
 
 `fonts/` holds Chakra Petch (400, 600, 700), JetBrains Mono (400, 600) and Share Tech Mono (400) from the Fontsource npm packages, served from the site so no visitor's address goes to Google. All three are under the SIL Open Font License 1.1, in `fonts/LICENSE-*.txt`. `css/fonts.css` lists them.
 
+## Boss Rush music
+
+`audio/rush-*.mp3` is made by `tools/rush/music.py` from numpy oscillators and noise, with no samples, loops or soundfonts from anyone else. It belongs to the site.
+
 ## Free typing passages
 
 `js/learn/passages.js` holds 149 passages in the public domain, copied word for word from Project Gutenberg's plain-text editions through the GITenberg mirror on GitHub: books by Lewis Carroll, Arthur Conan Doyle, Jane Austen, Mary Shelley, Bram Stoker, Robert Louis Stevenson, H. G. Wells, L. Frank Baum, Mark Twain, Rudyard Kipling, Herman Melville, Charles Dickens, J. M. Barrie, Jack London, Charles Darwin and Michael Faraday, all published before 1929, plus the Gettysburg Address, the Declaration of Independence and the preamble of the US Constitution. Only the Project Gutenberg texts were used, not its trademark or licence header.

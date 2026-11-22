@@ -11,6 +11,7 @@ Boss rush is a near-endless run of boss fights at `#/play/rush`, the third game 
 | `js/app/rush/fight.js` | `RushFight`, one fight's rules with no DOM, which lets node run it |
 | `js/app/rush/scene.js` | `RushScene`, the arena and the six boss figures in three.js, with the combat effects |
 | `js/app/rush/audio.js` | `RushAudio`, the music, the stinger between bosses and the effects |
+| `tools/rush/music.py` | Makes each boss's music, `audio/rush-<boss>-<phase>.mp3`, in code |
 | `js/app/rush/board.js` | `RushBoard`, the scoreboard, the saved director model and the server payload |
 | `js/app/rush/page.js` | `RushPage`, the entry screen, the fights, the breather and the end screen |
 | `css/rush.css` | The rush's own styles on top of the World Boss page's `.page-boss` rules |
@@ -37,6 +38,47 @@ Load order in `index.html`: the combat files, then `data`, `director`, `fight`, 
 - Twists by mark: II a firewall of 15% of max HP at half HP, III glitched stack words, IV the own move twice as often, V faster attacks below 30% HP, VI one more counter word per wind-up. Any fight that runs past 2.2 times its sized length enrages too.
 - Between fights the breather shows the run so far and the next boss, with Next boss (Enter) and End run. A lost fight offers one retry per run.
 - The combo carries from boss to boss. Spell damage is scaled to the boss as power times max HP / 700. One cast takes at most 40% of max HP (zero day 75%).
+
+## Phases
+
+Every fight has three phases: from full HP, from 66% and from 33%. The two lines on the boss's HP bar mark them, and the header says "Phase 2 of 3". At each change the boss roars, glitches, grows a little and stops attacking for 1.6 s, and then:
+
+- its big attacks come sooner: the gap between them is 80% of phase 1's in phase 2 and 64% in phase 3,
+- its signature move comes sooner by the same amount, and in phase 3 most signatures come two at a time,
+- its music switches to a faster version of the same track (see Music),
+- it sways across the arena faster.
+
+The phase pace is `RushData.PACE` and the HP lines are `RushData.STAGES`.
+
+## Signature moves
+
+Each boss has one move it keeps doing for the whole fight, between its big attacks and its own move from Breach. The words for it sit in the arena on the thing they belong to, not in the chip row. Typing one deals the same damage as a stack word. One that gets through costs 4 integrity at mark I, 2 more each mark up to 14, and doesn't break the combo. Nothing new is thrown while the boss is stunned.
+
+| Boss | Signature | Rules |
+|---|---|---|
+| The Spam | Pop-ups | Windows land over the arena, each with a word. They stay until typed. If three are open, the next one bites (70% of a full hit) and all close. Phase 3: two at a time. |
+| The Signboard | Falling signs | A sign drops into view, hangs, then falls on you while its shadow grows. Type it before it lands. Phase 3: two at a time. |
+| The Announcer | Volume | The volume climbs (4.5% a second, 6% in phase 2, 8% in phase 3). Speakers light up with words; each one typed takes 24% off. Past half, your words shake; at full volume it shouts (80% of a full hit) and drops back to 35%. Up to three speakers lit, four from phase 2. |
+| The Press | Pages | Pages slide along the floor at you. Five typed in a row (no gap over 5 s) overheat it for a 6 s stun. |
+| The Correction | Red pen | It crosses out a word in your line and writes a wrong version over it in red. Type the crossed-out word for 1.5 times the damage; type the red one and it hurts and the word is used up. Phase 3: two marks at a time. |
+| Syntax Error | Packets | Packets fly at you; typing one sends it back for double damage. From phase 3 one of each pair is a red fake: typing it hurts 1.5 times as much, letting it land does nothing. |
+
+The time between two signature attacks is `gap` word-times at the fight's sized speed S (a word is about 5.5 letters), kept between 1.7 and 9 s, times the phase pace. A sign, page or packet gives `react + perChar * letters * 1.5 + 0.9 s` to type it, 10% less in phase 3. The numbers are in `RushData.SIG`.
+
+## Music
+
+Each boss has its own track, made in code by `tools/rush/music.py` with no samples, so it's ours to ship. A track is a 16-bar loop at three speeds, one per phase; phase 2 adds the lead and phase 3 adds busier drums and a brighter, harder mix. `RushData.musicFor(boss, phase)` names the file and the page crossfades to the next one at a phase change. All 18 files are about -17 LUFS with peaks under -6 dBFS, the same loudness as the Breach loops.
+
+| Boss | Style | Speeds (bpm) |
+|---|---|---|
+| The Spam | Bubbly electro-pop with a message-chirp hook, F# minor | 124, 136, 150 |
+| The Signboard | Neon city-pop with gated chords and a slap bass, E dorian | 110, 120, 132 |
+| The Announcer | Driving techno with a station chime, B minor | 126, 138, 152 |
+| The Press | Industrial, metal clanks and a distorted bass, D phrygian | 118, 130, 144 |
+| The Correction | Dark and dramatic, half-time drums and an ostinato, C minor | 132, 144, 158 |
+| Syntax Error | Fast broken beat with a growling bass and a glitch arp, A minor | 150, 162, 176 |
+
+To change one, edit its writer in `tools/rush/music.py` and run `python3 tools/rush/music.py <boss>`.
 
 ## The director
 
@@ -161,4 +203,4 @@ POST /api/rush/run
 ## Testing
 
 - `node tools/rush/sim.js` runs a strong, a weak and a near-miss player through whole rushes with the real fight rules and prints the director's decisions. `node tools/rush/sim.js strong` (or `weak`, `near`) runs one.
-- In the page, `window._rush` has `start()`, `jump(n)`, `win()`, `lose(left)`, `attack()`, `move()`, `cast(id)`, `setCombo(n)`, `setHp(f)`, `boost()`, `act('next' | 'retry' | 'end')`, `end()`, `state()`, `plan()`, `chips()`, `log()` and `board()`.
+- In the page, `window._rush` has `start()`, `jump(n)`, `win()`, `lose(left)`, `attack()`, `move()`, `sig()` (the next signature attack now), `cast(id)`, `setCombo(n)`, `setHp(f)` (also moves the phase), `boost()`, `act('next' | 'retry' | 'end')`, `end()`, `state()`, `plan()`, `chips()`, `tags()`, `marks()`, `log()` and `board()`.

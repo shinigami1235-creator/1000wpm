@@ -137,3 +137,76 @@
   .rush-roster li > span:last-child { grid-column: 2; text-align: left; }
   .rush .wb-chip.speakers { flex-wrap: wrap; gap: 4px 10px; }
 }
+
+/* ---------- phases and the signature moves ---------- */
+.rush .boss-bar .rush-pmark { position: absolute; top: 0; bottom: 0; z-index: 3; width: 2px; background: rgba(255,255,255,.55); }
+.rush .wb-phase[data-p="2"] { color: var(--amber); }
+.rush .wb-phase[data-p="3"] { color: var(--red); }
+
+/* word tags that follow signs, pages, packets and speakers */
+.rush .rush-tags { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
+.rush .rt {
+  --k: var(--amber); position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px;
+  padding: 4px 10px 6px; background: rgba(2,6,4,.86); box-shadow: inset 0 0 0 1px var(--k); transition: opacity 120ms;
+  will-change: transform;
+}
+.rush .rt small { font: 500 var(--t-xs)/1 var(--f-head); color: var(--k); }
+.rush .rt .w { font: 400 var(--t-l)/1.1 var(--f-mono); color: var(--ink); white-space: nowrap; }
+.rush .rt .c.ok, .rush .rp .c.ok { color: var(--green); }
+.rush .rt .c.bad, .rush .rp .c.bad { color: var(--red); text-decoration: underline; text-underline-offset: 3px; }
+.rush .rt .c.at, .rush .rp .c.at { box-shadow: inset 2px 0 0 var(--green); }
+.rush .rt-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.08); }
+.rush .rt-bar i { position: absolute; inset: 0 auto 0 0; background: var(--k); }
+.rush .rt.late { background: rgba(60,8,12,.9); }
+.rush .rt.on { box-shadow: inset 0 0 0 2px var(--k), 0 0 18px -4px var(--k); }
+.rush .rt-page { --k: var(--lime, #c8ff3d); }
+.rush .rt-byte { --k: var(--cyan); }
+.rush .rt-mute { --k: #5fd0ff; }
+.rush .rt-decoy { --k: var(--red); background: rgba(40,4,8,.88); }
+.rush .rt-decoy .w { color: #ffb3ba; text-decoration: line-through; text-decoration-color: rgba(255,77,94,.7); }
+.rush .rt.gone { transition: opacity 280ms, filter 280ms; opacity: 0 !important; filter: blur(2px) brightness(2); }
+.rush .rt.gone.hit { filter: none; }
+
+/* The Spam's pop-ups: windows over the arena */
+.rush .rush-pops { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.rush .rp {
+  position: absolute; min-width: 150px; display: grid; background: #12051f; box-shadow: 0 0 0 1px #a35bff, 0 10px 30px rgba(0,0,0,.6);
+  animation: rp-in 220ms cubic-bezier(.2,1.4,.4,1);
+}
+.rush .rp-bar { display: flex; justify-content: space-between; gap: 18px; padding: 3px 8px; background: #a35bff; font: 600 var(--t-xs)/1.2 var(--f-head); color: #12051f; }
+.rush .rp-bar i { font-style: normal; }
+.rush .rp .w { padding: 10px 14px 12px; font: 400 var(--t-l)/1.1 var(--f-mono); color: var(--ink); text-align: center; white-space: nowrap; }
+.rush .rp.on { box-shadow: 0 0 0 2px var(--green), 0 10px 30px rgba(0,0,0,.6); }
+.rush .rp.gone.done { animation: rp-out 260ms ease-in forwards; }
+.rush .rp.gone.hit { animation: rp-bite 300ms ease-in forwards; }
+@keyframes rp-in { from { transform: scale(.4); opacity: 0; } }
+@keyframes rp-out { to { transform: scale(.7); opacity: 0; } }
+@keyframes rp-bite { 30% { transform: scale(1.15); filter: hue-rotate(120deg) brightness(1.6); } to { transform: scale(.2) translateY(60px); opacity: 0; } }
+
+/* The Announcer's volume */
+.rush .rush-vol { position: absolute; right: 14px; top: 50%; z-index: 4; transform: translateY(-50%); display: grid; justify-items: center; gap: 6px; }
+.rush .rush-vol span { font: 500 var(--t-xs)/1 var(--f-head); color: #5fd0ff; }
+.rush .rush-vol > i { position: relative; display: block; width: 12px; height: 150px; background: rgba(95,208,255,.12); box-shadow: inset 0 0 0 1px rgba(95,208,255,.4); }
+.rush .rush-vol > i > i { position: absolute; left: 0; right: 0; bottom: 0; background: #5fd0ff; transition: height 120ms linear; }
+.rush .rush-vol[data-l="1"] > i > i { background: var(--amber); }
+.rush .rush-vol[data-l="2"] > i > i { background: var(--red); animation: vol-pulse 300ms steps(2) infinite; }
+@keyframes vol-pulse { 50% { opacity: .55; } }
+.rush .boss-words.loud .bq-line { animation: loud-shake 180ms linear infinite; }
+.rush .boss-words.louder .bq-line { animation: loud-shake 90ms linear infinite; }
+.rush .boss-words.loud .bq-next { animation: loud-shake 240ms linear infinite reverse; }
+@keyframes loud-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-2px, 1px); } 50% { transform: translate(2px, -1px); } 75% { transform: translate(-1px, -1px); } }
+
+/* The Correction's red pen over your words */
+.rush .bw.pen { position: relative; }
+.rush .bw.next.pen { opacity: 1 !important; }
+.rush .bw.next.pen s { color: var(--ink-2); text-decoration-color: var(--red); text-decoration-thickness: 2px; }
+.rush .bq-pen {
+  position: absolute; left: 50%; bottom: 82%; transform: translateX(-50%) rotate(-4deg); font: italic 600 .95em/1 var(--f-head);
+  color: var(--red); white-space: nowrap; pointer-events: none; text-shadow: 0 0 8px rgba(255,77,94,.5);
+}
+.rush .bw.cur.pen .bq-pen { font-size: .6em; bottom: 92%; }
+.rush .bw.cur.pen .c:not(.ok):not(.bad) { text-decoration: line-through; text-decoration-color: rgba(255,77,94,.8); text-decoration-thickness: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rush .boss-words.loud .bq-line, .rush .boss-words.louder .bq-line, .rush .boss-words.loud .bq-next, .rush .rush-vol[data-l="2"] > i > i { animation: none; }
+}

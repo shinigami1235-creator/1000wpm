@@ -45,13 +45,25 @@ function fight(plan, bot, rng) {
       c = chips.find(x => x.kind === 'block') || chips.find(x => x.kind === 'answer' && (rng() < bot.know ? x.right : !x.right))
         || chips.find(x => x.kind === 'fix') || chips.find(x => x.kind === 'speaker' && x.next) || chips.find(x => x.kind === 'packet')
         || chips.find(x => x.kind === 'gift') || chips.find(x => x.kind === 'boost');
+      // the signature: the one about to land first, pop-ups and speakers once a few are open;
+      // a fake packet gets typed now and then by someone who doesn't read it
+      if (!c) {
+        const sig = chips.filter(x => ['popup', 'sign', 'mute', 'page', 'byte'].includes(x.kind) || (x.kind === 'decoy' && rng() > bot.know))
+          .sort((a, b) => (a.due || a.born + 9000) - (b.due || b.born + 9000));
+        const open = chips.filter(x => x.kind === 'popup' || x.kind === 'mute').length;
+        if (sig.length && (sig[0].due || open >= 2 || st.volume > 0.5)) c = sig[0];
+      }
     }
     let word, spell = false, target = null;
     const offer = me.offer();
     if (c) { word = c.word; target = c.id; }
     else if (offer && rng() < 0.85) { word = Combat.spell(offer.spells[0]).word; spell = true; }
     else if (rng() < 0.25 && chips.find(x => x.kind === 'weak')) { const w = chips.find(x => x.kind === 'weak'); word = w.word; target = w.id; }
-    else word = f.stack()[0];
+    else {
+      word = f.stack()[0];
+      const mk = f.marks().find(m => m.i === 0);
+      if (mk && rng() > bot.know) word = mk.fake;   // fell for the red pen
+    }
     if (!word) continue;
     // type it: a wrong key costs two more keys to fix and now and then the word goes in wrong
     let clean = true, extra = 0, text = word;
@@ -84,7 +96,7 @@ function rush(name, bot, runs, seed, { onlyN, log } = {}) {
       d.report(p, res);
       lines.push(`  #${String(n).padStart(2)} ${p.slot.title.padEnd(26)} S ${String(p.S).padStart(5)} floor ${String(p.floor.wpm).padStart(3)} hp ${String(p.knobs.hp).padStart(6)}`
         + ` ${p.help ? `help ${(p.help.k * 100).toFixed(0)}%` : '        '} ${p.boost ? `boost ${p.boost.dmg}` : '          '}`
-        + ` -> ${res.won ? 'won ' : 'lost'} ${res.won ? `integrity ${(res.hpLeft * 100).toFixed(0)}%` : `boss ${(res.left * 100).toFixed(1)}% left`} in ${res.secs.toFixed(0)}s, ${res.wpm} wpm ${res.acc}%${res.boosts ? ' BOOST USED' : ''}`);
+        + ` -> ${res.won ? 'won ' : 'lost'} ${res.won ? `integrity ${(res.hpLeft * 100).toFixed(0)}%` : `boss ${(res.left * 100).toFixed(1)}% left`} in ${res.secs.toFixed(0)}s, ${res.wpm} wpm ${res.acc}% phase ${res.stage} sig ${res.sigsDone}/${res.sigs} hit ${res.sigHits}${res.boosts ? ' BOOST USED' : ''}`);
       if (res.won) { beaten++; n++; retry = false; if (onlyN) break; continue; }
       if (!retry && !onlyN) { retry = true; continue; }
       if (onlyN) { retry = true; if (lines.length >= 6) break; continue; }

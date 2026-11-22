@@ -8,32 +8,32 @@ window.RushData = (() => {
   // director's numbers: The Press winds up faster, Syntax Error has the most HP.
   // move is the boss's own move from Breach, rebuilt for a word stack fight.
   const ROSTER = [
-    { id: 'spam', name: 'The Spam', art: 'spam', chapter: 1, move: 'gifts', music: 'stage1',
+    { id: 'spam', name: 'The Spam', art: 'spam', chapter: 1, move: 'gifts',
       color: '#39ff88', color2: '#a35bff', fog: '#07040d', base: '#05030a',
       theme: ['common', 'gaming'],
       hpK: 1, intervalK: 1, windK: 1,
       counters: ['block', 'mute', 'report', 'ban user', 'clear chat', 'slow mode'] },
-    { id: 'sign', name: 'The Signboard', art: 'sign', chapter: 2, move: 'fixsign', music: 'stage2',
+    { id: 'sign', name: 'The Signboard', art: 'sign', chapter: 2, move: 'fixsign',
       color: '#ffb347', color2: '#ff5f9e', fog: '#0c0603', base: '#0a0503',
       theme: ['common', 'food', 'city'],
       hpK: 1.08, intervalK: 1, windK: 1,
       counters: ['unplug', 'lights off', 'take down', 'close shop', 'pull the plug'] },
-    { id: 'announcer', name: 'The Announcer', art: 'announcer', chapter: 3, move: 'speakers', music: 'stage3',
+    { id: 'announcer', name: 'The Announcer', art: 'announcer', chapter: 3, move: 'speakers',
       color: '#5fd0ff', color2: '#4d7cff', fog: '#02060f', base: '#02050c',
       theme: ['common', 'city', 'music'],
       hpK: 1.14, intervalK: 0.96, windK: 1,
       counters: ['mute', 'end call', 'cut the feed', 'turn it down', 'stop'] },
-    { id: 'press', name: 'The Press', art: 'press', chapter: 4, move: 'press', music: 'stage4',
+    { id: 'press', name: 'The Press', art: 'press', chapter: 4, move: 'press',
       color: '#ff3dbb', color2: '#c8ff3d', fog: '#0a0309', base: '#080207',
       theme: ['common', 'keyboards'],
       hpK: 1.2, intervalK: 1, windK: 0.82,
       counters: ['brake', 'jam', 'halt', 'stop the line', 'reverse'] },
-    { id: 'correction', name: 'The Correction', art: 'correction', chapter: 5, move: 'spell', music: 'stage5',
+    { id: 'correction', name: 'The Correction', art: 'correction', chapter: 5, move: 'spell',
       color: '#ff3a4a', color2: '#ff7a2a', fog: '#0b0102', base: '#090102',
       theme: ['common', 'science'],
       hpK: 1.28, intervalK: 0.95, windK: 1,
       counters: ['undo', 'revert', 'cancel', 'nobody checks what they send anymore', 'every wrong word goes back to whoever typed it'] },
-    { id: 'syntax', name: 'Syntax Error', art: 'syntax', chapter: 0, move: 'volley', music: 'wb-p1',
+    { id: 'syntax', name: 'Syntax Error', art: 'syntax', chapter: 0, move: 'volley',
       color: '#39ff88', color2: '#3ee6ff', fog: '#010503', base: '#010302',
       theme: ['common', 'cyber'],
       hpK: 1.36, intervalK: 0.92, windK: 0.95,
@@ -146,6 +146,38 @@ window.RushData = (() => {
   // The near-miss boost word Art sends. Tech words that never read like a typo.
   const BOOST_WORDS = ['overclock', 'hotfix', 'failsafe', 'uplink', 'reboot', 'backdoor', 'override', 'patch'];
 
+  // ---------- phases and signature moves ----------
+  // A fight has three phases: from full HP, from 66% and from 33%. Each phase change
+  // pauses the boss's attacks for STAGE_PAUSE, speeds the music up and shortens the gaps
+  // between attacks by PACE. Phase 3 is the boss's signature move in full.
+  const STAGES = [0.66, 0.33];
+  const PACE = [1, 0.8, 0.64];
+  const STAGE_PAUSE = 1600;
+  // Each boss's signature runs the whole fight, between its big attacks. gap is the time
+  // between two of them in word-times at the fight's speed (one word is about 5.5 letters
+  // at S wpm), kept between 1.7 and 9 s before the phase pace. A signature attack that
+  // lands costs SIG_HIT integrity (more from mark II) without breaking the combo.
+  //   popup  The Spam: pop-ups stay open until typed; a fourth one bites (cap 3)
+  //   sign   The Signboard: a sign falls; type it before it lands
+  //   mute   The Announcer: volume climbs (rise per second, by phase); a muted speaker
+  //          takes drop off; at full volume it shouts
+  //   page   The Press: pages slide at you; heat pages typed in a row overheat it
+  //   pen    The Correction: writes a wrong version over a word in your line; type the
+  //          crossed-out word for 1.5x damage, the red one hurts
+  //   byte   Syntax Error: packets to send back for double damage; from phase 3 one of
+  //          each pair is a fake (decoy) that hurts if typed and does nothing if it lands
+  const SIG = {
+    spam: { kind: 'popup', name: 'Pop-ups', gap: 3.2, cap: 3, text: 'Type pop-ups to close them. If three are open, the next one bites.' },
+    sign: { kind: 'sign', name: 'Falling signs', gap: 3, text: 'Type each falling sign before it lands.' },
+    announcer: { kind: 'mute', name: 'Volume', gap: 2.6, cap: 3, rise: [0.045, 0.06, 0.08], drop: 0.24, text: 'Type the speakers to turn the volume down. At full volume it shouts.' },
+    press: { kind: 'page', name: 'Pages', gap: 2.4, heat: 5, text: 'Type pages before they reach you. Five in a row overheats the press.' },
+    correction: { kind: 'pen', name: 'Red pen', gap: 3.4, text: 'It writes a wrong word over yours. Type the crossed-out word, not the red one.' },
+    syntax: { kind: 'byte', name: 'Packets', gap: 2.6, text: 'Type packets to send them back. From phase 3 the red ones are fakes: let them land.' },
+  };
+  const SIG_HIT = 4;          // integrity a landed signature attack costs at mark I, +2 a mark, at most 14
+  // each boss's music, one track at three speeds, one per phase (audio/rush-<id>-<phase>.mp3)
+  const musicFor = (id, stage) => `rush-${id}-${stage}`;
+
   // ---------- fight constants ----------
   const UNIT = 10;            // boss damage per letter before multipliers, which makes the numbers read as damage
   const PLAYER_HP = 100;      // the player's integrity
@@ -171,7 +203,7 @@ window.RushData = (() => {
   }
 
   return {
-    ROSTER, TWISTS, FLOORS, FLOOR_STEP, SIGNS, SPELL, GLITCH, BOOST_WORDS,
+    ROSTER, TWISTS, FLOORS, FLOOR_STEP, SIGNS, SPELL, GLITCH, BOOST_WORDS, STAGES, PACE, STAGE_PAUSE, SIG, SIG_HIT, musicFor,
     UNIT, PLAYER_HP, STUN_MS, LONG_STUN_MS, STUN_MULT, WEAK_FRAC, SHIELD_FRAC, SPELL_REF, SPELL_CAP, SPELL_CAP_ULT,
     slot, twistsFor, markName, bossScore,
   };

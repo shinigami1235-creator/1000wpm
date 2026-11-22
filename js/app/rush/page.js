@@ -18,7 +18,10 @@ window.RushPage = (() => {
   };
   const LABEL = { block: 'Block', gift: 'Gift', fix: 'Spell it right', speaker: 'Mute', answer: 'Spelled right?', packet: 'Send back', boost: 'Boost from Art', weak: 'Weak point' };
   const CLS = { block: 'block', gift: 'add', speaker: 'add', packet: 'return', fix: 'fix', answer: 'fix', boost: 'boost', weak: 'weak' };
-  const ORDER = { block: 0, answer: 1, fix: 1, speaker: 2, packet: 3, gift: 4, boost: 5, spell: 6, weak: 7 };
+  const ORDER = { block: 0, answer: 1, fix: 1, speaker: 2, packet: 3, gift: 4, boost: 5, spell: 6, weak: 7, sign: 2, page: 2, byte: 2, decoy: 9, popup: 3, mute: 3 };
+  // the signature move's words live in the arena, on the thing they belong to, not in the chip row
+  const ARENA = new Set(['popup', 'sign', 'mute', 'page', 'byte', 'decoy']);
+  const TAG_LABEL = { sign: 'Sign', page: 'Page', byte: 'Packet', decoy: 'Fake', mute: 'Speaker' };
   const TIPS = {
     start: 'Type the highlighted word and press Space. Every word hits the boss.',
     block: 'Type the red words before the bar runs out to block the attack and stun the boss.',
@@ -27,6 +30,7 @@ window.RushPage = (() => {
     spell: 'Type a green spell word with no typo to cast it.',
     stun: 'Your words deal double damage while the boss is stunned.',
   };
+  if (window.RushData) for (const [id, sg] of Object.entries(RushData.SIG)) TIPS['sig-' + id] = sg.text;
   const fmt = n => UI.fmt(Math.round(n)), esc = UI.esc;
   const now = () => performance.now();
   const secs = ms => (ms / 1000).toFixed(1) + ' s';
@@ -35,7 +39,8 @@ window.RushPage = (() => {
     let view = '', scene = null, keys = null, me = null, f = null, dir = null, run = null, plan = null;
     let typed = '', target = null, clean = true, wordT0 = 0, hist = [], over = null;
     let timers = [], offs = [], later = [], hiddenAt = 0, comboShown = false, popT = 0, tintT = 0, chipKey = '';
-    let tipQ = [], tipUntil = 0, seen = new Set(), lastBlocks = 0;
+    let tipQ = [], tipUntil = 0, seen = new Set(), lastBlocks = 0, tagRaf = 0, tagKey = '';
+    const tags = new Map();   // signature id -> its word tag or pop-up window
     const ghostAt = new Map();
     try { seen = new Set(JSON.parse(localStorage.getItem('wpm-rush-tips') || '[]')); } catch (e) {}
     const q = k => host.querySelector(`[data-k="${k}"]`);
@@ -60,7 +65,7 @@ window.RushPage = (() => {
               ${best ? `<p class="rush-best">${best}</p>` : ''}
             </div>
             <ol class="rush-roster" aria-label="Bosses">
-              ${D().ROSTER.map((x, i) => `<li style="--c:${x.color};--c2:${x.color2}"><span class="rr-n">${i + 1}</span><b>${esc(x.name)}</b><span>${esc(MOVE[x.move].name)}</span></li>`).join('')}
+              ${D().ROSTER.map((x, i) => `<li style="--c:${x.color};--c2:${x.color2}"><span class="rr-n">${i + 1}</span><b>${esc(x.name)}</b><span>${esc(D().SIG[x.id].name)}</span></li>`).join('')}
               <li class="rr-more"><span class="rr-n">7</span><b>Mark II</b><span>The six again with more HP and a firewall</span></li>
             </ol>
           </section>
@@ -87,12 +92,15 @@ window.RushPage = (() => {
                 <span class="wb-phase" data-k="num"></span>
                 <span class="wb-hpnum"><b data-k="hp">0</b><span class="wb-left"><span data-k="left">100%</span> left</span></span>
               </div>
-              <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" data-k="meter"><i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em></div>
+              <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" data-k="meter"><i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em><b class="rush-pmark" style="left:${D().STAGES[1] * 100}%"></b><b class="rush-pmark" style="left:${D().STAGES[0] * 100}%"></b></div>
               <div class="rush-you"><span>You</span><div class="rush-ibar" role="meter" aria-label="Your integrity" aria-valuemin="0" aria-valuemax="100" data-k="imeter"><i data-k="ifill"></i></div><b data-k="ihp">100</b></div>
             </section>
             <section class="boss-stage" data-k="stage" aria-label="The boss">
               <div class="kb-loading" data-k="loading">Loading</div>
               <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
+              <div class="rush-tags" data-k="tags" aria-hidden="true"></div>
+              <div class="rush-pops" data-k="pops" aria-hidden="true"></div>
+              <div class="rush-vol" data-k="vol" hidden><span>Volume</span><i><i data-k="volfill"></i></i></div>
               <div class="dmg-layer" data-k="nums" aria-hidden="true"></div>
               <div class="wb-status"><span class="wb-me" data-k="flags"></span></div>
               <div class="wb-combo" data-k="cbox" data-t="0" hidden aria-live="off">
@@ -162,12 +170,18 @@ window.RushPage = (() => {
       f.start(now());
       paintHead(); paintYou(); paintStrip();
       A.quiet(false);
-      A.music(plan.boss.music);
+      A.music(D().musicFor(plan.boss.id, 1));
+      A.preload(D().musicFor(plan.boss.id, 2)); A.preload(D().musicFor(plan.boss.id, 3));
       A.play('roar');
-      const s = plan.slot, mv = MOVE[plan.boss.move];
+      clearTags();
+      const s = plan.slot, sg = D().SIG[plan.boss.id];
       const tw = s.mark > 1 && s.i === 0 ? D().TWISTS.find(x => x.mark === s.mark) : null;
-      banner(retry ? `Retry, boss ${s.n}` : `Boss ${s.n}`, s.title, tw ? `Mark ${D().markName(s.mark)}: ${tw.text}` : mv.text);
+      banner(retry ? `Retry, boss ${s.n}` : `Boss ${s.n}`, s.title, tw ? `Mark ${D().markName(s.mark)}: ${tw.text}` : sg.text);
+      // only this boss's signature tip; another boss's still waiting in the queue would be wrong now
+      tipQ = tipQ.filter(x => !x.startsWith('sig-'));
+      const tn = q('tip'); if (tn && tn.dataset.id && tn.dataset.id.startsWith('sig-')) { tn.textContent = ''; tn.classList.remove('on'); tipUntil = 0; }
       if (s.n === 1 && !retry) tip('start');
+      tip('sig-' + plan.boss.id);
       renderQueue(); paintChips(true);
       if (!timers.length) {
         timers.push(setInterval(tick, 50));
@@ -253,10 +267,15 @@ window.RushPage = (() => {
         if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
         TT.click(true);
         hist.push({ word, ok: true });
+      } else if (r && r.kind === 'sig') {
+        scene.hit({ amount: r.amount, tier: r.tier, crit: r.crit, kind: 'word' });
+        if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
+        TT.click(true);
       } else if (r && r.kind === 'weak') {
         scene.hit({ amount: r.amount, tier: Math.max(1, r.tier), crit: true, kind: 'weak' });
         A.play('weak');
       } else if (r && r.kind === 'miss' && !aim) hist.push({ word, ok: false });
+      else if (r && r.kind === 'pen') hist.push({ word: typed, ok: false });
       if (hist.length > 3) hist.shift();
       typed = ''; target = null; clean = true;
       renderQueue(); paintChips(true); paintStrip();
@@ -307,7 +326,30 @@ window.RushPage = (() => {
         case 'moveDone': scene.moveEnd(); pop('STUNNED', 'green'); A.play('stagger'); if (plan.boss.move === 'fixsign') scene.setSign('NODLES'); break;
         case 'shield': scene.setShield(1); banner('Half HP', 'Firewall up', 'Hits go into the firewall until it breaks.', 1800); A.play('shieldUp'); break;
         case 'shieldBreak': scene.setShield(null); pop('FIREWALL DOWN', 'cyan'); A.play('shieldBreak'); break;
-        case 'enrage': scene.enrage(true); pop('ENRAGED', 'red'); A.play('roar'); A.music(plan.boss.id === 'syntax' ? 'wb-enrage' : 'boss'); break;
+        case 'enrage': scene.enrage(true); pop('ENRAGED', 'red'); A.play('roar'); break;
+        case 'stage': {
+          const sg = D().SIG[plan.boss.id];
+          scene.stage(p.n);
+          A.music(D().musicFor(plan.boss.id, p.n));
+          A.play('roar');
+          banner(`Phase ${p.n} of 3`, plan.slot.title, p.n === 3 ? `${sg.name}, twice as many. Faster attacks.` : 'Faster attacks from here.', 1800);
+          paintHead();
+          break;
+        }
+        case 'sig':
+          scene.sig(p.id, p.kind, p.due);
+          addTag(p);
+          A.play(p.kind === 'popup' ? 'addSpawn' : p.kind === 'mute' ? 'warn' : 'launch');
+          break;
+        case 'sigDone': scene.sigDone(p.id); dropTag(p.id, 'done'); A.play('addKill'); break;
+        case 'sigHit': scene.sigHit(p.id); dropTag(p.id, 'hit'); break;
+        case 'sigGone': scene.sigGone(p.id); dropTag(p.id, 'gone'); break;
+        case 'bite': p.ids.forEach(id => dropTag(id, 'hit')); scene.slam(); pop('BITTEN', 'red'); A.play('blockFail'); break;
+        case 'shout': scene.slam(); pop('SHOUT', 'red'); A.play('roar'); break;
+        case 'pen': scene.lunge(); renderQueue(); A.play('warn'); break;
+        case 'penBeat': pop('NICE CATCH', 'green'); break;
+        case 'penHit': pop('RED PEN', 'red'); renderQueue(); break;
+        case 'decoyHit': dropTag(p.id, 'hit'); scene.sigHit(p.id); pop('FAKE', 'red'); break;
         case 'damage':
           paintHead();
           if (p.kind && p.kind !== 'word' && p.kind !== 'weak' && p.kind !== 'debug') number({ amount: p.amount, big: p.kind === 'spell' || p.kind === 'boost' || p.kind === 'block', kind: p.kind, shield: p.shield });
@@ -412,7 +454,7 @@ window.RushPage = (() => {
       showOver(`<div class="ro-in">
           <p class="ro-head">Boss ${rec.n} down in ${secs(rec.secs * 1000)}<span>+${fmt(rec.score)} score</span></p>
           ${statsHtml([['Score', fmt(run.score)], ['Bosses beaten', T.beaten], ['wpm', T.avgWpm], ['Accuracy', T.acc + '%'], ['Best combo', T.combo], ['Spells cast', T.spells]])}
-          <div class="ro-next" style="--c:${nx.boss.color}"><span>Next, boss ${nx.n}</span><b>${esc(nx.title)}</b><em>${esc(tw ? tw.text : MOVE[nx.boss.move].text)}</em></div>
+          <div class="ro-next" style="--c:${nx.boss.color}"><span>Next, boss ${nx.n}</span><b>${esc(nx.title)}</b><em>${esc(tw ? tw.text : D().SIG[nx.boss.id].text)}</em></div>
           <div class="ro-act"><button class="btn" type="button" data-act="next">Next boss <kbd>Enter</kbd></button><button class="btn out" type="button" data-act="end">End run</button></div>
         </div>`, 'next', 'end');
     }
@@ -533,7 +575,8 @@ window.RushPage = (() => {
       q('name').textContent = s.title;
       q('state').textContent = plan.retry ? `Boss ${s.n}, retry` : `Boss ${s.n}`;
       q('state').dataset.s = Math.min(5, s.mark);
-      q('num').textContent = MOVE[plan.boss.move].name;
+      q('num').textContent = `Phase ${S.stage} of 3`;
+      q('num').dataset.p = S.stage;
       const fr = S.hp / S.max;
       q('hp').innerHTML = `${fmt(Math.ceil(S.hp))}<small> / ${fmt(S.max)} HP</small>`;
       q('fill').style.width = (100 * fr) + '%';
@@ -568,7 +611,15 @@ window.RushPage = (() => {
       if (S.stunned) bits.push(`<span class="wb-flag stun">Stunned <b>${(S.stunLeft / 1000).toFixed(1)}s</b> <small>damage x2</small></span>`);
       if (S.shield) bits.push(`<span class="wb-flag shield">Firewall <b>${fmt(Math.max(0, S.shield.hp))}</b></span>`);
       if (S.enraged) bits.push('<span class="wb-flag jam">Enraged</span>');
-      if (plan.boss.move === 'press' && S.heat) bits.push(`<span class="wb-flag weak">Heat <b>${S.heat}</b><small> of 3</small></span>`);
+      if (plan.boss.move === 'press' && S.heat) bits.push(`<span class="wb-flag weak">Blocks <b>${S.heat}</b><small> of 3</small></span>`);
+      if (S.pageHeatMax && S.pageHeat) bits.push(`<span class="wb-flag weak">Heat <b>${S.pageHeat}</b><small> of ${S.pageHeatMax}</small></span>`);
+      if (S.sig === 'popup') { const n = f.chips(t).filter(c => c.kind === 'popup').length; if (n) bits.push(`<span class="wb-flag ${n >= S.popCap ? 'jam' : 'weak'}">Pop-ups <b>${n}</b><small> of ${S.popCap}</small></span>`); }
+      const vol = q('vol');
+      if (vol) {
+        vol.hidden = S.sig !== 'mute';
+        if (S.sig === 'mute') { q('volfill').style.height = (100 * S.volume).toFixed(0) + '%'; vol.dataset.l = S.volume >= 0.8 ? '2' : S.volume >= 0.5 ? '1' : ''; }
+        const box = q('box'); if (box) { box.classList.toggle('loud', S.sig === 'mute' && S.volume >= 0.5); box.classList.toggle('louder', S.sig === 'mute' && S.volume >= 0.8); }
+      }
       const pn = performance.now();
       for (const x of me.statuses()) {
         const left = x.until ? Math.max(0, Math.ceil((x.until - pn) / 1000)) + 's' : '';
@@ -592,7 +643,7 @@ window.RushPage = (() => {
       const row = q('chips'); if (!row) return;
       const t = now();
       const live = f && f.phase === 'fight';
-      const all = live ? f.chips(t) : [];
+      const all = live ? f.chips(t).filter(c => !ARENA.has(c.kind)) : [];
       const o = live ? me.offer() : null;
       const spells = o ? o.spells.map(id => ({ kind: 'spell', id: 'spell:' + id, word: Combat.spell(id).word, spell: Combat.spell(id), due: o.until, total: o.until - o.at })) : [];
       const list = all.slice().sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (a.order || 0) - (b.order || 0) || (a.kind === 'packet' ? a.due - b.due : 0));
@@ -653,6 +704,8 @@ window.RushPage = (() => {
         else cur += `<span class="c ${a === c ? 'ok' : 'bad'}">${esc(c)}</span>`;
       }
       if (mine && t.length >= w.length) cur += '<span class="c at">&nbsp;</span>';
+      const mk = f ? f.marks() : [], fakeOf = i => { const m = mk.find(x => x.i === i); return m ? m.fake : null; };
+      if (fakeOf(0)) cur = `<em class="bq-pen">${esc(fakeOf(0))}</em>` + cur;
       const last = hist[hist.length - 1];
       let ghost = '';
       if (last) {
@@ -660,8 +713,9 @@ window.RushPage = (() => {
         const age = now() - ghostAt.get(last);
         if (age < 700) ghost = `<span class="bw done ${last.ok ? 'hit' : 'miss'}" style="animation-delay:-${Math.round(age)}ms">${esc(last.word)}</span>`;
       }
-      box.innerHTML = `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mine ? '' : ' wait'}" aria-current="${mine}">${cur}</span></span></div>`
-        + `<div class="bq-next">${st.slice(1, 13).map((x, i) => `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`).join('')}</div>`;
+      box.innerHTML = `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mine ? '' : ' wait'}${fakeOf(0) ? ' pen' : ''}" aria-current="${mine}">${cur}</span></span></div>`
+        + `<div class="bq-next">${st.slice(1, 13).map((x, i) => { const fk = fakeOf(i + 1); return fk ? `<span class="bw next pen"><em class="bq-pen">${esc(fk)}</em><s>${esc(x)}</s></span>` : `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`; }).join('')}</div>`;
+      paintTags();
     }
     function paintCombo(drop) {
       const box = q('cbox'); if (!box || !me) return;
@@ -684,6 +738,68 @@ window.RushPage = (() => {
       me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
       me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
       me.on('status', e => { if (scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, !!e.on); });
+    }
+
+    // ---------- the signature's words in the arena ----------
+    // Signs, pages, packets and speakers get a tag that follows them; pop-ups are windows
+    // over the arena. Positions move every frame; letters change only on a key.
+    function addTag(p) {
+      if (p.kind === 'popup') {
+        const box = q('pops'); if (!box) return;
+        const el = document.createElement('div');
+        el.className = 'rp';
+        const n = [...tags.values()].filter(x => x.kind === 'popup').length;
+        el.style.left = (8 + ((n * 31 + Math.random() * 18) % 64)).toFixed(1) + '%';
+        el.style.top = (10 + ((n * 23 + Math.random() * 14) % 42)).toFixed(1) + '%';
+        const ads = ['FREE GIFT!!', 'u won', 'CLICK NOW', 'hot deal', 'DM me', 'last chance'];
+        el.innerHTML = `<div class="rp-bar"><span>${esc(ads[Math.floor(Math.random() * ads.length)])}</span><i>x</i></div><b class="w"></b>`;
+        box.append(el);
+        tags.set(p.id, { kind: 'popup', el, word: p.word, due: p.due, total: p.total, typed: null });
+      } else {
+        const box = q('tags'); if (!box) return;
+        const el = document.createElement('div');
+        el.className = 'rt rt-' + p.kind;
+        el.innerHTML = `<small>${TAG_LABEL[p.kind] || ''}</small><b class="w"></b>${p.due ? '<i class="rt-bar"><i></i></i>' : ''}`;
+        el.style.opacity = '0';
+        box.append(el);
+        tags.set(p.id, { kind: p.kind, el, word: p.word, due: p.due, total: p.total, typed: null, bar: el.querySelector('.rt-bar i') });
+      }
+      paintTags(true);
+      if (!tagRaf) tagRaf = requestAnimationFrame(moveTags);
+    }
+    function dropTag(id, how) {
+      const x = tags.get(id); if (!x) return;
+      tags.delete(id);
+      x.el.classList.add('gone', how || 'done');
+      setTimeout(() => x.el.remove(), 320);
+    }
+    function clearTags() { for (const x of tags.values()) x.el.remove(); tags.clear(); }
+    function paintTags(force) {
+      for (const [id, x] of tags) {
+        const t = target && target.kind && target.id === id ? typed : '';
+        if (!force && x.typed === t) continue;
+        x.typed = t;
+        x.el.querySelector('.w').innerHTML = lettersHtml(x.word, t, !!t);
+        x.el.classList.toggle('on', !!t);
+      }
+    }
+    const pt = { x: 0, y: 0 };
+    function moveTags() {
+      tagRaf = 0;
+      if (!scene || !tags.size) return;
+      const pn = now();
+      for (const [id, x] of tags) {
+        if (x.kind !== 'popup') {
+          const at = scene.screen('sig:' + id, pt);
+          if (at) { x.el.style.transform = `translate(${at.x.toFixed(0)}px, ${at.y.toFixed(0)}px) translate(-50%, -100%)`; x.el.style.opacity = '1'; }
+        }
+        if (x.due) {
+          const left = Math.max(0, x.due - pn);
+          if (x.bar) x.bar.style.width = (100 * left / x.total).toFixed(1) + '%';
+          x.el.classList.toggle('late', left < 1500);
+        }
+      }
+      tagRaf = requestAnimationFrame(moveTags);
     }
 
     // ---------- feedback ----------
@@ -733,12 +849,14 @@ window.RushPage = (() => {
       if (!id) { if (n.textContent) { n.textContent = ''; n.classList.remove('on'); } return; }
       seen.add(id);
       try { localStorage.setItem('wpm-rush-tips', JSON.stringify([...seen])); } catch (e) {}
-      n.textContent = TIPS[id]; n.classList.add('on');
+      n.textContent = TIPS[id]; n.dataset.id = id; n.classList.add('on');
       tipUntil = t + 6000;
     }
 
     // ---------- leaving ----------
     function teardownFight() {
+      if (tagRaf) cancelAnimationFrame(tagRaf); tagRaf = 0;
+      clearTags();
       later.forEach(clearTimeout); later = [];
       timers.forEach(clearInterval); timers = [];
       offs.forEach(fn => fn()); offs = [];
@@ -773,7 +891,10 @@ window.RushPage = (() => {
       stack: () => (f ? f.stack().slice(0, 6) : []),
       win: () => f && f.debug.win(now()),
       lose: left => f && f.debug.lose(now(), left === undefined ? 0.4 : left),
-      setHp: x => f && (f.debug.setHp(x), paintHead()),
+      setHp: x => f && (f.debug.setHp(x, now()), paintHead()),
+      sig: () => f && f.debug.sig(now()),
+      tags: () => [...tags].map(([id, x]) => ({ id, kind: x.kind, word: x.word })),
+      marks: () => (f ? f.marks() : []),
       attack: () => f && f.debug.attack(now()),
       move: () => f && f.debug.move(now()),
       act: a => act(a),

@@ -1,7 +1,6 @@
-// Boss Rush sound. Music: each boss's Breach chapter loop (audio/stage1 to stage5.mp3)
-// and the World Boss phase 1 loop for Syntax Error, switched to audio/boss.mp3 when a
-// mark V boss enrages. The World Boss victory sting (audio/wb-win.mp3) plays between
-// bosses. Effects come from js/app/boss-audio.js and the combat module's own sounds,
+// Boss Rush sound. Music: each boss's own track at three speeds, one per phase
+// (audio/rush-<boss>-<phase>.mp3, made by tools/rush/music.py), crossfaded at a phase
+// change. The World Boss victory sting (audio/wb-win.mp3) plays between bosses. Effects come from js/app/boss-audio.js and the combat module's own sounds,
 // all on the World Boss's audio context.
 //   RushAudio.music(name)   loop a track, crossfading from the one before
 //   RushAudio.sting()       the stinger between bosses, with the music ducked under it
