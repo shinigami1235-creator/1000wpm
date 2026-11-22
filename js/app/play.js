@@ -1,4 +1,5 @@
-// #/play: the game hub. #/play/breach mounts the game agent's window.Breach,
+// #/play: the game hub. #/play on its own shows the game picker (js/app/play-picker.js).
+// #/play/breach mounts the game agent's window.Breach,
 // #/play/race mounts the race and #/play/rush mounts Boss rush (js/app/rush/page.js).
 // Only one game runs at a time.
 Router.register('play', (() => {
@@ -8,7 +9,7 @@ Router.register('play', (() => {
     el = root;
     el.innerHTML = `
       <div class="play-head">
-        <div class="title-block"><h1>Play_</h1><p>// GAMES</p></div>
+        <div class="title-block"><h1><a href="#/play" class="play-home">Play_</a></h1><p data-sub>// GAMES</p></div>
       </div>
       <nav class="game-tabs" aria-label="Games">
         <a class="panel game-tab" href="#/play/breach" data-g="breach"><span class="label">&gt; GAME 01</span><h3>Breach</h3></a>
@@ -24,10 +25,19 @@ Router.register('play', (() => {
   }
 
   function update(params) {
-    const want = params && (params[0] === 'race' || params[0] === 'rush') ? params[0] : 'breach';
+    const want = params && ['breach', 'race', 'rush'].includes(params[0]) ? params[0] : 'pick';
     if (want === game) return;
     stop();
     game = want;
+    el.classList.toggle('picking', game === 'pick');
+    el.querySelector('[data-sub]').textContent = game === 'pick' ? (matchMedia('(hover: none)').matches ? '// pick a game' : '// pick a game. Type its name to start it.') : '// GAMES';
+    const host0 = el.querySelector('[data-game]');
+    if (game === 'pick') {
+      host0.innerHTML = '';
+      const cancel = UI.waitFor('PlayPicker', host0, P => { const pk = P.mount(host0); stopGame = () => pk.destroy(); });
+      stopGame = () => cancel();
+      return;
+    }
     el.querySelectorAll('.game-tab').forEach(a => a.dataset.g === game ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
     // on narrow screens the row scrolls sideways, so bring the open game's tile into view
     const tab = el.querySelector(`.game-tab[data-g="${game}"]`);

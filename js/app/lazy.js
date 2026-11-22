@@ -33,7 +33,7 @@ window.Lazy = (() => {
     // pages
     'page:home': { need: ['map', 'kb', 'net'], js: ['js/hero.js', 'js/app/home.js'] },
     'page:type': { js: ['js/app/type.js', 'js/app/type-tabs.js'] },
-    'page:play': { need: ['race'], js: ['js/app/play.js'] },
+    'page:play': { need: ['race'], js: ['js/app/missions.js', 'js/app/play-picker.js', 'js/app/play.js'] },
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
       js: ['js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
