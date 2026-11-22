@@ -444,6 +444,9 @@
       createLobby: o => api.lobbies.create(o),
     }) : null;
 
+    // ---------- friends and private messages (js/net/friends-sim.js) ----------
+    const social = root.NetFriendsSim ? root.NetFriendsSim.create(host, { simProfile, handle }) : null;
+
     // ---------- party invites: a simulated player answers after a moment ----------
     function invite(to) {
       if (!lobby) { lobby = myLobby({}); say(lobby, null, 'Lobby open. Empty seats fill with bots until real players can join.'); lobbyChanged(); }
@@ -489,6 +492,8 @@
       },
       reset() { rec = blankRec(); host.store.del(STORE); },
       chat,
+      friends: social && social.friends,
+      dm: social && social.dm,
       presence: () => presence.map(p => ({ ...p })),
       lobbies: {
         list: () => Promise.resolve(lobbies.map(summary)),

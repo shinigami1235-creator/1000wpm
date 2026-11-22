@@ -82,9 +82,10 @@ GitHub's own Secret scanning and Push protection are a repo setting: Settings, C
 
 1. **Who is the operator?** A name, a country and a contact email go on the site before launch.
 2. **Age.** Art's audience is teenagers. In Thailand a player under 20 needs a parent's consent for their data, and in the Philippines under 18. Once there are accounts, does sign-up ask for a birth year and a parent's consent?
-3. **Chat moderation.** Open Port will carry real teenagers' messages. Who reads reports, and how fast? Should "how old are you" and "send pics" type messages be flagged to a moderator? The 90-day log Gid approved needs a stated purpose and a way for a player to get theirs deleted.
-4. **Coin purchases.** When real money buys coins: a refund policy, the price with every fee shown before paying, and the Thai consumer rules on selling to minors. That needs a lawyer's look.
-5. **Sponsor logos.** Written permission from each keyboard brand shown on the home page.
+3. **Chat moderation.** Open Port will carry real teenagers' messages. Who reads reports, and how fast? Since 22 Nov, "how old are you", "where do you live", "send pics", "meet up" and "don't tell your parents" type messages are refused in rooms and private chats; should a refused one also be flagged to a moderator? The 90-day room log Gid approved needs a stated purpose in the privacy notice and a way for a player to get theirs deleted.
+4. **Private chats between friends (added 22 Nov).** How long are they kept? Proposed: 30 days, a reported chat kept until the report is closed, and a moderator opens one only when it's reported. Neither Thailand's PDPA nor the Philippines' Data Privacy Act sets a number of days; both say no longer than the purpose needs, and the privacy notice has to state the period.
+5. **Coin purchases.** When real money buys coins: a refund policy, the price with every fee shown before paying, and the Thai consumer rules on selling to minors. That needs a lawyer's look.
+6. **Sponsor logos.** Written permission from each keyboard brand shown on the home page.
 
 ## Plan
 

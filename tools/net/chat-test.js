@@ -2,7 +2,7 @@
 // every bot line in js/net/chat-lines.js and the simulated rooms in js/net/chat-sim.js.
 // node tools/net/chat-test.js
 const load = require('./load');
-const G = load(['js/wordbank-common.js', 'js/wordbank.js', 'js/net/chat-rules.js', 'js/net/chat-rooms.js', 'js/net/chat-lines.js', 'js/net/sim.js', 'js/net/chat-sim.js']);
+const G = load(['js/wordbank-common.js', 'js/wordbank.js', 'js/net/chat-rules.js', 'js/net/chat-rooms.js', 'js/net/chat-lines.js', 'js/net/sim.js', 'js/net/chat-sim.js', 'js/net/friends-sim.js']);
 const R = G.ChatRules;
 let pass = 0, fail = 0;
 function ok(cond, name) { if (cond) pass++; else { fail++; console.log('FAIL', name); } }
@@ -138,6 +138,55 @@ function ok(cond, name) { if (cond) pass++; else { fail++; console.log('FAIL', n
   ok(err && err.code === 'school', 'a school limited to Learn cannot open the Lobby');
   ok(await S.chat.join('academy').then(x => x.room === 'academy'), 'and can open Academy help');
   S.disconnect();
+  
+// ---------- personal questions ----------
+{
+  const no = t => { const c = R.check(t); ok(!c.ok && c.code === 'personal', `refuses ${JSON.stringify(t)} as personal (got ${c.code || 'ok'})`); };
+  const yes = t => { const c = R.check(t); ok(c.ok, `allows ${JSON.stringify(t)} (got ${c.code})`); };
+  ['how old are you', 'where do you live?', 'send me a pic', 'wanna meet up', 'dont tell your mom', 'keep it a secret', 'what school u go to', 'ilang taon ka na', 'อายุเท่าไหร่'].forEach(no);
+  ['my age is no secret lol', 'i live for this game', 'this pic of my room is old', 'meet me in the party finder', 'how old is the boss'].forEach(yes);
+}
+
+// ---------- friends and private messages ----------
+async function friendsTest() {
+  const mem = {};
+  const events = [];
+  const host = {
+    test: { answer: 0, friendAccept: 1, dmReply: 1, friendSeed: false },
+    me: () => ({ id: 'me', name: 'Guest' }),
+    emit: (ev, d) => events.push([ev, d]),
+    store: { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); }, del: k => { delete mem[k]; } },
+  };
+  const sim = { simProfile: () => ({ country: 'PH', level: 5, typing: { wpm: 60 } }), handle: () => 'kbd_test1' };
+  const { friends, dm } = G.NetFriendsSim.create(host, sim);
+  const err = p => p.then(() => null, e => e.code);
+  ok(await err(dm.send({ to: 'bot_a', text: 'hi' })) === 'notFriend', 'private messages need a friendship');
+  await friends.request('bot_a', 'bot_a');
+  ok((await friends.list()).outgoing.length === 1, 'a request waits until it is answered');
+  await new Promise(r => setTimeout(r, 30));
+  let L = await friends.list();
+  ok(L.friends.some(f => f.id === 'bot_a') && !L.outgoing.length, 'an accepted request makes a friend');
+  ok(await err(friends.request('bot_a')) === 'already', 'no second request to a friend');
+  const m = await dm.send({ to: 'bot_a', text: 'hey good game' });
+  ok(m.text === 'hey good game' && m.from === 'me', 'a friend can be messaged');
+  ok(await err(dm.send({ to: 'bot_a', text: 'how old are you' })) === 'personal', 'private messages block personal questions');
+  await new Promise(r => setTimeout(r, 2100));
+  ok(await err(dm.send({ to: 'bot_a', text: 'add me on discord: kid123' })) === 'handle', 'private messages block contact details');
+  ok(await err(dm.send({ to: 'bot_a', text: 'my number is 0917 123 4567' })) === 'phone', 'private messages block phone numbers');
+  const o = await dm.open('bot_a');
+  ok(o.history.length >= 1, 'the chat history opens');
+  const rep = await dm.report({ player: 'bot_a', name: 'bot_a', reason: 'Spam' });
+  const saved = JSON.parse(mem['wpm-chat-reports']).find(x => x.id === rep.id);
+  ok(saved && saved.room === 'dm' && saved.lines.length >= 1, 'a report keeps the private chat for the moderators');
+  await friends.block('bot_a', 'bot_a');
+  L = await friends.list();
+  ok(!L.friends.length && L.blocked.some(b => b.id === 'bot_a'), 'blocking removes the friend');
+  ok(await err(dm.send({ to: 'bot_a', text: 'hi again' })) === 'notFriend', 'a blocked player cannot be messaged');
+  ok(await err(friends.request('bot_a')) === 'blocked', 'no requests to a blocked player');
+  ok(!JSON.parse(mem['wpm-dm'] || '{}').bot_a, 'blocking deletes the private chat');
+}
+
+await friendsTest();
   console.log(`${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

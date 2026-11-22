@@ -3,7 +3,7 @@
 // Profiles come from Net.profiles (simulated players for now, the server later).
 Router.register('u', (() => {
   const e = s => UI.esc(s);
-  let el = null, viewer = null, roomOn = false, cancelRoom = null, seq = 0;
+  let el = null, viewer = null, roomOn = false, cancelRoom = null, seq = 0, stops = [];
 
   function mount(root, params) { el = root; show(params || []); }
   function update(params) { stop(); show(params || []); }
@@ -15,6 +15,26 @@ Router.register('u', (() => {
     const call = p[1] === 'room' ? Net.profiles.visit(id) : Net.profiles.get(id).then(profile => ({ profile }));
     call.then(r => { if (n !== seq || !el) return; if (p[1] === 'room') room(r.profile, r.room); else profile(r.profile); })
       .catch(err => { if (n === seq && el) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message || 'No player with that name.')}</p><a class="btn out" href="#/duel">Players online</a></div>`; });
+  }
+
+  // Add friend, Request sent, Accept friend request, or Message once you are friends
+  function friendButton(p) {
+    const b = el.querySelector('[data-ufriend]'); if (!b) return;
+    let st = 'none';
+    const paint = d => {
+      if (!b.isConnected) return;
+      st = d.friends.some(f => f.id === p.id) ? 'friend' : d.incoming.some(f => f.id === p.id) ? 'incoming' : d.outgoing.some(f => f.id === p.id) ? 'sent' : d.blocked.some(f => f.id === p.id) ? 'blocked' : 'none';
+      b.textContent = { none: 'Add friend', sent: 'Request sent', incoming: 'Accept friend request', friend: 'Message', blocked: 'Blocked' }[st];
+      b.disabled = st === 'sent' || st === 'blocked';
+    };
+    Net.friends.list().then(paint).catch(() => { b.hidden = true; });
+    const off = Net.on('friends', paint);
+    stops.push(off);
+    b.addEventListener('click', () => {
+      if (st === 'friend') { location.hash = '#/commons/@' + encodeURIComponent(p.id); return; }
+      b.disabled = true;
+      (st === 'incoming' ? Net.friends.accept(p.id) : Net.friends.request(p.id, p.name)).catch(err => { b.disabled = false; if (window.Toast) Toast('t-level', `<span>${e(err.message)}</span>`); });
+    });
   }
 
   function profile(p) {
@@ -38,6 +58,7 @@ Router.register('u', (() => {
             <div class="u-actions">
               ${me ? '<a class="btn" href="#/profile/avatar">Edit avatar</a>' : `<a class="btn" href="#/duel/${art ? 'art' : 'vs/' + encodeURIComponent(p.id)}">${art ? 'Challenge Art' : 'Challenge to a duel'}</a>`}
               ${art ? '<a class="btn out" href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a>' : `<a class="btn out" href="#/u/${encodeURIComponent(p.id)}/room">${me ? 'See your room' : 'Visit room'}</a>`}
+              ${me || art ? '' : '<button class="btn out" type="button" data-ufriend disabled>Add friend</button>'}
             </div>
             ${p.bot && !art ? '<p class="dim u-note">A simulated player. Real players show here once the server is live.</p>' : ''}
             ${art ? '<p class="dim u-note">Duels with Art use a ghost on his 204 wpm race pace until his live matches are on the server.</p>' : ''}
@@ -63,6 +84,7 @@ Router.register('u', (() => {
           </dl>`}
         </section>
       </div>`;
+    friendButton(p);
     // the live 3D avatar replaces the picture once it loads; drag to turn it
     if (!art && window.Avatar && Avatar.viewer) {
       const host = el.querySelector('[data-av]');
@@ -93,6 +115,7 @@ Router.register('u', (() => {
 
   function stop() {
     seq++;
+    stops.forEach(f => f()); stops = [];
     if (viewer) { viewer.dispose(); viewer = null; }
     if (cancelRoom) { cancelRoom(); cancelRoom = null; }
     if (roomOn && window.Room) { try { Room.unmount(); } catch (err) { console.error(err); } }

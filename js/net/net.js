@@ -51,6 +51,12 @@
 //   Net.chat.people(room)                  not a promise; who is online in the room
 //   Net.chat.mute(id, on) / muted()        kept on this device and sent to the server
 //   Net.chat.report({ player, name, room, reason, lines })
+//   Net.friends.list() -> { friends, incoming, outgoing, blocked, limits }
+//   Net.friends.request(id, name) / accept(id) / decline(id) / cancel(id) / remove(id) / block(id, name) / unblock(id)
+//   Net.dm.threads() / open(id) -> { with, history } / close() / read(id) / send({ to, text, wpm, quick }) / report(r)
+//      private messages go only between two players on each other's friends list, through ChatRules
+//   events: 'friends' { friends, incoming, outgoing, blocked }, 'friend.request' Req, 'friend.accepted' { id, name },
+//           'dm.msg' Dm, 'dm.threads' [thread]
 //   events: 'chat.msg' ChatMessage, 'chat.rooms' { rooms }, 'chat.people' { room, join, leave, offline },
 //           'chat.post' Post, 'chat.unpost' { id }, 'chat.delete' { room, id }
 //
@@ -72,7 +78,7 @@ window.Net = (() => {
   // what the backends need from the page: words, the player's level, their public profile
   const host = {
     emit: (ev, p) => {
-      if ((ev === 'chat' || ev === 'chat.msg') && p && p.text) p = { ...p, text: NetFilter.clean(p.text).text };
+      if ((ev === 'chat' || ev === 'chat.msg' || ev === 'dm.msg') && p && p.text) p = { ...p, text: NetFilter.clean(p.text).text };
       bus.emit(ev, p);
     },
     now: () => performance.now(),
@@ -178,6 +184,25 @@ window.Net = (() => {
       },
       muted: () => host.store.get(MUTES, []),
       report: need(r => impl.chat.report(r || {})),
+    },
+    // friends and one-on-one messages; the rooms stay public and there are no private groups
+    friends: {
+      list: need(() => impl.friends.list()),
+      request: need((id, name) => impl.friends.request(id, name)),
+      accept: need(id => impl.friends.accept(id)),
+      decline: need(id => impl.friends.decline(id)),
+      cancel: need(id => impl.friends.cancel(id)),
+      remove: need(id => impl.friends.remove(id)),
+      block: need((id, name) => impl.friends.block(id, name)),
+      unblock: need(id => impl.friends.unblock(id)),
+    },
+    dm: {
+      threads: need(() => impl.dm.threads()),
+      open: need(id => impl.dm.open(id)),
+      close: () => (impl && conn ? impl.dm.close() : Promise.resolve()),
+      read: need(id => impl.dm.read(id)),
+      send: need(o => impl.dm.send(o || {})),
+      report: need(r => impl.dm.report(r || {})),
     },
     challenges: {
       send: need(id => impl.challenges.send(id)),

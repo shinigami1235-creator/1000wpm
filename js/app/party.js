@@ -563,7 +563,7 @@ Router.register('party', (() => {
     const tg = s.target;
     const cur = tg && tg.kind !== 'stream' ? `<span class="du-w cur ${tg.kind}">${letters(tg.word, s.typed)}</span>` : `<span class="du-w cur">${letters(list[p.idx % list.length], s.typed)}</span>`;
     const next = [];
-    for (let n = 1; n < 7; n++) next.push(`<span class="du-w next">${e(list[(p.idx + n) % list.length])}</span>`);
+    for (let n = 1; n < 4; n++) next.push(`<span class="du-w next">${e(list[(p.idx + n) % list.length])}</span>`);
     const html = `<div class="du-cur">${cur}</div><div class="du-next">${next.join('')}</div>`;
     if (line.dataset.v !== html) { line.innerHTML = html; line.dataset.v = html; }
   }

@@ -4,6 +4,8 @@
 //
 //   #/commons          the room list on a phone, the last room on a wider screen
 //   #/commons/<room>   that room
+//   #/commons/@<id>    a private chat with a friend. Rooms stay public; the only private chat is
+//                      one on one between friends, checked by the same ChatRules as the rooms.
 //
 // Every message shows the speed it was typed at, from the first keystroke to Enter.
 // Lines go through ChatRules here and again in the backend; the server runs the same file.
@@ -26,6 +28,7 @@ Router.register('commons', (() => {
   let roomId = null, want = null, mode = 'full', allowed = null, summary = {}, seen = {}, seenDirty = false;
   let msgs = [], members = [], offline = [], posts = [], pending = [], muted = new Set(), moreOpen = false, joinSeq = 0;
   let t0 = null, tEnd = null, lastAt = null, recent = [], reply = null, waitUntil = 0, unseenBelow = 0;
+  let dmWith = null, friend = null, fr = { friends: [], incoming: [], outgoing: [], blocked: [] }, unread = {}, allFriends = false;
 
   const ROOMS = () => Net.chat.rooms().areas.flatMap(a => a.rooms.map(r => ({ ...r, area: a.id })));
   const room = id => ROOMS().find(r => r.id === id);
@@ -43,6 +46,7 @@ Router.register('commons', (() => {
         <aside class="panel cm-side" aria-label="Rooms">
           <div class="ph">// ROOMS${Net.isSim() ? '<span class="cm-demo">Demo data</span>' : ''}</div>
           <p class="cm-note" data-modenote hidden></p>
+          <section class="cm-fr" data-friends aria-label="Friends"></section>
           <nav class="cm-list" data-rooms aria-label="Rooms"></nav>
         </aside>
         <section class="panel cm-main" aria-labelledby="cm-title">
@@ -83,6 +87,11 @@ Router.register('commons', (() => {
       Net.on('chat.post', onPost),
       Net.on('chat.unpost', d => { posts = posts.filter(p => p.id !== d.id); if (isPosts()) paintPosts(); }),
       Net.on('chat.delete', d => { msgs = msgs.filter(m => m.id !== d.id); if (d.room === roomId) paintMsgs(); }),
+      Net.on('friends', d => { fr = d; paintFriends(); if (dmWith && !fr.friends.some(f => f.id === dmWith)) location.hash = '#/commons'; }),
+      Net.on('friend.request', r => { if (window.Toast) Toast('t-level', `${UI.icon('user', 'green')}<span><b>${e(r.name)}</b> sent you a friend request.</span>`, 5000); }),
+      Net.on('friend.accepted', r => { if (window.Toast) Toast('t-level', `${UI.icon('user', 'green')}<span><b>${e(r.name)}</b> accepted your friend request. <a class="green" href="#/commons/@${encodeURIComponent(r.id)}">Message</a></span>`, 5000); }),
+      Net.on('dm.threads', list => { unread = Object.fromEntries((list || []).map(t => [t.id, t.unread])); paintFriends(); }),
+      Net.on('dm.msg', onDm),
       Net.on('invite', inv => {
         if (!window.Toast || PlayerCard.isOpen()) return;
         if (inv.status === 'accepted') Toast('t-level', `${UI.icon('bolt', 'green')}<span><b>${e(inv.toName)}</b> joined your party. <a class="green" href="#/party/lobby">Open lobby</a></span>`, 5000);
@@ -99,6 +108,8 @@ Router.register('commons', (() => {
     timers.push(setInterval(() => { if (!document.hidden) flush(); }, 900));
     timers.push(setInterval(() => { if (!document.hidden) tidyPosts(); }, 15000));
     timers.push(setInterval(() => { if (seenDirty) { store.set(SEEN, seen); seenDirty = false; } }, 3000));
+    Net.friends.list().then(d => { fr = d; paintFriends(); }).catch(() => {});
+    Net.dm.threads().then(list => { unread = Object.fromEntries(list.map(t => [t.id, t.unread])); paintFriends(); }).catch(() => {});
     entered = Net.chat.enter().then(r => {
       mode = r.mode; allowed = r.allowed; summary = r.rooms || {};
       for (const [id, s] of Object.entries(summary)) if (seen[id] == null) { seen[id] = s.seq; seenDirty = true; }
@@ -114,11 +125,13 @@ Router.register('commons', (() => {
     want = id || null;
     entered.then(() => {
       if (!el) return;
+      if (want && want[0] === '@') { openDm(want.slice(1)); return; }
       let target = want && room(want) ? want : null;
       if (target && !ok(target)) target = null;
       if (!target) {
         if (phone.matches && !want) {
           if (roomId) { Net.chat.leave(roomId); roomId = null; joinSeq++; }
+          if (dmWith) closeDm();
           layout(); paintRooms(); return;
         }
         const lastId = store.get(LAST, Net.chat.rooms().first);
@@ -174,11 +187,13 @@ Router.register('commons', (() => {
   // ---------- opening a room ----------
   function open(id) {
     const r = room(id);
+    if (dmWith) closeDm();
     if (roomId && roomId !== id) Net.chat.leave(roomId);
     roomId = id; store.set(LAST, id);
     PlayerCard.close();
     reply = null; pending = []; unseenBelow = 0;
     layout();
+    q('.cm-tt .pre').textContent = '#';
     q('[data-name]').textContent = r.name;
     q('[data-topic]').textContent = r.topic;
     q('#cm-in').placeholder = `Message #${r.name}`;
@@ -200,6 +215,15 @@ Router.register('commons', (() => {
   const isPosts = () => { const r = room(roomId); return r && r.kind === 'posts'; };
 
   function paintFooter() {
+    if (dmWith) {
+      const off = mode === 'off';
+      q('[data-msgs]').hidden = off; q('[data-posts]').hidden = true; q('[data-off]').hidden = !off;
+      q('[data-ro]').hidden = true; q('[data-qnote]').hidden = mode !== 'quick';
+      q('[data-quick]').hidden = off; q('[data-form]').hidden = off || mode === 'quick';
+      q('[data-pform]').hidden = true; q('[data-help]').hidden = off || mode === 'quick';
+      q('[data-reply]').hidden = true; q('[data-err]').textContent = '';
+      return;
+    }
     const r = room(roomId);
     if (!r) return;
     const off = mode === 'off';
@@ -223,6 +247,7 @@ Router.register('commons', (() => {
   function who(m) {
     if (m.staff) return { id: m.from, name: m.name, staff: true };
     if (m.from === 'me') return { id: 'me', name: m.name, you: true };
+    if (dmWith && friend && m.from === friend.id) return friend;
     return members.find(p => p.id === m.from) || offline.find(p => p.id === m.from) || { id: m.from, name: m.name, bot: m.bot, country: m.country };
   }
   function when(at) {
@@ -242,7 +267,7 @@ Router.register('commons', (() => {
   function line(m) {
     const r = m.reply ? `<span class="cm-q">Reply to <b>${e(m.reply.name)}</b>: ${e(m.reply.text.slice(0, 80))}</span>` : '';
     const w = m.wpm ? `<span class="cm-wpm" title="Typed at ${m.wpm} wpm">${m.wpm} wpm</span>` : m.quick ? '<span class="cm-wpm qp">quick</span>' : '';
-    const can = !m.staff && !(room(roomId) || {}).readOnly && mode === 'full';
+    const can = !dmWith && !m.staff && !(room(roomId) || {}).readOnly && mode === 'full';
     return `<div class="cm-line${m.from === 'me' ? ' mine' : ''}" data-mid="${e(m.id)}">${r}<p>${w}<span class="cm-tx">${e(m.text)}</span>${can ? `<button class="cm-rbtn" type="button" data-rep="${e(m.id)}" aria-label="Reply to ${e(m.name)}">Reply</button>` : ''}</p></div>`;
   }
   const joins = (a, b) => a && b && a.from === b.from && !b.reply && b.at - a.at < GROUP_MS;
@@ -255,7 +280,7 @@ Router.register('commons', (() => {
       html += line(m);
       prev = m;
     }
-    ol.innerHTML = list.length ? html + '</div></li>' : `<li class="cm-sys">${(room(roomId) || {}).readOnly ? 'No announcements yet.' : 'No messages yet. Say hi.'}</li>`;
+    ol.innerHTML = list.length ? html + '</div></li>' : `<li class="cm-sys">${dmWith ? `No messages with ${e(friend ? friend.name : '')} yet.` : (room(roomId) || {}).readOnly ? 'No announcements yet.' : 'No messages yet. Say hi.'}</li>`;
     toBottom(true);
   }
   function append(list) {
@@ -398,11 +423,11 @@ Router.register('commons', (() => {
       const end = tEnd != null && tEnd >= (t0 || 0) ? tEnd : performance.now();
       tEnd = null;
       const wpm = t0 != null ? ChatRules.wpm(ChatRules.tidy(text).length, end - t0) : null;
-      send({ text, wpm }).then(sent => { if (sent) { inp.value = ''; t0 = null; q('[data-left]').textContent = ChatRules.MAX; } });
+      (dmWith ? sendDm : send)({ text, wpm }).then(sent => { if (sent) { inp.value = ''; t0 = null; q('[data-left]').textContent = ChatRules.MAX; } });
     });
     q('[data-quick]').addEventListener('click', ev => {
       const b = ev.target.closest('[data-qp]'); if (!b) return;
-      send({ text: b.dataset.qp, quick: true });
+      (dmWith ? sendDm : send)({ text: b.dataset.qp, quick: true });
     });
     q('[data-rcancel]').addEventListener('click', () => setReply(null));
     q('[data-jump]').addEventListener('click', () => toBottom());
@@ -417,6 +442,16 @@ Router.register('commons', (() => {
       const ln = ev.target.closest('.cm-line');
       if (ln) { el.querySelectorAll('.cm-line.sel').forEach(x => { if (x !== ln) x.classList.remove('sel'); }); ln.classList.toggle('sel'); return; }
       if (ev.target.closest('[data-pclose]')) { togglePeople(false); return; }
+      const fa = ev.target.closest('[data-facc], [data-fdec], [data-fcan]');
+      if (fa) {
+        fa.disabled = true;
+        const id = fa.dataset.facc || fa.dataset.fdec || fa.dataset.fcan;
+        (fa.dataset.facc ? Net.friends.accept(id) : fa.dataset.fdec ? Net.friends.decline(id) : Net.friends.cancel(id)).catch(x => { err(x.message); fa.disabled = false; });
+        return;
+      }
+      if (ev.target.closest('[data-fall]')) { allFriends = !allFriends; paintFriends(); return; }
+      const fp = ev.target.closest('[data-fprof]');
+      if (fp && friend) { card(fp, friend.id); return; }
       if (ev.target.closest('[data-more]')) { moreOpen = true; paintRooms(); return; }
       const j = ev.target.closest('[data-join]');
       if (j) {
@@ -476,6 +511,10 @@ Router.register('commons', (() => {
 
   // ---------- player card and the people drawer ----------
   function card(anchor, id) {
+    if (dmWith && friend && id === friend.id) {
+      PlayerCard.open(anchor, friend, { room: 'dm', dm: true, lines: msgs.filter(m => m.from === id).slice(-5).map(m => ({ at: m.at, room: 'dm', text: m.text })) });
+      return;
+    }
     const p = id === 'me' ? { id: 'me', name: WPM.profile().name, you: true, level: WPM.levelInfo().level }
       : members.find(x => x.id === id) || offline.find(x => x.id === id) || (() => { const m = msgs.find(x => x.from === id); return m ? { id, name: m.name, bot: m.bot, country: m.country } : (posts.find(x => x.by === id) ? { id, name: posts.find(x => x.by === id).name, bot: true } : null); })();
     if (!p || p.staff) return;
@@ -497,6 +536,83 @@ Router.register('commons', (() => {
     if (on) { const f = q('[data-people] .cm-pp'); if (f) f.focus(); } else if (force === false) b.focus();
   }
 
+  // ---------- friends ----------
+  function paintFriends() {
+    const box = q('[data-friends]'); if (!box) return;
+    const list = fr.friends || [];
+    const on = list.filter(f => f.online).length;
+    const shown = allFriends ? list : list.slice(0, 8);
+    const reqs = (fr.incoming || []).map(r => `<li class="cm-req"><span class="cm-rqn">${MultiUI.img(r, 48, 24)}<b>${e(r.name)}</b></span>
+      <span class="cm-rqa"><button class="btn sm" type="button" data-facc="${e(r.id)}">Accept</button><button class="btn out sm" type="button" data-fdec="${e(r.id)}">Decline</button></span></li>`).join('');
+    const sent = (fr.outgoing || []).map(r => `<li class="cm-req out"><span class="cm-rqn">${MultiUI.img(r, 48, 24)}<b>${e(r.name)}</b><span class="dim">Sent</span></span>
+      <button class="btn out sm" type="button" data-fcan="${e(r.id)}">Cancel</button></li>`).join('');
+    box.innerHTML = `<h3 class="label">Friends <span class="dim">${list.length ? `${on} online` : ''}</span></h3>
+      ${reqs ? `<p class="cm-frh">Requests</p><ul class="cm-reqs">${reqs}</ul>` : ''}
+      ${list.length ? `<ul class="cm-flist">${shown.map(f => `<li><a class="cm-room cm-friend${f.online ? ' on' : ''}" href="#/commons/@${encodeURIComponent(f.id)}" data-fid="${e(f.id)}"${f.id === dmWith ? ' aria-current="page"' : ''}>
+          <span class="cm-dot" aria-hidden="true"></span><span class="cm-rn">${e(f.name)}</span>
+          <span class="cm-un num"${unread[f.id] ? '' : ' hidden'}>${unread[f.id] || ''}</span><span class="sr-only">${f.online ? 'online' : 'offline'}</span></a></li>`).join('')}</ul>
+          ${list.length > 8 ? `<button class="cm-more" type="button" data-fall>${allFriends ? 'Show fewer' : `All ${list.length} friends`}</button>` : ''}`
+        : `<p class="cm-frnone">Open a player's card and pick Add friend. Friends can message each other one on one.</p>`}
+      ${sent ? `<ul class="cm-reqs">${sent}</ul>` : ''}`;
+  }
+
+  // ---------- private chat with a friend ----------
+  function openDm(id) {
+    if (roomId) { Net.chat.leave(roomId); roomId = null; joinSeq++; }
+    PlayerCard.close();
+    reply = null; pending = []; unseenBelow = 0;
+    dmWith = id; friend = null;
+    want = '@' + id;
+    layout();
+    q('[data-name]').textContent = '';
+    q('[data-topic]').textContent = '';
+    q('[data-msgs]').innerHTML = '<li class="cm-sys">Loading</li>';
+    q('.cm').classList.add('dm');
+    paintRooms(); paintFriends();
+    const n = ++joinSeq;
+    Net.dm.open(id).then(d => {
+      if (!el || n !== joinSeq) return;
+      friend = d.with; msgs = d.history || [];
+      q('.cm-tt .pre').textContent = '@';
+      q('[data-name]').innerHTML = `<button class="cm-dmname" type="button" data-fprof>${e(friend.name)}</button>`;
+      q('[data-topic]').textContent = `${friend.online ? 'Online' : 'Offline'}. Only the two of you see this chat unless one of you reports it. Links, contact details and personal questions are blocked here too.`;
+      q('#cm-in').placeholder = `Message ${friend.name}`;
+      q('#cm-in').lang = 'en';
+      paintFooter(); paintMsgs();
+    }).catch(x => {
+      if (!el || n !== joinSeq) return;
+      q('[data-msgs]').innerHTML = `<li class="cm-sys">${e(x.message)} <a class="green" href="#/commons">Back to the rooms</a></li>`;
+      q('[data-form]').hidden = true; q('[data-quick]').hidden = true;
+    });
+  }
+  function closeDm() {
+    Net.dm.close();
+    dmWith = null; friend = null;
+    q('.cm').classList.remove('dm');
+  }
+  function onDm(m) {
+    if (!m || !el) return;
+    if (m.with !== dmWith) return;
+    if (msgs.some(x => x.id === m.id)) return;
+    msgs.push(m); if (msgs.length > 120) msgs.shift();
+    if (m.from !== 'me') Net.dm.read(dmWith);
+    pending.push(m);
+    if (m.from === 'me') flush();
+  }
+  function sendDm({ text, wpm, quick }) {
+    if (!dmWith || mode === 'off' || Date.now() < waitUntil) return Promise.resolve(false);
+    const c = ChatRules.check(text, { recent, lastAt });
+    if (!c.ok) { err(c.why); if (c.code === 'slow') countdown(c.wait); return Promise.resolve(false); }
+    err('');
+    return Net.dm.send({ to: dmWith, text: c.text, wpm: quick ? null : wpm, quick: !!quick }).then(m => {
+      lastAt = Date.now();
+      recent.push({ text: c.text, at: lastAt }); if (recent.length > 10) recent.shift();
+      countdown(ChatRules.SLOW_MS);
+      WPM.track('chat_message', { room: 'dm', wpm: m.wpm || null, quick: !!quick, greet: GREET.test(c.text) });
+      return true;
+    }).catch(x => { err(x.message); if (x.code === 'slow') countdown(x.wait || 1000); return false; });
+  }
+
   // ---------- keys: Enter starts a message anywhere in the room ----------
   function onKey(ev) {
     if (!el || ev.defaultPrevented) return;
@@ -516,7 +632,9 @@ Router.register('commons', (() => {
     timers.forEach(clearInterval); timers = [];
     if (seenDirty) store.set(SEEN, seen);
     if (roomId) Net.chat.leave(roomId);
+    if (dmWith) Net.dm.close();
     Net.chat.exit();
+    dmWith = null; friend = null;
     el = null; roomId = null; want = null; msgs = []; members = []; offline = []; posts = []; pending = []; waitUntil = 0;
   }
 

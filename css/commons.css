@@ -157,9 +157,31 @@ button.cm-name:hover { color: var(--green); text-decoration: underline; }
 .pc-msg { margin-top: 10px; font-size: 14px; color: var(--green); }
 .pc-msg:empty { display: none; }
 
+/* ---------- friends and private chats ---------- */
+.cm-fr { flex: none; max-height: 42%; overflow-y: auto; margin: 0 -6px 10px; padding: 0 6px 10px; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.cm-fr h3 { display: flex; justify-content: space-between; margin: 0 0 4px; font-size: 12px; }
+.cm-fr ul { list-style: none; margin: 0; padding: 0; }
+.cm-frh { margin: 6px 0 4px; font: 500 12px/1 var(--f-head); color: var(--gold); }
+.cm-frnone { font: 400 13px/1.4 var(--f-head); color: var(--ink-2); padding: 2px 2px 0; }
+.cm-reqs li { display: grid; gap: 6px; padding: 7px 8px; margin-bottom: 4px; background: rgba(242,179,48,.06); border-left: 2px solid var(--gold); }
+.cm-reqs li.out { background: none; border-left-color: var(--line-2); grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.cm-rqn { display: flex; align-items: center; gap: 8px; min-width: 0; font: 400 14px/1.2 var(--f-head); }
+.cm-rqn img { width: 24px; height: 24px; flex: none; }
+.cm-rqn b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-rqa { display: flex; gap: 6px; }
+.cm-rqa .btn, .cm-reqs .btn { padding: 5px 10px; }
+.cm-friend .cm-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ink-3); }
+.cm-friend.on .cm-dot { background: var(--green); box-shadow: 0 0 8px rgba(57,255,136,.7); }
+.cm-friend:not(.on) .cm-rn { color: var(--ink-3); }
+.cm-friend .cm-un { margin-left: auto; }
+.cm.dm { grid-template-columns: 250px minmax(0, 1fr); }
+.cm.dm .cm-people, .cm.dm .cm-pbtn { display: none !important; }
+.cm-dmname { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted rgba(215,245,227,.35); text-underline-offset: 4px; }
+.cm-dmname:hover { color: var(--green); }
+
 /* ---------- narrower screens: people behind a button ---------- */
 @media (max-width: 1100px) {
-  .cm { grid-template-columns: 230px minmax(0, 1fr); }
+  .cm, .cm.dm { grid-template-columns: 230px minmax(0, 1fr); }
   .cm-pbtn, .cm-px { display: inline-flex !important; }
   .cm-px { margin-left: auto; width: 32px; height: 32px; }
   .cm-people {
@@ -177,7 +199,7 @@ button.cm-name:hover { color: var(--green); text-decoration: underline; }
 /* ---------- phones: the room list is its own screen ---------- */
 @media (max-width: 760px) {
   .page-commons { padding: 12px 10px 10px; }
-  .cm { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 60px - 22px); height: calc(100dvh - 60px - 22px); min-height: 460px; }
+  .cm, .cm.dm { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 60px - 22px); height: calc(100dvh - 60px - 22px); min-height: 460px; }
   .cm[data-view="list"] .cm-main, .cm[data-view="room"] .cm-side { display: none; }
   .cm-people { top: 60px; }
   .cm > .panel { padding: 12px; }

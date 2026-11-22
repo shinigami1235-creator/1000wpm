@@ -4,7 +4,8 @@
 //   ChatRules.check(text, { recent, lastAt, now, slowMs })  -> { ok, code, why, text, wait }
 //      recent: [{ text, at }] this player's last lines, lastAt: when they last sent (ms),
 //      slowMs: the room's slow mode when it differs from SLOW_MS
-//      code: 'empty' | 'long' | 'link' | 'email' | 'phone' | 'handle' | 'word' | 'repeat' | 'slow'
+//      code: 'empty' | 'long' | 'link' | 'email' | 'phone' | 'handle' | 'personal' | 'word' | 'repeat' | 'slow'
+//      The same check runs on private messages between friends (js/net/friends-sim.js).
 //   ChatRules.contact(text)   -> 'link' | 'email' | 'phone' | 'handle' | ''
 //   ChatRules.wpm(chars, ms)  -> the speed a line was typed at, or null
 //   ChatRules.QUICK           the quick phrases (the only lines under-13 accounts can send)
@@ -27,6 +28,7 @@
     email: "Email addresses can't be posted in chat.",
     phone: "Phone numbers can't be posted in chat.",
     handle: "Usernames from other apps can't be posted in chat.",
+    personal: "Questions about age, where someone lives, photos or meeting up can't be sent.",
     word: "That message has a word chat doesn't allow.",
     repeat: 'You sent that a moment ago.',
     slow: 'One message every 2 seconds.',
@@ -57,6 +59,19 @@
     return '';
   }
 
+  // ---------- personal questions ----------
+  // the openers people use to find out a stranger's age, home or school, ask for photos, set up a
+  // meeting or a call, or ask for secrecy. Blocked in the rooms and in private messages.
+  const PERSONAL = new RegExp([
+    "how old (?:are|r) (?:you|u|ya)", "what(?:'s| is) (?:your|ur) age", "(?:your|ur) age\\b",
+    "where (?:do|d) (?:you|u) live", "where (?:are|r) (?:you|u) from exactly", "what (?:school|city|grade)", "which (?:school|grade)",
+    "(?:your|ur) (?:address|school|real name|location|house)",
+    "send (?:me )?(?:a |some |your |ur )?(?:pic|pics|photo|photos|picture|pictures|selfie|selfies|nudes?)",
+    "meet (?:up|irl|in person|me (?:irl|in person|outside))", "video ?call", "voice ?call", "facetime",
+    "(?:are|r) (?:you|u) (?:home )?alone", "(?:don'?t|dont) tell (?:your|ur|anyone)", "keep (?:it|this) (?:a )?secret", "our (?:little )?secret",
+    "ilang taon", "saan ka nakatira", "anong school", "อายุเท่าไหร่", "อายุเท่าไร", "บ้านอยู่ไหน", "เรียนที่ไหน",
+  ].join('|'), 'i');
+
   // ---------- words ----------
   function teenOff(text) {
     const W = root.WordBank;
@@ -81,6 +96,7 @@
     if (t.length > MAX) return out('long');
     const c = contact(t);
     if (c) return out(c);
+    if (PERSONAL.test(t)) return out('personal');
     if (wordOff(t)) return out('word');
     const slow = ctx.slowMs || SLOW_MS;
     if (ctx.lastAt != null && now - ctx.lastAt < slow) return out('slow', { wait: slow - (now - ctx.lastAt), why: `One message every ${Math.round(slow / 100) / 10} seconds.` });
@@ -95,6 +111,6 @@
     return Math.max(1, Math.min(WPM_MAX, Math.round((chars / 5) / (ms / 60000))));
   }
 
-  root.ChatRules = { check, contact, wpm, tidy, QUICK, WHY, MAX, SLOW_MS, REPEAT_MS, REPEAT_N, WPM_MAX };
+  root.ChatRules = { check, contact, personal: t => PERSONAL.test(tidy(t)), wpm, tidy, QUICK, WHY, MAX, SLOW_MS, REPEAT_MS, REPEAT_N, WPM_MAX };
 })(globalThis);
 

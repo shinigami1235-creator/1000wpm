@@ -1,8 +1,8 @@
 // A small card for another player, opened from a name or a portrait: View profile,
-// Challenge to duel, Invite to party, Mute and Report. Built from MultiUI's portraits and
+// Add friend (or Message once you are friends), Challenge to duel, Invite to party, Mute, Block and Report. Built from MultiUI's portraits and
 // tags, the duel route (#/duel/vs/<id>) and Net.lobbies.invite, so any page can use it.
 //
-//   PlayerCard.open(anchor, player, { room, lines, onMute(id, on) })
+//   PlayerCard.open(anchor, player, { room, lines, dm, onMute(id, on) })   dm: opened from a private chat, so a report sends that chat
 //      player: { id, name, bot, country, level, rating, wpm }, lines: their recent messages for a report
 //   PlayerCard.close()
 window.PlayerCard = (() => {
@@ -52,9 +52,11 @@ window.PlayerCard = (() => {
       </div>
       <div class="pc-acts">
         <a class="btn sm" href="${link}">View profile</a>
-        ${me ? '' : `<a class="btn out sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to duel</a>
+        ${me ? '' : `<button class="btn out sm" type="button" data-friend disabled>Add friend</button>
+        <a class="btn out sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to duel</a>
         <button class="btn out sm" type="button" data-invite>Invite to party</button>
         <button class="btn out sm" type="button" data-mute aria-pressed="${muted}">${muted ? 'Unmute' : 'Mute'}</button>
+        <button class="btn out sm" type="button" data-block>Block</button>
         <button class="btn danger sm" type="button" data-report>Report</button>`}
       </div>
       <form class="pc-rep" data-repform hidden>
@@ -90,13 +92,45 @@ window.PlayerCard = (() => {
         ev.currentTarget.setAttribute('aria-pressed', muted);
         if (o.onMute) o.onMute(p.id, muted);
       });
+      // friend state: Add friend, Request sent, Accept request, or Message and Remove friend
+      const fb = q('[data-friend]');
+      let fstate = 'none';
+      const paintFriend = d => {
+        if (!box) return;
+        fstate = d.friends.some(f => f.id === p.id) ? 'friend' : d.incoming.some(f => f.id === p.id) ? 'incoming' : d.outgoing.some(f => f.id === p.id) ? 'sent' : d.blocked.some(f => f.id === p.id) ? 'blocked' : 'none';
+        fb.disabled = fstate === 'sent' || fstate === 'blocked';
+        fb.textContent = { none: 'Add friend', sent: 'Request sent', incoming: 'Accept friend request', friend: 'Message', blocked: 'Blocked' }[fstate];
+        fb.classList.toggle('out', fstate !== 'friend' && fstate !== 'incoming');
+        const bl = q('[data-block]'); bl.textContent = fstate === 'blocked' ? 'Unblock' : 'Block';
+        let rm = q('[data-unfriend]');
+        if (fstate === 'friend' && !rm) { fb.insertAdjacentHTML('afterend', '<button class="btn out sm" type="button" data-unfriend>Remove friend</button>'); rm = q('[data-unfriend]'); rm.addEventListener('click', () => Net.friends.remove(p.id).then(() => msg(`${p.name} is off your friends list.`))); }
+        if (fstate !== 'friend' && rm) rm.remove();
+        place();
+      };
+      Net.friends.list().then(paintFriend).catch(() => { fb.hidden = true; });
+      offs.push(Net.on('friends', paintFriend));
+      fb.addEventListener('click', () => {
+        if (fstate === 'friend') { location.hash = '#/commons/@' + encodeURIComponent(p.id); close(); return; }
+        fb.disabled = true;
+        (fstate === 'incoming' ? Net.friends.accept(p.id) : Net.friends.request(p.id, p.name))
+          .then(() => msg(fstate === 'incoming' ? `You and ${p.name} are friends now.` : 'Friend request sent.'))
+          .catch(err => { msg(err.message); if (box) fb.disabled = false; });
+      });
+      // blocking ends the friendship, hides their messages and stops their requests and private messages
+      q('[data-block]').addEventListener('click', () => {
+        if (fstate === 'blocked') { Net.friends.unblock(p.id).then(() => msg(`${p.name} is unblocked.`)); return; }
+        Net.friends.block(p.id, p.name).then(() => {
+          if (!muted) { muted = true; Net.chat.mute(p.id, true); const mb = q('[data-mute]'); mb.textContent = 'Unmute'; mb.setAttribute('aria-pressed', 'true'); if (o.onMute) o.onMute(p.id, true); }
+          msg(`${p.name} is blocked. You won't see their messages or requests.`);
+        });
+      });
       const form = q('[data-repform]');
       q('[data-report]').addEventListener('click', () => { form.hidden = false; place(); form.querySelector('input').focus(); });
       q('[data-cancel]').addEventListener('click', () => { form.hidden = true; place(); });
       form.addEventListener('submit', ev => {
         ev.preventDefault();
         const reason = new FormData(form).get('why');
-        Net.chat.report({ player: p.id, name: p.name, room: o.room || null, reason, lines: o.lines || [] })
+        (o.dm ? Net.dm.report({ player: p.id, name: p.name, reason }) : Net.chat.report({ player: p.id, name: p.name, room: o.room || null, reason, lines: o.lines || [] }))
           .then(() => { form.hidden = true; q('[data-report]').disabled = true; msg('Report saved. Moderators get it once the server is live.'); place(); })
           .catch(err => msg(err.message));
       });

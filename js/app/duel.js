@@ -417,7 +417,7 @@ Router.register('duel', (() => {
       return `<span class="du-w ${cls}${blur}">${e(w)}</span>`;
     };
     const next = [];
-    for (let n = 0; n < 7; n++) next.push(list[(s.idx + n) % list.length] || '');
+    for (let n = 0; n < 4; n++) next.push(list[(s.idx + n) % list.length] || '');   // the word you are on and three to read ahead
     line.innerHTML = `<div class="du-cur">${onSpell ? `<span class="du-w cur spell">${letters(target.word, typed)}</span>` : word(curW, 0)}</div><div class="du-next">${next.slice(1).map((w, n) => word(w, n + 1)).join('')}</div>`;
     line.classList.toggle('locked', s.locked > 0);
   }
