@@ -100,6 +100,7 @@ window.TT = (() => {
       this.el.append(this.caret, this.ghost);
       this.geo = null;
       this.el.__tt = this;
+      if (window.Motion) Motion.attach(this.el);
       if (geoRO) geoRO.observe(this.el);
       live.add(this);
     }
@@ -164,6 +165,7 @@ window.TT = (() => {
       const s = this.spans[this.pos];
       s.classList.remove('demo');
       s.classList.add(ok ? 'ok' : 'bad');
+      if (window.Motion) Motion.letter(s, ok);
       this.typed++;
       if (ok) this.correct++; else this.errors++;
       this.times[this.pos] = now - this.startT;

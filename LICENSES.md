@@ -6,6 +6,10 @@
 
 The time zone to country table in the same file comes from the IANA time zone database `zone.tab`, which is also in the public domain.
 
+## Anime.js
+
+`lib/anime/anime.esm.min.js` is Anime.js 4.5.0 by Julian Garnier (the minified ES module bundle, sha256 a19015a1a92d52025a2fb6703b6d67eadd1cc2aeaf880770e96e04cf6aa07be1), copied from the npm package so no visitor loads it from a CDN. MIT licence, in `lib/anime/LICENSE.md`. `js/app/motion.js` loads it after the page is up.
+
 ## three.js
 
 `lib/three/` holds three.js 0.170.0 (the minified build and the 20 addon files the site imports), copied from the npm package so no visitor loads code from a CDN. MIT licence, in `lib/three/LICENSE`.

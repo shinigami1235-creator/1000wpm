@@ -273,6 +273,9 @@ main { min-height: calc(100vh - 140px); }
   word-break: keep-all;
 }
 .typetext .c { position: relative; }
+/* letters pop and shake (js/app/motion.js), which needs them as boxes; each word stays on one line */
+.typetext.pops .w { white-space: nowrap; }
+.typetext.pops .c { display: inline-block; white-space: pre; line-height: normal; }
 .typetext .ok, .typetext .demo { color: var(--green); text-shadow: 0 0 10px rgba(57,255,136,.35); }
 .typetext .bad { color: var(--red); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .typetext .bad.sp { background: rgba(255,77,94,.3); }
@@ -450,6 +453,14 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 .statrow { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); align-items: center; }
 .statrow > div { padding: 2px 18px; border-left: 1px solid var(--line-2); display: grid; gap: 6px; }
 .statrow > div:first-child { border: 0; padding-left: 4px; }
+/* the live WPM and its needle (js/app/motion.js turns the needle) */
+.wpm-read { display: flex; align-items: flex-end; gap: 12px; }
+.wpm-gauge { width: 58px; height: 35px; flex: none; overflow: visible; }
+.wpm-gauge path { fill: none; stroke-linecap: round; }
+.wpm-gauge .g-arc { stroke: var(--line-2); stroke-width: 3; }
+.wpm-gauge .g-art { stroke: var(--red); stroke-width: 3; }
+.wpm-gauge .g-needle { stroke: var(--green); stroke-width: 2.5; transform-box: view-box; transform-origin: 32px 34px; transform: rotate(-90deg); filter: drop-shadow(0 0 3px rgba(57,255,136,.6)); }
+.wpm-gauge .g-hub { fill: var(--green); }
 .statrow .mid { font-size: clamp(22px, 2.4vw, 34px); white-space: nowrap; }
 .statrow .mid.time { font-size: clamp(20px, 2vw, 30px); }
 .progress { display: grid; gap: 12px; align-content: center; }

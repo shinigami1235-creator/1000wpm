@@ -19,6 +19,15 @@ Router.register('type', (() => {
 
   const modeKey = () => opt.mode === 'time' ? `time-${opt.secs}` : opt.mode === 'words' ? `words-${opt.count}` : opt.mode;
 
+  // the WPM needle beside the live number: the far right of the dial is Art's top speed
+  const GAUGE = `<svg class="wpm-gauge" viewBox="0 0 64 38" aria-hidden="true">
+      <path class="g-arc" d="M6 34 A26 26 0 0 1 58 34"/>
+      <path class="g-art" d="M54.5 28.4 L58.6 26.6"/>
+      <path class="g-needle" data-needle d="M32 34 L32 11"/>
+      <circle class="g-hub" cx="32" cy="34" r="3"/>
+    </svg>`;
+  let gauge = null;
+
   function mount(root) {
     el = root;
     opt = { mode: 'time', secs: 60, count: 50, caps: 1, ...TT.store.get('wpm-type-opts', {}) };
@@ -54,7 +63,7 @@ Router.register('type', (() => {
 
       <div class="type-stats">
         <div class="panel hot statrow">
-          <div><span class="label">&gt; WPM</span><b class="big" data-k="wpm">0</b></div>
+          <div><span class="label">&gt; WPM</span><div class="wpm-read"><b class="big" data-k="wpm">0</b>${GAUGE}</div></div>
           <div><span class="label">Accuracy</span><b class="mid" data-k="acc">100%</b></div>
           <div><span class="label">Correct</span><b class="mid" data-k="ok">0</b></div>
           <div><span class="label">Incorrect</span><b class="mid red" data-k="bad">0</b></div>
@@ -259,8 +268,14 @@ Router.register('type', (() => {
 
   function elapsed() { return running ? performance.now() - startT : 0; }
 
+  function needle(v) {
+    if (!gauge && window.Motion) gauge = Motion.gauge(el.querySelector('.wpm-gauge'), TT.ART_WPM);
+    if (gauge) gauge.set(v);
+  }
+
   function live() {
     if (!tt) {
+      needle(0);
       ['wpm', 'ok', 'bad'].forEach(k => el.q(k).textContent = '0');
       el.q('acc').textContent = '100%';
       el.q('time').textContent = '0:00';
@@ -268,6 +283,7 @@ Router.register('type', (() => {
     }
     const ms = elapsed();
     el.q('wpm').textContent = running ? tt.wpm() : 0;
+    needle(running ? tt.wpm() : 0);
     el.q('acc').textContent = tt.accuracy() + '%';
     el.q('ok').textContent = UI.fmt(tt.correct);
     el.q('bad').textContent = UI.fmt(tt.errors);
@@ -325,6 +341,7 @@ Router.register('type', (() => {
     const r = WPM.record({ mode: key, wpm, raw, acc, cons, correct: tt.correct, keys: tt.typed, ms: Math.round(ms), keyStats: ks });
     WPM.track('type_test', { mode: key, wpm, acc, correct: tt.correct, ms: Math.round(ms) });
     el.q('wpm').textContent = wpm;
+    needle(wpm);
     el.q('time').textContent = UI.clock(ms / 1000) + (opt.mode === 'time' ? ` / ${UI.clock(opt.secs)}` : '');
     paintProgress(1);
     drawChart();
@@ -390,7 +407,8 @@ Router.register('type', (() => {
     if (window.Focus) Focus.end();
     document.removeEventListener('keydown', stopKey);
     removeEventListener('resize', onResize);
-    el = null; tt = null; keys = null;
+    if (gauge) gauge.destroy();
+    el = null; tt = null; keys = null; gauge = null;
   }
 
   return { title: 'Type', mount, unmount };
