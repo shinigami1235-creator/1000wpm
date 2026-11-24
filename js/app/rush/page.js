@@ -150,7 +150,7 @@ window.RushPage = (() => {
       run = { id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), n: 1, score: 0, retryUsed: false, fights: [], coins: 0, xp: 0, done: false };
       dir = RushDirector.create({ model: RushBoard.director(), prior: priorWpm(), say: e => { if (debugLog()) console.debug('[rush director]', e); } });
       dir.startRun();
-      me = Combat.create({});
+      me = Combat.create({ perks: window.Ops ? Ops.perks() : null, targetHp: () => { const S = f && f.state(now()); return S && S.max ? S.hp / S.max : null; } });
       wireCombat();
       comboShown = false;
       fightView();
@@ -736,6 +736,7 @@ window.RushPage = (() => {
       me.on('spellOffer', () => { cSfx('offer'); tip('spell'); paintChips(true); });
       me.on('offerEnd', () => { if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
       me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
+      me.on('perk', e => pop(e.name.toUpperCase(), 'white'));
       me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
       me.on('status', e => { if (scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, !!e.on); });
     }

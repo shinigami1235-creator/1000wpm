@@ -123,7 +123,9 @@ window.WPM = (() => {
     // rewards: 1 coin per 2 correct words, scaled by accuracy, plus a bonus for a new best
     const accF = Math.max(0, (run.acc - 50) / 50);
     // run.coins, when given, replaces the formula (the academy and free typing set their own)
-    const coins = run.coins !== undefined ? Math.round(run.coins) : Math.round(words / 2 * accF) + (newBest ? 25 : 0);
+    const base = run.coins !== undefined ? Math.round(run.coins) : Math.round(words / 2 * accF) + (newBest ? 25 : 0);
+    // CTRL clearance: +5% from CL-02, +10% from CL-05 (js/app/ops.js)
+    const coins = Math.round(base * (window.Ops ? Ops.coinMult() : 1));
     const xp = Math.round(words * accF * 2 + (run.wpm || 0) / 4);
     save();
     addCoins(coins, 'typing');

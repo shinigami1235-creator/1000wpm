@@ -90,7 +90,7 @@ Router.register('party', (() => {
     Net.lobbies.list().then(list => {
       if (!box.isConnected) return;
       if (!list.length) { box.innerHTML = '<p class="empty">No open lobbies. Create one.</p>'; return; }
-      box.innerHTML = `<table class="board pa-table"><thead><tr><th>Lobby</th><th>Run</th><th class="hide-sm">Difficulty</th><th>Players</th><th></th></tr></thead><tbody>
+      box.innerHTML = `<table class="board pa-table"><thead><tr><th>Lobby</th><th>Run</th><th class="hide-sm">Difficulty</th><th>Operators</th><th></th></tr></thead><tbody>
         ${list.map(l => `<tr>
           <td><div class="who"><a class="mu-who" href="#/u/${encodeURIComponent(l.host)}">${MultiUI.img({ id: l.host, name: l.hostName, bot: true }, 68, 34)}<span>${e(l.name)}</span></a></div></td>
           <td>${e(R().RUNS[l.run].name)}<span class="dim hide-sm">, ${R().RUNS[l.run].fights.length} fights</span></td>
@@ -624,7 +624,7 @@ Router.register('party', (() => {
       <h2 id="pa-end-t" class="${r.won ? 'green' : 'red'}">${r.won ? 'Run cleared' : `The team went down in ${e(lostAt ? lostAt.area : 'the run')}`}</h2>
       <p class="dim">${r.cleared} of ${r.of} fights cleared in ${UI.clock(Math.round((r.ms || 0) / 1000))}. Best team combo ${r.teamBest}.${r.art ? ' Art joined the run and rewards were 1.5 times.' : ''}</p>
       ${reward ? `<p class="dim">You earned ${reward.coins} coins and ${reward.xp} XP.</p>` : ''}
-      <div class="du-tw"><table class="du-sum pa-sum"><thead><tr><th scope="col">Player</th><th scope="col">Role</th><th scope="col" class="r">Damage</th><th scope="col" class="r">wpm</th><th scope="col" class="r">Accuracy</th><th scope="col" class="r hide-sm">Healed</th><th scope="col" class="r hide-sm">Blocks</th><th scope="col" class="r hide-sm">Revives</th><th scope="col" class="r hide-sm">Downs</th><th scope="col" class="hide-sm">Spells</th></tr></thead>
+      <div class="du-tw"><table class="du-sum pa-sum"><thead><tr><th scope="col">Operator</th><th scope="col">Role</th><th scope="col" class="r">Damage</th><th scope="col" class="r">wpm</th><th scope="col" class="r">Accuracy</th><th scope="col" class="r hide-sm">Healed</th><th scope="col" class="r hide-sm">Blocks</th><th scope="col" class="r hide-sm">Revives</th><th scope="col" class="r hide-sm">Downs</th><th scope="col" class="hide-sm">Spells</th></tr></thead>
         <tbody>${(r.players || []).slice().sort((a, b) => b.dmg - a.dmg).map(p => `<tr class="${p.id === 'me' ? 'is-me' : ''}"><td>${MultiUI.name(who(p.id))}</td><td>${e(R().ROLES[p.role].name)}</td>
           <td class="num r">${UI.fmt(p.dmg)}</td><td class="num r">${p.wpm}</td><td class="num r">${p.acc}%</td><td class="num r hide-sm">${p.healed || 0}</td><td class="num r hide-sm">${p.blocks}</td><td class="num r hide-sm">${p.revives || 0}</td><td class="num r hide-sm">${p.downs || 0}</td>
           <td class="sp hide-sm">${p.spells.length ? p.spells.map(MultiUI.spellName).map(e).join(', ') : 'None'}</td></tr>`).join('')}</tbody></table></div>

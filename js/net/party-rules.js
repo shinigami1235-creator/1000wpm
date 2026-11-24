@@ -30,7 +30,7 @@
 //
 //   const run = PartyRules.run({ seed, run: 'relay', difficulty: 'normal', players, words, counters, foeWords, art, config });
 //   run.input(playerId, k, t), run.advance(t), run.state(), run.on(fn), run.result()
-//   players: [{ id, name, role, bot }]
+//   players: [{ id, name, role, bot, division?, rank? }]   division and rank: the CTRL perks (CTRL.md)
 //   words(playerId, fight) -> [word]   counters(fight) -> [word]   foeWords(fight) -> [word] (mites, cars; counters if missing)
 //   fights: ['golem', ...] replaces the run's areas (tests)
 //   art: { fight, ms } or null         when Art drops in (simulated now; the server decides later). While he is
@@ -66,7 +66,7 @@
   };
   const DIFF = { easy: { hp: 0.7, dmg: 0.7 }, normal: { hp: 1, dmg: 1 }, hard: { hp: 1.35, dmg: 1.4 } };
   const ROLES = {
-    striker: { name: 'Striker', mult: 1.3, meter: 2, text: 'Your words deal 1.3 times damage.' },
+    striker: { name: 'Attacker', mult: 1.3, meter: 2, text: 'Your words deal 1.3 times damage.' },
     guard: { name: 'Guard', mult: 1, meter: 2, text: 'Type the counter word to block a boss attack. Type a teammate\'s name to shield them.' },
     support: { name: 'Support', mult: 0.85, meter: 7, text: 'Type a teammate\'s name to heal them. Type a buff when the team meter is full.' },
   };
@@ -128,6 +128,7 @@
     const hasUp = role => live().some(p => p.role === role);
 
     const blank = () => ({ keys: 0, good: 0, words: 0, wrong: 0, typos: 0, chars: 0, dmg: 0, blocks: 0, buffs: 0, bestCombo: 0, spells: [], ms: 0, heals: 0, healed: 0, shields: 0, revives: 0, pops: 0, cuts: 0, downs: 0, taken: 0 });
+    const teamK = 1 + Math.max(0, ...o.players.map(p => (root.Combat && root.Combat.Perks && p.division ? root.Combat.Perks.team(p.division, p.rank || 1) : 0)));
     o.players.forEach((p, i) => P.set(p.id, { ...p, i, handle: H[p.id], hp: cfg.hp, down: false, downUntil: 0, shield: 0, healAt: 0, shieldAt: 0, target: null, stats: blank(), fightStats: [] }));
 
     // ---------- foes ----------
@@ -161,7 +162,10 @@
       p.list = o.words(p.id, f) || [];
       p.idx = 0; p.target = null; p.shield = 0;
       if (p.down) { p.down = false; p.hp = Math.max(p.hp, cfg.rebootHp); }
-      p.eng = Cb().create({ rng: root.NetCore.rng(`${o.seed}:${f}:${p.id}`), now: () => clock });
+      // CTRL division perks (js/app/combat/perks.js): each player's own, plus an Architect's bonus for the whole team
+      p.eng = Cb().create({ rng: root.NetCore.rng(`${o.seed}:${f}:${p.id}`), now: () => clock,
+        perks: p.division ? { division: p.division, rank: p.rank || 1 } : null,
+        targetHp: () => (boss.maxHp ? bossHp() / boss.maxHp : null), teamMult: () => teamK });
       p.eng.on('spellOffer', x => emit({ type: 'offer', id: p.id, spells: x.spells.map(s => s.id), until: x.until, at: clock }));
       p.eng.on('offerEnd', x => emit({ type: 'offerEnd', id: p.id, reason: x.reason, at: clock }));
       p.eng.on('combo', c => { p.stats.bestCombo = Math.max(p.stats.bestCombo, c.combo); });

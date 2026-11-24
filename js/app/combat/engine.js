@@ -13,11 +13,21 @@
 //   me.matchOffer(prefix)               the offered spell whose word starts with prefix
 //   me.tick(now)                        ends statuses and offers on time
 //   me.status(name), me.consume(name), me.statuses(), me.state(), me.reset(), me.debug
-//   me.on(event, fn)                    events: hit combo tierUp tierDown spellOffer offerEnd spellCast fizzle miss ward guard status
+//   me.on(event, fn)                    events: hit combo tierUp tierDown spellOffer offerEnd spellCast fizzle miss ward guard status perk
+//
+// CTRL perks (js/app/combat/perks.js, CTRL.md) come in through opts, and only boss modes pass them:
+//   perks: { division, rank }   the player's division and its rank (1 to 3)
+//   targetHp: () => 0..1        the target's health left, for the Hunter
+//   teamMult: () => n           a party's Architect bonus for everyone in it
 window.Combat = window.Combat || {};
 Combat.create = function create(opts = {}) {
   const bus = opts.bus || Combat.Bus();
-  const combo = Combat.Combo({ tiers: opts.tiers });
+  const P = Combat.Perks;
+  const perks = P && opts.perks && P.byId(opts.perks.division) ? opts.perks : null;
+  const combo = Combat.Combo({ tiers: perks ? P.tiers(opts.tiers || Combat.TIERS, perks) : opts.tiers });
+  const guardMs = perks ? P.guardMs(perks) : 0;
+  const teamMult = () => (opts.teamMult ? opts.teamMult() : 1);
+  let guardAt = -Infinity, hunting = false;
   const D = Combat.Damage;
   const now = opts.now || (() => performance.now());
   const rng = opts.rng || Math.random;
@@ -109,6 +119,12 @@ Combat.create = function create(opts = {}) {
   }
   function slip(reason) {
     if (consume('split')) { bus.emit('guard', { reason, left: status('split') ? status('split').charges : 0 }); return combo.state(); }
+    // Sentinel: one slip every so often keeps its tier
+    if (guardMs && reason !== 'hurt' && combo.state().combo > 0 && now() - guardAt >= guardMs) {
+      guardAt = now();
+      bus.emit('perk', { id: 'sentinel', name: 'Unbreakable' });
+      return combo.state();
+    }
     const r = combo.drop();
     const st = after(r, reason);
     bus.emit('miss', { reason, combo: r.combo, from: r.from, tier: r.tier });
@@ -121,7 +137,14 @@ Combat.create = function create(opts = {}) {
     if (clean) st = after(combo.add(), 'word');
     else st = slip('typo');
     const wpm = ms > 0 && letters ? (letters + 1) / 5 / (ms / 60000) : 0;
-    const d = D.word({ letters, tierMult: st.mult, acc: acc(), wpm, statusMult: statusMult() });
+    const hp = opts.targetHp ? opts.targetHp() : null;
+    const perkMult = (perks ? P.word(perks, { wpm, clean, acc: acc(), targetHp: hp }) : 1) * teamMult();
+    if (perks && perks.division === 'hunter' && letters) {
+      const on = hp != null && hp < 0.3;
+      if (on && !hunting) bus.emit('perk', { id: 'hunter', name: 'Execution' });
+      hunting = on;
+    }
+    const d = D.word({ letters, tierMult: st.mult, acc: acc(), wpm, statusMult: statusMult(), perkMult });
     if (letters) {
       recent.push(d.amount); if (recent.length > RECENT) recent.shift();
       bus.emit('hit', { kind: 'word', letters, amount: d.amount, mult: d.mult, tier: st.tier, combo: st.combo });
@@ -159,7 +182,7 @@ Combat.create = function create(opts = {}) {
     if (e.debuff === 'stun') start('stunned-target', { ms: e.ms });
     if (e.debuff === 'freeze') start('frozen-target', { ms: e.ms });
     if (e.cleanse) bus.emit('status', { name: 'cleanse', on: true });
-    const sm = statusMult();
+    const sm = statusMult() * (perks ? P.spell(perks) : 1) * teamMult();
     const hits = Combat.hitsFor(s, { recent }).map(h => {
       const d = D.spell(h.power, { acc: acc(), statusMult: sm, vsShield: e.vsShield || 1, shield });
       return { at: h.at, power: h.power, amount: d.amount, mult: d.mult };

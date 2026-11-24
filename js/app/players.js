@@ -14,7 +14,7 @@ Router.register('u', (() => {
     el.innerHTML = '<div class="loading-state">Loading</div>';
     const call = p[1] === 'room' ? Net.profiles.visit(id) : Net.profiles.get(id).then(profile => ({ profile }));
     call.then(r => { if (n !== seq || !el) return; if (p[1] === 'room') room(r.profile, r.room); else profile(r.profile); })
-      .catch(err => { if (n === seq && el) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message || 'No player with that name.')}</p><a class="btn out" href="#/duel">Players online</a></div>`; });
+      .catch(err => { if (n === seq && el) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message || 'No operator with that name.')}</p><a class="btn out" href="#/duel">Players online</a></div>`; });
   }
 
   // Add friend, Request sent, Accept friend request, or Message once you are friends
@@ -46,7 +46,7 @@ Router.register('u', (() => {
     el.innerHTML = `
       ${me ? `<p class="u-preview"><b>How others see you.</b> This is your public profile. <a class="green" href="#/profile">Back to your profile</a></p>` : ''}
       <div class="u-grid">
-        <section class="panel hot u-card" aria-label="Player">
+        <section class="panel hot u-card" aria-label="Operator">
           <div class="u-av" data-av>${art ? `<span class="mu-av art big">${MultiUI.LOGO}</span>` : MultiUI.img(p, 360, 180, 'class="u-img" alt=""')}</div>
           <div class="u-id">
             <h1>${e(p.name)}</h1>
@@ -124,5 +124,5 @@ Router.register('u', (() => {
   }
   function unmount() { stop(); el = null; }
 
-  return { title: 'Player', mount, update, unmount };
+  return { title: 'Operator', mount, update, unmount };
 })());

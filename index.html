@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-dtUZqOUfNO8jdYazo9ivzkfycy7LnAoz0wcLNv008uE=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-m28h7wwkGTophxzCXiZDveBytnwZx55IpwxOn+aoG7U=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<title>lowercase</title>
-<meta name="description" content="Race Art's 204 wpm, take a typing test, play Breach and decorate your room with coins you earn by typing.">
+<title>Stormtyper by 10000wpm</title>
+<meta name="description" content="Stormtyper by 10000wpm. Join CTRL as an operator: take a typing test, race Art's 204 wpm, fight bosses with other operators and earn coins for your room.">
 <meta name="theme-color" content="#040806">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23040806'/%3E%3Cpath d='M24 8h16a2 2 0 0 1 2 2v20h11.2a1.5 1.5 0 0 1 1.1 2.5L33.1 55.4a1.5 1.5 0 0 1-2.2 0L9.7 32.5A1.5 1.5 0 0 1 10.8 30H22V10a2 2 0 0 1 2-2z' fill='none' stroke='%2339ff88' stroke-width='4.5' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -2 68 68'%3E%3Crect x='-2' y='-2' width='68' height='68' rx='10' fill='%23040806'/%3E%3Cpath d='M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z' fill='none' stroke='%23d7f5e3' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M41 21.5H27.5L21 28v8l6.5 6.5H41' fill='none' stroke='%23d7f5e3' stroke-width='5' stroke-linejoin='miter'/%3E%3Cpath d='M28 36l6-8 6 8' fill='none' stroke='%23d7f5e3' stroke-width='3.2' stroke-linecap='square'/%3E%3Cpath d='M32 0v7M32 57v7M3 32h7M54 32h7' stroke='%2339ff88' stroke-width='2.6'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/chakra-petch-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/site.css">
@@ -28,9 +28,19 @@
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- the lowercase mark: the Shift key's arrow, turned to point down -->
-    <symbol id="i-mark" viewBox="0 0 64 64">
-      <path d="M24 8h16a2 2 0 0 1 2 2v20h11.2a1.5 1.5 0 0 1 1.1 2.5L33.1 55.4a1.5 1.5 0 0 1-2.2 0L9.7 32.5A1.5 1.5 0 0 1 10.8 30H22V10a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linejoin="round"/>
+    <!-- the CTRL insignia (CTRL.md): a hexagon, a C, and the Control key's caret inside it,
+         with sight marks at the four points. i-mark is kept as an alias for older pages. -->
+    <symbol id="i-ctrl" viewBox="-2 -2 68 68">
+      <path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="miter"/>
+      <path d="M28 36l6-8 6 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
+      <path d="M32 0v7M32 57v7M3 32h7M54 32h7" stroke="#39ff88" stroke-width="2.6"/>
+    </symbol>
+    <symbol id="i-mark" viewBox="-2 -2 68 68">
+      <path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="miter"/>
+      <path d="M28 36l6-8 6 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
+      <path d="M32 0v7M32 57v7M3 32h7M54 32h7" stroke="#39ff88" stroke-width="2.6"/>
     </symbol>
     <!-- Art's laurel mark (@10000wpm), used wherever Art himself appears -->
     <symbol id="i-logo" viewBox="0 0 64 64">
@@ -85,9 +95,9 @@
 <div class="shell">
   <header class="top">
     <div class="top-in">
-      <a class="logo" href="#/home" aria-label="lowercase home">
-        <svg class="green" aria-hidden="true"><use href="#i-mark"/></svg>
-        <span><b>lowercase<i class="logo-cur" aria-hidden="true">_</i></b><small>// the typing collective</small></span>
+      <a class="logo" href="#/home" aria-label="Stormtyper home">
+        <svg class="green" aria-hidden="true"><use href="#i-ctrl"/></svg>
+        <span><b>Stormtyper<i class="logo-cur" aria-hidden="true">_</i></b><small>by 10000wpm // CTRL</small></span>
       </a>
       <nav class="nav" id="nav" aria-label="Pages">
         <a href="#/home" data-route="home">[ home ]</a>
@@ -121,7 +131,7 @@
     <div class="foot-in">
       <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">@10000wpm on Instagram</a>
       <a class="foot-replay" href="#/home" data-replay-intro>Replay intro</a>
-      <span>© 2026 lowercase</span>
+      <span>© 2026 10000wpm. CTRL: control the chaos.</span>
     </div>
   </footer>
 </div>
@@ -134,6 +144,8 @@
 <script src="js/app/ui.js"></script>
 <script src="js/app/avatar-data.js"></script>
 <script src="js/app/avatar.js"></script>
+<script src="js/app/combat/perks.js"></script>
+<script src="js/app/ops.js"></script>
 <script src="js/app/motion.js"></script>
 <script src="js/app/router.js"></script>
 <script src="js/app/lazy.js"></script>

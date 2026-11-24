@@ -29,7 +29,7 @@ window.RaceGame = (() => {
     let running = false, finished = false, text = '', seed = 0, first = true;
     let stamps = [], streak = 0, skid = 0, raf = 0;
 
-    const newText = () => TT.randomWords(26, 0.22).join(' ');
+    const newText = () => TT.testWords(26).join(' ');
     function prepare(keepCourse) {
       running = false; finished = false;
       if (!keepCourse) { text = newText(); seed = Math.floor(Math.random() * 1e9); }

@@ -98,7 +98,7 @@ window.MultiUI = (() => {
   // The Duels tab on #/leaderboard: this device's record and everyone it has duelled,
   // ranked by rating. The global board needs the server.
   function duelBoard(sub, board) {
-    sub.innerHTML = '<p class="dim lb-note">This device only. Players from everywhere show here once the server is live.</p>';
+    sub.innerHTML = '<p class="dim lb-note">This device only. Operators from everywhere show here once the server is live.</p>';
     board.innerHTML = '<div class="loading-state">Loading</div>';
     Promise.all([Net.results.record(), Net.results.opponents()]).then(([r, opps]) => {
       if (!board.isConnected) return;
@@ -117,7 +117,7 @@ window.MultiUI = (() => {
           <div><span class="label">Vs Art</span><b class="mid">${r.vsArt.w}-${r.vsArt.l}</b></div>
         </div>
         <table class="board">
-          <thead><tr><th>#</th><th>Typist</th><th class="num-col">MMR</th><th class="num-col">Your wins</th><th class="num-col hide-sm">Your losses</th></tr></thead>
+          <thead><tr><th>#</th><th>Operator</th><th class="num-col">MMR</th><th class="num-col">Your wins</th><th class="num-col hide-sm">Your losses</th></tr></thead>
           <tbody>${rows.map((x, i) => `<tr class="${x.me ? 'mine-best' : x.p.art ? 'art' : ''}">
             <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
             <td><div class="who"><a class="mu-who" href="${link(x.p)}">${img(x.p, 68, 34)}<span>${name(x.p)}</span></a></div></td>

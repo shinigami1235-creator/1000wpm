@@ -6,6 +6,10 @@
 
 The time zone to country table in the same file comes from the IANA time zone database `zone.tab`, which is also in the public domain.
 
+## Monkeytype word lists
+
+`js/words-mt.js` holds Monkeytype's English word lists, `english` (200 words, Monkeytype's default) and `english_1k` (1,000 words), copied on 24 Nov 2026 from github.com/monkeytypegame/monkeytype, `frontend/static/languages/`. The Monkeytype repository is under the GNU GPL 3.0. These lists are common English words in frequency order; credit goes to Monkeytype. The typing test, races and reel mode use them; the site's own lists stay as the Expanded word set.
+
 ## Anime.js
 
 `lib/anime/anime.esm.min.js` is Anime.js 4.5.0 by Julian Garnier (the minified ES module bundle, sha256 a19015a1a92d52025a2fb6703b6d67eadd1cc2aeaf880770e96e04cf6aa07be1), copied from the npm package so no visitor loads it from a CDN. MIT licence, in `lib/anime/LICENSE.md`. `js/app/motion.js` loads it after the page is up.

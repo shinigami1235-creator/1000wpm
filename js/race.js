@@ -12,7 +12,7 @@ window.RaceView = (() => {
     { name: 'Desert at night', sky: ['#010508', '#102530'], ground: ['#231c12', '#261f14'], rumble: ['#d7f5e3', '#ff4d5e'], road: ['#1c1a17', '#1f1d1a'], lane: '#d7f5e3', far: '#2a2018', near: '#201810', props: 'cactus', sun: '#f6f3e0', sunY: 0.2, hills: 'mesa' },
     { name: 'Snow pass at night', sky: ['#02060c', '#14243a'], ground: ['#9aa9b5', '#909fab'], rumble: ['#ff4d5e', '#d7f5e3'], road: ['#1d2126', '#20242a'], lane: '#d7f5e3', far: '#1d2c40', near: '#16222f', props: 'pine', sun: '#ffffff', sunY: 0.3, hills: 'peaks' },
   ];
-  const BOARDS = ['AULA', 'WOMIER', 'LOGA', 'ATTACK SHARK', 'CORSAIR', 'CHILKEY', 'lowercase_'];
+  const BOARDS = ['AULA', 'WOMIER', 'LOGA', 'ATTACK SHARK', 'CORSAIR', 'CHILKEY', 'STORMTYPER'];
 
   const ease = (a, b, t) => a + (b - a) * ((-Math.cos(t * Math.PI) / 2) + 0.5);
 

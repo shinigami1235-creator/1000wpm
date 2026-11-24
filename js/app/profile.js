@@ -1,7 +1,7 @@
 // #/profile: name, avatar, level, coins, stats, wpm chart, recent sessions,
 // the daily loop from js/app/progress-ui.js and the progress reset.
 Router.register('profile', (() => {
-  let el, off = [], host = null, creator = false, jump = false, stats = null;
+  let el, off = [], host = null, creator = false, jump = false, stats = null, pickOff = null;
 
   function mount(root, params) {
     el = root; host = root;
@@ -9,6 +9,7 @@ Router.register('profile', (() => {
     jump = !!(params && params[0] === 'progress');
     paint();
     off.push(WPM.on('profile', paint), WPM.on('session', paint), WPM.on('coins', paint));
+    addEventListener('wpm-ops', paint); off.push(() => removeEventListener('wpm-ops', paint));
     if (window.Progress) off.push(Progress.on('ready', paint), Progress.on('achievements', paint), Progress.on('many', paint));
   }
 
@@ -22,26 +23,18 @@ Router.register('profile', (() => {
       <div class="prof">
         <div class="col">
           <section class="panel hot">
+            ${window.OpsUI ? OpsUI.card({ name: p.name, img: UI.meImg(280, 140, 'class="av" alt="Your avatar"'), editBtn: `<button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button>` }) : `
             <div class="ph">// PROFILE</div>
             <div class="who-card">
               ${UI.meImg(280, 140, 'class="av" alt="Your avatar"')}
-              <div>
-                <div class="name-row" data-name>
-                  <h2>${e(p.name)}</h2>
-                  <button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button>
-                </div>
-                <dl class="kv">
-                  <dt>Joined</dt><dd>${e(UI.date(p.joined + 'T12:00:00', false))}, ${e(p.joined.slice(0, 4))}</dd>
-                  <dt>Runs</dt><dd>${UI.fmt(st.sessions)}</dd>
-                </dl>
-              </div>
-            </div>
-            <div class="level">
-              <div class="row"><span class="label">Level</span><b>${lv.level}</b></div>
-              <div class="xpbar"><i style="width:${Math.round(100 * lv.into / lv.next)}%"></i></div>
-              <small>${UI.fmt(lv.into)} / ${UI.fmt(lv.next)} XP</small>
-            </div>
+              <div class="name-row" data-name><h2>${e(p.name)}</h2><button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button></div>
+            </div>`}
+            <dl class="kv op-kv">
+              <dt>Joined</dt><dd>${e(UI.date(p.joined + 'T12:00:00', false))}, ${e(p.joined.slice(0, 4))}</dd>
+              <dt>Runs</dt><dd>${UI.fmt(st.sessions)}</dd>
+            </dl>
           </section>
+          ${window.OpsUI ? '<section class="panel" data-ops-pick aria-label="Division"></section>' : ''}
           <section class="panel trio">
             <div><span class="label">Coins</span><b class="mid gold">${UI.fmt(WPM.coins())}</b></div>
             <div><span class="label">Items</span><b class="mid">${WPM.owned().length}</b></div>
@@ -102,6 +95,7 @@ Router.register('profile', (() => {
     stats = window.StatsView ? StatsView.render(el.querySelector('[data-stats]'), { sessions: WPM.sessions(), keyStats: WPM.keyStats(), totals: st }) : null;
     if (window.ProgressUI) { off.push(ProgressUI.profile(el, jump)); jump = false; }
     if (window.MultiUI) MultiUI.profilePanel(el.querySelector('[data-multi-prof]'));
+    if (window.OpsUI) { if (pickOff) pickOff(); pickOff = OpsUI.picker(el.querySelector('[data-ops-pick]')); }
   }
 
   function editName() {
@@ -128,6 +122,7 @@ Router.register('profile', (() => {
     if (creator) { AvatarCreator.unmount(); creator = false; }
     off.forEach(f => f()); off = [];
     if (stats) { stats.destroy(); stats = null; }
+    if (pickOff) { pickOff(); pickOff = null; }
     el = null;
   }
   // #/profile and #/profile/avatar share this page

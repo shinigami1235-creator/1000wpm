@@ -377,7 +377,10 @@
       const counters = f => { const k = 'c:' + f; if (!lists.has(k)) lists.set(k, host.words(`${seed}:${k}`, { count: 30, difficulty: [2, 6], theme: 'cyber' })); return lists.get(k); };
       // mite and car words: short, so a mite can be popped before it lands
       const foeWords = f => { const k = 'm:' + f; if (!lists.has(k)) lists.set(k, host.words(`${seed}:${k}`, { count: 80, difficulty: [1, 4] }).filter(w => w.length >= 3 && w.length <= 7)); return lists.get(k); };
-      const players = l.players.map(p => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot }));
+      // CTRL divisions: yours from your profile, each bot's from its seed
+      const DIVS = root.Combat && root.Combat.Perks ? root.Combat.Perks.DIVISIONS.map(d => d.id) : [];
+      const divOf = p => (p.id === 'me' ? (root.Ops && root.Ops.perks()) || {} : DIVS.length ? { division: DIVS[Math.floor(root.NetCore.rng(seed + ':div:' + p.id)() * DIVS.length)], rank: 1 } : {});
+      const players = l.players.map(p => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot, ...divOf(p) }));
       const run = root.PartyRules.run({ seed, run: l.run, difficulty: l.difficulty, players, words, counters, foeWords, art, fights: T.partyFights, config: { ...(T.partyStartMs != null ? { startMs: T.partyStartMs } : {}), ...(T.clearMs != null ? { clearMs: T.clearMs } : {}), ...(T.teamHp ? { teamHp: T.teamHp } : {}) } });
       if (T.bossHp) { const orig = run.advance; let set = -1; run.advance = t => { orig(t); const st = run.state(); if (st.phase === 'fight' && st.fight !== set) { set = st.fight; run.debug.bossHp(T.bossHp); } }; }
       const bots = new Map(l.players.filter(p => p.bot).map(p => [p.id, root.NetBot.create({ wpm: T.partyBotWpm || (p.typing ? p.typing.wpm : L.wpm), acc: p.typing ? p.typing.acc : 0.94, seed: seed + p.id, spell: 0.6, guard: 0.82 })]));

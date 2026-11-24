@@ -39,6 +39,8 @@ Damage multiplier for a word = tier x accuracy x speed x buffs, capped at 6.
 - Speed: from x1 at 40 wpm to x1.3 at 180 wpm or faster, measured on the word itself.
 - Buffs: hyper thread x2, root access x2.
 
+CTRL perks (`js/app/combat/perks.js`, CTRL.md) add a perk part to the multiplier, still under the cap of 6. Only boss modes pass them to `Combat.create` (World Boss, Boss Rush, Party); duels and the Superboss don't. `node tools/net/perks-test.js` checks them.
+
 The mode applies its own multipliers after these. The world boss adds the weak point, crits and the damage-halved debuff.
 
 ## Spells

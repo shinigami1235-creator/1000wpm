@@ -123,7 +123,7 @@ Router.register('leaderboard', (() => {
     };
     el.querySelector('[data-board]').innerHTML = `
       <table class="board">
-        <thead><tr><th>#</th><th>Typist</th><th class="num-col">${T.label || (T.score ? 'Score' : 'WPM')}</th><th class="num-col hide-sm">Accuracy</th><th class="hide-sm">Mode</th><th class="hide-sm">Date</th></tr></thead>
+        <thead><tr><th>#</th><th>Operator</th><th class="num-col">${T.label || (T.score ? 'Score' : 'WPM')}</th><th class="num-col hide-sm">Accuracy</th><th class="hide-sm">Mode</th><th class="hide-sm">Date</th></tr></thead>
         <tbody>${rows.map((r, i) => `<tr class="${r.kind === 'art' ? 'art' : r === bestMine ? 'mine-best' : ''}">
           <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>${cell(r)}</tr>`).join('')}</tbody>
       </table>
@@ -187,7 +187,7 @@ Router.register('leaderboard', (() => {
       const p = WPM.profile();
       board.innerHTML = list.length ? `
         <table class="board">
-          <thead><tr><th>#</th><th>Typist</th><th class="num-col">Score</th><th class="num-col">Level</th><th class="num-col hide-sm">WPM</th><th class="hide-sm">Date</th></tr></thead>
+          <thead><tr><th>#</th><th>Operator</th><th class="num-col">Score</th><th class="num-col">Level</th><th class="num-col hide-sm">WPM</th><th class="hide-sm">Date</th></tr></thead>
           <tbody>${list.map((r, i) => `<tr class="${i === 0 ? 'mine-best' : ''}">
             <td class="rank ${i < 3 ? 'top' : ''}">${i + 1}</td>
             <td><div class="who">${UI.meImg(68, 34)}<span>${UI.esc(p.name)}</span></div></td>

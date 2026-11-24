@@ -74,7 +74,8 @@ Router.register('boss', (() => {
     el = root;
     R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name; TIPS = tipsFor(NAME);
     if (window.Combat && Combat.create) {
-      me = Combat.create({});
+      // CTRL division perks count here (js/app/ops.js); duels never pass them
+      me = Combat.create({ perks: window.Ops ? Ops.perks() : null, targetHp: () => (st && st.maxHp ? st.hp / st.maxHp : null) });
       cSnd = Combat.Audio.create({ ctx: () => A.out().ac, out: () => A.out().bus, on: () => A.on });
       wireCombat();
     }
@@ -412,6 +413,7 @@ Router.register('boss', (() => {
     });
     me.on('offerEnd', () => { if (!el) return; if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
     me.on('ward', () => { cSfx('ward'); if (scene) scene.fxEvent('ward'); });
+    me.on('perk', e => { if (!el) return; pop(e.name.toUpperCase(), 'white'); pushFeed({ text: e.id === 'sentinel' ? 'Unbreakable kept your combo tier' : 'Execution: the target is below 30%', cls: 'you' }); });
     me.on('guard', () => { if (!el) return; cSfx('guard'); if (scene) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: 'Quantum split kept your combo', cls: 'you' }); });
     me.on('status', e => { if (!e.on && scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, false); if (el && st) paintMe(now()); });
   }

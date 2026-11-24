@@ -10,12 +10,13 @@
 window.Lazy = (() => {
   const G = {
     words: { js: ['js/wordbank-common.js', 'js/wordbank.js'] },
+    mt: { js: ['js/words-mt.js'] },
     combat: { css: ['css/combat.css'], js: ['bus', 'spells', 'combo', 'damage', 'engine', 'sfx', 'fx3d'].map(f => `js/app/combat/${f}.js`) },
     map: { css: ['css/map.css'], js: ['js/app/community.js', 'js/app/missions.js', 'js/app/worldmap.js', 'js/app/activity.js'] },
     kb: { js: ['js/keyboards.js', 'js/kb3d.js'] },
-    race: { js: ['js/race.js', 'js/games.js'] },
+    race: { need: ['mt'], js: ['js/race.js', 'js/games.js'] },
     passages: { js: ['js/learn/passages.js'] },
-    learn: { need: ['words'], css: ['css/learn.css'],
+    learn: { need: ['words', 'mt'], css: ['css/learn.css'],
       js: ['js/learn/coins.js', 'js/learn/passages.js', 'js/learn/wordsource.js', 'js/learn/keyboard.js', 'js/learn/lessons.js', 'js/learn/typer.js', 'js/app/learn.js', 'js/app/free.js', 'js/app/reel.js'] },
     net: { need: ['words', 'combat'], css: ['css/multi.css'],
       js: ['core', 'filter', 'chat-rules', 'chat-rooms', 'chat-lines', 'chat-sim', 'friends-sim', 'rating', 'typist', 'bot', 'duel-rules', 'party-rules', 'sim', 'ws', 'net']
@@ -32,7 +33,7 @@ window.Lazy = (() => {
 
     // pages
     'page:home': { need: ['map', 'kb', 'net'], js: ['js/hero.js', 'js/app/home.js'] },
-    'page:type': { js: ['js/app/type.js', 'js/app/type-tabs.js'] },
+    'page:type': { need: ['mt'], js: ['js/app/type.js', 'js/app/type-tabs.js'] },
     'page:play': { need: ['race'], js: ['js/app/missions.js', 'js/app/play-picker.js', 'js/app/play.js'] },
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
@@ -44,7 +45,7 @@ window.Lazy = (() => {
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
     'page:shop': { js: ['js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
-    'page:profile': { need: ['net', 'avatarEdit'], js: ['js/app/stats-view.js', 'js/app/profile.js'] },
+    'page:profile': { need: ['net', 'avatarEdit'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
   // the group that defines each global other pages wait on
   const PROVIDES = { Breach: 'breach', Room: 'room', RoomItems: 'room', RushPage: 'rush', RushBoard: 'rushBoard',

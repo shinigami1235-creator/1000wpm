@@ -1,0 +1,45 @@
+/* CTRL on the profile (js/app/ops-ui.js): the Operator ID card and the division picker */
+.op-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line-2);
+  font: 400 13px/1 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--green); }
+.op-live { padding: 5px 9px; border: 1px solid var(--line); background: rgba(57,255,136,.08); }
+.op-who { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; align-items: center; }
+.op-who .av { width: 120px; height: 120px; border: 1px solid var(--line); background: var(--bg); }
+.op-id { display: grid; gap: 5px; min-width: 0; }
+.op-num { font: 400 13px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.op-div { display: flex; align-items: center; gap: 6px; font: 600 15px/1.2 var(--f-head); letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+.op-cl { font: 400 14px/1.2 var(--f-mono); color: var(--ink); }
+.op-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+.op-stats > div { display: grid; gap: 4px; align-content: start; }
+.op-stats b { font: 600 clamp(22px, 2.2vw, 30px)/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.op-stats > div:first-child b { color: var(--green); text-shadow: var(--glow); }
+.op-stats small { font: 400 12px/1 var(--f-label); color: var(--ink-2); }
+.op-kv { margin-top: 14px; }
+
+/* CL-08 Director: the gold card */
+.op-card.gold .op-head, .op-card.gold .op-div { color: var(--gold); }
+.op-card.gold .op-live { border-color: rgba(242,194,48,.5); background: rgba(242,194,48,.1); }
+.op-card.gold .op-who .av { border-color: rgba(242,194,48,.6); }
+.op-card.gold .op-hex { stroke: var(--gold); }
+
+.op-patch { flex: none; overflow: visible; }
+.op-patch .op-hex { fill: rgba(57,255,136,.08); stroke: var(--green); stroke-width: 1.5; }
+.op-patch g { fill: none; stroke: var(--green); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.op-note { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.op-divs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.op-divs li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line-2); background: var(--bg); }
+.op-divs li.on { border-color: var(--line); background: rgba(57,255,136,.06); }
+.op-dtext b { font: 600 15px/1.2 var(--f-head); letter-spacing: .06em; text-transform: uppercase; }
+.op-dtext .dim { font-size: 13px; }
+.op-dtext p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+.op-dtext em { font-style: normal; color: var(--ink); }
+.op-sug { padding: 2px 6px; border: 1px solid var(--cyan); color: var(--cyan); font: 400 11px/1.2 var(--f-label); letter-spacing: .08em; text-transform: uppercase; }
+.op-cur { font: 400 12px/1 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--green); }
+.op-divs + .op-note { margin: 12px 0 0; font-size: 13px; }
+
+@media (max-width: 560px) {
+  .op-who { grid-template-columns: 88px minmax(0, 1fr); gap: 12px; }
+  .op-who .av { width: 88px; height: 88px; }
+  .op-divs li { grid-template-columns: 30px minmax(0, 1fr); }
+  .op-divs li > .btn, .op-divs li > .op-cur { grid-column: 2; justify-self: start; }
+}

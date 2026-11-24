@@ -430,7 +430,7 @@ window.WorldMap = (() => {
       if (!ct) { card.hidden = true; paintStill(); return; }
       card.classList.remove('mission');
       card.innerHTML = `<b>${e(Community.name(code))}</b>
-        <dl><dt>Players</dt><dd>${UI.fmt(ct.players)}</dd>
+        <dl><dt>Operators</dt><dd>${UI.fmt(ct.players)}</dd>
         <dt>Top typist</dt><dd>${ct.top ? e(ct.top.name) : 'None yet'}</dd>
         <dt>Best wpm</dt><dd>${ct.top ? ct.top.wpm : '-'}</dd></dl>
         ${ct.you ? '<p>Your country</p>' : ''}
@@ -564,7 +564,7 @@ window.WorldMap = (() => {
     function paintCount() {
       const L = lit(), n = L.reduce((a, c) => a + c.players, 0);
       root.querySelectorAll('[data-map-count]').forEach(el => {
-        el.innerHTML = snap.failed ? 'Player counts could not be loaded.' : `<b>${UI.fmt(n)}</b> ${n === 1 ? 'player' : 'players'} in <b>${L.length}</b> ${L.length === 1 ? 'country' : 'countries'}`;
+        el.innerHTML = snap.failed ? 'Operator counts could not be loaded.' : `<b>${UI.fmt(n)}</b> ${n === 1 ? 'operator' : 'operators'} in <b>${L.length}</b> ${L.length === 1 ? 'country' : 'countries'}`;
       });
     }
     const who = p => window.MultiUI ? `<a href="#/u/${encodeURIComponent(p.id || p.name)}">${e(p.name)}</a> (${e(p.country)})` : `${e(p.name)} (${e(p.country)})`;
@@ -813,7 +813,7 @@ window.WorldMap = (() => {
       if (cmpEl.hidden || !hist.length) return;
       const a = hist[0], bN = day || hist.length, b = hist[bN - 1];
       const defeats = n => hist.slice(0, n).reduce((x, d) => x + d.defeats, 0);
-      const rows = [['Players', a.players, b.players], ['Countries', a.countries, b.countries], ['Words typed', a.wordsTotal, b.wordsTotal], ['Bosses beaten', defeats(1), defeats(bN)]];
+      const rows = [['Operators', a.players, b.players], ['Countries', a.countries, b.countries], ['Words typed', a.wordsTotal, b.wordsTotal], ['Bosses beaten', defeats(1), defeats(bN)]];
       const x = (p, q) => !p ? (q ? 'new' : '-') : q / p >= 10 ? `x${UI.fmt(q / p)}` : `x${(q / p).toFixed(1)}`;
       // players over time, with the two days marked
       const w = 220, h = 36, maxP = hist[hist.length - 1].players;
@@ -822,7 +822,7 @@ window.WorldMap = (() => {
       const [bx, by] = pt(b);
       cmpEl.innerHTML = `<table><thead><tr><th></th><th>Day 1</th><th>${day ? `Day ${bN}` : 'Today'}</th><th>Change</th></tr></thead><tbody>
         ${rows.map(([n, p, q]) => `<tr><th>${n}</th><td>${short(p)}</td><td>${short(q)}</td><td>${x(p, q)}</td></tr>`).join('')}</tbody></table>
-        <svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Players from day 1 to ${day ? `day ${bN}` : 'today'}"><path d="${line}"/><circle cx="${pt(a)[0]}" cy="${pt(a)[1]}" r="2.5"/><circle cx="${bx}" cy="${by}" r="2.5"/></svg>
+        <svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Operators from day 1 to ${day ? `day ${bN}` : 'today'}"><path d="${line}"/><circle cx="${pt(a)[0]}" cy="${pt(a)[1]}" r="2.5"/><circle cx="${bx}" cy="${by}" r="2.5"/></svg>
         <span class="hm-demo">Demo data</span>`;
     }
 

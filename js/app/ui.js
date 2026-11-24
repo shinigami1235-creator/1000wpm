@@ -1,14 +1,3 @@
-// lowercase is the theme, and canvases draw their own text where CSS can't reach it, so
-// fillText, strokeText and measureText lower it too. A canvas that must keep its case
-// (text the player types with capitals) sets ctx.keepCase = true.
-for (const C of [window.CanvasRenderingContext2D, window.OffscreenCanvasRenderingContext2D]) {
-  if (!C) continue;
-  for (const m of ['fillText', 'strokeText', 'measureText']) {
-    const f = C.prototype[m];
-    C.prototype[m] = function (t, ...a) { return f.call(this, this.keepCase ? t : String(t).toLowerCase(), ...a); };
-  }
-}
-
 // Small helpers shared by the pages: HTML building, avatars, the line chart and number formats.
 window.UI = (() => {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

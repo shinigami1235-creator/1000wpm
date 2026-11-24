@@ -6,7 +6,7 @@
 //
 // Timeline, in seconds:
 //   0.0 to 1.2   falling code: each column types Art's words or a bit of code down the screen
-//   0.9 to 2.3   glyphs fall out of the columns and land as the lowercase wordmark, then the
+//   0.9 to 2.3   glyphs fall out of the columns and land as the Stormtyper wordmark, then the
 //                subtitle types itself out
 //   2.3 to 3.9   the wordmark opens into a portal and the camera flies through a tunnel of
 //                code rings, streaks and grid lines. From 3.1 the exit opens in the middle and
@@ -24,7 +24,7 @@
   const ART = 'hi im art and i type fast sometimes every day i type my follower count with one word for each follower so today i type twenty five thousand words';
   const CODE = ['wpm=204', '{acc:100}', '10000wpm', '<type/>', 'keys++', 'race(art)', '[tab]', 'f99 pro', 'sk61 he', 'yaksa 75', 'x68 he', 'vanguard 96', 'sf60', 'k98se', 'caret>', 'words=25500'];
   const CH = ' 0123456789abcdefghijklmnopqrstuvwxyz<>/{}[]()=+*;:_.,#';
-  const LOGO_CH = 'lowercase_<>{}/=+';
+  const LOGO_CH = 'STORMTYPER_<>{}/=+';
 
   const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
   const smooth = (a, b, v) => { const x = clamp((v - a) / (b - a)); return x * x * (3 - 2 * x); };
@@ -76,14 +76,14 @@
     const m = document.createElement('canvas').getContext('2d');
     const FONT = '"Chakra Petch", "Segoe UI", system-ui, sans-serif';
     m.font = `700 100px ${FONT}`;
-    const F = 100 * logoW / m.measureText('lowercase_').width;
+    const F = 100 * logoW / m.measureText('STORMTYPER_').width;
     const lc = Math.round(clamp(F * 0.74 / 13, 4, 14));
     const gw = Math.ceil(logoW / lc) + 2, gh = Math.ceil(F * 0.9 / lc);
     const SS = 4, sc = document.createElement('canvas');
     sc.width = gw * SS; sc.height = gh * SS;
     const sx = sc.getContext('2d', { willReadFrequently: true });
     sx.font = `700 ${F / lc * SS}px ${FONT}`; sx.textAlign = 'center'; sx.textBaseline = 'middle'; sx.fillStyle = '#fff';
-    sx.fillText('lowercase_', sc.width / 2, sc.height / 2 + F / lc * SS * 0.04);
+    sx.fillText('STORMTYPER_', sc.width / 2, sc.height / 2 + F / lc * SS * 0.04);
     const px = sx.getImageData(0, 0, sc.width, sc.height).data;
     const x0 = (w - gw * lc) / 2, y0 = h * 0.44 - gh * lc / 2;
     const parts = [];
@@ -200,7 +200,7 @@
       const cw = S.cache.width / S.dpr, chh = S.cache.height / S.dpr;
       c.drawImage(S.cache, S.cx + (S.x0 - M - S.cx) * logoScale, S.cy + (S.y0 - M - S.cy) * logoScale, cw * logoScale, chh * logoScale);
       // subtitle typing out under it
-      const sub = '// the typing collective';
+      const sub = '// by 10000wpm. ctrl: control the chaos';
       const n = Math.floor(clamp((t - 1.85) / 0.5) * sub.length);
       const sa = (1 - smooth(2.3, 2.6, t));
       if (n > 0 && sa > 0) {
@@ -415,9 +415,9 @@
     c.fillStyle = BG; c.fillRect(0, 0, w, h);
     const fs = Math.min(w * 0.11, 150);
     c.font = `700 ${fs}px "Chakra Petch", "Segoe UI", system-ui, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = G; c.fillText('lowercase_', w / 2, h * 0.44);
+    c.fillStyle = G; c.fillText('STORMTYPER_', w / 2, h * 0.44);
     c.font = `400 ${Math.max(12, fs * 0.16)}px "Share Tech Mono", ui-monospace, monospace`; c.fillStyle = '#7fa892';
-    c.fillText('// the typing collective', w / 2, h * 0.44 + fs * 0.75);
+    c.fillText('// by 10000wpm. ctrl: control the chaos', w / 2, h * 0.44 + fs * 0.75);
     html.classList.remove('intro-cover');
     if (run.frozen != null) return;
     run.calmTimer = setTimeout(() => finish(false), 750);

@@ -31,6 +31,24 @@ window.TT = (() => {
     }
     return out;
   }
+  // The typing test, races and reel mode draw from the player's word set:
+  //   'mt'    Monkeytype's default English 200 (js/words-mt.js), the default
+  //   'mt1k'  Monkeytype's English 1k
+  //   'big'   the site's own expanded list (randomWords above)
+  // Monkeytype picks each word at random from its list, never the same word twice in a row.
+  const WORDSETS = { mt: 'english', mt1k: 'english_1k' };
+  const wordset = () => { const v = store.get('wpm-wordset', 'mt'); return v in WORDSETS || v === 'big' ? v : 'mt'; };
+  const setWordset = v => store.set('wpm-wordset', v);
+  function testWords(n, set = wordset()) {
+    const list = WORDSETS[set] && window.MONKEYTYPE && MONKEYTYPE[WORDSETS[set]];
+    if (!list) return randomWords(n);
+    const out = [];
+    while (out.length < n) {
+      const w = list[Math.floor(Math.random() * list.length)];
+      if (w !== out[out.length - 1]) out.push(w);
+    }
+    return out;
+  }
   function wordOfLength(min, max) {
     const src = [];
     for (let l = min; l <= max; l++) if (pool[l]) src.push(...pool[l]);
@@ -276,5 +294,5 @@ window.TT = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
-  return { randomWords, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, setSound, soundOn: () => on, store, ART_WPM: 204 };
+  return { randomWords, testWords, wordset, setWordset, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, setSound, soundOn: () => on, store, ART_WPM: 204 };
 })();

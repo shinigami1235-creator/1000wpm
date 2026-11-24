@@ -414,6 +414,8 @@ window.Progress = (() => {
     nextGift, openGift, resolveGifts: resolve, checkIn, ready: () => !!p,
     said: () => p.said, setSaid: d => { p.said = d; save(); },
     dayReward, give,
+    // a lifetime counter by name (bossDmg, bossWins, combo...), for the Operator ID
+    counter: k => (p && p.c[k]) || 0,
     // the daily task ids a date would draw, for tests and for planning the pool
     preview: d => draw(D.DAILY, 'daily:' + d, ['easy', 'medium', 'hard']).map(r => r.id),
   };

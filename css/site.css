@@ -1,4 +1,4 @@
-/* lowercase. Terminal art direction from SPEC.md. Every colour comes from the tokens below. */
+/* Stormtyper by 10000wpm, for CTRL. Terminal art direction from SPEC.md. Every colour comes from the tokens below. */
 :root {
   --bg: #040806;
   --bg-2: #07100b;
@@ -26,14 +26,10 @@
 }
 
 * { box-sizing: border-box; }
-/* lowercase is the theme: every word on the site shows in lower case. The text being typed
-   keeps its case (.typetext, the reel lines and anything marked .keep-case), since typing
-   capitals is part of the practice; free typing has a switch to drop them. Form controls
-   don't inherit text-transform, so they get it by name. */
-html { text-transform: lowercase; }
-button, select, option, input::placeholder, textarea::placeholder { text-transform: lowercase; }
+/* Case (Gid, 24 Nov 2026, to fit Art's CTRL cards): titles, labels, buttons and the nav in
+   capitals, sentences as written. The text being typed always shows as written. */
+h1, h2, h3, .ph, .label, button, .btn, th, .nav a, .seg button { text-transform: uppercase; }
 .typetext, .reel-lines, .keep-case { text-transform: none; }
-.typetext .ghost, .typetext .caret { text-transform: lowercase; }
 [hidden] { display: none !important; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

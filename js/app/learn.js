@@ -388,7 +388,7 @@ window.LearnPage = (() => {
     else if (id === 'weak') renderWeak();
     else if (L) renderLesson(L);
     else renderMap();
-    document.title = `${id === 'placement' ? 'Placement test' : id === 'weak' ? 'Weak keys' : L ? L.title : 'Academy'} | lowercase`.toLowerCase();
+    document.title = `${id === 'placement' ? 'Placement test' : id === 'weak' ? 'Weak keys' : L ? L.title : 'Academy'} | Stormtyper`;
     scrollTo(0, 0);
   }
 

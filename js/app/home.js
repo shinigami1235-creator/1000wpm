@@ -22,7 +22,7 @@ Router.register('home', (() => {
         <section class="hero-map" aria-labelledby="map-h">
           <div class="hm-frame">
             <div class="hm-hud">
-              <p class="hm-brand">Keyspace // ops map</p>
+              <p class="hm-brand">CTRL // Keyspace ops map</p>
               <div class="hm-live">
                 <p class="hm-stat"><small><span class="l">Online now</span><span class="s">Online</span></small><b data-k="online">-</b></p>
                 <p class="hm-stat hm-bossbar"><small><span class="l">Fighting Syntax Error</span><span class="s">Syntax Error</span></small><b data-k="inBoss">-</b><span class="bar" aria-hidden="true"><i data-hud-bar></i></span><b class="pct" data-k="hp">-</b></p>
@@ -32,7 +32,7 @@ Router.register('home', (() => {
               </div>
               <div class="hm-live hm-day" hidden>
                 <p class="hm-stat"><small data-k="d-date"></small><b data-k="d-day"></b></p>
-                <p class="hm-stat"><small>Players</small><b data-k="d-players"></b></p>
+                <p class="hm-stat"><small>Operators</small><b data-k="d-players"></b></p>
                 <p class="hm-stat"><small>Countries</small><b data-k="d-countries"></b></p>
                 <p class="hm-stat"><small>Peak online</small><b data-k="d-peak"></b></p>
                 <p class="hm-stat"><small>Words typed</small><b data-k="d-words"></b></p>
@@ -42,7 +42,9 @@ Router.register('home', (() => {
             </div>
             <div class="hm-mapwrap">
               <div class="hm-intro">
-                <h1 id="map-h">A typing site by Art (@10000wpm) for anyone who wants to type faster.</h1>
+                <p class="hm-kicker">Incoming transmission</p>
+                <h1 id="map-h">CTRL needs operators.</h1>
+                <p class="hm-lede">You don't need to be the fastest. You need to keep typing. Founded by Art, 10000wpm.</p>
                 <div class="hm-go"><a class="btn" href="#/type">Start typing</a><button class="hm-race" type="button" data-to-race>Race Art</button></div>
               </div>
               <div class="hm-stage" data-map-stage>
@@ -50,7 +52,7 @@ Router.register('home', (() => {
                   <canvas aria-hidden="true"></canvas>
                   <div class="hm-calls" aria-hidden="true"></div>
                   <nav class="hm-missions" aria-label="Game modes on the map"></nav>
-                  <div class="hm-dots" role="group" aria-label="Countries with players"></div>
+                  <div class="hm-dots" role="group" aria-label="Countries with operators"></div>
                 </div>
               </div>
               <p class="hm-drag" hidden>Drag to see more</p>
@@ -59,7 +61,7 @@ Router.register('home', (() => {
             </div>
             <div class="hm-strip">
               <div class="hm-filter" role="group" aria-label="Map layers">
-                <button type="button" data-view="missions" aria-pressed="true">Missions</button><button type="button" data-view="players" aria-pressed="false">Players</button><button type="button" data-view="both" aria-pressed="false">Both</button>
+                <button type="button" data-view="missions" aria-pressed="true">Missions</button><button type="button" data-view="players" aria-pressed="false">Operators</button><button type="button" data-view="both" aria-pressed="false">Both</button>
               </div>
               <p class="hm-count" data-map-count></p>
               <div class="hm-time">
@@ -71,7 +73,7 @@ Router.register('home', (() => {
               </div>
             </div>
             <div class="hm-compare" hidden></div>
-            <div class="hm-feedbox"><span class="hm-demo" hidden>Demo data</span><ol class="hm-feed" aria-label="What players are doing"></ol></div>
+            <div class="hm-feedbox"><span class="hm-demo" hidden>Demo data</span><ol class="hm-feed" aria-label="What operators are doing"></ol></div>
             <p class="sr-only" aria-live="polite" data-feed-live></p>
             <ul class="hm-modes" aria-label="Game modes"></ul>
           </div>

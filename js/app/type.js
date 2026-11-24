@@ -30,7 +30,7 @@ Router.register('type', (() => {
 
   function mount(root) {
     el = root;
-    opt = { mode: 'time', secs: 60, count: 50, caps: 1, ...TT.store.get('wpm-type-opts', {}) };
+    opt = { mode: 'time', secs: 60, count: 50, caps: 1, ...TT.store.get('wpm-type-opts', {}), wset: TT.wordset() };
     el.innerHTML = `
       <div class="type-top">
         <div class="panel title-block">
@@ -50,6 +50,9 @@ Router.register('type', (() => {
           </div>
           <div class="row" data-row="count"><span class="label">Words</span>
             <div class="seg" data-g="count" role="group" aria-label="Word count">${COUNTS.map(s => `<button type="button" data-v="${s}">${s}</button>`).join('')}</div>
+          </div>
+          <div class="row" data-row="wset"><span class="label">Word set</span>
+            <div class="seg" data-g="wset" role="group" aria-label="Word set"><button type="button" data-v="mt">Monkeytype 200</button><button type="button" data-v="mt1k">Monkeytype 1k</button><button type="button" data-v="big">Expanded</button></div>
           </div>
           <div class="row" data-row="none"><span class="label">Length</span><span class="dim" data-k="len"></span></div>
           <div class="row" data-row="caps"><span class="label">Capitals</span>
@@ -120,7 +123,8 @@ Router.register('type', (() => {
     el.querySelectorAll('.seg[data-g]').forEach(g => g.addEventListener('click', ev => {
       const b = ev.target.closest('button'); if (!b) return;
       const k = g.dataset.g;
-      opt[k] = k === 'mode' ? b.dataset.v : +b.dataset.v;
+      opt[k] = k === 'mode' || k === 'wset' ? b.dataset.v : +b.dataset.v;
+      if (k === 'wset') TT.setWordset(opt.wset);
       TT.store.set('wpm-type-opts', opt);
       reset();
       if (keys) keys.focus();
@@ -143,8 +147,8 @@ Router.register('type', (() => {
   }
 
   function textFor() {
-    if (opt.mode === 'time') return TT.randomWords(Math.max(120, opt.secs * 4.5)).join(' ');
-    if (opt.mode === 'words') return TT.randomWords(opt.count).join(' ');
+    if (opt.mode === 'time') return TT.testWords(Math.max(120, opt.secs * 4.5), opt.wset).join(' ');
+    if (opt.mode === 'words') return TT.testWords(opt.count, opt.wset).join(' ');
     if (opt.mode === 'quote') {
       // the free typing passages (short and medium) once they have loaded, the few quotes above until then
       const P = window.PASSAGES;
@@ -163,6 +167,7 @@ Router.register('type', (() => {
     }));
     el.querySelector('[data-row="secs"]').hidden = opt.mode !== 'time';
     el.querySelector('[data-row="count"]').hidden = opt.mode !== 'words';
+    el.querySelector('[data-row="wset"]').hidden = opt.mode !== 'time' && opt.mode !== 'words';
     el.querySelector('[data-row="none"]').hidden = opt.mode === 'time' || opt.mode === 'words';
     el.querySelector('[data-row="caps"]').hidden = opt.mode !== 'quote';
     el.querySelectorAll('[data-focus] button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.v === 'on') === Focus.enabled()));

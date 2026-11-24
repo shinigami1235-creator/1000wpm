@@ -387,7 +387,7 @@ window.PlayPicker = (() => {
     },
     commons() {
       const P = '#ff8fc8';
-      const LINES = ['anyone up for a duel', 'how do i beat the press', 'new pb 92 wpm', 'gg', 'party needs a support', 'the hydra keeps growing back', 'art is live', 'what keyboard do you use', 'lowercase only lol', 'welcome in'];
+      const LINES = ['anyone up for a duel', 'how do i beat the press', 'new pb 92 wpm', 'gg', 'party needs a support', 'the hydra keeps growing back', 'art is live', 'what keyboard do you use', 'every keystroke counts', 'welcome in'];
       return (c, w, h, t) => {
         const lh = 44, off = (t * 22) % lh;
         c.save(); c.beginPath(); c.rect(0, 0, w, h); c.clip();

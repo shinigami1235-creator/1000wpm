@@ -45,7 +45,7 @@
     holder.append(el);
     cur = pageOf(t); curTab = t;
     try { cur.mount(el, t === 'test' ? params : params.slice(1)); } catch (e) { console.error(e); }
-    if (t !== 'learn') document.title = `${t === 'free' ? 'Free typing' : t === 'reel' ? 'Reel' : 'Type'} | lowercase`.toLowerCase();
+    if (t !== 'learn') document.title = `${t === 'free' ? 'Free typing' : t === 'reel' ? 'Reel' : 'Type'} | Stormtyper`;
   }
 
   Router.register('type', {

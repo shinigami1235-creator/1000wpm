@@ -2,7 +2,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.join(__dirname, '..', '..');
 const FILES = [
-  'js/app/combat/bus.js', 'js/app/combat/spells.js', 'js/app/combat/combo.js', 'js/app/combat/damage.js', 'js/app/combat/engine.js',
+  'js/app/combat/bus.js', 'js/app/combat/spells.js', 'js/app/combat/combo.js', 'js/app/combat/damage.js', 'js/app/combat/perks.js', 'js/app/combat/engine.js',
   'js/net/core.js', 'js/net/filter.js', 'js/net/rating.js', 'js/net/typist.js', 'js/net/bot.js', 'js/net/duel-rules.js', 'js/net/party-rules.js',
 ];
 module.exports = function load(extra = []) {

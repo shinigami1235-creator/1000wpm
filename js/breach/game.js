@@ -1973,7 +1973,7 @@
     const g = ctx.createLinearGradient(0, 140, 0, 400);
     g.addColorStop(0, 'rgba(2,6,4,0)'); g.addColorStop(0.5, 'rgba(2,6,4,.6)'); g.addColorStop(1, 'rgba(2,6,4,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 140, W, 260);
-    note('> lowercase // game_', VX, 160, `15px ${F_LABEL}`, C.green, 'center', 8);
+    note('> stormtyper // game_', VX, 160, `15px ${F_LABEL}`, C.green, 'center', 8);
     glitchTitle('BREACH', VX, 262, 118);
     note('A typing game in five chapters', VX, 298, `500 18px ${F_HEAD}`, C.ink2);
     const opts = ['Story', 'Endless', 'Daily run'], ow = 156, gap = 14, ox = VX - (3 * ow + 2 * gap) / 2;
