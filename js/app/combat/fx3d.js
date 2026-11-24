@@ -11,6 +11,9 @@
 //   fx.cast(spellId, { caster, target, hits, effect })      hits come from engine.cast() so the effect lands with the damage
 //   fx.aura(name, on, { caster, target })                    'ward' | 'hyper' | 'split' | 'root' while a status lasts
 //   fx.event('ward' | 'guard', { caster })                   safe mode used up, a quantum split copy lost
+//   fx.charge(at, level, tier)                               the charge orb: words feed it, level 0..1; level 0 hides it
+//   fx.feed(from, at)                                        a typed word's spark flying into the orb
+//   fx.release(tier, power, from, to(out), onLand)           the orb winds up and fires one attack sized by power 0..1
 //   fx.update(dt)  fx.clear()  fx.dispose()  fx.info()
 //
 // caster and target are small adapters, so the same effect can hit a boss or another player:
@@ -305,6 +308,155 @@ Combat.FX = (() => {
           }
         }
         return e.t < life;
+      };
+      return e;
+    }
+
+    // ---------- the charge orb and its release (Gid, 24 Nov 2026) ----------
+    // Fast typing used to fire one small bolt per word. Words now feed an orb in front of
+    // the player, and the orb winds up and fires one attack whose size follows how much
+    // went in. The tier (the combo) sets the colours.
+    const TIER_COL = [GREEN, GREEN, CYAN, WHITE, CYAN];
+    const coreSpr = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glowTex, color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0, fog: false })));
+    coreSpr.visible = false; coreSpr.renderOrder = 8; root.add(coreSpr);
+    const chg = { on: false, at: new V(), L: 0, show: 0, tier: 0, sh: null, spin: 0, wind: 0, pull: -1 };
+    function charge(at, level, tier = 0) {
+      chg.at.copy(at); chg.L = clamp(level, 0, 1); chg.tier = clamp(tier | 0, 0, 4);
+      if (chg.L > 0 && !chg.on) { chg.on = true; chg.show = 0; }
+    }
+    function feed(from, at) {
+      const col = TIER_COL[chg.tier];
+      if (chg.pull < 0) { chg.pull = pulls.length; pulls.push({ at: chg.at, k: 0, swirl: 0 }); }
+      const a = pulls[chg.pull]; a.k = 60; a.swirl = 6;
+      for (let k = 0; k < (reduce ? 4 : 10); k++) {
+        _pv.set(rnd(-1, 1), rnd(0.2, 1.2), rnd(-0.6, 0.6)).multiplyScalar(4);
+        spawn(t0.copy(from).add(t1.set(rnd(-0.6, 0.6), rnd(-0.2, 0.4), 0)), _pv, k % 3 ? col : WHITE, 0.32, 0.9, k % 2 ? G.one : G.zero, { pull: chg.pull });
+      }
+    }
+    function drawCharge(dt) {
+      const want = chg.on ? chg.L : 0;
+      chg.show += (want - chg.show) * Math.min(1, dt * 10);
+      if (chg.on && want <= 0 && chg.show < 0.02) chg.on = false;
+      const L = chg.show;
+      if (!chg.on && L < 0.02) {
+        coreSpr.visible = false;
+        if (chg.sh) { freeShell(chg.sh); chg.sh = null; }
+        if (chg.pull >= 0 && pulls[chg.pull]) pulls[chg.pull].k = 0;
+        return;
+      }
+      const col = TIER_COL[chg.tier];
+      const w = chg.wind;                       // 0..1 while winding up: tighter and brighter
+      chg.spin += dt * (2 + L * 4 + w * 14);
+      const r = (0.35 + 1.05 * L) * (1 - 0.35 * w);
+      const c = chg.at;
+      if (!chg.sh) chg.sh = shell();
+      const m = chg.sh.m;
+      m.position.copy(c); m.scale.setScalar(r);
+      m.material.uniforms.uCol.value.copy(col);
+      m.material.uniforms.uAmt.value = 0.35 + 0.5 * L + w * 0.5;
+      m.material.uniforms.uHex.value = 0.4 + 0.6 * L;
+      coreSpr.visible = true; coreSpr.position.copy(c);
+      coreSpr.scale.setScalar(r * (2.2 + w * 0.8) * (1 + 0.06 * Math.sin(clock * 31)));
+      coreSpr.material.color.copy(col).lerp(WHITE, 0.2 + 0.35 * w).multiplyScalar(0.5 + 0.4 * L + 0.2 * w);
+      coreSpr.material.opacity = 0.35 + 0.45 * L;
+      // rings: one at the start, up to four when full, each on its own tilt
+      const rings = 1 + Math.floor(L * 3.2);
+      for (let i = 0; i < rings; i++) {
+        const a = chg.spin * (i % 2 ? -1 : 1) + i * 1.3;
+        t1.set(Math.sin(a) * 0.6, 1, Math.cos(a * 0.7) * 0.6).normalize();
+        circle(c, t1, r * (1.3 + i * 0.2), 0.04 + 0.03 * L, i % 2 ? WHITE : col, 0.8 + w * 0.6, 26, a);
+      }
+      // winding up: streaks pulled in from all round the orb
+      if (w > 0 && !reduce) {
+        for (let i = 0; i < 12; i++) {
+          const a = i * 0.5236 + chg.spin * 0.3;
+          t2.set(Math.cos(a), Math.sin(a), 0.3 * Math.sin(a * 3)).normalize();
+          const far = r * (4.2 - 2.6 * w), near = r * (1.6 - 0.4 * w);
+          seg(t3.copy(c).addScaledVector(t2, far), t4.copy(c).addScaledVector(t2, near), 0.05, i % 2 ? WHITE : col, 0.6 + w);
+        }
+      }
+      // crackle once it's half full: short arcs that jump off the surface every frame
+      if (L > 0.45 && !reduce) {
+        const n = Math.round(2 + (L - 0.45) * 8 + w * 4);
+        for (let i = 0; i < n; i++) {
+          t2.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+          t3.copy(c).addScaledVector(t2, r * 0.9); t4.copy(c).addScaledVector(t2, r * rnd(1.6, 2.4 + L));
+          line(jag(t3, t4, 4, 0.25, tmpPts), 0.05, i % 2 ? WHITE : col, 1.2, 0.5);
+        }
+      }
+      // motes drawn in from around the orb, more as it fills
+      if (!reduce && Math.random() < L * 0.9) {
+        if (chg.pull < 0) { chg.pull = pulls.length; pulls.push({ at: chg.at, k: 0, swirl: 0 }); }
+        const pa = pulls[chg.pull]; pa.k = 40 + 60 * w; pa.swirl = 5;
+        t2.set(rnd(-1, 1), rnd(-0.6, 1), rnd(-1, 1)).normalize().multiplyScalar(r * rnd(3, 4.5));
+        spawn(t3.copy(c).add(t2), _pv.set(0, 0, 0), col, 0.22, 1.2, G.dot, { pull: chg.pull });
+      }
+    }
+    const tmpPts = [];
+    function release(tier, power, from, to, onLand) {
+      tier = clamp(tier | 0, 0, 4); power = clamp(power, 0, 1);
+      const col = TIER_COL[tier], WIND = reduce ? 0.08 : 0.22, FLY = 0.12 + 0.06 * (1 - power);
+      const e = add({ from: from.clone(), to, onLand, landed: false, fired: false, tier, power });
+      e.update = dt => {
+        to(t0);
+        if (e.t < WIND) { chg.wind = e.t / WIND; return true; }
+        if (!e.fired) {
+          e.fired = true; chg.wind = 0; chg.L = 0; chg.show = 0; chg.on = false;
+          flare(e.from, WHITE, 1.2 + 1.5 * power, 0.12, 1.1);
+          if (!reduce) burst(e.from, 12 + Math.round(20 * power), 6, col, 0.3, 0.35, G.dot, { drag: 3 });
+        }
+        const u = clamp((e.t - WIND) / FLY, 0, 1);
+        if (u < 1) {
+          // the shot: a bright head with a thick tail, wider with more power
+          t1.lerpVectors(e.from, t0, ease(u));
+          t2.lerpVectors(e.from, t0, ease(Math.max(0, u - 0.35)));
+          const wide = 0.35 + 1.3 * power;
+          seg(t2, t1, wide * 2.2, col, 0.45);
+          seg(t2, t1, wide * 0.7, WHITE, 1.6);
+          if (tier >= 2) for (const sd of [-1, 1]) {
+            t3.copy(t2).add(t4.set(sd * wide, 0.3, 0)); seg(t3, t1, wide * 0.3, sd < 0 ? GREEN : CYAN, 1.2);
+          }
+          if (tier >= 4) {
+            t3.subVectors(t1, t2); const len = t3.length() || 1; t3.divideScalar(len);
+            _u.copy(Math.abs(t3.y) > 0.9 ? Z : UP).cross(t3).normalize(); _v.copy(t3).cross(_u).normalize();
+            for (let i = 0; i <= 18; i++) {
+              const sP = i / 18, a = sP * Math.PI * 8 + e.t * 40;
+              t7.copy(t2).addScaledVector(t3, len * sP).addScaledVector(_u, Math.cos(a) * wide * 1.4).addScaledVector(_v, Math.sin(a) * wide * 1.4);
+              if (i) seg(t6, t7, 0.12, CYAN, 1.4);
+              t6.copy(t7);
+            }
+          }
+          flare(t1, col, 1.5 + 3 * power, 0.06, 1.3, 0.2);
+          return true;
+        }
+        if (!e.landed) {
+          e.landed = true; e.at = t0.clone(); e.lt = e.t;
+          const P2 = power;
+          bigFlash(e.at, WHITE, 8 + 14 * P2, 1.4);
+          flare(e.at, col, 6 + 12 * P2, 0.45, 1.3);
+          burst(e.at, 30 + Math.round(90 * P2), 10 + 10 * P2, col, 0.4 + 0.3 * P2, 0.8, tier >= 3 ? G.star : G.dot, { drag: 1.6 });
+          burst(e.at, 10 + Math.round(30 * P2), 7 + 6 * P2, WHITE, 0.5, 0.9, P2 > 0.5 ? G.one : G.zero, { drag: 1.2, up: 0.4 });
+          juice('shake', reduce ? 0 : 0.18 + 0.6 * P2);
+          juice('stop', reduce ? 0 : Math.round(40 + 90 * P2));
+          if (P2 > 0.6 && canFlash()) juice('tint', tier >= 4 ? 0x3ee6ff : 0x39ff88, 0.25);
+          if (onLand) onLand(e.at.clone());
+        }
+        // shockwaves and spikes after the hit, facing the camera so they read as rings
+        const k = e.t - e.lt, life = 0.45 + 0.25 * power;
+        if (k > life) return false;
+        const f = 1 - k / life;
+        t3.subVectors(camera.position, e.at).normalize();
+        for (let i = 0; i < 1 + Math.round(power * 2); i++) circle(e.at, t3, (0.6 + i * 0.5) + ease(k / life) * (2 + 5 * power), 0.12 * f + 0.04, i ? WHITE : col, 1.2 * f, 32, i);
+        if (!reduce && k < 0.2) {
+          const n = 6 + Math.round(10 * power);
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2 + e.power * 7;
+            _u.copy(Math.abs(t3.y) > 0.9 ? Z : UP).cross(t3).normalize(); _v.copy(t3).cross(_u).normalize();
+            t4.copy(e.at).addScaledVector(_u, Math.cos(a) * (1.5 + 3.5 * power) * (0.4 + k * 4)).addScaledVector(_v, Math.sin(a) * (1.5 + 3.5 * power) * (0.4 + k * 4));
+            seg(e.at, t4, 0.12 + 0.12 * power, i % 2 ? WHITE : col, 1.5 * f);
+          }
+        }
+        return true;
       };
       return e;
     }
@@ -912,6 +1064,7 @@ Combat.FX = (() => {
         if (!ok) { live.splice(i, 1); if (e.cleanup) e.cleanup(); }
       }
       for (const n in auras) if (!drawAura(auras[n], dt)) delete auras[n];
+      drawCharge(dt);
       segs.count = nSeg;
       segs.instanceMatrix.needsUpdate = true;
       if (segs.instanceColor) segs.instanceColor.needsUpdate = true;
@@ -966,6 +1119,7 @@ Combat.FX = (() => {
       flares.forEach(f => { f.m.visible = false; });
       shells.forEach(freeShell);
       pulls.length = 0;
+      chg.on = false; chg.L = 0; chg.show = 0; chg.wind = 0; chg.pull = -1; chg.sh = null; coreSpr.visible = false;
       voidCore.visible = false; disk.visible = false;
       segs.count = 0;
     }
@@ -976,7 +1130,7 @@ Combat.FX = (() => {
     }
     function info() { return { live: live.map(e => ({ id: e.id || 'shot' + e.tier, t: +e.t.toFixed(3) })), auras: Object.keys(auras), segs: nSeg, particles: pAlive }; }
 
-    return { shot, cast, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP) };
+    return { shot, charge, feed, release, cast, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP) };
   }
   return { create };
 })();

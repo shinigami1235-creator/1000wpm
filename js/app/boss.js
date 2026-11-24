@@ -966,12 +966,17 @@ Router.register('boss', (() => {
     setTimeout(() => s.remove(), 1200);
   }
   let popT = 0;
+  // Big callouts (the kernel opening, the firewall going down, a stagger, a lock-on) stay up
+  // for 2 seconds and small ones (HIT, BLOCKED, +25) can't replace them, so they get read.
+  const MAJOR = /^(KERNEL OPEN|FIREWALL DOWN|STAGGER|LOCKED ON|EXECUTION|UNBREAKABLE)/;
+  let popHold = 0;
   function pop(text, cls) {
     const p = q('pop'); if (!p) return;
-    const t = performance.now();
-    if (t - popT < 350) return;
-    popT = t;
-    p.className = 'wb-pop ' + cls;
+    const t = performance.now(), major = MAJOR.test(text);
+    if (t - popT < 350 && !major) return;
+    if (!major && t < popHold) return;
+    popT = t; popHold = major ? t + 1800 : 0;
+    p.className = 'wb-pop ' + cls + (major ? ' long' : '');
     p.textContent = text;
     void p.offsetWidth; p.classList.add('go');
   }
@@ -1247,6 +1252,7 @@ Router.register('boss', (() => {
   function debugHook() {
     window._wb = {
       squad: () => squad,
+      sceneCtl: () => scene,
       state: () => st,
       phase: () => st && st.phase,
       mech: () => mech.map(m => ({ kind: m.kind, id: m.id, word: m.word, due: m.due - now() })),

@@ -60,6 +60,10 @@ window.BossScene = (() => {
       react: (k, p, x) => impl && impl.react(k, p, x),
       freezeAttack: id => impl && impl.freezeAttack(id),
       pause: on => impl && impl.pause(on),
+      charge: (level, tier) => impl && impl.charge(level, tier),
+      feed: () => impl && impl.feed(),
+      // with no scene (WebGL off or still loading) the release lands at once
+      release: (tier, power, onLand) => { if (impl && impl.live()) impl.release(tier, power, onLand); else if (onLand) onLand(null, null); },
       defeat: instant => { pending.defeated = true; if (impl) impl.defeat(!!instant); },
       revive: () => { pending.defeated = false; pending.frac = 1; pending.phase = 0; if (impl) impl.revive(); },
       screen: (k, out) => (impl ? impl.screen(k, out) : null),
@@ -1448,6 +1452,26 @@ window.BossScene = (() => {
     function aura(name, on) { if (fx) fx.aura(name, on, { caster, target: bossTarget }); }
     function fxEvent(kind) { if (fx) fx.event(kind, { caster }); }
     function freezeAttack(id) { frozen.add(id); }
+    // ---------- the charge orb (js/app/combat/fx3d.js): words feed it, the release fires one attack ----------
+    const orbAt = new V();
+    // the orb hangs in front of the camera, low in the middle of the frame, between you and the boss
+    const orbPos = out => { camera.getWorldDirection(v1); out.copy(camera.position).addScaledVector(v1, 11); out.y -= 1.7; return out; };
+    function chargeOrb(level, tier) { if (fx && !dead) fx.charge(orbPos(orbAt), level, tier); }
+    function feed() { if (fx && !dead) fx.feed(v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt)); }
+    // onLand(x, y): the impact's place on screen, for the damage number
+    function release(tier, power, onLand) {
+      if (!fx || dead) { if (onLand) onLand(null, null); return; }
+      const from = orbPos(new V());
+      const ti = -2, sh = shieldF !== null;   // a release always goes for the core
+      fx.release(tier, power, from, out => aimAt(ti, sh, from, out), at => {
+        recoilV -= 0.3 + 1.4 * power;
+        recoilSide = clamp((at.x - root.position.x) / 6, -1, 1);
+        for (let k = 0; k < 2 + power * 12; k++) { const j = pickBlock(true); if (j >= 0) knock(blocks[j], false, 0.6 + power); }
+        if (power > 0.6 && canFlash()) hitGlow = calm ? 0.5 : 1;
+        markGlow[RAID] = 1;
+        if (onLand) { v3.copy(at).project(camera); onLand((v3.x * 0.5 + 0.5) * host.clientWidth, (-v3.y * 0.5 + 0.5) * host.clientHeight); }
+      });
+    }
     // tests only: hold every animation still so a capture shows one exact moment
     let paused = false;
     function pause(on) { paused = !!on; }
@@ -1455,7 +1479,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause };
+    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release };
   }
 
   return { mount };
