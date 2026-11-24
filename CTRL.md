@@ -52,6 +52,21 @@ The numbers are a first pass and get tuned in playtesting.
 
 From the player's own records: top speed, accuracy over recent runs, World Boss and Boss Rush damage, best combo, longest runs and Party heals. Whichever one stands out most against the site's averages is the suggestion. A new player with no records gets Precision, the easiest one to make work.
 
+## World Boss squads
+
+From Art's idea on 24 Nov 2026: in the World Boss an operator can go down if they fall behind, unless the operators around them guard and heal. Gid's rule on top: a brand-new typist has to enjoy it too. Built the same day in `js/app/boss-squad.js`.
+
+- **Squads.** Every operator fights in a squad of four. If you're not a Sentinel or an Architect, one of your three squadmates is.
+- **Integrity.** Everyone has 100. An unblocked raid attack takes 22 (34 by phase 5), a packet takes 8.
+- **Lock-ons.** Every 9 to 14 seconds (sooner in later phases) the boss locks on to one squad member for 4.5 seconds and hits for 30 to 50. The target types a dodge word. A Sentinel can cover them by typing their handle.
+- **Words sized to the typist.** Block and dodge words follow the operator's average speed: 2 to 4 letters under 30 wpm, 3 to 5 under 60, 4 to 6 under 100, the full attack word from 100. The word stack is capped at 5, 6 or 7 letters for the same tiers. Every raider gets the same window, so a slower typist gets a shorter word rather than more time.
+- **Healing.** An Architect heals a squadmate 25 by typing their handle, every 4 seconds. With no Architect up, anyone heals 12 every 6 seconds.
+- **Going down.** At 0 an operator is down for 10 seconds. Every clean word they type takes a second off, and anyone can revive them by typing their handle (back at 40). They keep their coins and damage.
+- **Recruit shield.** CL-01 operators can't go down: their integrity stops at 1 and a hit only costs their combo, the same as before squads.
+- **Credit.** The result shows the squad's damage, saves (covers and revives) and heals, with Top damage, Top guard and Top medic. Saves pay 3 coins each and heals 1 per 10 healed, up to 60, on top of the block coins.
+
+These perks of Sentinel and Architect come on top of their division perks, which still apply in Boss Rush where there's no squad.
+
 ## Clearance levels
 
 Clearance comes from the player's level (XP from every run, task and achievement, so it rewards playing and accuracy as much as raw speed). Each clearance level gives one perk.

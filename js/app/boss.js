@@ -30,7 +30,11 @@ Router.register('boss', (() => {
     combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
     spell: 'Type a green spell word with no typo to cast it. The offer goes after 15 seconds.',
   });
-  const KIND = { block: 'Block', return: 'Send back', add: 'Debug' };
+  const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
+  // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
+  const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, return: 3, heal: 4, add: 5 };
+  // integrity a raid attack takes when it reaches you: 22 in phase 1 to 34 in phase 5; a packet takes 8
+  const slamDmg = p => 22 + 3 * p, PACKET_DMG = 8;
   const STREAK_N = 6, STREAK_MS = 4500, STAGGER_CD = 8000, CRITS = 3, JAM_MS = 5000, ACTIVE_MS = 20000, LOCK_MS = 1200;
   const DMG_MILESTONES = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05];
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
@@ -44,6 +48,7 @@ Router.register('boss', (() => {
   let tipQ = [], tipUntil = 0, seenTips = new Set(), miles = new Set(), downTimer = 0, feedDirty = false;
   let labels = new Map(), misses = [], gone = new Map();
   // the combat layer: this player's combo and spells, the sounds, the word stack's source
+  let squad = null, squadOffs = [], tier = 3;
   let me = null, cSnd = null, words = null, spellT = [], wordT0 = 0, grace = {}, frostMs = 0, castDmg = {}, avoid = new Set(), comboShown = false;
   const STACK_DIFF = [[1, 4], [2, 4], [2, 5], [3, 5], [3, 6]];
   const cSfx = (n, a) => { if (cSnd) cSnd.play(n, a); };
@@ -61,6 +66,37 @@ Router.register('boss', (() => {
     sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0 };
     recorded = false;
   }
+  // ---------- the squad (js/app/boss-squad.js) ----------
+  // your typing speed sets the size of your block and dodge words and of the word stack
+  function myWpm() { try { const s = WPM.stats(); return s.avgWpm || 35; } catch (e) { return 35; } }
+  const DODGE = [[2, 4], [3, 5], [4, 6], [5, 7]];
+  function makeSquad() {
+    squadOffs.forEach(f => f()); squadOffs = [];
+    if (squad) squad.destroy();
+    squad = null;
+    if (!window.BossSquad) return;
+    const d = WorldBossNet.demo();
+    tier = R.tierOf(myWpm());
+    const div = window.Ops && Ops.division();
+    squad = BossSquad.create({
+      now, demo: d, raiders: d && d.raiders ? d.raiders() : [],
+      me: { name: WPM.profile().name, division: div ? div.id : null, recruit: !!(window.Ops && Ops.clearance().i === 0) },
+      dodgeWord: () => TT.wordOfLength(...DODGE[tier]),
+    });
+    if (words && tier < 3) words.set({ maxLen: [5, 6, 7][tier] });
+    const name = m => (m.you ? 'you' : m.name);
+    squadOffs.push(
+      squad.on('lock', e => { if (!el) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} locked on to you. Type the dodge word`, cls: 'alert' }); } }),
+      squad.on('dodge', () => { if (!el) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
+      squad.on('covered', e => { if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
+      squad.on('hit', e => { if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Recruit shield kept you up. From CL-02 you can go down', cls: 'you' }); }),
+      squad.on('down', e => { if (!el) return; pushFeed({ text: e.who.you ? 'You are down. Every clean word gets you back a second sooner' : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
+      squad.on('revive', e => { if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
+      squad.on('up', e => { if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
+      squad.on('heal', e => { if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
+    );
+  }
+
   function resetFight() {
     newSession();
     feed = []; hist = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
@@ -68,6 +104,7 @@ Router.register('boss', (() => {
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
     spellT.forEach(clearTimeout); spellT = []; grace = {}; frostMs = 0; castDmg = {}; avoid = new Set(); comboShown = false;
     if (me) me.reset();
+    makeSquad();
   }
 
   function mount(root) {
@@ -120,6 +157,7 @@ Router.register('boss', (() => {
           <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
           <div class="wb-banner" data-k="banner" hidden></div>
           <div class="boss-down" data-k="down" hidden></div>
+          <div class="wb-youdown" data-k="youdown" hidden></div>
         </section>
         <section class="boss-type" aria-label="Your word stack">
           <div class="wb-mech" data-k="mechrow"><div class="wb-chips" data-k="chips"></div></div>
@@ -129,6 +167,7 @@ Router.register('boss', (() => {
           </div>
           <div class="wb-over" data-k="over"><button class="btn" type="button" data-k="again">New demo boss</button></div>
         </section>
+        <section class="wb-squad" data-k="squad" aria-label="Your squad"></section>
         <div class="wb-strip">
           <span class="wb-stat mine"><b data-k="s-dmg">0</b> damage</span>
           <span class="wb-stat"><b data-k="s-rank">-</b><span data-k="s-of"></span></span>
@@ -160,7 +199,7 @@ Router.register('boss', (() => {
         </section>
         <section>
           <h3>Damage</h3>
-          <table class="boss-board"><thead><tr><th>#</th><th>Raider</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody data-k="board"></tbody></table>
+          <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody data-k="board"></tbody></table>
         </section>
         <section>
           <h3>Live feed</h3>
@@ -177,7 +216,7 @@ Router.register('boss', (() => {
     offs.push(WorldBossNet.onState(onState));
     offs.push(WorldBossNet.onHit(onHit));
     offs.push(WorldBossNet.onEvent(onEvent));
-    WorldBossNet.connect({ id: 'you', name: WPM.profile().name }).then(s => { onState(s, true); });
+    WorldBossNet.connect({ id: 'you', name: WPM.profile().name }).then(s => { makeSquad(); onState(s, true); });
 
     q('skip').addEventListener('click', e => {
       const b = e.target.closest('button[data-p]');
@@ -306,9 +345,11 @@ Router.register('boss', (() => {
         else { combo = clean ? combo + 1 : 0; best = Math.max(best, combo); }
         streak(t);
         mine.add(m.id);
-        if (m.kind === 'block') {
+        if (m.who && squad) {
+          squad.act(m, t);
+        } else if (m.kind === 'block') {
           sess.blocks++;
-          WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0 });
+          WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0, tier });
           if (scene) scene.block(m.id);
           sfx('blockOk');
           pop('BLOCKED', 'cyan');
@@ -337,7 +378,12 @@ Router.register('boss', (() => {
     }
     const word = stack.shift();
     const ok = typed === word;
-    if (ok) {
+    if (ok && squad && squad.down()) {
+      // down: clean words bring you back sooner and deal no damage
+      sess.good++; sess.letters += word.length; sess.words++;
+      if (clean) squad.cleanWord();
+      TT.click(true);
+    } else if (ok) {
       sess.good++;
       sess.letters += word.length;
       sess.words++;
@@ -537,8 +583,10 @@ Router.register('boss', (() => {
     if (!el || !st) return;
     const t = now();
     if (me) me.tick();
+    if (squad) squad.tick(t, st.phase || 0);
+    const isDown = !!(squad && squad.down());
     const evs = R.eventsAt(st, t, 800 + Math.max(0, ...Object.values(grace)));
-    const list = [];
+    const list = squad ? squad.targets(t) : [];
     for (const e of evs) {
       if (!sent.has(e.id)) {
         sent.add(e.id);
@@ -551,15 +599,16 @@ Router.register('boss', (() => {
       if (e.type === 'slam') {
         // cryo lock gives you extra time on one attack
         const due = e.hit + (grace[e.id] || 0);
-        if (t < due && !mine.has(e.id)) {
-          list.push({ kind: 'block', id: e.id, word: e.word, due, total: due - e.start, ev: e });
+        if (t < due && !mine.has(e.id) && !isDown) {
+          list.push({ kind: 'block', id: e.id, word: R.blockWord(e, tier), due, total: due - e.start, ev: e });
           const left = Math.ceil((due - t) / 1000);
           if (left <= 3 && warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
         }
         if (t >= due && !done.has(e.id)) {
           done.add(e.id);
+          if (squad) squad.raidHit(slamDmg(st.phase || 0), t);
           if (mine.has(e.id)) sfx('impact', true);
-          else if (active()) {
+          else if (active() && !isDown) {
             const stunned = me && me.status('stunned-target');
             const r = me ? me.hurt('slam') : { blocked: false };
             if (r.blocked) {
@@ -570,6 +619,7 @@ Router.register('boss', (() => {
               if (!(me && me.status('purge'))) jamUntil = t + JAM_MS;
               if (!me) combo = 0;
               sess.fails++;
+              if (squad) squad.hitMe(slamDmg(st.phase || 0), t);
               if (scene) scene.hurt();
               flashTint();
               sfx('blockFail');
@@ -580,14 +630,15 @@ Router.register('boss', (() => {
         }
       } else if (e.type === 'volley') {
         for (const s of e.shots) {
-          if (t >= s.launch && t < s.arrive && !mine.has(s.id)) list.push({ kind: 'return', id: s.id, word: s.word, due: s.arrive, total: s.arrive - s.launch });
+          if (t >= s.launch && t < s.arrive && !mine.has(s.id) && !isDown) list.push({ kind: 'return', id: s.id, word: s.word, due: s.arrive, total: s.arrive - s.launch });
           if (t >= s.launch && !sent.has('l:' + s.id)) { sent.add('l:' + s.id); if (t < s.launch + 600) sfx('launch'); }
           if (t >= s.arrive && !done.has(s.id)) {
             done.add(s.id);
-            if (!mine.has(s.id) && active()) {
+            if (!mine.has(s.id) && active() && !isDown) {
               const had = combo;
               const r = me ? me.hurt('packet') : { blocked: false };
               if (!r.blocked) {
+                if (squad) squad.hitMe(PACKET_DMG, t);
                 if (had > 0) pushFeed({ text: 'A packet hit you and broke your combo', cls: 'alert' });
                 if (!me) combo = 0;
                 if (scene) scene.hurt();
@@ -599,13 +650,12 @@ Router.register('boss', (() => {
       } else if (e.type === 'adds') {
         for (const a of e.adds) {
           const live = t >= a.spawn && t < a.until && !st.addsDown[a.id] && !mine.has(a.id);
-          if (live) list.push({ kind: 'add', id: a.id, word: a.word, due: a.until, total: R.ADD_LIFE });
+          if (live && !isDown) list.push({ kind: 'add', id: a.id, word: a.word, due: a.until, total: R.ADD_LIFE });
           if (st.addsDown[a.id] && !done.has('k:' + a.id)) { done.add('k:' + a.id); if (!mine.has(a.id) && scene) scene.killAdd(a.id, false); }
         }
       }
     }
-    const order = { block: 0, return: 1, add: 2 };
-    list.sort((a, b) => order[a.kind] - order[b.kind] || a.due - b.due);
+    list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
     for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
@@ -626,6 +676,7 @@ Router.register('boss', (() => {
     if (now() >= lockUntil && q('box').classList.contains('locked')) renderQueue();
     paintChips(false);
     paintMe(t);
+    paintSquad(t);
     paintTip(t);
   }
 
@@ -707,6 +758,35 @@ Router.register('boss', (() => {
     }
     const html = bits.join('');
     if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  // ---------- the squad cards ----------
+  const DIVN = id => (window.Combat && Combat.Perks && Combat.Perks.byId(id) ? Combat.Perks.byId(id).name : 'No division');
+  let squadKey = '';
+  function paintSquad(t) {
+    const box = q('squad'); if (!box || !squad) return;
+    const ms = squad.members();
+    const key = ms.map(m => [m.hp, m.down, m.lockUntil ? Math.ceil((m.lockUntil - t) / 500) : 0, m.down ? Math.ceil((m.downUntil - t) / 1000) : 0].join(',')).join('|');
+    if (key !== squadKey) {
+      squadKey = key;
+      box.innerHTML = `<h2 class="wb-sqh">Squad</h2>` + ms.map(m => {
+        const pct = Math.round(100 * m.hp / m.max);
+        const state = m.down ? `Down ${Math.max(0, Math.ceil((m.downUntil - t) / 1000))}s`
+          : m.lockUntil ? `Locked on ${Math.max(0, (m.lockUntil - t) / 1000).toFixed(1)}s`
+          : m.you && m.recruit ? 'Recruit shield' : `${m.hp} / ${m.max}`;
+        return `<div class="wb-op${m.you ? ' you' : ''}${m.down ? ' down' : ''}${m.lockUntil ? ' locked' : ''}${pct < 35 ? ' low' : ''}">
+          <div class="wb-opn"><b>${m.you ? 'You' : esc(m.name)}</b><span>${esc(DIVN(m.division))}</span></div>
+          <i class="wb-ophp"><i style="width:${pct}%"></i></i>
+          <div class="wb-ops"><span>${state}</span>${m.you ? '' : `<kbd>${esc(m.handle)}</kbd>`}</div>
+        </div>`;
+      }).join('');
+    }
+    const me2 = squad.me(), yd = q('youdown');
+    if (me2.down) {
+      yd.hidden = false;
+      const html = `<b>You're down</b><span>Back in ${Math.max(0, Math.ceil((me2.downUntil - t) / 1000))}s. Each clean word takes a second off, or a squadmate can revive you.</span>`;
+      if (yd.innerHTML !== html) yd.innerHTML = html;
+    } else if (!yd.hidden) { yd.hidden = true; yd.innerHTML = ''; }
   }
 
   // ---------- labels over the 3D scene ----------
@@ -1067,11 +1147,28 @@ Router.register('boss', (() => {
         ${r && bonus ? `<p class="wb-bonus">Coins include ${[
           r.blockCoins ? `${r.blockCoins} for ${sess.blocks} ${sess.blocks === 1 ? 'block' : 'blocks'}` : '',
           r.killCoins ? `${r.killCoins} for being there at the end` : '',
+          r.squadCoins ? `${r.squadCoins} for saves and heals` : '',
         ].filter(Boolean).join(' and ')}.</p>` : ''}
-        <table class="boss-board"><thead><tr><th>#</th><th>Raider</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
+        <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
+        ${squadTable()}
       </div>`;
     if (instant) q('again').focus({ preventScroll: true });
     requestAnimationFrame(showWhole);
+  }
+  // the squad's damage, saves and heals, with the top guard and top medic called out
+  function squadTable() {
+    if (!squad) return '';
+    const sq = squad.stats();
+    const dmgOf = m => { const r = st.raiders.find(x => (m.you ? x.you : x.id === m.demoId)); return r ? r.damage : 0; };
+    const rows = sq.members.map(m => ({ ...m, dmg: dmgOf(m) }));
+    const top = k => { const b = rows.slice().sort((a, c) => c[k] - a[k])[0]; return b && b[k] > 0 ? b : null; };
+    const g = top('saves'), h = top('heals'), d = top('dmg');
+    const call = [d && `Top damage: ${d.you ? 'you' : esc(d.name)}`, g && `Top guard: ${g.you ? 'you' : esc(g.name)}`, h && `Top medic: ${h.you ? 'you' : esc(h.name)}`].filter(Boolean);
+    return `<h3 class="wb-sqres">Your squad</h3>
+      ${call.length ? `<p class="wb-sqcall">${call.join('. ')}.</p>` : ''}
+      <table class="boss-board wb-sqtable"><thead><tr><th>Operator</th><th class="hide-sm">Division</th><th class="r">Damage</th><th class="r">Saves</th><th class="r">Heals</th></tr></thead>
+      <tbody>${rows.map(m => `<tr class="${m.you ? 'you' : ''}"><td>${m.you ? 'You' : esc(m.name)}</td><td class="hide-sm">${esc(DIVN(m.division))}</td><td class="r">${fmt(m.dmg)}</td><td class="r">${m.saves}</td><td class="r">${fmt(m.heals)}</td></tr>`).join('')}</tbody></table>
+      <p class="wb-sqline">You went down ${sq.downs} ${sq.downs === 1 ? 'time' : 'times'}, dodged ${sq.dodges} lock-${sq.dodges === 1 ? 'on' : 'ons'} and saved squadmates ${sq.saves} ${sq.saves === 1 ? 'time' : 'times'}.</p>`;
   }
   // The result and the New demo boss button below it must both be on screen.
   // If they aren't, the page scrolls the top of the fight, or the result itself
@@ -1123,7 +1220,10 @@ Router.register('boss', (() => {
     if (atKill && sess.words > 0) WPM.track('boss_win', { dmg: Math.round(sess.dmg || 0) });
     r.blockCoins = Math.min(60, sess.blocks * 3);
     r.killCoins = atKill && sess.words > 0 ? 20 : 0;
-    r.bonus = r.blockCoins + r.killCoins;
+    // saving squadmates pays like blocking: 3 a save and 1 for every 10 integrity healed, up to 60
+    const sq = squad ? squad.stats() : null;
+    r.squadCoins = sq ? Math.min(60, sq.saves * 3 + Math.floor(sq.heals / 10)) : 0;
+    r.bonus = r.blockCoins + r.killCoins + r.squadCoins;
     r.bonusXp = sess.blocks * 6;
     const give = [];
     if (r.bonus) give.push(() => WPM.addCoins(r.bonus, 'world boss'));
@@ -1146,6 +1246,7 @@ Router.register('boss', (() => {
 
   function debugHook() {
     window._wb = {
+      squad: () => squad,
       state: () => st,
       phase: () => st && st.phase,
       mech: () => mech.map(m => ({ kind: m.kind, id: m.id, word: m.word, due: m.due - now() })),
@@ -1178,6 +1279,8 @@ Router.register('boss', (() => {
     spellT.forEach(clearTimeout); spellT = [];
     if (me) me.bus.clear();
     me = null; cSnd = null; words = null;
+    squadOffs.forEach(f => f()); squadOffs = [];
+    if (squad) { squad.destroy(); squad = null; }
     offs.forEach(f => f()); offs = [];
     timers.forEach(clearInterval); timers = [];
     clearTimeout(downTimer);

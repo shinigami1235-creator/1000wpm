@@ -172,6 +172,20 @@ window.WorldBossRules = (() => {
     return b + k * P.cycle;
   }
 
+  // ---------- words sized to the typist ----------
+  // A block attack hits every raider at the same moment, so a slower typist gets a
+  // shorter word in the same window instead of more time (Art and Gid, 24 Nov 2026).
+  // The pick is seeded on the attack and the tier, so a server can check it.
+  //   tierOf(wpm)        0 under 30 wpm, 1 under 60, 2 under 100, 3 from 100 (the full attack word)
+  //   blockWord(e, tier) the word that tier types to block attack e
+  const TIERS = [{ upTo: 30, min: 2, max: 4 }, { upTo: 60, min: 3, max: 5 }, { upTo: 100, min: 4, max: 6 }];
+  const tierOf = wpm => { const i = TIERS.findIndex(t => (wpm || 0) < t.upTo); return i < 0 ? 3 : i; };
+  function blockWord(e, tier) {
+    if (!e || !e.word || tier >= 3 || tier == null) return e && e.word;
+    const T = TIERS[tier];
+    return pickWords(rng(`${e.id}|t${tier}`), 1, T.min, T.max, new Set(), 0)[0];
+  }
+
   // ---------- damage ----------
   function weakMult(s, now) { return s.weak && now < s.weak.until ? s.weak.mult : 1; }
   function multiplier(s, now, opts = {}) {
@@ -183,5 +197,6 @@ window.WorldBossRules = (() => {
   return {
     BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
+    TIERS, tierOf, blockWord, pickWords,
   };
 })();

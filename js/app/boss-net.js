@@ -32,7 +32,7 @@
 // to send are in the state above.
 //
 // LocalDemo runs the fight in this browser. The other raiders are simulated
-// (raider_01 to raider_40, typing 40 to 150 wpm) until the server is live.
+// (40 named raiders typing 40 to 150 wpm) until the server is live.
 // The fight is saved in localStorage so a reload continues it.
 window.WorldBossNet = (() => {
   // The rules are read when the fight starts rather than when this file loads,
@@ -48,7 +48,12 @@ window.WorldBossNet = (() => {
     const stateSubs = new Set(), hitSubs = new Set(), eventSubs = new Set();
 
     const rnd = (a, b) => a + Math.random() * (b - a);
-    const name = i => 'raider_' + String(i + 1).padStart(2, '0');
+    // operator-style names; the first part is short and different for each, since squadmates
+    // type it as a handle to heal, cover or revive them (js/app/boss-squad.js)
+    const NA = ['vex', 'rune', 'kite', 'nova', 'byte', 'echo', 'flux', 'zed', 'mira', 'juno', 'pixel', 'sora', 'tako', 'lumen', 'orbit', 'quill', 'rook', 'sable', 'tide', 'ember',
+      'kilo', 'nyx', 'onyx', 'pike', 'dash', 'fern', 'glyph', 'hex', 'ion', 'jolt', 'koi', 'lark', 'moss', 'nim', 'opal', 'plume', 'quark', 'reef', 'silk', 'tron'];
+    const NB = ['tem', 'sol', 'dex', 'arc', 'vin', 'mo', 'ka', 'ri'];
+    const name = i => `${NA[i % NA.length]}_${NB[(i * 7) % NB.length]}${10 + (i * 37) % 90}`;
     const now = () => Date.now();
     const nameOf = r => (r.id === 'you' && me ? me.name : r.name);
 
@@ -63,7 +68,7 @@ window.WorldBossNet = (() => {
       s.phase = R.phaseOf(s.hp / s.maxHp);
       if (!Array.isArray(s.phaseAt)) { s.phaseAt = [s.startedAt, null, null, null, null]; if (s.phase) s.phaseAt[s.phase] = now(); }
       s.shield ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {};
-      s.raiders.forEach(r => { r.blocks ||= 0; });
+      s.raiders.forEach((r, i) => { r.blocks ||= 0; if (/^raider_\d+$/.test(r.name || '')) r.name = name(i); });
       return s;
     }
     function load() {
@@ -224,7 +229,7 @@ window.WorldBossNet = (() => {
       lastTick = t;
       if (st.defeatedAt) return;
       for (const s of sims) {
-        if (pn < s.next) continue;
+        if (pn < s.next || s.r.down) continue;
         if (s.len && Math.random() < s.r.acc) damage(s.r.id, s.len * simScale);
         if (st.defeatedAt) return;
         s.len = wordLen();
@@ -254,7 +259,9 @@ window.WorldBossNet = (() => {
       async sendBlock(id, text, opts) {
         const t = now(), grace = Math.max(0, Math.min(6000, (opts && opts.grace) || 0));
         const e = st && R.eventsAt(st, t, grace).find(x => x.type === 'slam' && x.id === id);
-        if (!e || t >= e.hit + grace || text !== e.word) return { ok: false };
+        // a slower raider blocks with the shorter word for their tier (WorldBossRules.blockWord)
+        const want = opts && opts.tier != null ? R.blockWord(e, opts.tier) : e.word;
+        if (!e || t >= e.hit + grace || text !== want) return { ok: false };
         return { ok: block('you', e) };
       },
       async sendReturn(id, word) {
@@ -304,6 +311,10 @@ window.WorldBossNet = (() => {
           setPhase(now()); save(); emit();
         },
         simScale(x) { simScale = x; },
+        // a squadmate who is down stops dealing damage until they're back (js/app/boss-squad.js)
+        setDown(id, on) { const r = st && st.raiders.find(x => x.id === id); if (r) r.down = !!on; },
+        // the simulated raiders, for picking squadmates
+        raiders: () => (st ? st.raiders.filter(r => r.id !== 'you').map(r => ({ id: r.id, name: nameOf(r), wpm: r.wpm, acc: r.acc })) : []),
       },
     };
   })();
