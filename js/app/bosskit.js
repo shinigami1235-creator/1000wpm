@@ -105,6 +105,7 @@ window.BossKit = (() => {
       if (L) {
         B['thigh' + k] = bone(B.hips, sx * L.hipX, 0, 0);
         B['shin' + k] = bone(B['thigh' + k], 0, -L.thigh, 0);
+        B['foot' + k] = bone(B['shin' + k], 0, -L.shin, 0);   // the ankle: keeps the sole flat when the knee bends
       }
     }
 
@@ -179,13 +180,13 @@ window.BossKit = (() => {
       if (o.wire) {
         piece(B['thigh' + k], own(new THREE.CylinderGeometry(t * 0.5, t * 0.4, L.thigh, 8, 4)), [0, -L.thigh / 2, 0], [0, 0, 0], wire, 0);
         piece(B['shin' + k], own(new THREE.CylinderGeometry(t * 0.42, t * 0.3, L.shin, 8, 4)), [0, -L.shin / 2, 0], [0, 0, 0], wire, 0);
-        piece(B['shin' + k], own(new THREE.BoxGeometry(t * 0.9, 0.5, t * 1.4, 2, 1, 3)), [0, -L.shin, 0.3], [0, 0, 0], wire, 0);
+        piece(B['foot' + k], own(new THREE.BoxGeometry(t * 0.9, 0.5, t * 1.4, 2, 1, 3)), [0, 0, 0.3], [0, 0, 0], wire, 0);
         return;
       }
       piece(B['thigh' + k], cbox(t * 1.15, L.thigh, t * 1.1, 0.22, 1.05, 0.85), [0, -L.thigh / 2, 0]);
       piece(B['thigh' + k], cbox(t * 0.95, t * 0.8, t * 0.95, 0.35), [0, -L.thigh, 0.1], [0, 0, 0], dark, 0);
       piece(B['shin' + k], cbox(t, L.shin, t * 1.05, 0.22, 0.95, 1.15), [0, -L.shin / 2, 0]);
-      piece(B['shin' + k], cbox(t * 1.15, 0.6, t * 1.7, 0.25, 0.9, 1), [0, -L.shin + 0.25, 0.35]);   // foot
+      piece(B['foot' + k], cbox(t * 1.15, 0.6, t * 1.7, 0.25, 0.9, 1), [0, 0.25, 0.35]);   // foot
       piece(B['shin' + k], cbox(t * 0.9, t * 0.7, 0.5, 0.3), [0, -L.thigh * 0.05, t * 0.55], [0.2, 0, 0]);  // knee guard
       piece(B['thigh' + k], cbox(t * 1.0, L.thigh * 0.6, 0.45, 0.3, 0.8, 1), [0, -L.thigh * 0.4, t * 0.58], [-0.05, 0, 0], dark);
       piece(B['shin' + k], cbox(t * 0.85, L.shin * 0.55, 0.4, 0.3, 1, 0.8), [0, -L.shin * 0.45, t * 0.55], [0.05, 0, 0]);
@@ -329,7 +330,47 @@ window.BossKit = (() => {
         B[b].rotation.z += (want[2] - B[b].rotation.z) * k;
       }
       if (P._hips) B.hips.position.y = hipY + P._hips;
+      plantFeet();
     }
+
+    // keep standing feet on the floor: when a pose lowers the hips, bend hip and knee (two-bone solve in the
+    // leg's own plane) so the ankle lands on y = 0 instead of going through the floor
+    let restLow = null;
+    function plantFeet() {
+      if (!L || id === 'king') return;
+      const a = L.thigh, c = L.shin, hy = B.hips.position.y;
+      const legBox = new THREE.Box3(), tmp = new THREE.Box3(), o = new V(), sc = new V();
+      // lowest point of a foot's sole, in the boss's own units above its floor
+      const lowest = k => {
+        group.updateMatrixWorld(true); legBox.makeEmpty();
+        B['foot' + k].traverse(m => { if (m.isMesh && m.geometry) { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); legBox.union(tmp.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld)); } });
+        group.getWorldPosition(o); group.getWorldScale(sc);
+        return (legBox.min.y - o.y) / sc.y;
+      };
+      if (!restLow) restLow = { L: lowest('L'), R: lowest('R') };   // first call happens at rest: the feet's own depth
+      for (const k of ['L', 'R']) {
+        const th = B['thigh' + k], sh = B['shin' + k], ft = B['foot' + k];
+        const level = () => ft.rotation.set(-(th.rotation.x + sh.rotation.x), 0, -(th.rotation.z + sh.rotation.z));
+        level();
+        let ta = 0;                                             // ankle height to aim for
+        for (let it = 0; it < 5; it++) {
+          const low = lowest(k);
+          if (low >= restLow[k] - 0.03) break;                  // no lower than at rest: leave the pose alone
+          if (it > 0) ta += restLow[k] - low;                               // armour still under the floor: raise the ankle
+          const ank = new V(0, -c, 0).applyEuler(sh.rotation).add(sh.position).applyEuler(th.rotation);   // hips space
+          // the leg swings out by the thigh's z angle, so it bends in a tilted plane: work with its height there
+          const cz = Math.cos(th.rotation.z), A = a * cz, C = c * cz;
+          const drop = Math.max(0.05, hy - ta), dz = ank.z;
+          const r = Math.min(Math.hypot(drop, dz), A + C - 1e-3);
+          const phi = Math.atan2(dz, drop);
+          const knee = Math.PI - Math.acos(Math.max(-1, Math.min(1, (A * A + C * C - r * r) / (2 * A * C))));
+          const al = Math.acos(Math.max(-1, Math.min(1, (A * A + r * r - C * C) / (2 * A * r))));
+          th.rotation.x = -(phi + al); sh.rotation.x = knee; sh.rotation.z = 0;
+          level();
+        }
+      }
+    }
+    plantFeet();                                          // measure the feet at rest first
     pose('idle', 1);
     // set the bones from idle blended toward each [name, weight] in turn; bones a pose leaves
     // out keep their idle angle, so a strike pose only moves what it names
@@ -345,6 +386,7 @@ window.BossKit = (() => {
         hy += ((P._hips || 0) - hy) * w;
       }
       B.hips.position.y = hipY + hy;
+      plantFeet();
     }
 
     let clock = 0;
@@ -408,29 +450,29 @@ window.BossKit = (() => {
   // ---------- poses per boss ----------
   function posesFor(id, S) {
     const base = {
-      idle: { armL: [0, 0, -0.32], armR: [0, 0, 0.32], foreL: [0.35, 0, 0.1], foreR: [0.35, 0, -0.1], chest: [0.08, 0, 0], thighL: [0, 0, -0.08], thighR: [0, 0, 0.08] },
-      windup: { chest: [-0.15, -0.35, 0], armR: [-2.7, 0, 0.5], foreR: [-0.6, 0, 0], armL: [0.6, 0, -0.5], foreL: [0.7, 0, 0], head: [0.15, 0.2, 0], thighL: [-0.2, 0, -0.12], thighR: [0.25, 0, 0.12], shinL: [0.3, 0, 0] },
+      idle: { armL: [0, 0, -0.32], armR: [0, 0, 0.32], foreL: [-0.35, 0, 0], foreR: [-0.35, 0, 0], chest: [0.08, 0, 0], thighL: [0, 0, -0.08], thighR: [0, 0, 0.08] },
+      windup: { chest: [-0.15, -0.35, 0], armR: [-2.7, 0, 0.5], foreR: [-0.6, 0, 0], armL: [0.6, 0, -0.5], foreL: [-0.7, 0, 0], head: [0.15, 0.2, 0], thighL: [-0.2, 0, -0.12], thighR: [0.25, 0, 0.12], shinL: [0.3, 0, 0] },
       // attack wind-ups and strikes for the World Boss (js/app/boss3d.js blends them on the attack clock)
-      raise: { chest: [-0.32, 0, 0], spine: [-0.12, 0, 0], armL: [-2.85, 0, -0.3], armR: [-2.85, 0, 0.3], foreL: [-0.8, 0, 0], foreR: [-0.8, 0, 0], head: [-0.35, 0, 0], thighL: [-0.1, 0, -0.22], thighR: [-0.1, 0, 0.22], shinL: [0.2, 0, 0.15], shinR: [0.2, 0, -0.15], _hips: 0.5 },
-      pull: { chest: [0.05, 0.6, 0], armR: [0, 0.95, 1.2], foreR: [0.6, 0, 0], armL: [-0.8, 0, -0.2], foreL: [0.9, 0, 0], head: [0, -0.35, 0], thighL: [-0.25, 0, -0.3], thighR: [0.2, 0, 0.3], shinL: [0.35, 0, 0], _hips: -0.4 },
-      coil: { chest: [-0.1, -0.35, 0], armR: [0.75, 0, 0.45], foreR: [1.7, 0, 0], armL: [-1.0, 0, -0.3], foreL: [1.2, 0, 0], thighL: [-0.55, 0, -0.15], shinL: [0.7, 0, 0], thighR: [0.45, 0, 0.15], shinR: [0.4, 0, 0], _hips: -0.8 },
-      punch: { chest: [0.5, 0.4, 0], spine: [0.15, 0, 0], armR: [-1.6, 0, 0.1], foreR: [0.05, 0, 0], armL: [0.55, 0, -0.45], foreL: [1.3, 0, 0], head: [-0.35, -0.2, 0], thighL: [-0.8, 0, -0.12], shinL: [0.55, 0, 0], thighR: [0.55, 0, 0.12], shinR: [0.6, 0, 0], _hips: -0.7 },
-      beam: { chest: [-0.5, 0, 0], spine: [-0.18, 0, 0], armL: [0.55, 0, -1.35], armR: [0.55, 0, 1.35], foreL: [0.35, 0, 0], foreR: [0.35, 0, 0], head: [-0.05, 0, 0], thighL: [0, 0, -0.3], thighR: [0, 0, 0.3], shinL: [0.1, 0, 0.2], shinR: [0.1, 0, -0.2], _hips: -0.4 },
-      point: { chest: [0.1, 0.3, 0], armR: [-1.55, 0.2, 0.2], foreR: [0, 0, 0], armL: [0.2, 0, -0.5], head: [-0.1, 0.25, 0] },
+      raise: { chest: [-0.32, 0, 0], spine: [-0.12, 0, 0], armL: [-2.85, 0, -0.3], armR: [-2.85, 0, 0.3], foreL: [-0.8, 0, 0], foreR: [-0.8, 0, 0], head: [-0.35, 0, 0], thighL: [-0.1, 0, -0.22], thighR: [-0.1, 0, 0.22], shinL: [0.2, 0, 0], shinR: [0.2, 0, 0], _hips: 0.5 },
+      pull: { spine: [0, 0.2, 0], chest: [0.05, 0.45, 0], armR: [0, 0.55, 1.4], foreR: [-0.262, 0, 0], armL: [-0.785, 0, -0.262], foreL: [-0.873, 0, 0], head: [0, -0.5, 0], thighL: [-0.25, 0, -0.3], thighR: [0.2, 0, 0.3], shinL: [0.35, 0, 0], _hips: -0.4 },
+      coil: { chest: [-0.1, -0.35, 0], armR: [0.95, 0, 0.3], foreR: [-2.3, 0, 0], armL: [-1.0, 0, -0.3], foreL: [-1.2, 0, 0], thighL: [-0.55, 0, -0.15], shinL: [0.7, 0, 0], thighR: [0.45, 0, 0.15], shinR: [0.4, 0, 0], _hips: -0.8 },
+      punch: { chest: [0.5, 0.4, 0], spine: [0.15, 0, 0], armR: [-1.6, 0, 0.1], foreR: [-0.05, 0, 0], armL: [1.0, 0, -0.3], foreL: [-2.4, 0, 0], head: [-0.35, -0.2, 0], thighL: [-0.8, 0, -0.12], shinL: [0.55, 0, 0], thighR: [0.55, 0, 0.12], shinR: [0.6, 0, 0], _hips: -0.7 },
+      beam: { chest: [-0.5, 0, 0], spine: [-0.18, 0, 0], armL: [0.55, 0, -1.35], armR: [0.55, 0, 1.35], foreL: [-0.35, 0, 0], foreR: [-0.35, 0, 0], head: [-0.05, 0, 0], thighL: [0, 0, -0.3], thighR: [0, 0, 0.3], shinL: [0.1, 0, 0], shinR: [0.1, 0, 0], _hips: -0.4 },
+      point: { chest: [0.1, 0.3, 0], armR: [-1.55, 0.2, 0.2], foreR: [-0, 0, 0], armL: [0.2, 0, -0.5], head: [-0.1, 0.25, 0] },
       roar: { chest: [-0.45, 0, 0], spine: [-0.15, 0, 0], head: [-0.65, 0, 0], armL: [-0.3, 0, -1.55], armR: [-0.3, 0, 1.55], foreL: [-1.3, 0, 0], foreR: [-1.3, 0, 0], thighL: [0, 0, -0.3], thighR: [0, 0, 0.3], _hips: 0.1 },
       guard: { chest: [0.3, 0, 0], armL: [-0.95, 0, 0.38], foreL: [-1.7, 0, 0], armR: [-0.95, 0, -0.38], foreR: [-1.7, 0, 0], head: [0.2, 0, 0], thighL: [-0.4, 0, -0.25], thighR: [-0.4, 0, 0.25], shinL: [0.6, 0, 0], shinR: [0.6, 0, 0], _hips: -0.9 },
-      reel: { chest: [-0.5, 0.25, 0.12], head: [-0.55, 0.35, 0], armL: [0.35, 0, -0.85], armR: [0.45, 0, 0.95], foreL: [0.2, 0, 0], foreR: [0.25, 0, 0], thighL: [0.3, 0, -0.2], thighR: [-0.45, 0, 0.2], shinR: [0.6, 0, 0] },
-      fall: { chest: [0.85, 0, 0.12], spine: [0.3, 0, 0], head: [0.5, 0.2, 0], armL: [-0.3, 0, -0.25], foreL: [0.3, 0, 0], armR: [-0.9, 0, 0.35], foreR: [0.4, 0, 0], thighL: [-1.55, 0, -0.2], shinL: [1.6, 0, 0], thighR: [0.25, 0, 0.25], shinR: [2.3, 0, 0], _hips: -3.6 },
+      reel: { chest: [-0.5, 0.25, 0.12], head: [-0.55, 0.35, 0], armL: [0.35, 0, -0.85], armR: [0.45, 0, 0.95], foreL: [-0.2, 0, 0], foreR: [-0.25, 0, 0], thighL: [0.3, 0, -0.2], thighR: [-0.45, 0, 0.2], shinR: [0.6, 0, 0] },
+      fall: { chest: [0.55, 0, 0.12], spine: [0.6, 0, 0], head: [0.5, 0.2, 0], armL: [-0.3, 0, -0.25], foreL: [-0.3, 0, 0], armR: [-0.9, 0, 0.35], foreR: [-0.4, 0, 0], thighL: [-1.55, 0, -0.2], shinL: [1.6, 0, 0], thighR: [0.25, 0, 0.25], shinR: [2.3, 0, 0], _hips: -3.6 },
     };
     Object.assign(base, {
-      slam: { chest: [0.62, 0, 0], spine: [0.25, 0, 0], armL: [-1.55, 0, 0.32], armR: [-1.55, 0, -0.32], foreL: [-0.25, 0, 0], foreR: [-0.25, 0, 0], head: [-0.45, 0, 0], thighL: [-0.65, 0, -0.28], thighR: [-0.65, 0, 0.28], shinL: [0.95, 0, 0.1], shinR: [0.95, 0, -0.1], _hips: -1.15 },
-      sweep: { chest: [0.15, 0.75, 0], armR: [-1.45, 0.95, 1.1], foreR: [-0.15, 0, 0], armL: [0.35, 0, -0.65], foreL: [0.5, 0, 0], head: [0, -0.5, 0], thighL: [-0.2, 0, -0.3], thighR: [0.15, 0, 0.3], _hips: -0.5 },
+      slam: { chest: [0.62, 0, 0], spine: [0.25, 0, 0], armL: [-1.55, 0, 0.32], armR: [-1.55, 0, -0.32], foreL: [-0.25, 0, 0], foreR: [-0.25, 0, 0], head: [-0.45, 0, 0], thighL: [-0.65, 0, -0.28], thighR: [-0.65, 0, 0.28], shinL: [0.95, 0, 0], shinR: [0.95, 0, 0], _hips: -1.15 },
+      sweep: { spine: [0, -0.3, 0], chest: [0.15, -0.35, 0], armR: [0, -1.35, 1.4], foreR: [-0.262, 0, 0], armL: [0.436, 0, -0.785], foreL: [-0.611, 0, 0], head: [0, 0.55, 0], thighL: [-0.2, 0, -0.3], thighR: [0.15, 0, 0.3], _hips: -0.5 },
     });
-    if (id === 'siege') base.idle = { ...base.idle, chest: [0.32, 0, 0], head: [-0.25, 0, 0], armL: [0.15, 0, -0.38], armR: [0.15, 0, 0.38], thighL: [0, 0, -0.2], thighR: [0, 0, 0.2], shinL: [0, 0, 0.15], shinR: [0, 0, -0.15] };
-    if (id === 'warden') base.idle = { ...base.idle, armL: [-0.55, 0.4, -0.25], foreL: [0.9, 0, 0], armR: [0.1, 0, 0.22], foreR: [0.6, 0, 0] };
-    if (id === 'colossus') base.idle = { ...base.idle, chest: [0.18, 0, 0], armL: [0.2, 0, -0.55], armR: [0.2, 0, 0.55], foreL: [0.6, 0, 0.2], foreR: [0.6, 0, -0.2] };
+    if (id === 'siege') base.idle = { ...base.idle, chest: [0.32, 0, 0], head: [-0.25, 0, 0], armL: [0.15, 0, -0.38], armR: [0.15, 0, 0.38], thighL: [0, 0, -0.2], thighR: [0, 0, 0.2], shinL: [0, 0, 0], shinR: [0, 0, 0] };
+    if (id === 'warden') base.idle = { ...base.idle, armL: [-0.55, 0.4, -0.25], foreL: [-0.9, 0, 0], armR: [0.1, 0, 0.22], foreR: [-0.6, 0, 0] };
+    if (id === 'colossus') base.idle = { ...base.idle, chest: [0.18, 0, 0], armL: [0.2, 0, -0.55], armR: [0.2, 0, 0.55], foreL: [-0.6, 0, 0], foreR: [-0.6, 0, 0] };
     if (id === 'king') base.idle = { ...base.idle, thighL: [-1.5, 0, -0.15], thighR: [-1.5, 0, 0.15], shinL: [1.5, 0, 0], shinR: [1.5, 0, 0], armL: [-0.75, 0, -0.35], armR: [-0.75, 0, 0.35], foreL: [-0.6, 0, 0], foreR: [-0.6, 0, 0], chest: [-0.05, 0, 0] };
-    if (id === 'brute') base.idle = { ...base.idle, chest: [0.6, 0, 0], spine: [0.25, 0, 0], head: [-0.65, 0, 0], armL: [0.05, 0, -0.32], armR: [0.05, 0, 0.32], foreL: [-0.2, 0, 0], foreR: [-0.2, 0, 0], thighL: [-0.35, 0, -0.25], thighR: [-0.35, 0, 0.25], shinL: [0.45, 0, 0.1], shinR: [0.45, 0, -0.1], _hips: -0.3 };
+    if (id === 'brute') base.idle = { ...base.idle, chest: [0.6, 0, 0], spine: [0.25, 0, 0], head: [-0.65, 0, 0], armL: [0.05, 0, -0.32], armR: [0.05, 0, 0.32], foreL: [-0.2, 0, 0], foreR: [-0.2, 0, 0], thighL: [-0.35, 0, -0.25], thighR: [-0.35, 0, 0.25], shinL: [0.45, 0, 0], shinR: [0.45, 0, 0], _hips: -0.3 };
     return base;
   }
 

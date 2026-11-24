@@ -24,7 +24,11 @@ window.Theme = (() => {
     if (cache[cur + name]) return cache[cur + name];
     let v = getComputedStyle(root).getPropertyValue('--' + name).trim();
     const m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-    if (!m) return v || '#ffffff';
+    if (!m) {
+      // a page without css/site.css (a test page): fall back to the theme's own swatch colours
+      const t = list.find(x => x.id === cur);
+      return v || (name === 'accent' ? t.accent : name === 'bg' || name === 'bg-0' ? t.bg : name === 'ink' ? t.ink : '#ffffff');
+    }
     if (m[1].length === 3) v = '#' + m[1].split('').map(c => c + c).join('');
     return (cache[cur + name] = v.toLowerCase());
   }
