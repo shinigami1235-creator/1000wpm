@@ -724,6 +724,49 @@ dialog.confirm .row { display: flex; gap: 10px; justify-content: flex-end; }
   max-width: none; padding: 14px 20px 8px;
 }
 body:has(.page-boss) #rain { opacity: 0; }
+/* the cover before the fight (js/app/boss.js mount) */
+.page-boss .wb-cover {
+  position: relative; display: grid; grid-template-columns: minmax(260px, 400px) minmax(0, 1fr); align-items: center; gap: 24px;
+  min-height: min(84vh, 760px); max-width: 1180px; margin: 0 auto; padding: 24px; overflow: hidden; isolation: isolate;
+}
+.page-boss .wb-cover::after {  /* the arena floor under the boss */
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0; height: 22%;
+  border-top: 1px solid rgba(255,42,58,.35);
+  background: radial-gradient(60% 80% at 68% 0%, rgba(255,42,58,.16), transparent 70%);
+}
+.page-boss .wb-cover-art { position: relative; grid-column: 2; grid-row: 1; height: min(76vh, 680px); }
+.page-boss .wb-cover-boss {
+  position: absolute; left: 50%; top: 0; height: 100%; width: auto; translate: -40% 0;
+  filter: drop-shadow(0 0 22px rgba(255,42,58,.32));
+  animation: wb-hover 5.6s ease-in-out infinite;
+}
+.page-boss .wb-cover-op {
+  position: absolute; left: 0; bottom: -26%; height: 74%; width: auto;
+  filter: brightness(.62) contrast(1.06) drop-shadow(0 0 1px rgba(255,42,58,.5));
+}
+@keyframes wb-hover { 50% { transform: translateY(-14px); } }
+.page-boss .wb-cover-text { position: relative; z-index: 2; grid-column: 1; grid-row: 1; }
+.page-boss .wb-cover-text small { font: 400 var(--t-s)/1 var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
+.page-boss .wb-cover-text h1 { margin: 10px 0 14px; font: 700 clamp(40px, 5.2vw, 68px)/.95 var(--f-head); color: var(--ink-hi); text-wrap: balance; }
+.page-boss .wb-cover-text p { margin: 0 0 18px; color: var(--ink); max-width: 36ch; text-wrap: pretty; }
+.page-boss .wb-cover-text dl { display: flex; gap: 28px; margin: 0 0 12px; }
+.page-boss .wb-cover-text dt { font: 400 var(--t-s)/1 var(--f-label); color: var(--ink-2); }
+.page-boss .wb-cover-text dd { margin: 6px 0 0; font: 600 26px/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-hi); }
+.page-boss .wb-cover-phases { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0 0 22px; padding: 0; list-style: none; font: 400 var(--t-s)/1.4 var(--f-label); color: var(--ink-2); }
+.page-boss .wb-cover-phases li { white-space: nowrap; }
+.page-boss .wb-cover-phases li + li::before { content: "→"; margin: 0 8px; color: rgba(255,42,58,.6); }
+.page-boss .wb-cover .btn kbd { font: inherit; font-size: 12px; color: var(--bg); opacity: .65; border: 1px solid currentColor; padding: 2px 5px; border-radius: 3px; }
+@media (max-width: 760px) {
+  .page-boss .wb-cover { grid-template-columns: 1fr; gap: 8px; min-height: 0; padding: 12px 16px 24px; }
+  .page-boss .wb-cover::after { bottom: auto; top: calc(12px + 40vh); height: 30%; }
+  .page-boss .wb-cover-art { grid-column: 1; height: 42vh; }
+  .page-boss .wb-cover-text h1 { margin: 6px 0 10px; }
+  .page-boss .wb-cover-text p { margin-bottom: 12px; }
+  .page-boss .wb-cover-phases { margin-bottom: 16px; }
+  .page-boss .wb-cover-text { grid-column: 1; grid-row: 2; }
+  .page-boss .wb-cover-op { bottom: -14%; height: 62%; }
+}
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-cover-boss { animation: none; } }
 .page-boss .wb { max-width: var(--wb-w); margin: 0 auto; display: flex; flex-direction: column; }
 .page-boss .num, .page-boss b { font-variant-numeric: tabular-nums; }
 

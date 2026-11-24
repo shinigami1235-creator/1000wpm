@@ -111,9 +111,43 @@ Router.register('boss', (() => {
     makeSquad();
   }
 
+  // The cover Art designed: the boss and your operator before the fight starts.
+  // Join (or Enter) builds the fight in the same root.
+  let started = false, coverOff = null;
   function mount(root) {
-    el = root;
-    R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name; TIPS = tipsFor(NAME);
+    el = root; started = false;
+    R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name;
+    const fmt0 = n => n.toLocaleString('en-US');
+    el.innerHTML = `
+      <section class="wb-cover" aria-labelledby="wb-cover-h">
+        <div class="wb-cover-art" aria-hidden="true">
+          <img class="wb-cover-boss" src="assets/boss/syntax-error.webp" alt="" width="724" height="900" decoding="async">
+          <img class="wb-cover-op" src="assets/boss/operator-back.webp" alt="" width="486" height="900" decoding="async">
+        </div>
+        <div class="wb-cover-text">
+          <small>World boss</small>
+          <h1 id="wb-cover-h">${esc(NAME)}</h1>
+          <p>Every word you type hits it for one point per letter. Block its attacks, break its firewall and finish it with the raid.</p>
+          <dl>
+            <div><dt>HP</dt><dd>${fmt0(B.maxHp)}</dd></div>
+            <div><dt>Phases</dt><dd>${R.PHASES.length}</dd></div>
+          </dl>
+          <ol class="wb-cover-phases">${R.PHASES.map(ph => `<li>${esc(ph.name)}</li>`).join('')}</ol>
+          <button class="btn" type="button" data-k="join">Join the raid <kbd>Enter</kbd></button>
+        </div>
+      </section>`;
+    const go = () => { if (started || !el) return; coverOff(); A.unlock(); begin(); };
+    const key = e => { if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); go(); } };
+    const btn = el.querySelector('[data-k="join"]');
+    btn.addEventListener('click', go);
+    document.addEventListener('keydown', key);
+    coverOff = () => document.removeEventListener('keydown', key);
+    if (matchMedia('(pointer: fine)').matches) btn.focus({ preventScroll: true });
+  }
+
+  function begin() {
+    started = true;
+    TIPS = tipsFor(NAME);
     if (window.Combat && Combat.create) {
       // CTRL division perks count here (js/app/ops.js); duels never pass them
       me = Combat.create({ perks: window.Ops ? Ops.perks() : null, targetHp: () => (st && st.maxHp ? st.hp / st.maxHp : null) });
@@ -1323,6 +1357,9 @@ Router.register('boss', (() => {
   }
 
   function unmount() {
+    if (coverOff) { coverOff(); coverOff = null; }
+    if (!started) { el = null; return; }
+    started = false;
     record(!!(st && st.defeatedAt));
     payOwed();
     spellT.forEach(clearTimeout); spellT = [];
