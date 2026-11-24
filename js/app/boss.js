@@ -664,7 +664,9 @@ Router.register('boss', (() => {
     for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
-    if (target && target.kind && !mech.some(m => m.id === target.id)) { target = null; typed = ''; renderQueue(); }
+    // an attack word that left the row takes what was typed with it; a spell isn't in the row and
+    // clears itself when its offer ends (offerEnd), so it's left alone here
+    if (target && target.kind && target.kind !== 'spell' && !mech.some(m => m.id === target.id)) { target = null; typed = ''; renderQueue(); }
     // weak point and shield
     const weak = R.weakMult(st, t) > 1 && !st.defeatedAt;
     if (weak !== weakWas) {
