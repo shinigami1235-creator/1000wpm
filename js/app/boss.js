@@ -393,7 +393,7 @@ Router.register('boss', (() => {
         const crit = critLeft > 0 ? (critLeft--, true) : w.crit;
         const col = me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null;
         WorldBossNet.sendDamage(word.length, { crit, jam: t < jamUntil, mult: w.mult, tier: w.tier, pierce: w.pierce, color: col });
-        if (w.tier >= 1) cSfx('shot' + Math.min(4, w.tier));
+        cSfx('blip');
       } else {
         combo = clean ? combo + 1 : 0;
         best = Math.max(best, combo);
@@ -581,6 +581,7 @@ Router.register('boss', (() => {
   // ---------- attacks on the shared clock ----------
   function tick() {
     if (!el || !st) return;
+    if (chg && performance.now() - chg.last > CHARGE_IDLE) releaseCharge();
     const t = now();
     if (me) me.tick();
     if (squad) squad.tick(t, st.phase || 0);
@@ -907,7 +908,8 @@ Router.register('boss', (() => {
       else if (h.kind === 'block') pushFeed({ text: `You hit back for ${h.dmg}`, cls: 'you' });
       else if (h.kind === 'add') pushFeed({ text: `You deleted a bug and hit for ${h.dmg}`, cls: 'you' });
       else pushFeed(h);
-      if (scene) scene.hit(h); else onImpact(h, null, null);
+      if (!h.kind || h.kind === 'word') chargeWord(h);
+      else if (scene) scene.hit(h); else onImpact(h, null, null);
       milestone('dmg', meDamage());
     } else {
       if (scene) scene.hit(h);
@@ -915,6 +917,30 @@ Router.register('boss', (() => {
       if (t - lastOther > 900) { lastOther = t; pushFeed(others[Math.floor(Math.random() * others.length)]); others = []; }
     }
   }
+  // ---------- the charge ----------
+  // Your words power up an orb that fires as one attack. Each word is still sent on its own, so the
+  // scores stay exact; only the picture waits. The orb grows with every word and fires after CHARGE_N
+  // words or a CHARGE_IDLE pause, and lands as one number with the words' damage added up.
+  const CHARGE_N = 6, CHARGE_IDLE = 1500;
+  let chg = null;
+  function chargeWord(h) {
+    chg ||= { n: 0, dmg: 0, letters: 0, tier: 0, crit: false, weak: false, shield: false, color: null, last: 0 };
+    chg.n++; chg.dmg += h.dmg; chg.letters += h.letters || 0; chg.tier = Math.max(chg.tier, h.tier || 0);
+    chg.crit ||= !!h.crit; chg.weak ||= !!h.weak; chg.shield ||= !!h.shield; chg.color = h.color || chg.color;
+    chg.last = performance.now();
+    if (scene) { scene.feed(); scene.charge(Math.min(1, chg.n / CHARGE_N), chg.tier); }
+    if (chg.n >= CHARGE_N) releaseCharge();
+  }
+  function releaseCharge() {
+    const c = chg; chg = null;
+    if (!c || !el) return;
+    const power = Math.min(1, c.n / CHARGE_N);
+    const h = { you: true, kind: 'word', dmg: c.dmg, letters: c.letters, tier: c.tier, crit: c.crit, weak: c.weak, shield: c.shield, color: c.color, words: c.n };
+    cSfx('shot' + Math.max(1, Math.min(4, c.tier + (power >= 1 ? 1 : 0))));
+    if (power >= 1 && c.tier >= 3) cSfx('boom');
+    if (scene) scene.release(c.tier, power, (x, y) => onImpact(h, x, y)); else onImpact(h, null, null);
+  }
+
   // a bolt landed: the number and the sound go where and when it hits
   function onImpact(h, x, y) {
     if (!el) return;
@@ -1284,7 +1310,7 @@ Router.register('boss', (() => {
     payOwed();
     spellT.forEach(clearTimeout); spellT = [];
     if (me) me.bus.clear();
-    me = null; cSnd = null; words = null;
+    me = null; cSnd = null; words = null; chg = null;
     squadOffs.forEach(f => f()); squadOffs = [];
     if (squad) { squad.destroy(); squad = null; }
     offs.forEach(f => f()); offs = [];
