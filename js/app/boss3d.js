@@ -25,6 +25,7 @@ window.BossScene = (() => {
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
       import('three/addons/postprocessing/ShaderPass.js'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
@@ -33,9 +34,9 @@ window.BossScene = (() => {
     let impl = null, gone = false;
     const pending = { frac: 1, phase: 0, defeated: false, shield: null, weak: false };
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP, SP]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, SP, RB]) => {
         if (gone) return false;
-        impl = build(host, opts, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass, SP.ShaderPass);
+        impl = build(host, { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry }, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass, SP.ShaderPass);
         impl.setFrac(pending.frac, true);
         impl.setPhase(pending.phase, true);
         impl.setShield(pending.shield);
@@ -137,7 +138,7 @@ window.BossScene = (() => {
     const codeTex = keep(new THREE.CanvasTexture(codeCv));
     codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping;
     codeTex.repeat.set(7, 3);
-    const wallMat = keep(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a, transparent: true, opacity: 0.2, depthWrite: false, fog: false }));
+    const wallMat = keep(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a, transparent: true, opacity: 0.09, depthWrite: false, fog: false }));
     const wall = new THREE.Mesh(keep(new THREE.PlaneGeometry(150, 60)), wallMat);
     wall.position.set(0, 20, -40);
     scene.add(wall);
@@ -307,6 +308,103 @@ window.BossScene = (() => {
       reticle.add(m);
     });
 
+    // ---------- the titan body (js/app/bosskit.js, design/bosses/) ----------
+    // The armoured titan replaces the block giant. The old blocks stay as hit points and
+    // debris: each one is pinned to a spot on a titan armour piece, hidden while attached,
+    // and shown when a hit or a phase knocks it off, so chunks fly off the titan.
+    const kit = window.BossKit && opts.titan !== false
+      ? BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, opts.bossId || 'siege', { scale: 1.08 }) : null;
+    if (kit) {
+      root.add(kit.group);
+      // the arena glows on its own, so the armour gets its own light: a cold key from the
+      // front left, a lime rim from behind to cut the silhouette out of the dark, and a dim fill
+      kit.lights = [
+        new THREE.HemisphereLight('#b8c4cc', '#06080a', 0.4),
+        new THREE.DirectionalLight('#f2f6ff', 2.6),
+        new THREE.DirectionalLight('#8cff58', 1.5),
+        new THREE.DirectionalLight('#9fe8ff', 1.0),
+      ];
+      kit.lights[1].position.set(-8, 16, 14);
+      kit.lights[2].position.set(0, 8, -14);
+      kit.lights[3].position.set(12, 6, -6);
+      kit.lights.forEach(l => scene.add(l));
+      // the fists: where slams land, and a red glow that builds in them through a wind-up
+      kit.fists = ['handL', 'handR'].map(bn => {
+        let best = null, bv = 0;
+        kit.bones[bn].children.forEach(o => { if (o.isMesh && o.geometry.boundingBox) { const z = o.geometry.boundingBox.getSize(new V()); if (z.x * z.y * z.z > bv) { bv = z.x * z.y * z.z; best = o; } } });
+        const at = new THREE.Object3D();
+        (best || kit.bones[bn]).add(at);
+        if (best) best.geometry.boundingBox.getCenter(at.position);
+        const g = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: glowTex, color: C('#ff3a2e', 1.8), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 })));
+        g.scale.setScalar(7); at.add(g);
+        return { at, g };
+      });
+      // armour that breaks off as the titan drops through each health stage:
+      // the left pauldron, the right pauldron, the chest plates, then the plates beside the core
+      const B0 = kit.bones;
+      const own = b => b.children.filter(o => o.isMesh && kit.meshes.includes(o));
+      const front = (b, top) => own(b).filter(o => o.position.z > 0.5 && (top ? o.position.y > 0 : o.position.y <= 0));
+      kit.shedSets = [own(B0.shL), own(B0.shR), front(B0.chest, true), front(B0.chest, false)];
+      kit.shed = [];
+    }
+    const vF = new V(), vG = new V();
+    function shedArmour(i, instant) {
+      const set = kit && kit.shedSets[i];
+      if (!set) return;
+      for (const m of set) {
+        if (m.userData.home) continue;
+        m.userData.home = { parent: m.parent, pos: m.position.clone(), quat: m.quaternion.clone(), scale: m.scale.clone() };
+        if (instant) { m.visible = false; kit.shed.push(m); continue; }
+        scene.attach(m);
+        const out = m.getWorldPosition(vF).sub(root.position).setY(0).normalize();
+        m.userData.vel = new V(out.x * rnd(4, 7), rnd(6, 10), out.z * rnd(2, 4) + rnd(2, 5));
+        m.userData.spin = new V(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4));
+        m.userData.life = rnd(3, 4.5);
+        kit.shed.push(m);
+        burst(vF.copy(m.position), 40, 12, GREEN, 1.4, 9);
+        burst(vF, 20, 8, WHITE, 1, 9);
+        flare(vF, GREEN, 5, 0.25, canFlash() ? 1.1 : 0.5);
+      }
+      if (!instant) { shake = Math.max(shake, 0.7); stopUntil = Math.max(stopUntil, performance.now() + 90); }
+    }
+    function shedTick(dt) {
+      for (const m of kit.shed) {
+        const u = m.userData;
+        if (!u.vel || !m.visible) continue;
+        u.vel.y -= 22 * dt;
+        m.position.addScaledVector(u.vel, dt);
+        m.rotation.x += u.spin.x * dt; m.rotation.y += u.spin.y * dt; m.rotation.z += u.spin.z * dt;
+        if (m.position.y < 0.9 && u.vel.y < 0) {
+          if (u.vel.y < -4) { burst(vF.copy(m.position).setY(0.3), 14, 6, WHITE, 0.8, 9); }
+          m.position.y = 0.9; u.vel.multiplyScalar(0.35); u.vel.y = Math.abs(u.vel.y) * 0.4; u.spin.multiplyScalar(0.5);
+        }
+        u.life -= dt;
+        if (u.life < 0) { m.position.y -= dt * 1.2; if (m.position.y < -3) m.visible = false; }
+      }
+    }
+    function unshed() {
+      if (!kit) return;
+      for (const m of kit.shed) { const h = m.userData.home; h.parent.add(m); m.position.copy(h.pos); m.quaternion.copy(h.quat); m.scale.copy(h.scale); m.visible = true; m.userData = {}; }
+      kit.shed.length = 0;
+    }
+    if (kit) {
+      eyes.forEach(e => { e.visible = false; });
+      coreMesh.visible = false; cage.visible = false;
+      rings.forEach(r => { r.visible = false; r.userData.gone = true; });
+      const byPart = [['torso', 'legs'], ['head'], ['armL'], ['armR']];
+      const _bb = new V();
+      for (const b of blocks) {
+        const pool = byPart[b.part].flatMap(k => kit.parts[k]).filter(Boolean);
+        const m = pool.length ? pool[Math.floor(Math.random() * pool.length)] : kit.meshes[0];
+        const bb = m.geometry.boundingBox;
+        // a point on the surface of the piece's box, on a random face
+        _bb.set(rnd(bb.min.x, bb.max.x), rnd(bb.min.y, bb.max.y), rnd(bb.min.z, bb.max.z));
+        const ax = Math.floor(rnd(0, 3)), side = Math.random() < 0.5 ? 'min' : 'max';
+        _bb.setComponent(ax, bb[side].getComponent(ax));
+        b.km = m; b.kl = _bb.clone(); b.size *= 0.7;
+      }
+    }
+
     // shards that orbit the boss
     const SH = 36;
     const shardMat = keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), wireframe: true }));
@@ -392,7 +490,7 @@ window.BossScene = (() => {
     }
 
     // shock rings on the floor
-    const waves = Array.from({ length: 5 }, () => {
+    const waves = Array.from({ length: 12 }, () => {
       const m = new THREE.Mesh(keep(new THREE.RingGeometry(0.92, 1, 96)), keep(new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false })));
       m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m);
       return { m, t: 0, life: 1, r0: 1, r1: 10 };
@@ -482,11 +580,11 @@ window.BossScene = (() => {
     // ---------- post: bloom, then edge tint, vignette and glitch ----------
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.35, 0.32);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.22, 0.78);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     const post = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0.0004 }, uDim: { value: 0 } },
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0 }, uDim: { value: 0 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uTint; uniform float uTintAmt; uniform float uGlitch; uniform float uAb; uniform float uDim; varying vec2 vUv;
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
@@ -558,7 +656,7 @@ window.BossScene = (() => {
 
     // ---------- state ----------
     let frac = 1, stage = 0, phase = 0, dead = false, deadT = 0, deadAt = 0;
-    let shake = 0, hitGlow = 0, stopUntil = 0, tintAmt = 0, glitch = 0;
+    let shake = 0, hitGlow = 0, stopUntil = 0, slowUntil = 0, tintAmt = 0, glitch = 0;
     let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
     let roarAt = -9, charge = 0;
     const STAGE_AT = [0.75, 0.5, 0.25, 0.1];
@@ -571,7 +669,7 @@ window.BossScene = (() => {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
     const v1 = new V(), v2 = new V(), v3 = new V();
 
-    function attachPos(b, out) { return out.copy(b.local).applyMatrix4(partG[b.part].matrixWorld); }
+    function attachPos(b, out) { return b.km ? out.copy(b.kl).applyMatrix4(b.km.matrixWorld) : out.copy(b.local).applyMatrix4(partG[b.part].matrixWorld); }
     function knock(b, permanent, power = 1) {
       if (b.mode >= 3) return;
       if (b.mode === 0) attachPos(b, b.wp);
@@ -594,6 +692,7 @@ window.BossScene = (() => {
         else knock(b, true);
       }
       if (ns > stage && !instant) shake = Math.max(shake, 0.8);
+      if (kit) for (let i = stage; i < ns; i++) shedArmour(i, instant);
       stage = ns;
       rings.forEach((r, i) => {
         const breakAt = i === 2 ? 0.5 : i === 0 ? 0.1 : -1;
@@ -603,6 +702,7 @@ window.BossScene = (() => {
         }
       });
       boxMat.uniforms.uHurtMix.value = [0, 0.12, 0.25, 0.42, 0.6][stage];
+      if (kit) kit.plates(frac);
     }
 
     // ---------- phases ----------
@@ -637,7 +737,7 @@ window.BossScene = (() => {
       pilMat.uniforms.uColA.value.copy(pal.b); pilMat.uniforms.uColC.value.copy(pal.a);
       shardMat.color.copy(pal.a);
       rings.forEach(r => { if (!r.userData.gone) r.material.color.copy(r.userData.alt ? pal.c : pal.a).multiplyScalar(1.8); });
-      bloom.strength = pal.bloom;
+      bloom.strength = pal.bloom * 0.75;
     }
     function scatter(n, power) {
       for (let k = 0; k < n; k++) { const b = blocks[Math.floor(Math.random() * N)]; if (b.mode === 0) knock(b, false, power); }
@@ -690,7 +790,28 @@ window.BossScene = (() => {
       const you = blocked.has(x.id) || frozen.has(x.id);
       const at = raidPos[RAID];
       shake = Math.max(shake, you ? 0.35 : 0.9);
-      if (x.kind === 'slam' || x.kind === 'lunge') wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
+      if (kit) {
+        // the blow lands where the fists are: rings and dust from each fist, chunks of armour
+        // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
+        kit.group.updateMatrixWorld(true);
+        const which = x.kind === 'slam' ? [0, 1] : x.kind === 'beam' ? [] : [1];
+        const col = you ? CYAN : RED;
+        for (const i of which) {
+          kit.fists[i].at.getWorldPosition(vF); vF.y = 0.2;
+          wave(vF, 0.5, x.kind === 'slam' ? 26 : 16, 1.0, col, 0.95);
+          wave(vF, 0.3, x.kind === 'slam' ? 11 : 8, 0.5, WHITE, 0.85);
+          burst(vF, 46, 15, WHITE, 1.7, 14);
+          burst(vF, 26, 10, col, 1.3, 9);
+          flare(vG.copy(vF).setY(1.2), col, x.kind === 'slam' ? 6 : 4.5, 0.22, canFlash() ? 1.2 : 0.6);
+        }
+        let n = 0;
+        for (const b of blocks) { if (n >= (x.kind === 'slam' ? 10 : 5)) break; if (b.mode === 0 && (b.part >= 2 || x.kind === 'slam') && Math.random() < 0.2) { knock(b, false, 1.7); n++; } }
+        if (x.kind === 'slam') { shake = Math.max(shake, you ? 0.5 : 1.35); if (!reduce) slowUntil = performance.now() + 380; }
+        if (x.kind === 'lunge' || x.kind === 'sweep') shake = Math.max(shake, you ? 0.45 : 1.05);
+        if (x.kind === 'beam') { flare(vG.copy(at).setY(2), col, 7, 0.28, canFlash() ? 1.2 : 0.6); burst(vG, 60, 16, col, 1.5, 9); }
+        stopUntil = Math.max(stopUntil, performance.now() + (x.kind === 'slam' ? 120 : 80));
+      }
+      if (!kit && (x.kind === 'slam' || x.kind === 'lunge')) wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
       if (you) { burst(v1.copy(at).setY(2), 30, 9, CYAN, 1.2, 6); flare(v1, CYAN, 6, 0.3, canFlash() ? 1.2 : 0.6); }
       else burst(v1.copy(at).setY(1), 24, 7, RED, 1, 9);
       if (x.kind === 'beam') { beamUntil = nowS() + 0.55; }
@@ -806,7 +927,7 @@ window.BossScene = (() => {
       }
     }
     function targetPos(b, out) {
-      if (b.target === -2 || b.target < 0) return out.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+      if (b.target === -2 || b.target < 0) return out.copy(anchorCore);
       return attachPos(blocks[b.target], out);
     }
     function land(h, at, target) {
@@ -916,7 +1037,9 @@ window.BossScene = (() => {
       dead = false; deadT = 0; frac = 1; stage = 0;
       for (const b of blocks) { b.mode = 0; b.vel.set(0, 0, 0); b.rot.set(0, 0, 0); b.delay = 0; }
       rings.forEach(r => { r.visible = true; r.userData.fall = false; r.userData.gone = false; r.position.set(0, 0, 0); r.material.opacity = 0.85; });
-      eyes.forEach(e => { e.visible = true; });
+      eyes.forEach(e => { e.visible = !kit; });
+      if (kit) rings.forEach(r => { r.visible = false; r.userData.gone = true; });
+      unshed();
       core.scale.setScalar(1); glowMat.opacity = 0.5;
       blocked.clear(); evs.length = 0; hitQueue.length = 0;
       for (const s of shots) { s.on = false; s.g.visible = false; }
@@ -954,6 +1077,79 @@ window.BossScene = (() => {
     // pose targets, smoothed each frame
     const pose = { hx: 0, hy: 0, hz: 0, headX: 0, headY: 0, lx: 0, lz: 0, rx: 0, ry: 0, rz: 0, y: 0 };
     const cur = { ...pose };
+    // ---------- the titan's poses ----------
+    // Each attack has a wind-up pose and a strike pose (bone rotations in radians, x y z), on top
+    // of the kit's idle. The attack clock decides the blend: the wind-up eases in over the whole
+    // telegraph, the strike snaps in within about a tenth of a second, holds, then settles back.
+    const KIND = { slam: ['raise', 'slam', 0.1], sweep: ['pull', 'sweep', 0.2], lunge: ['coil', 'punch', 0.12], beam: ['beam', 'beam', 0.15] };
+    function titanPose(t) {
+      const L = [];
+      let busy = 0, tremble = 0, gl = 0, gr = 0, trail = 0;
+      const sl = current(t, 'slam');
+      if (sl) {
+        const K = KIND[sl.kind] || KIND.slam;
+        // the strike swings in over the last K[2] seconds, so the blow has landed at the hit
+        // time and the hit-stop holds the landed pose
+        const sAt = sl.h - K[2], w = clamp((t - sl.s) / (sAt - sl.s), 0, 1), after = t - sl.h;
+        const rec = after > 0.5 ? smooth((after - 0.5) / 0.9) : 0;
+        if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = w > 0.75 ? (w - 0.75) * 4 : 0; }
+        else { L.push([K[0], 1 - rec]); L.push([K[1], (1 - rec) * easeIn(clamp((t - sAt) / K[2], 0, 1))]); busy = 1 - rec; }
+        // the fists that strike glow red as the wind-up fills, flash on the hit, then cool
+        const g = after < 0 ? w * w : Math.max(0, 1 - after / 0.6);
+        if (sl.kind !== 'beam') { gr = g; if (sl.kind === 'slam') gl = g; }
+        if (after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
+      }
+      const vo = current(t, 'volley');
+      if (vo) { const w = clamp((t - vo.s) / 1.0, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); L.push(['point', ease(w)]); busy = Math.max(busy, w); }
+      const ad = current(t, 'adds');
+      if (ad && t - ad.s < 2.4) { const w = Math.sin(clamp((t - ad.s) / 2.4, 0, 1) * Math.PI); L.push(['roar', w]); busy = Math.max(busy, w); }
+      const shx = current(t, 'shield');
+      if (shx) { const w = Math.sin(clamp((t - shx.s) / 2.4, 0, 1) * Math.PI); L.push(['guard', w]); busy = Math.max(busy, w); }
+      const ru = t - roarAt;
+      if (ru < 2.6) { const w = Math.sin(clamp(ru / 2.6, 0, 1) * Math.PI); L.push(['roar', w]); busy = Math.max(busy, w); }
+      const bu = t - breakAt;
+      if (bu < 1.5) { const w = Math.sin(clamp(bu / 1.5, 0, 1) * Math.PI); L.push(['reel', w]); busy = Math.max(busy, w); }
+      if (t < stunUntil) { L.push(['reel', 0.55]); tremble = Math.max(tremble, 0.5); }
+      if (dead) { L.push(['reel', clamp(deadT / 0.4, 0, 1)]); L.push(['fall', ease((deadT - 0.25) / 0.9)]); tremble = 1; }
+      kit.mix(L);
+      return { busy, tremble, gl, gr, trail };
+    }
+    // the bones are set from the blend each frame, plus the small living motions: sway, the head
+    // tracking the camera, recoil from hits, and a shiver in the arms at the top of a wind-up
+    function driveKit(t, at, dt) {
+      const Bn = kit.bones;
+      kit.group.position.y = -cur.y;                       // the feet stay on the floor
+      // a hit-stop freezes the body mid-strike, so the impact frame holds on screen
+      if (performance.now() < stopUntil && !dead) { kit.update(at, dt); return; }
+      const { busy, tremble, gl, gr, trail } = titanPose(t);
+      kit.fists[0].g.material.opacity = gl * (calm ? 0.6 : 0.85);
+      kit.fists[1].g.material.opacity = gr * (calm ? 0.6 : 0.85);
+      kit.fists[0].g.scale.setScalar(2 + gl * 2.2); kit.fists[1].g.scale.setScalar(2 + gr * 2.2);
+      kitBusy = busy;
+      const calmK = 1 - busy * 0.7;
+      Bn.chest.rotation.y += Math.sin(at * 0.3) * 0.1 * still * calmK + recoil * recoilSide * 0.4;
+      Bn.chest.rotation.x += recoil * 0.7 + Math.sin(at * 0.7) * 0.03 * still * calmK;
+      Bn.head.rotation.x += recoil * 0.6 - headJerk * 0.4;
+      Bn.head.rotation.y += cur.headY * calmK;
+      Bn.head.rotation.z += Math.sin(at * 13) * headJerk * 0.3 * still;
+      Bn.armL.rotation.z -= Math.abs(Math.sin(at * 0.6)) * 0.06 * still * calmK;
+      Bn.armR.rotation.z += Math.abs(Math.sin(at * 0.6 + 2)) * 0.06 * still * calmK;
+      if (tremble && !reduce) {
+        const j = tremble * 0.04;
+        Bn.armL.rotation.x += Math.sin(t * 61) * j; Bn.armR.rotation.x += Math.sin(t * 57 + 1) * j;
+        Bn.chest.rotation.z += Math.sin(t * 43) * j * 0.5;
+      }
+      if (phase >= 4 && !reduce && !busy) { Bn.armL.rotation.x += Math.sin(at * 3.1) * 0.12; Bn.armR.rotation.x += Math.sin(at * 2.7 + 1) * 0.12; }
+      kit.group.visible = !(dead && deadBoom);
+      kit.update(at, dt);
+      // sparks streak off the striking fist so the arc of the blow stays on screen
+      if (trail) {
+        kit.group.updateMatrixWorld(true);
+        if (trail === 3) kit.fists[0].at.getWorldPosition(vG), burst(vG, 3, 2, RED, 0.3, 2);
+        kit.fists[1].at.getWorldPosition(vG); burst(vG, 5, 2.5, RED, 0.3, 2); burst(vG, 2, 1.5, WHITE, 0.3, 1);
+      }
+      shedTick(dt);
+    }
     function motion(t, at, dt) {
       const M = MOVE[phase];
       // pick a new spot now and then
@@ -1052,7 +1248,8 @@ window.BossScene = (() => {
       if (paused) dt = 0;
       if (!visible || document.hidden) return;
       // hit-stop slows everything but the shared clock for a few frames
-      const adt = performance.now() < stopUntil ? dt * 0.08 : dt;
+      const pnow = performance.now();
+      const adt = pnow < stopUntil ? dt * 0.08 : pnow < slowUntil ? dt * 0.35 : dt;
       // kernel panic stops the body, cryo lock slows it
       const stunned = t < stunUntil, iced = t < freezeUntil;
       const bdt = adt * (stunned ? 0 : iced ? 0.25 : 1);
@@ -1060,7 +1257,7 @@ window.BossScene = (() => {
       runEvents(t);
       for (let i = hitQueue.length - 1; i >= 0; i--) if (t >= hitQueue[i].at) {
         const { h } = hitQueue[i]; hitQueue.splice(i, 1);
-        land(h, v2.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld).add(v1.set(rnd(-1, 1), rnd(-1, 1), 1)), -2);
+        land(h, v2.copy(anchorCore).add(v1.set(rnd(-1, 1), rnd(-1, 1), 1)), -2);
       }
 
       // palette
@@ -1090,10 +1287,17 @@ window.BossScene = (() => {
       headG.rotation.set(cur.headX + recoil * 0.6 - headJerk * 0.4, cur.headY, Math.sin(at * 13) * headJerk * 0.3 * still);
       armLG.rotation.set(cur.lx, 0, cur.lz);
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
+      if (kit) driveKit(t, at, adt);
       root.updateMatrixWorld(true);
       partG.forEach((g, i) => g.getWorldQuaternion(partQ[i]));
-      anchorHead.set(0, 4.6, 0).applyMatrix4(headG.matrixWorld);
-      anchorCore.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+      if (kit) {
+        kit.bones.head.getWorldPosition(anchorHead).y += 2.2;
+        kit.core.getWorldPosition(anchorCore);
+        core.position.copy(anchorCore); hip.worldToLocal(core.position);
+      } else {
+        anchorHead.set(0, 4.6, 0).applyMatrix4(headG.matrixWorld);
+        anchorCore.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
+      }
 
       // blocks
       const glitchRate = (phase >= 4 ? 0.22 : [0.01, 0.03, 0.06, 0.12, 0.22][stage]) * (reduce ? 0 : 1);
@@ -1107,7 +1311,7 @@ window.BossScene = (() => {
             if (b.jt > 0) { b.jt -= adt; p.x += b.jx; }
             else if (Math.random() < glitchRate * adt * 4) { b.jt = rnd(0.06, 0.18); b.jx = rnd(-1, 1) * (0.3 + stage * 0.2); }
           }
-          sc.setScalar(b.size);
+          sc.setScalar(kit ? 0 : b.size);
           m4.compose(p, partQ[b.part], sc);
         } else {
           if (b.mode === 1 || b.mode === 3) {
@@ -1164,7 +1368,7 @@ window.BossScene = (() => {
         deadBoom = false;
         core.scale.setScalar(1 + (0.05 * Math.sin(at * 3) * pulseK) + critPulse + charge * 0.35);
         glowMat.opacity = 0.3 + hitGlow * 0.2 + charge * 0.35 + weakK * 0.15;
-        glow.scale.setScalar(6.5 + charge * 5 + weakK * 1.5);
+        glow.scale.setScalar((6.5 + charge * 5 + weakK * 1.5) * (kit ? 0.45 : 1));
       }
       const coreBase = stage >= 3 ? coreRed : stage >= 2 ? coreAmber : coreGreen;
       coreMat.color.copy(coreBase).lerp(coreWeak, Math.max(weakK, charge * 0.7));
@@ -1195,11 +1399,12 @@ window.BossScene = (() => {
       if (sl && t < sl.h) {
         const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1);
         tele.visible = teleFill.visible = true;
-        const r = 6.5 - 4.2 * w;
-        tele.position.set(raidPos[RAID].x, 0.06, raidPos[RAID].z); tele.scale.setScalar(r);
-        teleFill.position.copy(tele.position); teleFill.scale.setScalar(r * 0.98);
-        tele.material.opacity = 0.35 + 0.55 * w;
-        teleFill.material.opacity = 0.08 + 0.22 * w;
+        // the ring marks the danger zone, and the fill grows to meet it at the moment of the hit
+        const R = 5.6, blink = w > 0.8 && !reduce ? 0.5 + 0.5 * Math.sin(t * 40) : 1;
+        tele.position.set(raidPos[RAID].x, 0.06, raidPos[RAID].z); tele.scale.setScalar(R + Math.sin(t * (6 + 14 * w)) * 0.1 * still);
+        teleFill.position.copy(tele.position); teleFill.scale.setScalar(Math.max(0.05, R * 0.97 * ease(w)));
+        tele.material.opacity = (0.5 + 0.45 * w) * blink;
+        teleFill.material.opacity = 0.14 + 0.3 * w;
         tele.material.color.copy(blocked.has(sl.id) ? CYAN : RED);
         teleFill.material.color.copy(blocked.has(sl.id) ? CYAN : RED).multiplyScalar(0.4);
         if (sl.kind === 'beam') {
@@ -1419,7 +1624,7 @@ window.BossScene = (() => {
       post.uniforms.uDim.value = dimCur * (reduce ? 0.6 : 1);
       post.uniforms.uGlitch.value = glitch;
       post.uniforms.uTime.value = t;
-      post.uniforms.uAb.value = 0.0004 + (calm ? 0 : sh * 0.002);
+      post.uniforms.uAb.value = calm ? 0 : sh * 0.002;
       if (fx) fx.update(adt);
       composer.render();
       if (opts.onFrame) opts.onFrame();

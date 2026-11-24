@@ -331,6 +331,21 @@ window.BossKit = (() => {
       if (P._hips) B.hips.position.y = hipY + P._hips;
     }
     pose('idle', 1);
+    // set the bones from idle blended toward each [name, weight] in turn; bones a pose leaves
+    // out keep their idle angle, so a strike pose only moves what it names
+    const Z3 = [0, 0, 0];
+    function mix(list) {
+      const I = POSES.idle;
+      let hy = I._hips || 0;
+      for (const b in B) { const r = I[b] || Z3; B[b].rotation.set(r[0], r[1], r[2]); }
+      for (const [n, w] of list) {
+        const P = POSES[n];
+        if (!P || !(w > 0)) continue;
+        for (const b in B) { const r = P[b] || I[b] || Z3, o = B[b].rotation; o.x += (r[0] - o.x) * w; o.y += (r[1] - o.y) * w; o.z += (r[2] - o.z) * w; }
+        hy += ((P._hips || 0) - hy) * w;
+      }
+      B.hips.position.y = hipY + hy;
+    }
 
     let clock = 0;
     function update(t, dt = 0) {
@@ -351,8 +366,23 @@ window.BossKit = (() => {
     update(0);
 
     group.scale.setScalar(opts.scale || 1);
+    // the armour meshes by body part, for hit points and debris (js/app/boss3d.js)
+    const partOf = m => {
+      for (let o = m.parent; o; o = o.parent) {
+        if (o === B.head || o === B.neck) return 'head';
+        if (o === B.shL) return 'armL';
+        if (o === B.shR) return 'armR';
+        if (o === B.thighL || o === B.thighR) return 'legs';
+      }
+      return 'torso';
+    };
+    const parts = { head: [], torso: [], armL: [], armR: [], legs: [] };
+    for (const m of meshes) if (m.material !== wire && m.geometry) { m.geometry.computeBoundingBox(); parts[partOf(m)].push(m); }
+    blockList.forEach(b => { b.size0 = b.size; });
     return {
-      group, bones: B, core, pose, update, POSES,
+      group, bones: B, core, pose, mix, update, POSES, parts, meshes,
+      // hide the data-block plates as health drops: f is the share of health left
+      plates(f) { blockList.forEach((b, i) => { if (b.fallK == null) b.size = ((i * 0.6180339) % 1) < f + 0.05 ? b.size0 : 0; }); },
       blocks: { mesh: blockMesh, list: blockList },
       height: S.height,
       dispose() { keep.forEach(x => x.dispose && x.dispose()); },
@@ -380,9 +410,22 @@ window.BossKit = (() => {
     const base = {
       idle: { armL: [0, 0, -0.32], armR: [0, 0, 0.32], foreL: [0.35, 0, 0.1], foreR: [0.35, 0, -0.1], chest: [0.08, 0, 0], thighL: [0, 0, -0.08], thighR: [0, 0, 0.08] },
       windup: { chest: [-0.15, -0.35, 0], armR: [-2.7, 0, 0.5], foreR: [-0.6, 0, 0], armL: [0.6, 0, -0.5], foreL: [0.7, 0, 0], head: [0.15, 0.2, 0], thighL: [-0.2, 0, -0.12], thighR: [0.25, 0, 0.12], shinL: [0.3, 0, 0] },
-      slam: { chest: [0.55, 0.1, 0], spine: [0.25, 0, 0], armR: [-0.9, 0, 0.25], foreR: [-0.2, 0, 0], armL: [-0.9, 0, -0.25], foreL: [-0.2, 0, 0], head: [-0.35, 0, 0], thighL: [-0.6, 0, -0.2], thighR: [-0.6, 0, 0.2], shinL: [0.9, 0, 0], shinR: [0.9, 0, 0], _hips: -1.2 },
-      sweep: { chest: [0.1, 0.6, 0], armR: [-1.4, 0.9, 1.2], foreR: [-0.3, 0, 0], armL: [0.3, 0, -0.6], head: [0, -0.4, 0] },
+      // attack wind-ups and strikes for the World Boss (js/app/boss3d.js blends them on the attack clock)
+      raise: { chest: [-0.32, 0, 0], spine: [-0.12, 0, 0], armL: [-2.85, 0, -0.3], armR: [-2.85, 0, 0.3], foreL: [-0.8, 0, 0], foreR: [-0.8, 0, 0], head: [-0.35, 0, 0], thighL: [-0.1, 0, -0.22], thighR: [-0.1, 0, 0.22], shinL: [0.2, 0, 0.15], shinR: [0.2, 0, -0.15], _hips: 0.5 },
+      pull: { chest: [0.05, 0.6, 0], armR: [0, 0.95, 1.2], foreR: [0.6, 0, 0], armL: [-0.8, 0, -0.2], foreL: [0.9, 0, 0], head: [0, -0.35, 0], thighL: [-0.25, 0, -0.3], thighR: [0.2, 0, 0.3], shinL: [0.35, 0, 0], _hips: -0.4 },
+      coil: { chest: [-0.1, -0.35, 0], armR: [0.75, 0, 0.45], foreR: [1.7, 0, 0], armL: [-1.0, 0, -0.3], foreL: [1.2, 0, 0], thighL: [-0.55, 0, -0.15], shinL: [0.7, 0, 0], thighR: [0.45, 0, 0.15], shinR: [0.4, 0, 0], _hips: -0.8 },
+      punch: { chest: [0.5, 0.4, 0], spine: [0.15, 0, 0], armR: [-1.6, 0, 0.1], foreR: [0.05, 0, 0], armL: [0.55, 0, -0.45], foreL: [1.3, 0, 0], head: [-0.35, -0.2, 0], thighL: [-0.8, 0, -0.12], shinL: [0.55, 0, 0], thighR: [0.55, 0, 0.12], shinR: [0.6, 0, 0], _hips: -0.7 },
+      beam: { chest: [-0.5, 0, 0], spine: [-0.18, 0, 0], armL: [0.55, 0, -1.35], armR: [0.55, 0, 1.35], foreL: [0.35, 0, 0], foreR: [0.35, 0, 0], head: [-0.05, 0, 0], thighL: [0, 0, -0.3], thighR: [0, 0, 0.3], shinL: [0.1, 0, 0.2], shinR: [0.1, 0, -0.2], _hips: -0.4 },
+      point: { chest: [0.1, 0.3, 0], armR: [-1.55, 0.2, 0.2], foreR: [0, 0, 0], armL: [0.2, 0, -0.5], head: [-0.1, 0.25, 0] },
+      roar: { chest: [-0.45, 0, 0], spine: [-0.15, 0, 0], head: [-0.65, 0, 0], armL: [-0.3, 0, -1.55], armR: [-0.3, 0, 1.55], foreL: [-1.3, 0, 0], foreR: [-1.3, 0, 0], thighL: [0, 0, -0.3], thighR: [0, 0, 0.3], _hips: 0.1 },
+      guard: { chest: [0.3, 0, 0], armL: [-0.95, 0, 0.38], foreL: [-1.7, 0, 0], armR: [-0.95, 0, -0.38], foreR: [-1.7, 0, 0], head: [0.2, 0, 0], thighL: [-0.4, 0, -0.25], thighR: [-0.4, 0, 0.25], shinL: [0.6, 0, 0], shinR: [0.6, 0, 0], _hips: -0.9 },
+      reel: { chest: [-0.5, 0.25, 0.12], head: [-0.55, 0.35, 0], armL: [0.35, 0, -0.85], armR: [0.45, 0, 0.95], foreL: [0.2, 0, 0], foreR: [0.25, 0, 0], thighL: [0.3, 0, -0.2], thighR: [-0.45, 0, 0.2], shinR: [0.6, 0, 0] },
+      fall: { chest: [0.85, 0, 0.12], spine: [0.3, 0, 0], head: [0.5, 0.2, 0], armL: [-0.3, 0, -0.25], foreL: [0.3, 0, 0], armR: [-0.9, 0, 0.35], foreR: [0.4, 0, 0], thighL: [-1.55, 0, -0.2], shinL: [1.6, 0, 0], thighR: [0.25, 0, 0.25], shinR: [2.3, 0, 0], _hips: -3.6 },
     };
+    Object.assign(base, {
+      slam: { chest: [0.62, 0, 0], spine: [0.25, 0, 0], armL: [-1.55, 0, 0.32], armR: [-1.55, 0, -0.32], foreL: [-0.25, 0, 0], foreR: [-0.25, 0, 0], head: [-0.45, 0, 0], thighL: [-0.65, 0, -0.28], thighR: [-0.65, 0, 0.28], shinL: [0.95, 0, 0.1], shinR: [0.95, 0, -0.1], _hips: -1.15 },
+      sweep: { chest: [0.15, 0.75, 0], armR: [-1.45, 0.95, 1.1], foreR: [-0.15, 0, 0], armL: [0.35, 0, -0.65], foreL: [0.5, 0, 0], head: [0, -0.5, 0], thighL: [-0.2, 0, -0.3], thighR: [0.15, 0, 0.3], _hips: -0.5 },
+    });
     if (id === 'siege') base.idle = { ...base.idle, chest: [0.32, 0, 0], head: [-0.25, 0, 0], armL: [0.15, 0, -0.38], armR: [0.15, 0, 0.38], thighL: [0, 0, -0.2], thighR: [0, 0, 0.2], shinL: [0, 0, 0.15], shinR: [0, 0, -0.15] };
     if (id === 'warden') base.idle = { ...base.idle, armL: [-0.55, 0.4, -0.25], foreL: [0.9, 0, 0], armR: [0.1, 0, 0.22], foreR: [0.6, 0, 0] };
     if (id === 'colossus') base.idle = { ...base.idle, chest: [0.18, 0, 0], armL: [0.2, 0, -0.55], armR: [0.2, 0, 0.55], foreL: [0.6, 0, 0.2], foreR: [0.6, 0, -0.2] };
