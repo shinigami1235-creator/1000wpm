@@ -24,6 +24,7 @@ window.DuelScene = (() => {
       import('three/addons/postprocessing/RenderPass.js'),
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
@@ -32,7 +33,8 @@ window.DuelScene = (() => {
     let impl = null, gone = false;
     const pend = { looks: opts.sides.map(s => s.look), hp: [1, 1], auras: [] };
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, RB]) => {
+        opts = { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry };
         if (gone) return false;
         impl = build(host, opts, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
         pend.looks.forEach((l, i) => impl.setLook(i, l));
@@ -154,6 +156,28 @@ window.DuelScene = (() => {
       const tint = new THREE.Mesh(own(new THREE.PlaneGeometry(CARD_W, CARD_H)), tintMat); tint.position.z = 0.01; card.add(tint);
       return { g, card, plane, mat, tintMat, brMat, beam, ring, col, base: card.position.clone(), kick: 0, kickDir: i ? 1 : -1, flash: 0, flashCol: new THREE.Color('#ffffff'), stun: 0, freeze: 0, fog: 0, hp: 1, ko: 0, koT: 0, tex: null, seq: 0, looked: Promise.resolve(), glitch: 0, lt: 9, lp: 0, recoil: 0, drop: 0, broken: null };
     });
+
+    // ---------- operators (js/app/operator3d.js) ----------
+    // When both sides bring a preset, each pad holds that player's operator instead of the portrait
+    // card. The operator lives inside the card's group, so the lunge, kick, recoil and the drop at a
+    // new round move it just as they moved the card. It types while words fly, throws a cast with each
+    // shot, flinches when hit, and at the KO the loser drops and the winner celebrates.
+    const OPS = !!(window.Operator && opts.sides.every(s => s.preset));
+    if (OPS) {
+      const TH = { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry };
+      scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.9));
+      const key = new THREE.DirectionalLight('#ffffff', 2.2); key.position.set(0, 8, 10); scene.add(key);
+      F.forEach((f, i) => {
+        const rim = new THREE.DirectionalLight(f.col, 1.2); rim.position.set(f.g.position.x * 1.4, 4, -6); scene.add(rim);
+        const op = Operator.create(TH, opts.sides[i].preset, {});
+        op.group.scale.setScalar(2.35);
+        op.group.position.y = 0.22 - (0.45 + CARD_H / 2);
+        op.group.rotation.y = (i ? -1 : 1) * 0.62;
+        f.card.add(op.group);
+        f.card.children.forEach(ch => { if (ch !== op.group) ch.visible = false; });
+        f.op = op; f.typeAt = -9; f.won = false;
+      });
+    }
 
     // ---------- combat effects ----------
 
@@ -442,6 +466,7 @@ window.DuelScene = (() => {
 
     function shot(from, tier, onLand, o = {}) {
       const to = 1 - from, f = F[from];
+      if (f.op) { f.typeAt = t; if (tier >= 2 || Math.random() < 0.3) f.op.once('cast'); }
       tier = Math.max(0, Math.min(4, tier | 0));
       const word = String(o.word || '').replace(/\s+/g, '').slice(0, 16) || '>>>';
       const T = Math.max(0.16, Math.min(0.7, (o.ms || 260) / 1000));
@@ -487,6 +512,7 @@ window.DuelScene = (() => {
     }
 
     function react(i, kind, power = 0.4) {
+      if (F[i].op && (kind === 'hit' || kind === 'stun') && !F[i].ko) F[i].op.once('hit');
       const f = F[i];
       if (kind === 'hit') { f.kick = Math.min(1, f.kick + 0.35 + power * 0.4); f.flash = Math.max(f.flash, 0.5); f.flashCol.set('#ffffff'); }
       if (kind === 'typo') { f.flash = Math.max(f.flash, 0.6); f.flashCol.set('#ff4d5e'); f.glitch = 0.35; burst(casterOf(i).pos(new V()), 7, 3.5, RED, { shard: true, size: 0.2, life: 0.45, grav: 7 }); }
@@ -526,6 +552,7 @@ window.DuelScene = (() => {
     // f.looked settles once the final portrait is on the card (or failed), for warm() to wait on
     function setLook(i, look) {
       const f = F[i], seq = ++f.seq;
+      if (f.op) { f.looked = Promise.resolve(); return; }   // the operator is the look; no portrait to render
       const put = tex => { if (f.tex) f.tex.dispose(); f.tex = tex; f.mat.map = tex; };
       if (look && look.art) { f.plane.scale.x = 1; put(artTexture()); f.looked = Promise.resolve(); return; }
       if (!look || !window.Avatar) { f.looked = Promise.resolve(); return; }
@@ -552,6 +579,7 @@ window.DuelScene = (() => {
       burst(at, 6, 4, WHITE, { size: 0.4, life: 0.25, grav: 0, k: 1 });
       ringAt(i, f.col, 6, 0.9);
       shake = Math.max(shake, reduce ? 0 : 0.6);
+      if (f.op) { const w = F[1 - i]; if (w.op) w.won = true; return; }
       if (f.broken) return;
       const cols = 6, rows = 7, w = CARD_W / cols, h = CARD_H / rows;
       const grp = new THREE.Group(); grp.scale.x = f.plane.scale.x; f.card.add(grp);
@@ -576,7 +604,7 @@ window.DuelScene = (() => {
     function revive() {
       F.forEach((f, i) => {
         if (f.broken) { f.card.remove(f.broken.grp); f.broken = null; f.card.children.forEach(ch => { ch.visible = true; }); }
-        f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0; f.poison = 0; f.fog = 0; f.ice = 0; f.wasFrozen = false;
+        f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0; f.poison = 0; f.fog = 0; f.ice = 0; f.wasFrozen = false; f.won = false;
         f.drop = reduce ? 0 : 1;
         if (reduce) ringAt(i, f.col, 3, 0.5);
       });
@@ -672,6 +700,10 @@ window.DuelScene = (() => {
         f.brMat.color.copy(f.col).lerp(RED, low * (0.6 + 0.4 * Math.sin(t * 8))).multiplyScalar(2.2);
         f.beam.material.opacity = 0.22 * (0.4 + 0.6 * f.hp) * (f.ko ? 0.2 : 1) + f.recoil * 0.12;
         f.ring.rotation.z = t * (0.4 + f.lp * (f.lt < 0.6 ? 3 : 0)) * (i ? -1 : 1);
+        if (f.op) {
+          f.op.play(f.ko ? 'defeat' : f.won ? 'victory' : t - f.typeAt < 2.5 ? 'type' : 'idle');
+          f.op.update(f.freeze > 0 ? dt * 0.15 : f.stun > 0 ? 0 : dt);
+        }
       });
       // letters in flight, each with two fading copies behind it
       for (const g of glyphs) {
@@ -769,6 +801,7 @@ window.DuelScene = (() => {
 
     function dispose() {
       alive = false;
+      F.forEach(f => { if (f.op) f.op.dispose(); });
       renderer.setAnimationLoop(null);
       ro.disconnect(); io.disconnect();
       if (fx) fx.dispose();

@@ -136,8 +136,8 @@ window.Operator = (() => {
   function create(THREE, preset, opts = {}) {
     const V = THREE.Vector3;
     let P = clean(preset);
-    const lite = !!opts.lite;
-    const seg = lite ? 6 : 12;
+    const lite = !!opts.lite || !!opts.tiny;
+    const seg = opts.tiny ? 4 : lite ? 6 : 12;   // tiny: the far-away crowd
     const group = new THREE.Group();
     const owned = [];
     const own = x => (owned.push(x), x);
@@ -166,9 +166,9 @@ window.Operator = (() => {
       m.position.set(...at); m.rotation.set(...rot); if (scale) m.scale.set(...scale);
       m.userData.zone = zone; b.add(m); return m;
     }
-    const cap = (r, len) => new THREE.CapsuleGeometry(r, Math.max(0.001, len), lite ? 2 : 4, seg);
+    const cap = (r, len) => new THREE.CapsuleGeometry(r, Math.max(0.001, len), opts.tiny ? 1 : lite ? 2 : 4, seg);
     const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-    const rbox = (w, h, d, r) => (THREE.RoundedBoxGeometry ? new THREE.RoundedBoxGeometry(w, h, d, lite ? 1 : 2, r) : box(w, h, d));
+    const rbox = (w, h, d, r) => (THREE.RoundedBoxGeometry && !opts.tiny ? new THREE.RoundedBoxGeometry(w, h, d, lite ? 1 : 2, r) : box(w, h, d));
 
     function build() {
       const S = BASES[P.base], k = S.scale;
@@ -269,10 +269,42 @@ window.Operator = (() => {
       if (accs.mask && P.acc.mask && accs.scarf) accs.scarf.visible = false;   // the scarf pulled up is the mask
     }
 
+    // merge the pieces that hang on the same bone and share a material into one mesh, so a
+    // character costs a few dozen draw calls instead of seventy (accessory groups merge on their own)
+    function compact(root) {
+      const nodes = [];
+      root.traverse(o => { if (!o.isMesh) nodes.push(o); });
+      for (const node of nodes) {
+        const byMat = new Map();
+        for (const m of node.children) if (m.isMesh && m.userData.zone !== 'eyes') {
+          if (!byMat.has(m.material)) byMat.set(m.material, []);
+          byMat.get(m.material).push(m);
+        }
+        for (const [material, list] of byMat) {
+          if (list.length < 2) continue;
+          const pos = [], nor = [], uv = [];
+          for (const m of list) {
+            m.updateMatrix();
+            const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix);
+            pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array);
+            if (g.attributes.uv) uv.push(...g.attributes.uv.array); else uv.push(...new Float32Array(g.attributes.position.count * 2));
+            g.dispose(); node.remove(m);
+          }
+          const geo = own(new THREE.BufferGeometry());
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+          geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+          const merged = new THREE.Mesh(geo, material);
+          merged.userData.zone = list[0].userData.zone;
+          node.add(merged);
+        }
+      }
+    }
     function rebuild() {
       if (built) { group.remove(built); }
       while (owned.length) owned.pop().dispose();
       built = build();
+      compact(built);
       group.add(built);
       paint(); showAcc();
       rest = {}; for (const n in B) rest[n] = B[n].position.clone();
@@ -356,5 +388,61 @@ window.Operator = (() => {
     return ctl;
   }
 
-  return { create, defaults, clean, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
+  // ---------- other players ----------
+  // a look for someone else, the same every time for the same id
+  const PAL = {
+    skin: ['#f1c9a8', '#d9a982', '#c49477', '#a7774f', '#7d5536', '#5a3b26'],
+    hair: ['#1b1512', '#2b211b', '#4a3222', '#8a5a33', '#d4b66e', '#e8e2d8', '#7a2d2d'],
+    jacket: ['#1d2638', '#26282b', '#3a3f2c', '#3b2a22', '#1f3330', '#2b2235', '#4a4f55'],
+    shirt: ['#2f2b26', '#3a3a3a', '#1d2a24', '#4a3b2b', '#d8d6d0'],
+    pants: ['#16181b', '#22262c', '#2d3326', '#2a3442', '#3a3530'],
+  };
+  function hash(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function random(seed) {
+    let x = hash(seed) || 1;
+    const r = () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return (x >>> 0) / 4294967296; };
+    const pick = a => a[Math.floor(r() * a.length)];
+    const p = defaults(r() < 0.5 ? 'male' : 'female');
+    for (const z of Object.keys(PAL)) p.colors[z] = pick(PAL[z]);
+    p.colors.beanie = pick(['#3c3d2e', '#26282b', '#5a2b2b', '#2b3a4a']);
+    p.acc.beanie = r() < 0.5; p.acc.visor = r() < 0.7; p.acc.mask = r() < 0.25; p.acc.harness = r() < 0.6; p.acc.pouches = r() < 0.7;
+    return p;
+  }
+  // the player's own look from the Character Lab
+  function mine() { try { return clean(TT.store.get('wpm-operator', null) || defaults('male')); } catch (e) { return defaults('male'); } }
+
+  // A crowd of n operators as one draw call: a light stand-in posed once, merged into one mesh with
+  // its zone colours baked in, and instanced. Each copy gets its own tint. For the World Boss raid.
+  function crowd(THREE, n, opts = {}) {
+    const parts = [];
+    for (const base of ['male', 'female']) {
+      const op = create(THREE, { ...defaults(base), acc: { beanie: base === 'male', visor: true, scarf: true, mask: false, wrist: false, pouches: false, harness: true } }, { tiny: true });
+      op.at('idle', 0.4);
+      op.group.updateMatrixWorld(true);
+      const pos = [], nor = [], col = [];
+      const c = new THREE.Color();
+      op.group.traverse(m => {
+        if (!m.isMesh || !m.visible || !m.geometry) return;
+        let vis = true; for (let o = m; o; o = o.parent) if (!o.visible) vis = false;
+        if (!vis) return;
+        const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld);
+        const mt = m.material;
+        c.copy(mt.emissive && mt.emissiveIntensity > 1 ? mt.emissive : mt.color);
+        const P = g.attributes.position.array, N = g.attributes.normal.array;
+        for (let i = 0; i < P.length; i += 3) { pos.push(P[i], P[i + 1], P[i + 2]); nor.push(N[i], N[i + 1], N[i + 2]); col.push(c.r, c.g, c.b); }
+        g.dispose();
+      });
+      op.dispose();
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      parts.push(geo);
+    }
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+    const meshes = parts.map(g => { const m = new THREE.InstancedMesh(g, mat, n); m.frustumCulled = false; m.count = 0; return m; });
+    return { meshes, dispose() { parts.forEach(g => g.dispose()); mat.dispose(); meshes.forEach(m => m.dispose && m.dispose()); } };
+  }
+
+  return { create, defaults, clean, random, mine, crowd, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
 })();

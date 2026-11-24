@@ -23,6 +23,7 @@ window.PartyScene = (() => {
       import('three/addons/postprocessing/RenderPass.js'),
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
@@ -30,9 +31,9 @@ window.PartyScene = (() => {
   function mount(host, opts = {}) {
     let impl = null, gone = false, fight = null, last = null;
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, RB]) => {
         if (gone) return false;
-        impl = build(host, opts, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
+        impl = build(host, { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry }, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
         if (fight) impl.setFight(fight);
         if (last) impl.sync(last);
         return true;
@@ -236,7 +237,10 @@ window.PartyScene = (() => {
       camBase.set(0, 6.2, dist);
       camera.position.copy(camBase); camera.lookAt(camLook); camera.updateProjectionMatrix();
       teamZ = clamp(dist - 12, 7, 14);
+      // resizing the canvas clears it: draw again now, so a resize never shows a blank frame
+      if (drawn) composer.render();
     }
+    let drawn = false;
     const ro = new ResizeObserver(fit); ro.observe(host);
     let visible = true;
     const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; }); io.observe(host);
@@ -260,6 +264,40 @@ window.PartyScene = (() => {
       return out;
     }
     const colorOf = id => C(opts.color ? opts.color(id) : Theme.hex('accent'));
+
+    // ---------- the team's operators (js/app/operator3d.js) ----------
+    // Each player stands on the floor above their card, facing the creatures: you with your
+    // Character Lab look, the others seeded from their names. They type while their words fly,
+    // cast on big shots, flinch when an attack lands, kneel when down and celebrate a clear.
+    const team = new Map();   // id -> { op, typeAt }
+    let teamWon = false, teamLit = false;
+    const TH = window.Operator ? { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry } : null;
+    function teamSync(players) {
+      if (!TH || !players) return;
+      if (!teamLit) {
+        teamLit = true;
+        scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.8));
+        const key = new THREE.DirectionalLight('#ffffff', 2); key.position.set(0, 9, 16); scene.add(key);
+      }
+      for (const p of players) if (!team.has(p.id)) {
+        const op = Operator.create(TH, p.id === 'me' ? Operator.mine() : Operator.random(p.name || p.id), { lite: p.id !== 'me' });   // full detail for you only
+        op.group.scale.setScalar(1.9); op.group.rotation.y = Math.PI;
+        scene.add(op.group);
+        team.set(p.id, { op, typeAt: -9 });
+      }
+      for (const [id, m] of team) if (!players.some(p => p.id === id)) { scene.remove(m.op.group); m.op.dispose(); team.delete(id); }
+    }
+    const tv = new V();
+    function teamTick(t, dt) {
+      for (const [id, m] of team) {
+        laneAt(id, tv);
+        m.op.group.position.set(tv.x, 0, tv.z - 2.4);
+        const p = st && st.players ? st.players.find(x => x.id === id) : null;
+        m.op.play(p && p.down ? 'defeat' : teamWon ? 'victory' : t - m.typeAt < 1.6 ? 'type' : 'idle');
+        m.op.update(dt);
+      }
+    }
+    function teamAct(id, kind) { const m = team.get(id); if (!m) return; if (kind === 'type') m.typeAt = nowS(); else m.op.once(kind); }
 
     // ---------- creatures ----------
     let cre = null, kind = '', foes = new Map(), st = null, deadAt = -9, feintAt = 0;
@@ -722,6 +760,7 @@ window.PartyScene = (() => {
     }
     function setFight(f) {
       clearCreature();
+      teamWon = false;
       kind = f.kind; applyPal(f.look || 0);
       foes = new Map((f.foes || []).map(x => [x.id, x]));
       deadAt = -9;
@@ -738,6 +777,7 @@ window.PartyScene = (() => {
     const aimV = new V(), fromV = new V();
     function sync(s) {
       st = s;
+      teamSync(s.players);
       if (s.foes) { const m = new Map(); for (const x of s.foes) m.set(x.id, x); for (const [id, x] of foes) if (!m.has(id) && x.kind === 'mite') m.set(id, { ...x, alive: false }); foes = m; }
       atk = s.attack || null;
       if (cre && cre.weak) cre.weak(s.weak > 0);
@@ -767,6 +807,7 @@ window.PartyScene = (() => {
     // ---------- events ----------
     const hitAt = new V();
     function shot(h) {
+      teamAct(h.id, 'type'); if (h.tier >= 2 || h.crit) teamAct(h.id, 'cast');
       if (!cre) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const from = laneAt(h.id, new V()).add(v4.set(0, 0.6, 0));
       const foe = h.foe;
@@ -800,6 +841,7 @@ window.PartyScene = (() => {
     function attackLands(a) {
       if (!cre) return;
       const ids = a.target === 'team' ? (st ? st.players.filter(p => !p.down).map(p => p.id) : []) : [a.target];
+      ids.forEach(id => teamAct(id, 'hit'));
       const from = a.from || (st && st.foes[0] && st.foes[0].id);
       if (ids.length === 1) { laneAt(ids[0], v1); cre.lunge(from, v1); }
       else cre.lunge(from, v1.set(0, 1, teamZ));
@@ -829,7 +871,7 @@ window.PartyScene = (() => {
     function down(id) { laneAt(id, v1); burst(v1, 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); }
     function heal(id) { laneAt(id, v1); burst(v1, 18, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 1.8, 0.5); }
     function shield(id) { laneAt(id, v1); ring(v1, SHIELD, 2.2, 0.6); burst(v1, 12, 3, SHIELD, { up: 1, grav: -1 }); }
-    function clear() { deadAt = nowS(); for (const f of foes.values()) if (cre && f.alive) cre.gone(f.id, 'kill'); shake = Math.max(shake, 1); burst(v1.set(0, 5, -3), 80, 12, C(pal.a), { up: 0.5, size: 0.4, life: 1.2 }); }
+    function clear() { teamWon = true; deadAt = nowS(); for (const f of foes.values()) if (cre && f.alive) cre.gone(f.id, 'kill'); shake = Math.max(shake, 1); burst(v1.set(0, 5, -3), 80, 12, C(pal.a), { up: 0.5, size: 0.4, life: 1.2 }); }
 
     const _s = new V();
     function screen(p) {
@@ -863,6 +905,8 @@ window.PartyScene = (() => {
       if (performance.now() < hitStop) dt *= 0.15;
       T.value = t;
       laneCache.clear();
+      teamTick(t, dt);
+      drawn = true;
       // the boss never just waits: every 1.4 to 2.6 s one of them snaps at a random player
       if (cre && cre.lunge && st && st.players && !reduce && t > feintAt) {
         feintAt = t + 1.4 + Math.random() * 1.2;
@@ -906,6 +950,7 @@ window.PartyScene = (() => {
 
     function dispose() {
       renderer.setAnimationLoop(null);
+      for (const m of team.values()) m.op.dispose(); team.clear();
       if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); });

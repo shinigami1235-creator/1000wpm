@@ -41,6 +41,7 @@ window.BossScene = (() => {
         impl.setPhase(pending.phase, true);
         impl.setShield(pending.shield);
         impl.setWeak(pending.weak);
+        if (pending.crew) impl.crew(pending.crew);
         if (pending.defeated) impl.defeat(true);
         return true;
       }),
@@ -63,6 +64,8 @@ window.BossScene = (() => {
       pause: on => impl && impl.pause(on),
       charge: (level, tier) => impl && impl.charge(level, tier),
       feed: () => impl && impl.feed(),
+      crew: list => { pending.crew = list; if (impl) impl.crew(list); },
+      act: (who, kind) => impl && impl.act(who, kind),
       // with no scene (WebGL off or still loading) the release lands at once
       release: (tier, power, onLand) => { if (impl && impl.live()) impl.release(tier, power, onLand); else if (onLand) onLand(null, null); },
       defeat: instant => { pending.defeated = true; if (impl) impl.defeat(!!instant); },
@@ -439,6 +442,73 @@ window.BossScene = (() => {
       }
       raidPos[RAID].set(0, 0.7, raidZ + 0.6);
       youRing.position.set(0, 0.04, raidZ + 0.6);
+      // with operators standing there, shots leave from their chests
+      if (OPS) for (const p of raidPos) p.y = 1.9;
+    }
+
+    // ---------- operators (js/app/operator3d.js) ----------
+    // You and your squad stand in the raid as full characters, facing the boss; everyone else is one
+    // instanced crowd. They type while words land, cast on a release, flinch when hit, kneel when down.
+    const OPS = window.Operator ? 1.7 : 0;    // about 3 units tall against the 16-unit titan
+    const TH = { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry };
+    const crew = [];                          // { id, op, slot, typeAt, down }
+    let crowd = null, won = false;
+    const crowdCol = new THREE.Color(), crowdTint = [];
+    function addOp(id, preset, slot) {
+      const op = Operator.create(TH, preset, { lite: id !== 'you' });   // full detail for you only
+      op.group.scale.setScalar(OPS); op.group.rotation.y = Math.PI;
+      scene.add(op.group);
+      const c = { id, op, slot, typeAt: -9, down: false, beat: Math.random() * 3 };
+      crew.push(c); return c;
+    }
+    if (OPS) {
+      if (!kit) scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.9));
+      addOp('you', Operator.mine(), RAID);
+      crowd = Operator.crowd(TH, RAID);
+      crowd.meshes.forEach(m => scene.add(m));
+      for (let i = 0; i < RAID; i++) crowdTint.push(new THREE.Color('#ffffff').lerp(raidCol(i), 0.32));
+      marks.visible = false;
+    }
+    // the squad mates take the three spots nearest you
+    function setCrew(list) {
+      if (!OPS) return;
+      for (let i = crew.length - 1; i > 0; i--) { scene.remove(crew[i].op.group); crew[i].op.dispose(); crew.splice(i, 1); }
+      (list || []).slice(0, 3).forEach((m, i) => addOp(m.id, m.preset, i));
+    }
+    function act(who, kind) {
+      const c = crew.find(x => x.id === who);
+      if (!c) return;
+      if (kind === 'type') c.typeAt = nowS();
+      else if (kind === 'cast' || kind === 'hit') { if (!c.down) c.op.once(kind); }
+      else if (kind === 'down') c.down = true;
+      else if (kind === 'up') c.down = false;
+    }
+    const opM = new THREE.Matrix4(), opQ = new THREE.Quaternion(), opS = new V(), opP = new V(), opE = new THREE.Euler();
+    function opsTick(t, dt) {
+      if (!OPS) return;
+      for (const c of crew) {
+        const p = raidPos[c.slot];
+        c.op.group.position.set(p.x, 0, p.z);
+        // mates keep typing; you type while your words are landing
+        if (c.id !== 'you' && t - c.typeAt > 1.6 && Math.random() < dt * 2) c.typeAt = t;
+        const anim = c.down ? 'defeat' : won ? 'victory' : t - c.typeAt < 1.3 ? 'type' : 'idle';
+        c.op.play(anim);
+        c.op.update(dt);
+      }
+      // the rest of the raid: two instanced crowds, male and female, mixed along both sides
+      const used = new Set(crew.map(c => c.slot));
+      const n = [0, 0];
+      for (let i = 0; i < RAID; i++) {
+        if (used.has(i) || i >= SHOWN) continue;
+        const k = Math.floor(i / 2) % 2, m = crowd.meshes[k], p = raidPos[i];   // spots alternate sides, so pair them up for the base
+        opP.set(p.x, Math.max(0, Math.sin(t * 9 + i) * 0.06 * markGlow[i]), p.z);
+        opQ.setFromEuler(opE.set(0, Math.PI + Math.sin(i * 1.7) * 0.25, 0));
+        opS.setScalar(OPS * (0.92 + (i % 5) * 0.03));
+        m.setMatrixAt(n[k], opM.compose(opP, opQ, opS));
+        m.setColorAt(n[k], crowdCol.copy(crowdTint[i]).multiplyScalar(1 + markGlow[i] * 1.2));
+        n[k]++;
+      }
+      crowd.meshes.forEach((m, k) => { m.count = n[k]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
     }
 
     // ---------- pooled effects ----------
@@ -790,6 +860,7 @@ window.BossScene = (() => {
       const you = blocked.has(x.id) || frozen.has(x.id);
       const at = raidPos[RAID];
       shake = Math.max(shake, you ? 0.35 : 0.9);
+      act('you', you ? 'cast' : 'hit');
       if (kit) {
         // the blow lands where the fists are: rings and dust from each fist, chunks of armour
         // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
@@ -835,6 +906,7 @@ window.BossScene = (() => {
     function hit(h) {
       if (dead) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const you = h.you;
+      if (!you && h.id) { act(h.id, 'type'); if (Math.random() < 0.25) act(h.id, 'cast'); }
       if (you && h.kind === 'return') {
         // the returned word itself is the bolt, so this only lands a little later
         hitQueue.push({ h, at: nowS() + 0.45 });
@@ -1017,7 +1089,7 @@ window.BossScene = (() => {
     function defeat(instant) {
       if (dead) return;
       if (fx) fx.clear();
-      dead = true; deadAt = nowS(); deadT = instant ? 9 : 0;
+      dead = true; deadAt = nowS(); deadT = instant ? 9 : 0; won = true;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
       for (const s of shots) { s.on = false; s.g.visible = false; }
       for (const a of adds) if (a.on) a.dying = nowS();
@@ -1040,6 +1112,7 @@ window.BossScene = (() => {
       eyes.forEach(e => { e.visible = !kit; });
       if (kit) rings.forEach(r => { r.visible = false; r.userData.gone = true; });
       unshed();
+      won = false; crew.forEach(c => { c.down = false; });
       core.scale.setScalar(1); glowMat.opacity = 0.5;
       blocked.clear(); evs.length = 0; hitQueue.length = 0;
       for (const s of shots) { s.on = false; s.g.visible = false; }
@@ -1288,6 +1361,7 @@ window.BossScene = (() => {
       armLG.rotation.set(cur.lx, 0, cur.lz);
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
       if (kit) driveKit(t, at, adt);
+      opsTick(t, adt);
       root.updateMatrixWorld(true);
       partG.forEach((g, i) => g.getWorldQuaternion(partQ[i]));
       if (kit) {
@@ -1642,6 +1716,8 @@ window.BossScene = (() => {
 
     function dispose() {
       renderer.setAnimationLoop(null);
+      crew.forEach(c => c.op.dispose()); crew.length = 0;
+      if (crowd) crowd.dispose();
       if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
@@ -1667,6 +1743,7 @@ window.BossScene = (() => {
     function release(tier, power, onLand) {
       if (!fx || dead) { if (onLand) onLand(null, null); return; }
       const from = orbPos(new V());
+      act('you', 'cast');
       const ti = -2, sh = shieldF !== null;   // a release always goes for the core
       fx.release(tier, power, from, out => aimAt(ti, sh, from, out), at => {
         recoilV -= 0.3 + 1.4 * power;
@@ -1684,7 +1761,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release };
+    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };

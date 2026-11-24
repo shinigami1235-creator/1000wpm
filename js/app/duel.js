@@ -206,7 +206,9 @@ Router.register('duel', (() => {
       </div>`;
     const stage = el.querySelector('[data-stage]');
     UI.play('duel', true);
-    scene = DuelScene.mount(stage, { sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k] })) });
+    // each side's operator: yours from the Character Lab, everyone else's seeded from their name
+    const preset = k => (!window.Operator ? null : k === me ? Operator.mine() : Operator.random(P[k].art ? 'art' : P[k].name || P[k].id));
+    scene = DuelScene.mount(stage, { sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k], preset: preset(k) })) });
     // load and play every effect once behind the cover, then tell the server this side is ready.
     // The countdown starts only when both sides are; a stuck load gives up after 12 seconds.
     const chars = [...new Set(info.words.flat().join('') + Combat.SPELLS().map(x => x.word).join(''))].join('');

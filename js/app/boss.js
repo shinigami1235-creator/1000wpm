@@ -84,16 +84,19 @@ Router.register('boss', (() => {
       dodgeWord: () => TT.wordOfLength(...DODGE[tier]),
     });
     if (words && tier < 3) words.set({ maxLen: [5, 6, 7][tier] });
+    // the squad mates stand beside you in the scene, each with a look of their own
+    const opId = m => (m.you ? 'you' : m.demoId || m.id);
+    if (scene && window.Operator) scene.crew(squad.members().filter(m => !m.you).map(m => ({ id: opId(m), preset: Operator.random(m.name) })));
     const name = m => (m.you ? 'you' : m.name);
     squadOffs.push(
       squad.on('lock', e => { if (!el) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} locked on to you. Type the dodge word`, cls: 'alert' }); } }),
       squad.on('dodge', () => { if (!el) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
       squad.on('covered', e => { if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
-      squad.on('hit', e => { if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Recruit shield kept you up. From CL-02 you can go down', cls: 'you' }); }),
-      squad.on('down', e => { if (!el) return; pushFeed({ text: e.who.you ? 'You are down. Every clean word gets you back a second sooner' : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
+      squad.on('hit', e => { if (scene) scene.act(opId(e.who), 'hit'); if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Recruit shield kept you up. From CL-02 you can go down', cls: 'you' }); }),
+      squad.on('down', e => { if (scene) scene.act(opId(e.who), 'down'); if (!el) return; pushFeed({ text: e.who.you ? 'You are down. Every clean word gets you back a second sooner' : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
       squad.on('revive', e => { if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
-      squad.on('up', e => { if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
-      squad.on('heal', e => { if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
+      squad.on('up', e => { if (scene) scene.act(opId(e.who), 'up'); if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
+      squad.on('heal', e => { if (scene) scene.act(opId(e.by), 'cast'); if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
     );
   }
 
@@ -394,6 +397,7 @@ Router.register('boss', (() => {
         const col = me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null;
         WorldBossNet.sendDamage(word.length, { crit, jam: t < jamUntil, mult: w.mult, tier: w.tier, pierce: w.pierce, color: col });
         cSfx('blip');
+        if (scene) scene.act('you', 'type');
       } else {
         combo = clean ? combo + 1 : 0;
         best = Math.max(best, combo);
