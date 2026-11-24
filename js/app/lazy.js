@@ -45,6 +45,7 @@ window.Lazy = (() => {
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
     'page:shop': { js: ['js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
+    'page:lab': { css: ['css/lab.css'], js: ['js/app/operator3d.js', 'js/app/lab.js'] },
     'page:profile': { need: ['net', 'avatarEdit'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
   // the group that defines each global other pages wait on
