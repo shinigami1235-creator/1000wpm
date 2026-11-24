@@ -3,7 +3,7 @@
 // RaceGame.mount(panel) builds the race inside panel and returns a function that stops it.
 window.RaceGame = (() => {
   const ART = TT.ART_WPM;
-  const YOU = '#39ff88', ART_C = '#3ee6ff', P1_C = '#ff8a3d', BEST_C = '#d7f5e3';
+  const YOU = Theme.hex('accent'), ART_C = '#3ee6ff', P1_C = '#ff8a3d', BEST_C = Theme.hex('ink');
 
   function mount(panel) {
     panel.innerHTML = `

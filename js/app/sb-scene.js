@@ -76,13 +76,13 @@ window.SuperScene = (() => {
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#010503');
-    scene.fog = new THREE.Fog('#010503', 40, 110);
+    scene.background = new THREE.Color(Theme.hex('bg-0'));
+    scene.fog = new THREE.Fog(Theme.hex('bg-0'), 40, 110);
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 240);
 
     // ---------- palette ----------
     let bossId = opts.boss || 'hydra', B = SuperData.boss(bossId);
-    const pal = { bg: C('#010503'), a: C('#39ff88'), b: C('#1f9e57'), c: C('#3ee6ff'), bloom: 0.6 };
+    const pal = { bg: C(Theme.hex('bg-0')), a: C(Theme.hex('accent')), b: C(Theme.hex('accent-dim')), c: C('#3ee6ff'), bloom: 0.6 };
     let palTo = null, palFrom = null, palT = 1;
     function palette(i, instant) {
       const p = B.pal[clamp(i, 0, 2)];
@@ -259,7 +259,7 @@ window.SuperScene = (() => {
 
     // Kernel Hydra
     const HEADS = [
-      { id: 'fork', base: new V(-8.5, 9, -2), c: C('#39ff88'), dir: -1 },
+      { id: 'fork', base: new V(-8.5, 9, -2), c: C(Theme.hex('accent')), dir: -1 },
       { id: 'root', base: new V(0, 12.5, -3.5), c: C('#3ee6ff'), dir: 0 },
       { id: 'patch', base: new V(8.5, 9, -2), c: C('#f2c230'), dir: 1 },
     ];
@@ -505,7 +505,7 @@ window.SuperScene = (() => {
     }
 
     // ---------- events ----------
-    const hitCol = tier => tier >= 3 ? C('#ffffff') : tier === 2 ? C('#3ee6ff') : C('#39ff88');
+    const hitCol = tier => tier >= 3 ? C('#ffffff') : tier === 2 ? C('#3ee6ff') : C(Theme.hex('accent'));
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (n === 'hit') {
@@ -571,7 +571,7 @@ window.SuperScene = (() => {
       if (n === 'decoy') { if (decoyI >= 0) segFlash[decoyI] = 1; juice.tint('#ff4d5e', 0.6); }
       if (n === 'weak' && !d.hit) weakI = -1;
       if (n === 'packet' && d.returned) { const pk = packets.get(d.id); if (pk) { pk.gone = clock.t; flare(pk.pos, C('#3ee6ff'), 3, 0.25); } }
-      if (n === 'tier' && d.tier >= 3) { wave(v1.copy(artPos).setY(0.15), C('#eafff2'), 1, 10, 0.6); }
+      if (n === 'tier' && d.tier >= 3) { wave(v1.copy(artPos).setY(0.15), C(Theme.hex('ink-hi')), 1, 10, 0.6); }
     }
 
     // ---------- the frame ----------
@@ -607,9 +607,9 @@ window.SuperScene = (() => {
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's marker
-      put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C('#39ff88'), 2 + kick);
-      put(v1.copy(artPos).setY(0.08), 3.2, 0.06, 0.18, 0, t * 0.6, 0, C('#39ff88'), 1.3);
-      put(v1.copy(artPos).setY(0.08), 0.18, 0.06, 3.2, 0, t * 0.6, 0, C('#39ff88'), 1.3);
+      put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
+      put(v1.copy(artPos).setY(0.08), 3.2, 0.06, 0.18, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
+      put(v1.copy(artPos).setY(0.08), 0.18, 0.06, 3.2, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       if (snap && snap.art.shield) for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + t; put(v2.copy(artPos).add(v3.set(Math.cos(a) * 1.8, 1.2, Math.sin(a) * 1.8)), 0.5, 0.9, 0.12, 0, -a, 0, C('#f2c230'), 1.8); }
       kick = Math.max(0, kick - dt * 3);
       // debris

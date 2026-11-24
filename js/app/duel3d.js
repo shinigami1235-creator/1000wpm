@@ -84,7 +84,7 @@ window.DuelScene = (() => {
     composer.addPass(new OutputPass());
 
     // ---------- the floor: a round pad of rings and spokes ----------
-    const floorMat = own(new THREE.LineBasicMaterial({ color: C('#39ff88', 0.55), transparent: true, opacity: 0.55 }));
+    const floorMat = own(new THREE.LineBasicMaterial({ color: C(Theme.hex('accent'), 0.55), transparent: true, opacity: 0.55 }));
     const pts = [];
     for (const r of [2, 4, 6.5, 9, 12]) for (let i = 0; i < 96; i++) {
       const a = i / 96 * Math.PI * 2, b = (i + 1) / 96 * Math.PI * 2;
@@ -97,7 +97,7 @@ window.DuelScene = (() => {
     disc.rotation.x = -Math.PI / 2; disc.position.y = -0.01; scene.add(disc);
 
     // background towers of glowing blocks, far back
-    const towerMat = own(new THREE.MeshBasicMaterial({ color: C('#1f9e57', 0.5), wireframe: true, transparent: true, opacity: 0.35 }));
+    const towerMat = own(new THREE.MeshBasicMaterial({ color: C(Theme.hex('accent-dim'), 0.5), wireframe: true, transparent: true, opacity: 0.35 }));
     const towerGeo = own(new THREE.BoxGeometry(1, 1, 1));
     for (let i = 0; i < 26; i++) {
       const a = Math.PI * (0.12 + 0.76 * i / 25) + Math.PI;
@@ -126,7 +126,7 @@ window.DuelScene = (() => {
       g.position.copy(POS[i]);
       g.rotation.y = YAW[i];
       scene.add(g);
-      const col = C(s.color || (i ? '#f29d30' : '#39ff88'));
+      const col = C(s.color || (i ? '#f29d30' : Theme.hex('accent')));
       // hex pad and the light column under the card
       const pad = new THREE.Mesh(own(new THREE.CylinderGeometry(1.7, 1.85, 0.22, 6)), own(new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.35) })));
       pad.position.y = 0.11; g.add(pad);
@@ -445,7 +445,7 @@ window.DuelScene = (() => {
       tier = Math.max(0, Math.min(4, tier | 0));
       const word = String(o.word || '').replace(/\s+/g, '').slice(0, 16) || '>>>';
       const T = Math.max(0.16, Math.min(0.7, (o.ms || 260) / 1000));
-      const base = new THREE.Color(o.color || (from ? '#f29d30' : '#39ff88'));
+      const base = new THREE.Color(o.color || (from ? '#f29d30' : Theme.hex('accent')));
       const col = TIER_COL[tier] ? new THREE.Color(TIER_COL[tier]) : base.clone().lerp(WHITE, tier ? 0.25 : 0);
       // the attacker winds up and lunges; the letters leave on the lunge
       f.lt = 0; f.lp = 0.6 + tier * 0.12 + (o.crit ? 0.25 : 0);
@@ -506,7 +506,7 @@ window.DuelScene = (() => {
       const cv = document.createElement('canvas'); cv.width = cv.height = 512;
       const c = cv.getContext('2d');
       const g = c.createRadialGradient(256, 220, 20, 256, 256, 360);
-      g.addColorStop(0, '#0b2a30'); g.addColorStop(1, '#040806');
+      g.addColorStop(0, '#0b2a30'); g.addColorStop(1, Theme.hex('bg'));
       c.fillStyle = g; c.fillRect(0, 0, 512, 512);
       c.save(); c.translate(256 - 32 * 6.2, 236 - 34 * 6.2); c.scale(6.2, 6.2);
       c.strokeStyle = '#3ee6ff'; c.lineCap = 'round'; c.lineJoin = 'round'; c.shadowColor = '#3ee6ff'; c.shadowBlur = 6;

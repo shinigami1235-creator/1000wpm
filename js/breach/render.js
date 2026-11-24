@@ -147,7 +147,7 @@ window.Breach3D = (() => {
     }));
   }
   function linesTex(lines, o = {}) {
-    const { w = 512, h = 256, col = '#39ff88', col2 = '#7fa892', size = 22, title = null, frame = true } = o;
+    const { w = 512, h = 256, col = Theme.hex('accent'), col2 = Theme.hex('ink-2'), size = 22, title = null, frame = true } = o;
     return ctex(w * 2, h * 2, (g) => {
       g.scale(2, 2);
       g.fillStyle = 'rgba(0,0,0,0)'; g.clearRect(0, 0, w, h);
@@ -213,11 +213,11 @@ window.Breach3D = (() => {
       s.visible = false; scene.add(s); letters.push({ s, life: 0 });
     }
     for (let i = 0; i < 14; i++) {
-      const m = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), addMat('#39ff88', 2, { side: THREE.DoubleSide }));
+      const m = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), addMat(Theme.hex('accent'), 2, { side: THREE.DoubleSide }));
       m.visible = false; scene.add(m); rings.push({ m, life: 0 });
     }
     for (let i = 0; i < 18; i++) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.035, 1, 6, 1, true), addMat('#39ff88', 3));
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.035, 1, 6, 1, true), addMat(Theme.hex('accent'), 3));
       m.visible = false; scene.add(m);
       const tip = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#bfffd9', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
       tip.visible = false; scene.add(tip);
@@ -473,7 +473,7 @@ window.Breach3D = (() => {
     const panels = [], faceCam = [];
     for (let i = 0; i < 9; i++) {
       const lines = TTshuffle(tt.lines).slice(0, 5);
-      const tex = linesTex(lines, { col: i % 3 === 2 ? col2 : col, col2: '#d7f5e3', title: tt.title });
+      const tex = linesTex(lines, { col: i % 3 === 2 ? col2 : col, col2: Theme.hex('ink'), title: tt.title });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.1), addMat('#ffffff', 1.0, { map: tex, side: THREE.DoubleSide, fog: true }));
       const p = rail[Math.floor((i + 0.5) / 9 * (rail.length - 1))], q = rail[Math.min(rail.length - 1, Math.floor((i + 0.5) / 9 * (rail.length - 1)) + 2)];
       const fx = q.x - p.x, fz = q.z - p.z, l = Math.hypot(fx, fz) || 1, side = i % 2 ? 1 : -1;
@@ -574,7 +574,7 @@ window.Breach3D = (() => {
         shape.moveTo(0, 0); shape.lineTo(w, 0); shape.lineTo(w, h); shape.lineTo(0.5, h); shape.lineTo(0, h + 0.4); shape.lineTo(0.15, h); shape.lineTo(0, h); shape.closePath();
         const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints(shape.getPoints()), lineMat(i % 2 ? col2 : col, 1.8));
         b.add(ln);
-        const tx = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.2, h - 0.2), addMat('#ffffff', 0.9, { map: linesTex([TTshuffle(THEME_TEXT.chat.lines)[0]], { w: 512, h: 96, size: 40, frame: false, col: '#d7f5e3' }) }));
+        const tx = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.2, h - 0.2), addMat('#ffffff', 0.9, { map: linesTex([TTshuffle(THEME_TEXT.chat.lines)[0]], { w: 512, h: 96, size: 40, frame: false, col: Theme.hex('ink') }) }));
         tx.position.set(w / 2, h / 2, 0.01); b.add(tx);
         b.position.set(q.x + (Math.random() - 0.5) * 30, q.y + 3 + Math.random() * 8, q.z + (Math.random() - 0.5) * 30);
         b.lookAt(q.x, b.position.y, q.z);
@@ -625,7 +625,7 @@ window.Breach3D = (() => {
       for (let i = 0; i < 4; i++) {
         const q = along((i + 0.5) / 4);
         for (let k = 0; k < 6; k++) {
-          const cap = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.8, 0.5, 0.8)), lineMat(k % 2 ? col2 : '#d7f5e3', 1.5));
+          const cap = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.8, 0.5, 0.8)), lineMat(k % 2 ? col2 : Theme.hex('ink'), 1.5));
           cap.position.set(q.x + (i % 2 ? 7 : -7), q.y - 1.2, q.z); group.add(cap);
           props.move.push({ m: cap, axis: 'z', base: q.z, sp: 3, off: k * 4, wrap: 24 });
         }
@@ -982,7 +982,7 @@ window.Breach3D = (() => {
     return { root, chip, halo };
   }
   function makeSpark() {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#39ff88', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright(Theme.hex('accent'), 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     s.scale.setScalar(0.8); scene.add(s);
     return { root: s };
   }
@@ -1076,7 +1076,7 @@ window.Breach3D = (() => {
       const src = THEME_TEXT.core.lines;
       for (let k = 0; k < 12; k++) {
         const cx = -1.9 + (k % 3) * 1.9, cy = 2.7 - Math.floor(k / 3) * 1.8;
-        const tex = linesTex(TTshuffle(src).slice(0, 4), { w: 256, h: 200, size: 18, col: k % 4 ? col : col2, col2: '#d7f5e3' });
+        const tex = linesTex(TTshuffle(src).slice(0, 4), { w: 256, h: 200, size: 18, col: k % 4 ? col : col2, col2: Theme.hex('ink') });
         const s = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.5), addMat('#ffffff', 1, { map: tex })); s.position.set(cx, cy, 0.37); slab.add(s); P.screens.push(s);
       }
       P.eye = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.22, 0.1), red); P.eye.position.set(0, 0.9, 0.45); slab.add(P.eye);
@@ -1107,7 +1107,7 @@ window.Breach3D = (() => {
     // stun halo of spinning glyphs
     P.stun = new THREE.Group(); root.add(P.stun);
     for (let k = 0; k < 8; k++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glyph('?!#*?!%&'[k]), color: bright('#39ff88', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glyph('?!#*?!%&'[k]), color: bright(Theme.hex('accent'), 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
       s.scale.setScalar(0.5); P.stun.add(s);
     }
     scene.add(root);
@@ -1270,7 +1270,7 @@ window.Breach3D = (() => {
     // actors
     const live = new Set();
     const camPos = camera.position;
-    const col2 = lv ? lv.src.color2 : '#39ff88';
+    const col2 = lv ? lv.src.color2 : Theme.hex('accent');
     for (const f of st.foes) {
       live.add(f);
       let a = actors.get(f);
@@ -1329,7 +1329,7 @@ window.Breach3D = (() => {
     }
     // boss
     if (st.boss) {
-      if (!bossA || bossA.src !== st.boss) { removeBoss(); bossA = makeBoss(st.boss, lv ? lv.src.color : '#39ff88', col2); }
+      if (!bossA || bossA.src !== st.boss) { removeBoss(); bossA = makeBoss(st.boss, lv ? lv.src.color : Theme.hex('accent'), col2); }
       animateBoss(bossA, st.boss, t, dt, camPos);
     } else removeBoss();
     // muzzle light and particles

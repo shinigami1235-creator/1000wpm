@@ -107,20 +107,20 @@ window.BossScene = (() => {
     renderer.domElement.setAttribute('aria-hidden', 'true');
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#010503');
-    scene.fog = new THREE.Fog('#010503', 36, 95);
+    scene.background = new THREE.Color(Theme.hex('bg-0'));
+    scene.fog = new THREE.Fog(Theme.hex('bg-0'), 36, 95);
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 220);
     const disposables = [];
     const keep = x => (disposables.push(x), x);
 
     // ---------- arena palettes, one per phase plus the quiet one after the fight ----------
     const PAL = [
-      { bg: '#010503', a: '#39ff88', b: '#1f9e57', c: '#3ee6ff', bloom: 0.55, wall: 0.06 },
-      { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: '#39ff88', bloom: 0.6, wall: 0.09 },
-      { bg: '#070401', a: '#f29d30', b: '#8f5513', c: '#39ff88', bloom: 0.62, wall: 0.12 },
+      { bg: Theme.hex('bg-0'), a: Theme.hex('accent'), b: Theme.hex('accent-dim'), c: '#3ee6ff', bloom: 0.55, wall: 0.06 },
+      { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: Theme.hex('accent'), bloom: 0.6, wall: 0.09 },
+      { bg: '#070401', a: '#f29d30', b: '#8f5513', c: Theme.hex('accent'), bloom: 0.62, wall: 0.12 },
       { bg: '#0a0302', a: '#ff6a3d', b: '#97361c', c: '#f29d30', bloom: 0.66, wall: 0.16 },
       { bg: '#0b0103', a: '#ff4d5e', b: '#9c1f2c', c: '#f29d30', bloom: 0.7, wall: 0.22 },
-      { bg: '#010302', a: '#1f9e57', b: '#0d4a29', c: '#3ee6ff', bloom: 0.4, wall: 0.02 },
+      { bg: '#010302', a: Theme.hex('accent-dim'), b: '#0d4a29', c: '#3ee6ff', bloom: 0.4, wall: 0.02 },
     ].map(p => ({ bg: C(p.bg), a: C(p.a), b: C(p.b), c: C(p.c), bloom: p.bloom, wall: p.wall }));
     const pal = { bg: PAL[0].bg.clone(), a: PAL[0].a.clone(), b: PAL[0].b.clone(), c: PAL[0].c.clone(), bloom: 0.55, wall: 0.06 };
     let palFrom = 0, palTo = 0, palT = 1, palAt = 0;
@@ -270,16 +270,16 @@ window.BossScene = (() => {
     const partG = [hip, headG, armLG, armRG];
     const partQ = PARTS.map(() => new THREE.Quaternion());
 
-    const eyeMat = keep(new THREE.MeshBasicMaterial({ color: C('#d7f5e3', 2) }));
+    const eyeMat = keep(new THREE.MeshBasicMaterial({ color: C(Theme.hex('ink'), 2) }));
     const eyeGeo = keep(new THREE.BoxGeometry(1.25, 0.28, 0.2));
     const eyes = [-0.95, 0.95].map(x => { const m = new THREE.Mesh(eyeGeo, eyeMat); m.position.set(x, 12.7 - NECK.y, 2.15); m.rotation.z = x < 0 ? -0.18 : 0.18; headG.add(m); return m; });
 
     const CORE = new V(0, 7.2, 0.3);
     const core = new THREE.Group(); core.position.copy(CORE).sub(HIP); hip.add(core);
-    const coreMat = keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.8) }));
+    const coreMat = keep(new THREE.MeshBasicMaterial({ color: C(Theme.hex('accent'), 1.8) }));
     const coreMesh = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(1.35, 2)), coreMat);
     core.add(coreMesh);
-    const cageMat = keep(new THREE.LineBasicMaterial({ color: C('#d7f5e3', 1.4), transparent: true, opacity: 0.8 }));
+    const cageMat = keep(new THREE.LineBasicMaterial({ color: C(Theme.hex('ink'), 1.4), transparent: true, opacity: 0.8 }));
     const cage = new THREE.LineSegments(keep(new THREE.EdgesGeometry(keep(new THREE.IcosahedronGeometry(2.05, 1)))), cageMat);
     core.add(cage);
     const glowCv = document.createElement('canvas'); glowCv.width = glowCv.height = 128;
@@ -290,11 +290,11 @@ window.BossScene = (() => {
       c.fillStyle = g; c.fillRect(0, 0, 128, 128);
     }
     const glowTex = keep(new THREE.CanvasTexture(glowCv));
-    const glowMat = keep(new THREE.SpriteMaterial({ map: glowTex, color: C('#39ff88'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
+    const glowMat = keep(new THREE.SpriteMaterial({ map: glowTex, color: C(Theme.hex('accent')), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
     const glow = new THREE.Sprite(glowMat); glow.scale.set(7.5, 7.5, 1);
     core.add(glow);
     const rings = [3.2, 4.1, 5.0].map((r, i) => {
-      const m = new THREE.Mesh(keep(new THREE.TorusGeometry(r, 0.045, 6, 120)), keep(new THREE.MeshBasicMaterial({ color: C(i === 1 ? '#3ee6ff' : '#39ff88', 1.8), transparent: true, opacity: 0.85 })));
+      const m = new THREE.Mesh(keep(new THREE.TorusGeometry(r, 0.045, 6, 120)), keep(new THREE.MeshBasicMaterial({ color: C(i === 1 ? '#3ee6ff' : Theme.hex('accent'), 1.8), transparent: true, opacity: 0.85 })));
       m.rotation.set(rnd(0, 3), rnd(0, 3), 0);
       m.userData = { spin: new V(rnd(-0.6, 0.6), rnd(0.3, 0.9) * (i % 2 ? -1 : 1), rnd(-0.3, 0.3)), vel: new V(), fall: false, gone: false, alt: i === 1 };
       core.add(m);
@@ -321,7 +321,7 @@ window.BossScene = (() => {
       kit.lights = [
         new THREE.HemisphereLight('#b8c4cc', '#06080a', 0.4),
         new THREE.DirectionalLight('#f2f6ff', 2.6),
-        new THREE.DirectionalLight('#8cff58', 1.5),
+        new THREE.DirectionalLight(Theme.hex('accent'), 1.5),
         new THREE.DirectionalLight('#9fe8ff', 1.0),
       ];
       kit.lights[1].position.set(-8, 16, 14);
@@ -425,8 +425,8 @@ window.BossScene = (() => {
     const markGlow = new Float32Array(RAID + 1);
     const RAID_COLS = ['#3ee6ff', '#f29d30', '#8fb8ff', '#ff8a5c', '#cfe3d8'].map(h => C(h));
     const raidCol = i => RAID_COLS[i % RAID_COLS.length];
-    const youCol = C('#39ff88');
-    const youRing = new THREE.Mesh(keep(new THREE.RingGeometry(0.9, 1.0, 48)), keep(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.6), side: THREE.DoubleSide, transparent: true, opacity: 0.9 })));
+    const youCol = C(Theme.hex('accent'));
+    const youRing = new THREE.Mesh(keep(new THREE.RingGeometry(0.9, 1.0, 48)), keep(new THREE.MeshBasicMaterial({ color: C(Theme.hex('accent'), 1.6), side: THREE.DoubleSide, transparent: true, opacity: 0.9 })));
     youRing.rotation.x = -Math.PI / 2;
     scene.add(youRing);
     let raidZ = 8;
@@ -503,7 +503,7 @@ window.BossScene = (() => {
     }
 
     // telegraph ring on the raid and the attack beam
-    const RED = C('#ff4d5e', 1.6), CYAN = C('#3ee6ff', 1.6), AMBER = C('#f29d30', 1.6), WHITE = C('#d7f5e3', 1.4), GREEN = C('#39ff88', 1.6);
+    const RED = C('#ff4d5e', 1.6), CYAN = C('#3ee6ff', 1.6), AMBER = C('#f29d30', 1.6), WHITE = C(Theme.hex('ink'), 1.4), GREEN = C(Theme.hex('accent'), 1.6);
     const tele = new THREE.Mesh(keep(new THREE.RingGeometry(0.86, 1, 96)), keep(new THREE.MeshBasicMaterial({ color: RED, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false })));
     tele.rotation.x = -Math.PI / 2; tele.visible = false; scene.add(tele);
     const teleFill = new THREE.Mesh(keep(new THREE.CircleGeometry(1, 64)), keep(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 0.5), side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })));
@@ -539,7 +539,7 @@ window.BossScene = (() => {
     const SHOTS = 10;
     const shotMat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.7) }));
     const shotGeo = keep(new THREE.OctahedronGeometry(0.7));
-    const shotWire = keep(new THREE.LineBasicMaterial({ color: C('#d7f5e3', 1.5) }));
+    const shotWire = keep(new THREE.LineBasicMaterial({ color: C(Theme.hex('ink'), 1.5) }));
     const shotEdges = keep(new THREE.EdgesGeometry(keep(new THREE.BoxGeometry(1.4, 1.4, 1.4))));
     const shots = Array.from({ length: SHOTS }, () => {
       const g = new THREE.Group();
@@ -660,7 +660,7 @@ window.BossScene = (() => {
     let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
     let roarAt = -9, charge = 0;
     const STAGE_AT = [0.75, 0.5, 0.25, 0.1];
-    const coreGreen = C('#39ff88', 1.2), coreRed = C('#ff4d5e', 0.95), coreAmber = C('#f29d30', 1.0), coreWeak = C('#ffb347', 1.15);
+    const coreGreen = C(Theme.hex('accent'), 1.2), coreRed = C('#ff4d5e', 0.95), coreAmber = C('#f29d30', 1.0), coreWeak = C('#ffb347', 1.15);
     const evs = [];            // attacks on the scene clock
     const blocked = new Set();
     const anchors = new Map();

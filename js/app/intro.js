@@ -20,7 +20,7 @@
   const html = document.documentElement;
   const SEEN = 'wpm-fell-in';   // localStorage, so it plays once per device
   const END = 4.3, ARRIVE = 3.4;
-  const G = '#39ff88', GD = '#1f9e57', INK = '#d7f5e3', CY = '#3ee6ff', GOLD = '#f2c230', BG = '#040806';
+  const G = Theme.hex('accent'), GD = Theme.hex('accent-dim'), INK = Theme.hex('ink'), CY = '#3ee6ff', GOLD = '#f2c230', BG = Theme.hex('bg');
   const ART = 'hi im art and i type fast sometimes every day i type my follower count with one word for each follower so today i type twenty five thousand words';
   const CODE = ['wpm=204', '{acc:100}', '10000wpm', '<type/>', 'keys++', 'race(art)', '[tab]', 'f99 pro', 'sk61 he', 'yaksa 75', 'x68 he', 'vanguard 96', 'sf60', 'k98se', 'caret>', 'words=25500'];
   const CH = ' 0123456789abcdefghijklmnopqrstuvwxyz<>/{}[]()=+*;:_.,#';
@@ -143,7 +143,7 @@
     if (rainAlpha > 0.01) {
       c.globalAlpha = rainAlpha;
       const A = S.rainA, wrap = S.rows + 24;
-      c.fillStyle = 'rgba(57,255,136,.16)';
+      c.fillStyle = Theme.rgba('accent', .16);
       for (const col of S.cols) {
         const run = (t - col.t0) * col.v + col.r0;
         if (run < 0) continue;
@@ -210,7 +210,7 @@
         c.textAlign = 'left'; c.textBaseline = 'middle';
         if ('letterSpacing' in c) c.letterSpacing = '2px';
         const full = c.measureText(sub).width, sx = S.cx - full / 2, sy = S.y0 + S.gh * L + fs * 1.6;
-        c.fillStyle = '#7fa892'; c.fillText(sub.slice(0, n), sx, sy);
+        c.fillStyle = Theme.hex('ink-2'); c.fillText(sub.slice(0, n), sx, sy);
         const tw = c.measureText(sub.slice(0, n)).width;
         if (n < sub.length || Math.floor(t * 3) % 2 === 0) { c.fillStyle = G; c.fillRect(sx + tw + 3, sy - fs * 0.55, fs * 0.5, fs * 1.1); }
         if ('letterSpacing' in c) c.letterSpacing = '0px';
@@ -247,7 +247,7 @@
     const { cx, cy, rho, diag } = S, SP = 0.32, N = 26;
     // grid: spokes running down the tunnel wall
     const far = rho / (1 + N * SP - cam);
-    c.strokeStyle = 'rgba(57,255,136,.13)'; c.lineWidth = 1;
+    c.strokeStyle = Theme.rgba('accent', .13); c.lineWidth = 1;
     c.beginPath();
     for (let k = 0; k < 16; k++) {
       const a = k / 16 * Math.PI * 2 + 0.1;
@@ -303,7 +303,7 @@
     if (glow > 0) {
       const R = Math.min(S.w, S.h) * (0.2 + 0.5 * u);
       const g = c.createRadialGradient(cx, cy, 0, cx, cy, R);
-      g.addColorStop(0, `rgba(57,255,136,${glow})`); g.addColorStop(1, 'rgba(57,255,136,0)');
+      g.addColorStop(0, `rgba(${Theme.rgb('accent')},${glow})`); g.addColorStop(1, Theme.rgba('accent', 0));
       c.globalAlpha = 1; c.fillStyle = g; c.fillRect(cx - R, cy - R, R * 2, R * 2);
     }
     c.globalAlpha = 1;
@@ -416,7 +416,7 @@
     const fs = Math.min(w * 0.11, 150);
     c.font = `700 ${fs}px "Chakra Petch", "Segoe UI", system-ui, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = G; c.fillText('STORMTYPER_', w / 2, h * 0.44);
-    c.font = `400 ${Math.max(12, fs * 0.16)}px "Share Tech Mono", ui-monospace, monospace`; c.fillStyle = '#7fa892';
+    c.font = `400 ${Math.max(12, fs * 0.16)}px "Share Tech Mono", ui-monospace, monospace`; c.fillStyle = Theme.hex('ink-2');
     c.fillText('// by 10000wpm. ctrl: control the chaos', w / 2, h * 0.44 + fs * 0.75);
     html.classList.remove('intro-cover');
     if (run.frozen != null) return;

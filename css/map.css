@@ -5,7 +5,7 @@
    On desktop the line and the main button sit in the empty South Pacific at the bottom
    left of the map; under 1000px they go below it. */
 .page-home .hero-map {
-  --teal: #3cf2b4; --ocean: #03100e; --hud-line: rgba(60,242,180,.18);
+  --teal: var(--accent); --ocean: var(--bg-0); --hud-line: rgba(var(--accent-rgb),.18);
   position: relative;
   width: min(1400px, 100vw - 40px);
   margin-inline: calc(50% - min(700px, 50vw - 20px));
@@ -36,7 +36,7 @@
 .page-home .hm-hud > .hm-demo { margin-left: auto; }
 .page-home .hm-demo {
   font: 500 var(--t-xs)/1 var(--f-head); color: var(--ink);
-  background: rgba(215,245,227,.09); padding: 4px 6px; border-radius: var(--r); white-space: nowrap;
+  background: rgba(var(--ink-rgb),.09); padding: 4px 6px; border-radius: var(--r); white-space: nowrap;
 }
 
 /* ---------- country buttons (players layer) ---------- */
@@ -74,7 +74,7 @@
 .page-home .hm-mk .lead { position: absolute; width: 14px; height: 14px; overflow: visible; fill: none; stroke: var(--c); stroke-width: 1; }
 .page-home .hm-mk .tag {
   position: absolute; white-space: nowrap; padding: 3px 6px 3px; border-bottom: 1px solid var(--c); background: rgba(3,16,14,.78);
-  font: 400 11px/1.25 var(--f-label); color: #a9cdb9; cursor: pointer;
+  font: 400 11px/1.25 var(--f-label); color: var(--ink-2); cursor: pointer;
 }
 .page-home .hm-mk .tag b { display: block; font: 600 13px/1.2 var(--f-head); color: var(--c); letter-spacing: .02em; }
 .page-home .hm-mk .tag small { display: block; font: inherit; }
@@ -114,7 +114,7 @@
 .page-home .hm-calls { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .page-home .hm-call { position: absolute; width: 0; height: 0; --d: 20px; }
 .page-home .hm-call::before {
-  content: ""; position: absolute; left: 0; top: 0; width: calc(var(--d) * 1.414); height: 1px; background: rgba(200,255,235,.75);
+  content: ""; position: absolute; left: 0; top: 0; width: calc(var(--d) * 1.414); height: 1px; background: rgba(var(--ink-hi-rgb),.75);
   transform-origin: 0 50%;
 }
 .page-home .hm-call.to-r.up::before { transform: rotate(-45deg); }
@@ -122,13 +122,13 @@
 .page-home .hm-call.to-r.down::before { transform: rotate(45deg); }
 .page-home .hm-call.to-l.down::before { transform: rotate(135deg); }
 .page-home .hm-call .box {
-  position: absolute; white-space: nowrap; padding: 3px 6px; border-bottom: 1px solid rgba(200,255,235,.75); background: rgba(3,16,14,.78);
-  font: 400 11px/1.25 var(--f-label); color: #a9cdb9;
+  position: absolute; white-space: nowrap; padding: 3px 6px; border-bottom: 1px solid rgba(var(--ink-hi-rgb),.75); background: rgba(3,16,14,.78);
+  font: 400 11px/1.25 var(--f-label); color: var(--ink-2);
 }
 .page-home .hm-call.to-r .box { left: var(--d); }
 .page-home .hm-call.to-l .box { right: var(--d); text-align: right; }
 .page-home .hm-call.up .box { bottom: var(--d); }
-.page-home .hm-call.down .box { top: var(--d); border-bottom: 0; border-top: 1px solid rgba(200,255,235,.75); }
+.page-home .hm-call.down .box { top: var(--d); border-bottom: 0; border-top: 1px solid rgba(var(--ink-hi-rgb),.75); }
 .page-home .hm-call .box b { font: 600 12px/1.2 var(--f-head); color: var(--ink); margin-right: 6px; }
 .page-home .hm-call.feat .box b { display: block; font-size: 16px; color: var(--teal); }
 .page-home .hm-call.feat .box small { display: block; font: inherit; }
@@ -143,13 +143,13 @@
 .page-home .hm-card {
   position: absolute; z-index: 6; min-width: 200px; max-width: 260px; padding: 12px 14px;
   background: #051713; border-radius: var(--r);
-  box-shadow: 0 0 0 1px rgba(60,242,180,.35), 0 8px 24px rgba(0,0,0,.6);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.35), 0 8px 24px rgba(0,0,0,.6);
 }
 .page-home .hm-card b { display: block; font: 600 var(--t-m)/1.2 var(--f-head); color: var(--ink); margin-bottom: 8px; }
 .page-home .hm-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font: 400 var(--t-s)/1.3 var(--f-head); }
 .page-home .hm-card dt { color: var(--ink-2); }
 .page-home .hm-card dd { margin: 0; color: var(--ink); text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.page-home .hm-card p { margin: 8px 0 0; font: 500 var(--t-xs)/1.4 var(--f-head); color: var(--green); }
+.page-home .hm-card p { margin: 8px 0 0; font: 500 var(--t-xs)/1.4 var(--f-head); color: var(--accent); }
 .page-home .hm-card .hm-desc { margin: 0; font: 400 var(--t-s)/1.45 var(--f-head); color: var(--ink-2); }
 .page-home .hm-card .hm-where { color: var(--red); }
 .page-home .hm-card .hm-mine { color: var(--ink); font-family: var(--f-mono); }
@@ -157,7 +157,7 @@
   display: inline-block; margin-top: 10px; padding: 7px 14px; border-radius: var(--r);
   font: 600 var(--t-s)/1 var(--f-head); color: var(--bg); background: var(--teal); text-decoration: none;
 }
-.page-home .hm-card .hm-go-link:hover { background: #8fffd8; }
+.page-home .hm-card .hm-go-link:hover { background: var(--accent-hi); }
 
 /* ---------- banner, drag hint ---------- */
 .page-home .hm-banner {
@@ -174,14 +174,14 @@
 /* ---------- the line and the main action ---------- */
 .page-home .hm-intro { position: absolute; left: 1.5%; bottom: 5%; width: 25%; max-width: 330px; z-index: 4; order: 2; }
 .page-home .hm-intro h1 { margin: 0; font: 600 var(--t-l)/1.35 var(--f-head); color: var(--ink); text-wrap: balance; text-shadow: 0 0 8px var(--ocean); }
-.page-home .hm-kicker { margin: 0 0 6px; font: 400 12px/1 var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--green); }
+.page-home .hm-kicker { margin: 0 0 6px; font: 400 12px/1 var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
 .page-home .hm-lede { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); text-wrap: pretty; text-shadow: 0 0 8px var(--ocean); }
 .page-home .hm-go { width: fit-content; margin: 16px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
 .page-home .hm-race {
   font: 500 var(--t-m)/1 var(--f-head); color: var(--ink-2); background: none; border: 0; padding: 12px 0; cursor: pointer;
-  text-decoration: underline; text-decoration-color: rgba(215,245,227,.3); text-underline-offset: 4px;
+  text-decoration: underline; text-decoration-color: rgba(var(--ink-rgb),.3); text-underline-offset: 4px;
 }
-.page-home .hm-race:hover { color: var(--green); text-decoration-color: currentColor; }
+.page-home .hm-race:hover { color: var(--accent); text-decoration-color: currentColor; }
 
 /* ---------- bottom strip: filter, count, time-lapse ---------- */
 .page-home .hm-strip {
@@ -193,7 +193,7 @@
   font: 400 12px/1 var(--f-label); color: var(--ink-2); background: none; border: 1px solid transparent; border-radius: var(--r);
   padding: 7px 9px; cursor: pointer; letter-spacing: .03em;
 }
-.page-home .hm-strip button:hover { color: var(--ink); background: rgba(60,242,180,.08); }
+.page-home .hm-strip button:hover { color: var(--ink); background: rgba(var(--accent-rgb),.08); }
 .page-home .hm-strip button[aria-pressed="true"] { color: var(--ocean); background: var(--teal); }
 .page-home .hm-count { margin: 0; }
 .page-home .hm-count b { font: 600 13px/1 var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -222,7 +222,7 @@
 .page-home .hm-feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font: 400 13px/1.35 var(--f-head); color: var(--ink-2); }
 .page-home .hm-feed li:first-child { color: var(--ink); }
 .page-home .hm-feed li:nth-child(n+4) { opacity: .6; }
-.page-home .hm-feed a { color: inherit; text-decoration-color: rgba(215,245,227,.3); text-underline-offset: 3px; }
+.page-home .hm-feed a { color: inherit; text-decoration-color: rgba(var(--ink-rgb),.3); text-underline-offset: 3px; }
 .page-home .hm-feed a:hover { color: var(--teal); }
 .page-home .hm-feed li.in { animation: hm-in 220ms var(--ease-out); }
 @keyframes hm-in { from { opacity: 0; transform: translateY(-4px); } }

@@ -11,8 +11,8 @@
   const F_LABEL = '"Share Tech Mono", ui-monospace, Consolas, monospace';
   const F_MONO = '"JetBrains Mono", ui-monospace, Consolas, monospace';
   const C = {
-    bg: '#040806', bg2: 'rgba(7,16,11,.9)', bg3: '#0c1a12', line: 'rgba(57,255,136,.28)', line2: 'rgba(57,255,136,.12)',
-    green: '#39ff88', greenDim: '#1f9e57', ink: '#d7f5e3', ink2: '#7fa892', ink3: '#4c6e5b',
+    bg: Theme.hex('bg'), bg2: Theme.rgba('bg-2', .9), bg3: Theme.hex('bg-3'), line: Theme.rgba('accent', .28), line2: Theme.rgba('accent', .12),
+    green: Theme.hex('accent'), greenDim: Theme.hex('accent-dim'), ink: Theme.hex('ink'), ink2: Theme.hex('ink-2'), ink3: Theme.hex('ink-3'),
     gold: '#f2c230', red: '#ff4d5e', cyan: '#3ee6ff',
   };
 
@@ -1459,7 +1459,7 @@
     return w;
   }
   function timerBar(x, y, w, frac, col) {
-    ctx.fillStyle = 'rgba(57,255,136,.12)'; ctx.fillRect(x, y, w, 4);
+    ctx.fillStyle = Theme.rgba('accent', .12); ctx.fillRect(x, y, w, 4);
     ctx.fillStyle = col; ctx.fillRect(x, y, w * clamp(frac, 0, 1), 4);
   }
   function icon(kind, x, y, s, col) {
@@ -1531,7 +1531,7 @@
     return at;
   }
   // a thin line from a moved tag back to what it belongs to
-  function leader(x, y, w, h, sp, col = 'rgba(215,245,227,.4)') {
+  function leader(x, y, w, h, sp, col = Theme.rgba('ink', .4)) {
     if (sp.behind) return;
     const ex = clamp(sp.x, x, x + w), ey = sp.y > y + h ? y + h : sp.y < y ? y : null;
     if (ey === null) return;
@@ -1550,7 +1550,7 @@
     const x = pl.x + left, y = pl.y + top + 4, moved = pl.moved > 12;
     cut(x, y, w, h, 5);
     ctx.fillStyle = warn ? 'rgba(48,6,10,.94)' : isT ? 'rgba(6,26,14,.94)' : 'rgba(4,10,7,.84)'; ctx.fill();
-    ctx.strokeStyle = warn ? C.red : isT ? C.green : (kindCol || 'rgba(215,245,227,.25)');
+    ctx.strokeStyle = warn ? C.red : isT ? C.green : (kindCol || Theme.rgba('ink', .25));
     ctx.lineWidth = warn ? (calm() ? 2.5 : 2 + (Math.sin((t - o.warn) * 7) + 1) * 1.2) : isT ? 1.5 : 1;
     ctx.stroke();
     if (warn) { ctx.strokeStyle = 'rgba(255,77,94,.45)'; ctx.lineWidth = 1; cut(x - 4, y - 4, w + 8, h + 8, 7); ctx.stroke(); }
@@ -1578,7 +1578,7 @@
     if (o.chain) text(String(o.order), x - 4, y + 9, `600 11px ${F_MONO}`, dim ? C.ink2 : C.green, 'right');
     ctx.globalAlpha = 1;
     // a thin leader line from the tag to the body, brighter when the layout moved the tag
-    leader(x, y, w, h, sp, isT ? 'rgba(57,255,136,.6)' : moved ? 'rgba(215,245,227,.42)' : 'rgba(215,245,227,.18)');
+    leader(x, y, w, h, sp, isT ? Theme.rgba('accent', .6) : moved ? Theme.rgba('ink', .42) : Theme.rgba('ink', .18));
     return { x, y, w, h };
   }
   // 0 while a cloaked typo is faded out, 1 while it shows
@@ -1668,7 +1668,7 @@
     const { x, y } = placeTag(r, sp.x - w / 2, sp.y - h / 2, w, h);
     const pulse = calm() ? 1 : 0.88 + Math.sin((t - r.born) * 5) * 0.12;
     cut(x, y, w, h, 6);
-    ctx.fillStyle = `rgba(57,255,136,${0.9 * pulse})`; ctx.fill();
+    ctx.fillStyle = `rgba(${Theme.rgb('accent')},${0.9 * pulse})`; ctx.fill();
     typedWord(r.word, r.typed, x + 8, y + h - 9, `700 20px ${F_MONO}`, '#ffffff', '#02140a');
   }
   function coreTag(sp) {
@@ -1757,7 +1757,7 @@
       ctx.beginPath();
       for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6; ctx.lineTo(x + Math.cos(a) * 10, y + Math.sin(a) * 10); }
       ctx.closePath();
-      ctx.fillStyle = on ? C.green : 'rgba(57,255,136,.1)';
+      ctx.fillStyle = on ? C.green : Theme.rgba('accent', .1);
       if (on) { ctx.shadowColor = C.green; ctx.shadowBlur = 10; }
       ctx.fill(); ctx.shadowBlur = 0;
     }
@@ -1769,7 +1769,7 @@
       // level and a ghost line at your best score
       text(`${ch.title.toUpperCase()} // LEVEL ${E.level}`, VX, 26, `14px ${F_LABEL}`, C.green, 'center', 6);
       const bw = 240, bx = VX - bw / 2, best = E.best;
-      ctx.fillStyle = 'rgba(57,255,136,.14)'; ctx.fillRect(bx, 34, bw, 6);
+      ctx.fillStyle = Theme.rgba('accent', .14); ctx.fillRect(bx, 34, bw, 6);
       const k = best ? Math.min(1, score / best) : 0;
       ctx.fillStyle = best && score > best ? C.gold : C.green; ctx.fillRect(bx, 34, bw * (best ? k : 0), 6);
       if (best) { ctx.fillStyle = C.gold; ctx.fillRect(bx + bw - 1, 30, 2, 14); text(score > best ? 'NEW BEST' : `BEST ${best.toLocaleString('en-US')}`, bx + bw, 56, `11px ${F_LABEL}`, C.gold, 'right'); }
@@ -1779,7 +1779,7 @@
       const n = steps.length;
       for (let i = 0; i < n; i++) {
         const w = 220 / n - 3, x = VX - 110 + i * (w + 3);
-        ctx.fillStyle = i < stepI ? C.green : i === stepI ? C.greenDim : 'rgba(57,255,136,.14)';
+        ctx.fillStyle = i < stepI ? C.green : i === stepI ? C.greenDim : Theme.rgba('accent', .14);
         ctx.fillRect(x, 34, w, 5);
       }
     }
@@ -1811,7 +1811,7 @@
     if (word) typedWord(word, target.typed, VX - iw / 2 + 30, H - 24, `600 16px ${F_MONO}`, C.green, C.ink3);
     else if (Math.floor(t * 2.5) % 2) ctx.fillStyle = C.green, ctx.fillRect(VX - iw / 2 + 30, H - 37, 9, 16);
     if (missT > 0) { ctx.strokeStyle = C.red; ctx.lineWidth = 2; cut(VX - iw / 2, H - 46, iw, 32, 6); ctx.stroke(); }
-    else if (keyFlash > 0) { ctx.strokeStyle = `rgba(57,255,136,${keyFlash * 5})`; ctx.lineWidth = 1; cut(VX - iw / 2, H - 46, iw, 32, 6); ctx.stroke(); }
+    else if (keyFlash > 0) { ctx.strokeStyle = `rgba(${Theme.rgb('accent')},${keyFlash * 5})`; ctx.lineWidth = 1; cut(VX - iw / 2, H - 46, iw, 32, 6); ctx.stroke(); }
     // boss
     if (boss && !boss.dying) drawBossHud();
     // hack door
@@ -1877,7 +1877,7 @@
     ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(x, y + 6, bw * b.shownHp, 9);
     ctx.fillStyle = b.shield ? C.cyan : C.red; ctx.fillRect(x, y + 6, bw * frac, 9);
     for (let i = 1; i < 20; i++) { ctx.fillStyle = 'rgba(4,8,6,.8)'; ctx.fillRect(x + i * bw / 20, y + 6, 1, 9); }
-    for (const e of b.events) { ctx.fillStyle = e.done ? 'rgba(215,245,227,.25)' : C.ink; ctx.fillRect(x + bw * e.at - 1, y + 3, 2, 15); }
+    for (const e of b.events) { ctx.fillStyle = e.done ? Theme.rgba('ink', .25) : C.ink; ctx.fillRect(x + bw * e.at - 1, y + 3, 2, 15); }
     if (b.def.finale) { ctx.fillStyle = C.green; ctx.fillRect(x + bw * b.def.finale.at - 1, y + 3, 2, 15); }
     if (b.state === 'intro') {
       ctx.globalAlpha = clamp(b.introT, 0, 1);
@@ -1903,7 +1903,7 @@
         const cx = VX - 220 + i * 220;
         const match = sp.typed && o.startsWith(sp.typed);
         cut(cx - 100, py + 58, 200, 40, 6);
-        ctx.fillStyle = match ? 'rgba(57,255,136,.16)' : 'rgba(57,255,136,.05)'; ctx.fill();
+        ctx.fillStyle = match ? Theme.rgba('accent', .16) : Theme.rgba('accent', .05); ctx.fill();
         ctx.strokeStyle = match ? C.green : C.line; ctx.lineWidth = 1; ctx.stroke();
         typedWord(o, match ? sp.typed.length : 0, cx, py + 84, `600 19px ${F_MONO}`, C.green, C.ink, 'center');
       });
@@ -2176,7 +2176,7 @@
       });
     } else {
       ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = 'rgba(57,255,136,.12)';
+      ctx.strokeStyle = Theme.rgba('accent', .12);
       for (let i = 0; i < 20; i++) { ctx.beginPath(); ctx.moveTo(VX + (i - 10) * 30, H / 2); ctx.lineTo(VX + (i - 10) * 160, H); ctx.stroke(); }
     }
     ctx.save();

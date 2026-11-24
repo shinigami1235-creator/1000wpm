@@ -168,7 +168,7 @@ function ensure(L, bare) {
 
 // ---------- materials ----------
 const U = {
-  uRim: { value: new THREE.Color('#39ff88') }, uRimStr: { value: 0.1 }, uExposure: { value: 1.0 },
+  uRim: { value: new THREE.Color(Theme.hex('accent')) }, uRimStr: { value: 0.1 }, uExposure: { value: 1.0 },
   uKeyDir: { value: new THREE.Vector3(0, 0, 1) }, uKeyCol: { value: new THREE.Color('#fff1e0') },
 };
 // ACES filmic curve (the fit three.js uses), applied in our own shaders so thumbnails
@@ -253,11 +253,11 @@ function makeMats(r) {
     gold: shiny({ color: '#e1b04a', roughness: 0.24, metalness: 1, vertexColors: true, envMapIntensity: 1.2 }, { rim: 0.5 }),
     cloth2: std({ map: T.knit, color: '#2a3330', roughness: 0.85, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
     band: std({ map: T.weave, color: '#7a1f2b', roughness: 0.8, vertexColors: true, side: THREE.DoubleSide }, { rim: 1 }),
-    glow: prep(new THREE.MeshBasicMaterial({ color: '#39ff88', side: THREE.DoubleSide }), { rim: 0, tone: false, name: 'glow' }),
-    lens: shiny({ color: '#39ff88', transparent: true, opacity: 0.42, roughness: 0.08, metalness: 0.2, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false }, { rim: 0 }),
+    glow: prep(new THREE.MeshBasicMaterial({ color: Theme.hex('accent'), side: THREE.DoubleSide }), { rim: 0, tone: false, name: 'glow' }),
+    lens: shiny({ color: Theme.hex('accent'), transparent: true, opacity: 0.42, roughness: 0.08, metalness: 0.2, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false }, { rim: 0 }),
     'lens-clear': shiny({ color: '#cfe8f0', transparent: true, opacity: 0.12, roughness: 0.04, envMapIntensity: 1.6, side: THREE.DoubleSide, depthWrite: false }, { rim: 0 }),
   };
-  M.line = new LineMaterial({ color: 0x39ff88, linewidth: 1.5, transparent: true, opacity: 0.9, depthWrite: false });
+  M.line = new LineMaterial({ color: Theme.num('accent'), linewidth: 1.5, transparent: true, opacity: 0.9, depthWrite: false });
   return M;
 }
 
@@ -515,8 +515,8 @@ function makeScene(rig) {
   const key = new THREE.DirectionalLight('#fff0e0', 1.85); key.position.copy(KEY_DIR); scene.add(key);
   const fill = new THREE.DirectionalLight('#e0e6ff', 0.8); fill.position.set(1.4, 0.3, 1.0); scene.add(fill);
   const bounce = new THREE.DirectionalLight('#ffd9bf', 0.35); bounce.position.set(0, -1, 0.8); scene.add(bounce);
-  const rimL = new THREE.DirectionalLight('#39ff88', 0.45); rimL.position.set(-1.0, 0.6, -1.0); scene.add(rimL);
-  const rimR = new THREE.DirectionalLight('#39ff88', 0.4); rimR.position.set(1.0, 0.4, -1.0); scene.add(rimR);
+  const rimL = new THREE.DirectionalLight(Theme.hex('accent'), 0.45); rimL.position.set(-1.0, 0.6, -1.0); scene.add(rimL);
+  const rimR = new THREE.DirectionalLight(Theme.hex('accent'), 0.4); rimR.position.set(1.0, 0.4, -1.0); scene.add(rimR);
   scene.add(rig.group);
   return { scene, rims: [rimL, rimR] };
 }
@@ -608,7 +608,7 @@ async function thumb(look, size = 96, { yaw = 0.32, bare = false, frame = 'bust'
   const gc = new THREE.Color(glow);
   const bg = o.createRadialGradient(px * 0.5, px * 0.4, px * 0.05, px * 0.5, px * 0.5, px * 0.78);
   bg.addColorStop(0, `rgb(${Math.round(gc.r * 255 * 0.16 + 10)},${Math.round(gc.g * 255 * 0.16 + 14)},${Math.round(gc.b * 255 * 0.16 + 12)})`);
-  bg.addColorStop(1, '#040806');
+  bg.addColorStop(1, Theme.hex('bg'));
   o.fillStyle = bg; o.fillRect(0, 0, px, px);
   o.imageSmoothingQuality = 'high'; o.drawImage(src, 0, 0, px, px);
   return out.toDataURL('image/png');

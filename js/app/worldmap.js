@@ -10,7 +10,7 @@
 //
 // WorldMap.mount(section) -> stop(); the markup is in js/app/home.js.
 window.WorldMap = (() => {
-  const T = '60,242,180', TEAL = '#3cf2b4', INK = '#d7f5e3', OCEAN = '#03100e', RED = '255,77,94', CY = '62,230,255';
+  const T = Theme.rgb('accent'), TEAL = Theme.hex('accent'), INK = Theme.hex('ink'), OCEAN = Theme.hex('bg-0'), RED = '255,77,94', CY = '62,230,255';
   const LAT_TOP = 84, LAT_BOT = -56;
   const FPS_MS = 33;
   const HUB_ARCS = 15;
@@ -170,21 +170,21 @@ window.WorldMap = (() => {
       c.strokeStyle = `rgba(${T},.14)`;
       for (const lon of [-180, 180]) { c.beginPath(); for (let lat = LAT_BOT; lat <= LAT_TOP; lat += 4) { const p = P(lon, lat); c[lat === LAT_BOT ? 'moveTo' : 'lineTo'](p[0], p[1]); } c.stroke(); }
       // land with a glow around it
-      c.save(); c.shadowColor = `rgba(${T},.45)`; c.shadowBlur = 16 * dpr; c.fillStyle = '#1d8a6c'; c.fill(outline); c.restore();
+      c.save(); c.shadowColor = `rgba(${T},.45)`; c.shadowBlur = 16 * dpr; c.fillStyle = Theme.mix('accent', '#000000', 0.48); c.fill(outline); c.restore();
       // grain and a light from the north
       c.save(); c.clip(outline);
-      const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, 'rgba(120,255,210,.16)'); gr.addColorStop(1, 'rgba(0,20,14,.25)');
+      const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, Theme.rgba('accent-hi', .16)); gr.addColorStop(1, Theme.rgba('bg-0', .25));
       c.fillStyle = gr; c.fillRect(0, 0, W, H);
       c.globalAlpha = 0.9; c.fillStyle = c.createPattern(noise(), 'repeat'); c.fillRect(0, 0, W, H);
       c.restore();
       // country borders, dark on the lit land
-      c.strokeStyle = 'rgba(2,34,26,.55)'; c.lineWidth = 0.7; c.lineJoin = 'round'; c.stroke(outline);
+      c.strokeStyle = Theme.mix('accent', '#000000', 0.88) + '8c'; c.lineWidth = 0.7; c.lineJoin = 'round'; c.stroke(outline);
       // the inner glow and the bright coastline
       const mask = canvas(), mc = mask.getContext('2d');
       mc.setTransform(dpr, 0, 0, dpr, 0, 0); mc.fillStyle = '#fff'; mc.fill(outline);
       c.setTransform(1, 0, 0, 1, 0, 0);
-      c.globalAlpha = 0.5; c.drawImage(tint(rim(mask, 9), '#8fffd8'), 0, 0);
-      c.globalAlpha = 1; c.drawImage(tint(rim(mask, 1.4), '#d4fff0'), 0, 0);
+      c.globalAlpha = 0.5; c.drawImage(tint(rim(mask, 9), Theme.hex('accent-hi')), 0, 0);
+      c.globalAlpha = 1; c.drawImage(tint(rim(mask, 1.4), Theme.hex('ink-hi')), 0, 0);
       // vignette and a little grain on the ocean
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
       const v = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
@@ -234,7 +234,7 @@ window.WorldMap = (() => {
       // countries with players glow a little brighter
       for (const ct of L) {
         const p = paths.get(ct.code); if (!p) continue;
-        c.fillStyle = `rgba(170,255,225,${ct.you ? .24 : .1 + Math.min(.12, ct.players / 3000)})`; c.fill(p);
+        c.fillStyle = `rgba(${Theme.rgb('accent-hi')},${ct.you ? .24 : .1 + Math.min(.12, ct.players / 3000)})`; c.fill(p);
       }
       const R = Activity.reached(day);
       // beacons: a country's first 100 players
@@ -250,20 +250,20 @@ window.WorldMap = (() => {
         const p = P(n.lon, n.lat), r = n.district ? 6 : 4;
         c.beginPath(); c.moveTo(p[0], p[1] - r); c.lineTo(p[0] + r, p[1]); c.lineTo(p[0], p[1] + r); c.lineTo(p[0] - r, p[1]); c.closePath();
         c.fillStyle = OCEAN; c.fill(); c.strokeStyle = n.district ? INK : TEAL; c.lineWidth = 1.2; c.stroke();
-        if (W >= 900) { c.fillStyle = `rgba(215,245,227,${n.district ? .8 : .55})`; c.fillText(n.name, p[0] + r + 4, p[1]); }
+        if (W >= 900) { c.fillStyle = `rgba(${Theme.rgb('ink')},${n.district ? .8 : .55})`; c.fillText(n.name, p[0] + r + 4, p[1]); }
       }
       if (!players()) return;
       c.lineCap = 'round';
       c.setLineDash([3, 4]);
       for (const A of links) { c.strokeStyle = `rgba(${T},.16)`; c.lineWidth = 1; curve(c, A); }
-      for (const A of arcs) { c.strokeStyle = `rgba(200,255,235,${reduce.matches ? .3 : .2})`; c.lineWidth = 1; curve(c, A); }
+      for (const A of arcs) { c.strokeStyle = `rgba(${Theme.rgb('ink-hi')},${reduce.matches ? .3 : .2})`; c.lineWidth = 1; curve(c, A); }
       c.setLineDash([]);
       // a hexagon badge on each country with players, bigger for big counts
       for (const ct of L) {
         const p = pts.get(ct.code); if (!p) continue;
         const r = ct.you ? 8 : ct.players >= 300 ? 7 : ct.players >= 100 ? 5.5 : 4;
-        hexPath(c, p[0], p[1], r); c.fillStyle = '#041612'; c.fill();
-        c.strokeStyle = ct.you ? INK : '#aaffe0'; c.lineWidth = ct.you ? 1.6 : 1.2; c.stroke();
+        hexPath(c, p[0], p[1], r); c.fillStyle = Theme.hex('bg-1'); c.fill();
+        c.strokeStyle = ct.you ? INK : Theme.hex('accent-hi'); c.lineWidth = ct.you ? 1.6 : 1.2; c.stroke();
         c.fillStyle = ct.you ? INK : TEAL; c.beginPath(); c.arc(p[0], p[1], r * 0.32, 0, Math.PI * 2); c.fill();
       }
     }
@@ -663,10 +663,10 @@ window.WorldMap = (() => {
         for (const code of typing) {
           const p = paths.get(code); if (!p) continue;
           const k = 0.5 + 0.5 * Math.sin(t / 170 + code.charCodeAt(0) * 1.7 + code.charCodeAt(1));
-          if (k > 0.55) { ctx.fillStyle = `rgba(200,255,235,${(k - 0.55) * 0.16})`; ctx.fill(p); }
+          if (k > 0.55) { ctx.fillStyle = `rgba(${Theme.rgb('ink-hi')},${(k - 0.55) * 0.16})`; ctx.fill(p); }
         }
       }
-      if (hover && paths.get(hover)) { ctx.fillStyle = 'rgba(220,255,240,.16)'; ctx.fill(paths.get(hover)); }
+      if (hover && paths.get(hover)) { ctx.fillStyle = Theme.rgba('ink-hi', .16); ctx.fill(paths.get(hover)); }
       ctx.globalCompositeOperation = 'lighter';
       if (players()) {
         for (const A of arcs) {
@@ -738,7 +738,7 @@ window.WorldMap = (() => {
       }
       const p = at(A, u);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = '#041612'; ctx.fillRect(p[0] - 4.5, p[1] - 4, 9, 8);
+      ctx.fillStyle = Theme.hex('bg-1'); ctx.fillRect(p[0] - 4.5, p[1] - 4, 9, 8);
       ctx.strokeStyle = '#c8ffe9'; ctx.lineWidth = 1; ctx.strokeRect(p[0] - 4.5, p[1] - 4, 9, 8);
       ctx.fillStyle = '#c8ffe9'; ctx.fillRect(p[0] - 2, p[1] + 0.5, 4, 1);
       ctx.globalCompositeOperation = 'lighter';

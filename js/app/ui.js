@@ -158,20 +158,20 @@ window.UI = (() => {
     c.font = '11px "Share Tech Mono", monospace';
     c.textBaseline = 'middle'; c.textAlign = 'right';
     for (let v = lo; v <= hi + 0.001; v += step) {
-      c.strokeStyle = 'rgba(57,255,136,.09)'; c.lineWidth = 1;
+      c.strokeStyle = Theme.rgba('accent', .09); c.lineWidth = 1;
       c.beginPath(); c.moveTo(padL, Math.round(y(v)) + .5); c.lineTo(W - padR, Math.round(y(v)) + .5); c.stroke();
-      c.fillStyle = '#7fa892'; c.fillText(String(Math.round(v)), padL - 6, y(v));
+      c.fillStyle = Theme.hex('ink-2'); c.fillText(String(Math.round(v)), padL - 6, y(v));
     }
     if (!values.length) {
       c.font = '13px "Share Tech Mono", monospace';
       const tw = c.measureText(empty).width + 16;
-      c.fillStyle = '#07100b'; c.fillRect(padL + iw / 2 - tw / 2, padT + ih / 2 - 11, tw, 22);
-      c.textAlign = 'center'; c.fillStyle = '#7fa892';
+      c.fillStyle = Theme.hex('bg-2'); c.fillRect(padL + iw / 2 - tw / 2, padT + ih / 2 - 11, tw, 22);
+      c.textAlign = 'center'; c.fillStyle = Theme.hex('ink-2');
       c.fillText(empty, padL + iw / 2, padT + ih / 2);
       return;
     }
     if (labels.length) {
-      c.textBaseline = 'alphabetic'; c.fillStyle = '#7fa892';
+      c.textBaseline = 'alphabetic'; c.fillStyle = Theme.hex('ink-2');
       const every = Math.max(1, Math.ceil(labels.length / Math.max(2, Math.floor(iw / 64))));
       let lastRight = -1e9;
       labels.forEach((l, i) => {
@@ -185,27 +185,27 @@ window.UI = (() => {
     }
     // area
     const g = c.createLinearGradient(0, padT, 0, padT + ih);
-    g.addColorStop(0, 'rgba(57,255,136,.32)'); g.addColorStop(1, 'rgba(57,255,136,0)');
+    g.addColorStop(0, Theme.rgba('accent', .32)); g.addColorStop(1, Theme.rgba('accent', 0));
     c.beginPath(); c.moveTo(x(0), y(values[0]));
     values.forEach((v, i) => c.lineTo(x(i), y(v)));
     c.lineTo(x(values.length - 1), padT + ih); c.lineTo(x(0), padT + ih); c.closePath();
     c.fillStyle = g; c.fill();
     // line
     c.beginPath(); values.forEach((v, i) => i ? c.lineTo(x(i), y(v)) : c.moveTo(x(i), y(v)));
-    c.strokeStyle = '#39ff88'; c.lineWidth = 2; c.shadowColor = '#39ff88'; c.shadowBlur = 8; c.stroke(); c.shadowBlur = 0;
+    c.strokeStyle = Theme.hex('accent'); c.lineWidth = 2; c.shadowColor = Theme.hex('accent'); c.shadowBlur = 8; c.stroke(); c.shadowBlur = 0;
     if (values.length <= 40) {
-      values.forEach((v, i) => { c.beginPath(); c.arc(x(i), y(v), 2.6, 0, 7); c.fillStyle = '#39ff88'; c.fill(); });
+      values.forEach((v, i) => { c.beginPath(); c.arc(x(i), y(v), 2.6, 0, 7); c.fillStyle = Theme.hex('accent'); c.fill(); });
     }
     const li = values.length - 1;
-    c.beginPath(); c.arc(x(li), y(values[li]), 5, 0, 7); c.fillStyle = '#040806'; c.fill();
-    c.lineWidth = 2; c.strokeStyle = '#d7f5e3'; c.stroke();
+    c.beginPath(); c.arc(x(li), y(values[li]), 5, 0, 7); c.fillStyle = Theme.hex('bg'); c.fill();
+    c.lineWidth = 2; c.strokeStyle = Theme.hex('ink'); c.stroke();
     if (tag) {
       c.font = '12px "Share Tech Mono", monospace';
       const tw = c.measureText(tag).width + 12;
       const tx = Math.min(W - padR - tw, x(li) - tw / 2), ty = Math.max(1, y(values[li]) - 26);
-      c.fillStyle = 'rgba(7,16,11,.92)'; c.fillRect(tx, ty, tw, 18);
-      c.strokeStyle = '#39ff88'; c.lineWidth = 1; c.strokeRect(tx + .5, ty + .5, tw - 1, 17);
-      c.fillStyle = '#39ff88'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(tag, tx + 6, ty + 9.5);
+      c.fillStyle = Theme.rgba('bg-2', .92); c.fillRect(tx, ty, tw, 18);
+      c.strokeStyle = Theme.hex('accent'); c.lineWidth = 1; c.strokeRect(tx + .5, ty + .5, tw - 1, 17);
+      c.fillStyle = Theme.hex('accent'); c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(tag, tx + 6, ty + 9.5);
     }
   }
   function niceStep(raw) {

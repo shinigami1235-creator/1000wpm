@@ -152,7 +152,7 @@ Router.register('leaderboard', (() => {
       const p = WPM.profile();
       // a floor plan drawn to scale against the largest room size
       const k = 34 / 8;
-      const plan = `<svg class="room-plan" viewBox="0 0 40 34" aria-hidden="true"><rect x="${(40 - r.w * k) / 2}" y="${(34 - r.d * k) / 2}" width="${r.w * k}" height="${r.d * k}" fill="rgba(57,255,136,.12)" stroke="#39ff88" stroke-width="1"/></svg>`;
+      const plan = `<svg class="room-plan" viewBox="0 0 40 34" aria-hidden="true"><rect x="${(40 - r.w * k) / 2}" y="${(34 - r.d * k) / 2}" width="${r.w * k}" height="${r.d * k}" style="fill:rgba(var(--accent-rgb),.12);stroke:var(--accent)" stroke-width="1"/></svg>`;
       board.innerHTML = `
         <table class="board">
           <thead><tr><th>#</th><th>Owner</th><th>Room</th><th class="num-col">Floor</th><th class="num-col hide-sm">Items placed</th><th class="num-col">Value</th></tr></thead>

@@ -7,10 +7,10 @@
 //   PlayPicker.mount(host) -> { destroy }
 window.PlayPicker = (() => {
   const GAMES = [
-    { id: 'breach', name: 'breach', href: '#/play/breach', mode: 'Solo', color: '#39ff88', alias: [],
+    { id: 'breach', name: 'breach', href: '#/play/breach', mode: 'Solo', color: Theme.hex('accent'), alias: [],
       sub: 'Five chapters, endless and a daily run',
       desc: 'Words come through the firewall. Type them before they reach you, with a boss at the end of each chapter.' },
-    { id: 'race', name: 'race', href: '#/play/race', mode: 'Solo', color: '#d7f5e3', alias: ['art'],
+    { id: 'race', name: 'race', href: '#/play/race', mode: 'Solo', color: Theme.hex('ink'), alias: ['art'],
       sub: 'Against Art, your best run or a friend',
       desc: 'Your car goes as fast as you type. Race Art at his real speed, or your own best run.' },
     { id: 'rush', name: 'boss rush', href: '#/play/rush', mode: 'Solo', color: '#ff9f43', alias: ['rush'],
@@ -161,7 +161,7 @@ window.PlayPicker = (() => {
     function draw(now) {
       const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
       const W = cv._w || 1, H = cv._h || 1;
-      ctx.fillStyle = '#040806'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = Theme.hex('bg'); ctx.fillRect(0, 0, W, H);
       if (scene) scene(ctx, W, H, reduce ? 2.4 : (now - t0) / 1000, reduce ? 0 : dt);
     }
     function loop(now) {
@@ -215,7 +215,7 @@ window.PlayPicker = (() => {
 
   const SCENES = {
     breach() {
-      const G = '#39ff88';
+      const G = Theme.hex('accent');
       const ws = Array.from({ length: 6 }, (_, i) => ({ x: 0.12 + i * 0.15, y: 0.08 + ((i * 3) % 6) * 0.11, w: pickW(i), v: 0.1 + (i % 3) * 0.025, done: 0 }));
       let n = 6, bursts = [];
       return (c, w, h, t, dt) => {
@@ -238,14 +238,14 @@ window.PlayPicker = (() => {
           c.strokeStyle = alpha(G, o === low ? 0.9 : 0.35); c.strokeRect(x - 6, y - 15, tw + 12, 21);
           const d = Math.floor(o.done);
           glowText(c, o.w.slice(0, d), x, y, G, mono(0, 17), 8);
-          c.fillStyle = '#7fa892'; c.font = mono(0, 17); c.fillText(o.w.slice(d), x + c.measureText(o.w.slice(0, d)).width, y);
+          c.fillStyle = Theme.hex('ink-2'); c.font = mono(0, 17); c.fillText(o.w.slice(d), x + c.measureText(o.w.slice(0, d)).width, y);
         }
         bursts = bursts.filter(b => (b.l -= dt) > 0);
         for (const b of bursts) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; c.fillStyle = alpha(G, b.l / 0.6); c.fillRect(b.x, b.y, 3, 3); }
       };
     },
     race() {
-      const C = '#d7f5e3', G = '#39ff88';
+      const C = Theme.hex('ink'), G = Theme.hex('accent');
       return (c, w, h, t) => {
         const lanes = [h * 0.36, h * 0.62];
         c.strokeStyle = alpha(C, 0.15);
@@ -262,7 +262,7 @@ window.PlayPicker = (() => {
           for (let s = 1; s < 8; s++) { c.fillStyle = alpha(car.col, 0.35 - s * 0.04); c.fillRect(x - 46 - s * 18, y - 3, 16, 6); }
           c.fillStyle = car.col; c.shadowColor = car.col; c.shadowBlur = 14;
           c.beginPath(); c.moveTo(x - 40, y - 10); c.lineTo(x + 10, y - 10); c.lineTo(x + 26, y); c.lineTo(x + 10, y + 10); c.lineTo(x - 40, y + 10); c.closePath(); c.fill(); c.shadowBlur = 0;
-          c.fillStyle = '#040806'; c.font = head(12); c.fillText(car.n, x - 32, y + 4);
+          c.fillStyle = Theme.hex('bg'); c.font = head(12); c.fillText(car.n, x - 32, y + 4);
           glowText(c, `${car.wpm} wpm`, x - 40, y - 18, car.col, mono(0, 12), 0);
         });
       };
@@ -289,7 +289,7 @@ window.PlayPicker = (() => {
         c.fillStyle = '#fff'; c.fillRect(w * 0.2 + w * 0.6 * 0.33, 14, 2, 10); c.fillRect(w * 0.2 + w * 0.6 * 0.66, 14, 2, 10);
         glowText(c, `phase ${hp > 0.66 ? 1 : hp > 0.33 ? 2 : 3} of 3`, w * 0.2, 40, O, mono(0, 12), 0);
         // shots at the boss
-        for (let k = 0; k < 4; k++) { const p = (t * 1.6 + k / 4) % 1; c.fillStyle = '#39ff88'; c.fillRect(w * (0.3 + k * 0.13) + (cx - w * (0.3 + k * 0.13)) * p, h - (h - cy) * p, 4, 4); }
+        for (let k = 0; k < 4; k++) { const p = (t * 1.6 + k / 4) % 1; c.fillStyle = Theme.hex('accent'); c.fillRect(w * (0.3 + k * 0.13) + (cx - w * (0.3 + k * 0.13)) * p, h - (h - cy) * p, 4, 4); }
         // the Spam's pop-ups
         if (dt && t > next) { pops.push({ x: 0.08 + Math.random() * 0.62, y: 0.5 + Math.random() * 0.3, w: pickW(Math.floor(t * 3)), l: 2.2 }); next = t + 0.9; }
         pops = pops.filter(p => (p.l -= dt) > 0).slice(-4);
@@ -298,7 +298,7 @@ window.PlayPicker = (() => {
           c.fillStyle = '#12051f'; c.fillRect(x, y, 112, 46);
           c.fillStyle = '#a35bff'; c.fillRect(x, y, 112, 12);
           c.fillStyle = '#12051f'; c.font = mono(0, 9); c.fillText('FREE GIFT!!', x + 4, y + 9); c.fillText('x', x + 103, y + 9);
-          c.fillStyle = '#d7f5e3'; c.font = mono(0, 15); c.fillText(p.w, x + 56 - c.measureText(p.w).width / 2, y + 35);
+          c.fillStyle = Theme.hex('ink'); c.font = mono(0, 15); c.fillText(p.w, x + 56 - c.measureText(p.w).width / 2, y + 35);
         }
       };
     },
@@ -319,20 +319,20 @@ window.PlayPicker = (() => {
         const hp = 0.25 + 0.7 * (0.5 + 0.5 * Math.cos(t * 0.3));
         c.fillStyle = alpha(P, 0.2); c.fillRect(26, h - 34, vw - 48, 6); c.fillStyle = P; c.fillRect(26, h - 34, (vw - 48) * hp, 6);
         c.fillStyle = '#ff4d5e'; c.fillRect(22, 20, 36, 16); c.fillStyle = '#fff'; c.font = head(11); c.fillText('LIVE', 28, 32);
-        glowText(c, 'art vs the compiler', 66, 32, '#d7f5e3', mono(0, 12), 0);
+        glowText(c, 'art vs the compiler', 66, 32, Theme.hex('ink'), mono(0, 12), 0);
         // chat scrolling up
         const lh = 22, off = (t * 18) % lh;
         c.save(); c.beginPath(); c.rect(vw, 10, w - vw - 10, h - 20); c.clip();
         for (let i = 0; i < 14; i++) {
           const m = MSG[(Math.floor(t * 18 / lh) + i) % MSG.length], y = h - 18 - i * lh + off;
           c.font = mono(0, 12); c.fillStyle = P; c.fillText(m[0], vw + 8, y);
-          c.fillStyle = '#d7f5e3'; c.fillText(m[1], vw + 14 + c.measureText(m[0]).width, y);
+          c.fillStyle = Theme.hex('ink'); c.fillText(m[1], vw + 14 + c.measureText(m[0]).width, y);
         }
         c.restore();
       };
     },
     duel() {
-      const C = '#3ee6ff', G = '#39ff88';
+      const C = '#3ee6ff', G = Theme.hex('accent');
       return (c, w, h, t) => {
         grid(c, w, h, C, t, 0.25);
         const L = { x: w * 0.2, col: G }, R = { x: w * 0.8, col: C };
@@ -353,11 +353,11 @@ window.PlayPicker = (() => {
           const x = from.x + (to.x - from.x) * q, y = h * 0.42 - Math.sin(q * Math.PI) * h * 0.22;
           glowText(c, ch, x, y, from.col, mono(0, 20), 12);
         });
-        glowText(c, 'round 2', w / 2 - 28, 26, '#d7f5e3', mono(0, 13), 0);
+        glowText(c, 'round 2', w / 2 - 28, 26, Theme.hex('ink'), mono(0, 13), 0);
       };
     },
     party() {
-      const Y = '#e6f26a', G = '#39ff88';
+      const Y = '#e6f26a', G = Theme.hex('accent');
       let plus = [], next = 0;
       return (c, w, h, t, dt) => {
         grid(c, w, h, Y, t, 0.3);
@@ -368,7 +368,7 @@ window.PlayPicker = (() => {
           c.strokeStyle = alpha('#ff4d5e', 0.8); c.lineWidth = 3; c.beginPath(); c.moveTo(bx + k * 20, by - 20);
           c.quadraticCurveTo(bx + k * w * 0.1, h * 0.45, hx, hy); c.stroke(); c.lineWidth = 1;
           c.strokeStyle = '#ff4d5e'; c.shadowColor = '#ff4d5e'; c.shadowBlur = 12; c.strokeRect(hx - 16, hy - 12, 32, 24); c.shadowBlur = 0;
-          glowText(c, ['spam', 'scam', 'bait'][k + 1], hx - 15, hy - 18, '#d7f5e3', mono(0, 11), 0);
+          glowText(c, ['spam', 'scam', 'bait'][k + 1], hx - 15, hy - 18, Theme.hex('ink'), mono(0, 11), 0);
         }
         c.strokeStyle = '#ff4d5e'; c.strokeRect(bx - 40, by - 22, 80, 30);
         // the team along the bottom
@@ -377,7 +377,7 @@ window.PlayPicker = (() => {
           const x = w * (0.14 + i * 0.24) - 40, y = h - 40;
           const hp = Math.max(0.1, 0.55 + 0.4 * Math.sin(t * 0.9 + i * 1.7));
           c.strokeStyle = alpha(Y, i === 0 ? 0.9 : 0.4); c.strokeRect(x + 0.5, y + 0.5, 80, 30);
-          c.fillStyle = i === 0 ? Y : '#d7f5e3'; c.font = head(12); c.fillText(n, x + 6, y + 13);
+          c.fillStyle = i === 0 ? Y : Theme.hex('ink'); c.font = head(12); c.fillText(n, x + 6, y + 13);
           c.fillStyle = alpha(G, 0.2); c.fillRect(x + 6, y + 19, 68, 4); c.fillStyle = hp < 0.3 ? '#ff4d5e' : G; c.fillRect(x + 6, y + 19, 68 * hp, 4);
         });
         if (dt && t > next) { plus.push({ x: w * (0.14 + Math.floor(Math.random() * 4) * 0.24), y: h - 46, l: 1 }); next = t + 0.7; }
@@ -396,9 +396,9 @@ window.PlayPicker = (() => {
           const y = h - 24 - i * lh + off;
           c.font = mono(0, 14);
           const tw = c.measureText(s).width + 24, x = right ? w - tw - 18 : 18;
-          c.fillStyle = right ? alpha(P, 0.18) : 'rgba(215,245,227,.06)'; c.fillRect(x, y - 20, tw, 30);
-          c.strokeStyle = right ? alpha(P, 0.6) : 'rgba(215,245,227,.2)'; c.strokeRect(x + 0.5, y - 19.5, tw, 30);
-          c.fillStyle = right ? P : '#d7f5e3'; c.fillText(s, x + 12, y);
+          c.fillStyle = right ? alpha(P, 0.18) : Theme.rgba('ink', .06); c.fillRect(x, y - 20, tw, 30);
+          c.strokeStyle = right ? alpha(P, 0.6) : Theme.rgba('ink', .2); c.strokeRect(x + 0.5, y - 19.5, tw, 30);
+          c.fillStyle = right ? P : Theme.hex('ink'); c.fillText(s, x + 12, y);
         }
         c.restore();
         c.fillStyle = 'rgba(4,8,6,.9)'; c.fillRect(0, 0, w, 30);

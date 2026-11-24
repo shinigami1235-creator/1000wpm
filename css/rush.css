@@ -16,7 +16,7 @@
 .rush-lead p { margin-top: 14px; max-width: 54ch; font: 400 var(--t-m)/1.55 var(--f-head); color: var(--ink-2); text-wrap: pretty; }
 .rush-go { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 22px; }
 .rush-go span { font: 400 var(--t-s)/1 var(--f-head); color: var(--ink-3); }
-.rush-lead .rush-best { margin-top: 16px; font: 500 var(--t-m)/1.4 var(--f-head); color: var(--green); }
+.rush-lead .rush-best { margin-top: 16px; font: 500 var(--t-m)/1.4 var(--f-head); color: var(--accent); }
 .rush-roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .rush-roster li { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 10px 12px; background: var(--tint); }
 .rush-roster .rr-n { font: 600 var(--t-s)/1 var(--f-mono); color: var(--c, var(--ink-3)); }
@@ -37,27 +37,27 @@
 /* ---------- the fight ---------- */
 .rush-you { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .rush-you > span { font: 400 var(--t-xs)/1 var(--f-head); color: var(--ink-2); min-width: 2.2em; }
-.rush-ibar { position: relative; flex: 1; height: 4px; background: rgba(57,255,136,.14); overflow: hidden; }
-.rush-ibar i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--green); box-shadow: 0 0 8px rgba(57,255,136,.5); transition: width 200ms linear; }
+.rush-ibar { position: relative; flex: 1; height: 4px; background: rgba(var(--accent-rgb),.14); overflow: hidden; }
+.rush-ibar i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb),.5); transition: width 200ms linear; }
 .rush-ibar[data-low="1"] i { background: var(--amber); box-shadow: 0 0 8px rgba(242,157,48,.6); }
 .rush-you b { font: 600 var(--t-s)/1 var(--f-mono); color: var(--ink); min-width: 3ch; text-align: right; }
 .rush .wb-chip.fix { --k: var(--gold); --kb: rgba(242,194,48,.1); --kl: rgba(242,194,48,.22); }
 .rush .wb-chip.weak { --k: var(--amber-2); --kb: rgba(255,196,107,.08); --kl: rgba(255,196,107,.16); }
-.rush .wb-chip.boost { --k: var(--green); --kb: rgba(57,255,136,.12); --kl: rgba(57,255,136,.2); box-shadow: 0 0 18px -6px var(--green); }
+.rush .wb-chip.boost { --k: var(--accent); --kb: rgba(var(--accent-rgb),.12); --kl: rgba(var(--accent-rgb),.2); box-shadow: 0 0 18px -6px var(--accent); }
 .rush .wb-chip.wait { opacity: .45; }
 .rush .wb-chip .w.sign { font-family: var(--f-head); font-weight: 600; letter-spacing: .04em; color: var(--gold); }
 .rush .wb-chip .w.typed { font-size: var(--t-m); }
-.rush .wb-flag.stun { color: var(--green); background: linear-gradient(rgba(57,255,136,.14), rgba(57,255,136,.14)), var(--scrim); }
+.rush .wb-flag.stun { color: var(--accent); background: linear-gradient(rgba(var(--accent-rgb),.14), rgba(var(--accent-rgb),.14)), var(--scrim); }
 .rush .wb-flag.stun small { margin-left: 4px; }
-.rush .wb-pop.boost { color: var(--green); font-size: clamp(20px, 2vw, 28px); text-shadow: 0 2px 0 #000, 0 0 14px rgba(57,255,136,.7); }
+.rush .wb-pop.boost { color: var(--accent); font-size: clamp(20px, 2vw, 28px); text-shadow: 0 2px 0 #000, 0 0 14px rgba(var(--accent-rgb),.7); }
 .rush .boss-state[data-s="1"] { color: var(--ink-2); }
 
 /* the breather and the lost screen, over the arena */
-.rush-over { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 18px; background: rgba(1,5,3,.86); overflow-y: auto; }
+.rush-over { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 18px; background: rgba(var(--bg-0-rgb),.86); overflow-y: auto; }
 .rush-over[hidden] { display: none; }
 .ro-in { width: min(660px, 100%); display: grid; gap: 18px; margin: auto; }
 .ro-head { font: 600 var(--t-xl)/1.2 var(--f-head); color: var(--ink); text-wrap: balance; }
-.ro-head span { margin-left: 14px; font: 600 var(--t-m)/1 var(--f-mono); color: var(--green); white-space: nowrap; }
+.ro-head span { margin-left: 14px; font: 600 var(--t-m)/1 var(--f-mono); color: var(--accent); white-space: nowrap; }
 .ro-sub { margin-top: -8px; font: 400 var(--t-m)/1.4 var(--f-head); color: var(--ink-2); }
 .rush-dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 28px; margin: 0; }
 .rush-dl div { display: grid; gap: 6px; }
@@ -76,11 +76,11 @@
 .rush-end { max-width: 880px; margin: 0 auto; padding: 22px 0 10px; display: grid; gap: 18px; }
 .rush-end h1 { font: 700 clamp(30px, 3vw, 42px)/1.05 var(--f-head); color: var(--ink); }
 .re-how { margin-top: -8px; font: 400 var(--t-m)/1.4 var(--f-head); color: var(--ink-2); }
-.re-best { font: 600 var(--t-m)/1.3 var(--f-head); color: var(--green); text-shadow: var(--glow); }
+.re-best { font: 600 var(--t-m)/1.3 var(--f-head); color: var(--accent); text-shadow: var(--glow); }
 .re-hero { display: flex; flex-wrap: wrap; gap: 18px 56px; padding: 6px 0 4px; }
 .re-hero div { display: grid; gap: 8px; }
 .re-hero b { font: 600 clamp(48px, 6vw, 72px)/.9 var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
-.re-hero div:first-child b { color: var(--green); text-shadow: var(--glow); }
+.re-hero div:first-child b { color: var(--accent); text-shadow: var(--glow); }
 .re-hero span { font: 400 var(--t-s)/1 var(--f-head); color: var(--ink-2); }
 .rush-end .rush-dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .re-coins { display: flex; align-items: center; gap: 8px; font: 400 var(--t-m)/1.2 var(--f-head); color: var(--ink-2); }
@@ -147,14 +147,14 @@
 .rush .rush-tags { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .rush .rt {
   --k: var(--amber); position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px;
-  padding: 4px 10px 6px; background: rgba(2,6,4,.86); box-shadow: inset 0 0 0 1px var(--k); transition: opacity 120ms;
+  padding: 4px 10px 6px; background: rgba(var(--bg-0-rgb),.86); box-shadow: inset 0 0 0 1px var(--k); transition: opacity 120ms;
   will-change: transform;
 }
 .rush .rt small { font: 500 var(--t-xs)/1 var(--f-head); color: var(--k); }
 .rush .rt .w { font: 400 var(--t-l)/1.1 var(--f-mono); color: var(--ink); white-space: nowrap; }
-.rush .rt .c.ok, .rush .rp .c.ok { color: var(--green); }
+.rush .rt .c.ok, .rush .rp .c.ok { color: var(--accent); }
 .rush .rt .c.bad, .rush .rp .c.bad { color: var(--red); text-decoration: underline; text-underline-offset: 3px; }
-.rush .rt .c.at, .rush .rp .c.at { box-shadow: inset 2px 0 0 var(--green); }
+.rush .rt .c.at, .rush .rp .c.at { box-shadow: inset 2px 0 0 var(--accent); }
 .rush .rt-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.08); }
 .rush .rt-bar i { position: absolute; inset: 0 auto 0 0; background: var(--k); }
 .rush .rt.late { background: rgba(60,8,12,.9); }
@@ -176,7 +176,7 @@
 .rush .rp-bar { display: flex; justify-content: space-between; gap: 18px; padding: 3px 8px; background: #a35bff; font: 600 var(--t-xs)/1.2 var(--f-head); color: #12051f; }
 .rush .rp-bar i { font-style: normal; }
 .rush .rp .w { padding: 10px 14px 12px; font: 400 var(--t-l)/1.1 var(--f-mono); color: var(--ink); text-align: center; white-space: nowrap; }
-.rush .rp.on { box-shadow: 0 0 0 2px var(--green), 0 10px 30px rgba(0,0,0,.6); }
+.rush .rp.on { box-shadow: 0 0 0 2px var(--accent), 0 10px 30px rgba(0,0,0,.6); }
 .rush .rp.gone.done { animation: rp-out 260ms ease-in forwards; }
 .rush .rp.gone.hit { animation: rp-bite 300ms ease-in forwards; }
 @keyframes rp-in { from { transform: scale(.4); opacity: 0; } }

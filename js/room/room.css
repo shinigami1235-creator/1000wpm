@@ -1,13 +1,13 @@
 /* My Room. Colours come from the site tokens in css/site.css with fallbacks for pages without them. */
 .rm {
   --rg: var(--green, #39ff88);
-  --rg-dim: var(--green-dim, #1f9e57);
+  --rg-dim: var(--accent-dim, #1f9e57);
   --rbg: var(--bg, #040806);
   --rbg2: var(--bg-2, #07100b);
   --rbg3: var(--bg-3, #0c1a12);
-  --rline: rgba(57, 255, 136, .28);
-  --rink: #d7f5e3;
-  --rink2: #7fa892;
+  --rline: rgba(var(--accent-rgb, 57,255,136), .28);
+  --rink: var(--ink, #d7f5e3);
+  --rink2: var(--ink-2, #7fa892);
   --rcut: 10px;
   --rmono: "Share Tech Mono", "JetBrains Mono", ui-monospace, monospace;
   position: relative;
@@ -52,12 +52,12 @@
 .rm-ttl svg { width: 24px; height: 24px; }
 .rm-menu button {
   position: relative; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px;
-  border: 1px solid transparent; border-bottom-color: rgba(57, 255, 136, .12); background: none; text-align: left; font-size: 15px;
+  border: 1px solid transparent; border-bottom-color: rgba(var(--accent-rgb, 57,255,136), .12); background: none; text-align: left; font-size: 15px;
 }
 .rm-menu button:hover { color: var(--rg); }
 .rm-menu button[aria-pressed="true"], .rm-menu button[aria-expanded="true"] {
-  background: rgba(57, 255, 136, .14); border-color: var(--rline); color: var(--rg);
-  box-shadow: inset 0 0 18px rgba(57, 255, 136, .12);
+  background: rgba(var(--accent-rgb, 57,255,136), .14); border-color: var(--rline); color: var(--rg);
+  box-shadow: inset 0 0 18px rgba(var(--accent-rgb, 57,255,136), .12);
 }
 .rm-dot { position: absolute; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold, #f2c230); box-shadow: 0 0 8px var(--gold, #f2c230); }
 
@@ -81,9 +81,9 @@
   border: 1px solid transparent; background: none; font-size: 12px;
 }
 .rm-tools button svg { width: 22px; height: 22px; }
-.rm-tools button:hover:not(:disabled), .rm-tools button.on { border-color: var(--rline); color: var(--rg); background: rgba(57, 255, 136, .1); }
+.rm-tools button:hover:not(:disabled), .rm-tools button.on { border-color: var(--rline); color: var(--rg); background: rgba(var(--accent-rgb, 57,255,136), .1); }
 .rm-tools button:disabled { opacity: .35; cursor: default; }
-.rm-tools [data-tool="place"] { color: var(--rg); border-color: var(--rg); background: rgba(57, 255, 136, .16); }
+.rm-tools [data-tool="place"] { color: var(--rg); border-color: var(--rg); background: rgba(var(--accent-rgb, 57,255,136), .16); }
 .rm-tabs { flex: 1; display: flex; gap: 2px; padding: 6px; overflow-x: auto; scrollbar-width: none; align-items: center; }
 .rm-tabs::-webkit-scrollbar { display: none; }
 .rm-tabs button {
@@ -92,17 +92,17 @@
 }
 .rm-tabs button svg { width: 16px; height: 16px; }
 .rm-tabs button:hover { color: var(--rink); }
-.rm-tabs button[aria-selected="true"] { color: var(--rg); border-color: var(--rline); background: rgba(57, 255, 136, .12); text-shadow: 0 0 8px rgba(57, 255, 136, .5); }
+.rm-tabs button[aria-selected="true"] { color: var(--rg); border-color: var(--rline); background: rgba(var(--accent-rgb, 57,255,136), .12); text-shadow: 0 0 8px rgba(var(--accent-rgb, 57,255,136), .5); }
 .rm-bar { display: flex; align-items: center; gap: 6px; padding: 8px 6px; }
 .rm-arrow { flex: none; width: 32px; height: 96px; border: 0; background: none; color: var(--rg); }
 .rm-strip { flex: 1; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding: 2px; }
 .rm-strip::-webkit-scrollbar { display: none; }
 .rm-card {
   position: relative; flex: none; width: 118px; display: flex; flex-direction: column; gap: 4px; padding: 6px; scroll-snap-align: start;
-  background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .16); text-decoration: none; text-align: left;
+  background: var(--rbg3); border: 1px solid rgba(var(--accent-rgb, 57,255,136), .16); text-decoration: none; text-align: left;
 }
 .rm-card:hover { border-color: var(--rline); }
-.rm-card.on { border-color: var(--rg); box-shadow: 0 0 0 1px var(--rg), 0 0 16px rgba(57, 255, 136, .35); }
+.rm-card.on { border-color: var(--rg); box-shadow: 0 0 0 1px var(--rg), 0 0 16px rgba(var(--accent-rgb, 57,255,136), .35); }
 .rm-thumb { display: grid; place-items: center; aspect-ratio: 4 / 3; background: #050b08; overflow: hidden; }
 .rm-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .rm-thumb img:not([src]) { visibility: hidden; }
@@ -120,31 +120,31 @@
 .rm-close { width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: none; }
 .rm-hint { margin: 0 0 12px; font-size: 13px; color: var(--rink2); }
 .rm-inv, .rm-presets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.rm-inv li { display: flex; align-items: center; gap: 10px; padding: 6px; background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .12); }
+.rm-inv li { display: flex; align-items: center; gap: 10px; padding: 6px; background: var(--rbg3); border: 1px solid rgba(var(--accent-rgb, 57,255,136), .12); }
 .rm-inv .rm-thumb { width: 64px; flex: none; }
 .rm-inv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .rm-inv-txt b { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rm-inv-txt small { font: 11px var(--rmono); color: var(--rink2); }
-.rm-sm { min-height: 36px; min-width: 76px; padding: 0 12px; border: 1px solid rgba(57, 255, 136, .2); background: none; font: 12px var(--rmono); color: var(--rink2); }
-.rm-go { color: var(--rg); border-color: var(--rline); background: rgba(57, 255, 136, .1); }
-.rm-go:hover { background: rgba(57, 255, 136, .2); }
+.rm-sm { min-height: 36px; min-width: 76px; padding: 0 12px; border: 1px solid rgba(var(--accent-rgb, 57,255,136), .2); background: none; font: 12px var(--rmono); color: var(--rink2); }
+.rm-go { color: var(--rg); border-color: var(--rline); background: rgba(var(--accent-rgb, 57,255,136), .1); }
+.rm-go:hover { background: rgba(var(--accent-rgb, 57,255,136), .2); }
 .rm-sizes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.rm-sizes li { display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .12); }
-.rm-sizes li.on { border-color: var(--rg); box-shadow: inset 0 0 14px rgba(57, 255, 136, .12); }
+.rm-sizes li { display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--rbg3); border: 1px solid rgba(var(--accent-rgb, 57,255,136), .12); }
+.rm-sizes li.on { border-color: var(--rg); box-shadow: inset 0 0 14px rgba(var(--accent-rgb, 57,255,136), .12); }
 .rm-sizes li.locked .rm-inv-txt { opacity: .6; }
 .rm-plan { flex: none; width: 56px; height: 46px; display: flex; align-items: flex-end; justify-content: flex-start; padding: 3px; background: #050b08; }
-.rm-plan i { display: block; border: 1px solid var(--rg); border-top-width: 3px; border-left-width: 3px; background: rgba(57, 255, 136, .14); }
+.rm-plan i { display: block; border: 1px solid var(--rg); border-top-width: 3px; border-left-width: 3px; background: rgba(var(--accent-rgb, 57,255,136), .14); }
 .rm-sizes li.locked .rm-plan i { border-color: var(--rink2); background: none; }
 .rm-cur { display: inline-grid; place-items: center; color: var(--rg); border-color: transparent; }
 .rm-buy { display: inline-grid; place-items: center; text-decoration: none; color: var(--gold, #f2c230); border-color: rgba(242, 194, 48, .35); white-space: nowrap; }
 .rm-buy:hover { background: rgba(242, 194, 48, .1); }
-.rm-presets li { padding: 12px; background: var(--rbg3); border: 1px solid rgba(57, 255, 136, .12); }
+.rm-presets li { padding: 12px; background: var(--rbg3); border: 1px solid rgba(var(--accent-rgb, 57,255,136), .12); }
 .rm-presets b { font-weight: 600; }
 .rm-presets p { margin: 4px 0 10px; font-size: 13px; color: var(--rink2); }
 .rm-presets div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rm-presets small { font: 11px var(--rmono); color: var(--rink2); }
 .rm-shoplink { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-height: 44px; padding: 0 12px; border: 1px solid var(--rline); color: var(--rg); text-decoration: none; font: 13px var(--rmono); }
-.rm-shoplink:hover { background: rgba(57, 255, 136, .1); }
+.rm-shoplink:hover { background: rgba(var(--accent-rgb, 57,255,136), .1); }
 
 /* ---------- phones ---------- */
 @media (max-width: 720px) {

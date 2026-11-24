@@ -79,15 +79,15 @@
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const n = Math.ceil(innerWidth / COL);
     drops = Array.from({ length: n }, () => ({ y: Math.random() * innerHeight, v: 0.4 + Math.random() * 0.9 }));
-    c.fillStyle = '#040806'; c.fillRect(0, 0, innerWidth, innerHeight);
+    c.fillStyle = Theme.hex('bg'); c.fillRect(0, 0, innerWidth, innerHeight);
     if (reduce.matches) still();
   }
   function still() {
-    c.fillStyle = '#040806'; c.fillRect(0, 0, innerWidth, innerHeight);
+    c.fillStyle = Theme.hex('bg'); c.fillRect(0, 0, innerWidth, innerHeight);
     c.font = '15px "JetBrains Mono", monospace';
     for (let i = 0; i < drops.length; i++) {
       for (let y = 0; y < innerHeight; y += COL * 1.2) {
-        if (Math.random() < .12) { c.fillStyle = Math.random() < .2 ? '#39ff88' : '#1f9e57'; c.fillText(CH[Math.floor(Math.random() * CH.length)], i * COL, y); }
+        if (Math.random() < .12) { c.fillStyle = Math.random() < .2 ? Theme.hex('accent') : Theme.hex('accent-dim'); c.fillText(CH[Math.floor(Math.random() * CH.length)], i * COL, y); }
       }
     }
   }
@@ -99,7 +99,7 @@
     c.font = '15px "JetBrains Mono", monospace';
     for (let i = 0; i < drops.length; i++) {
       const d = drops[i];
-      c.fillStyle = Math.random() < .06 ? '#d7f5e3' : '#39ff88';
+      c.fillStyle = Math.random() < .06 ? Theme.hex('ink') : Theme.hex('accent');
       c.fillText(CH[Math.floor(Math.random() * CH.length)], i * COL, d.y);
       d.y += COL * d.v;
       if (d.y > innerHeight && Math.random() > .96) d.y = -COL * Math.random() * 20;
@@ -110,7 +110,7 @@
   function run() {
     cancelAnimationFrame(raf); raf = 0;
     const now = calm();
-    if (now && window.Router && ['boss', 'superboss'].includes(Router.current())) { c.fillStyle = '#040806'; c.fillRect(0, 0, innerWidth, innerHeight); }
+    if (now && window.Router && ['boss', 'superboss'].includes(Router.current())) { c.fillStyle = Theme.hex('bg'); c.fillRect(0, 0, innerWidth, innerHeight); }
     else if (wasCalm && reduce.matches) still();
     wasCalm = now;
     if (!document.hidden && !reduce.matches && !now) raf = requestAnimationFrame(frame);

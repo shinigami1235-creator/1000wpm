@@ -208,7 +208,7 @@ Router.register('party', (() => {
   }
 
   const COLORS = ['#3ee6ff', '#f2b330', '#ff7ad9'];
-  const colorOf = id => { if (id === 'me') return '#39ff88'; const others = run.players.filter(p => p.id !== 'me'); return COLORS[Math.max(0, others.findIndex(p => p.id === id)) % COLORS.length]; };
+  const colorOf = id => { if (id === 'me') return Theme.hex('accent'); const others = run.players.filter(p => p.id !== 'me'); return COLORS[Math.max(0, others.findIndex(p => p.id === id)) % COLORS.length]; };
   const HOW = {
     hydra: 'Type a head\'s name to aim at it. A head grows back unless the others fall soon after.',
     swarm: 'Type a mite\'s word before it reaches the player it flies at.',

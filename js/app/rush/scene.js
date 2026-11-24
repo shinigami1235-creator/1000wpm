@@ -90,8 +90,8 @@ window.RushScene = (() => {
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#010503');
-    scene.fog = new THREE.Fog('#010503', 22, 70);
+    scene.background = new THREE.Color(Theme.hex('bg-0'));
+    scene.fog = new THREE.Fog(Theme.hex('bg-0'), 22, 70);
     const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 200);
 
     // ---------- textures ----------
@@ -132,7 +132,7 @@ window.RushScene = (() => {
     }
 
     // ---------- arena ----------
-    const pal = { a: C('#39ff88'), b: C('#1f9e57'), bg: C('#010503'), fog: C('#010503') };
+    const pal = { a: C(Theme.hex('accent')), b: C(Theme.hex('accent-dim')), bg: C(Theme.hex('bg-0')), fog: C(Theme.hex('bg-0')) };
     const palTo = { a: pal.a.clone(), b: pal.b.clone(), bg: pal.bg.clone(), fog: pal.fog.clone() };
     let palT = 1;
     const wallMat = own(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.b.clone(), transparent: true, opacity: 0.22, depthWrite: false, fog: false }));
@@ -157,7 +157,7 @@ window.RushScene = (() => {
     }
     // your marker at the front of the arena, where shots and spells start
     const YOU = new V(0, 0.9, 8.6);
-    const youMat = own(new THREE.MeshBasicMaterial({ color: C('#39ff88', 1.6), transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+    const youMat = own(new THREE.MeshBasicMaterial({ color: C(Theme.hex('accent'), 1.6), transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
     const youRing = new THREE.Mesh(own(new THREE.RingGeometry(0.55, 0.62, 48)), youMat); youRing.rotation.x = -Math.PI / 2; youRing.position.set(YOU.x, 0.03, YOU.z); scene.add(youRing);
     const youGem = new THREE.Mesh(own(new THREE.OctahedronGeometry(0.22, 0)), youMat); youGem.position.copy(YOU); scene.add(youGem);
 
@@ -308,7 +308,7 @@ window.RushScene = (() => {
           const tex = canvasTex(256, 200, (c, w, h) => {
             c.strokeStyle = k % 4 ? b.color : b.color2; c.lineWidth = 3; c.strokeRect(4, 4, w - 8, h - 8);
             c.font = '18px JetBrains Mono, monospace';
-            for (let i = 0; i < 4; i++) { c.fillStyle = i ? '#d7f5e3' : (k % 4 ? b.color : b.color2); c.fillText(lines[(k + i * 3) % lines.length], 14, 40 + i * 40); }
+            for (let i = 0; i < 4; i++) { c.fillStyle = i ? Theme.hex('ink') : (k % 4 ? b.color : b.color2); c.fillText(lines[(k + i * 3) % lines.length], 14, 40 + i * 40); }
           });
           const s = new THREE.Mesh(own(new THREE.PlaneGeometry(1.7, 1.5)), addM('#ffffff', 1, tex)); s.position.set(cx, cy, 0.37); P.slab.add(s);
         }
@@ -357,7 +357,7 @@ window.RushScene = (() => {
           g.add(new THREE.Mesh(geo, DARK)); g.add(new THREE.LineSegments(edge, o.alt ? lC : lA));
           g.userData = { ...o, ph: rnd(0, 6) }; root.add(g); return g;
         });
-        P.core = new THREE.Mesh(own(new THREE.IcosahedronGeometry(0.9, 1)), glowM('#39ff88', 1.4)); P.core.position.set(0, 4.6, 0.2); root.add(P.core);
+        P.core = new THREE.Mesh(own(new THREE.IcosahedronGeometry(0.9, 1)), glowM(Theme.hex('accent'), 1.4)); P.core.position.set(0, 4.6, 0.2); root.add(P.core);
         P.eyes = [];
         for (const sx of [-1, 1]) { const e = new THREE.Mesh(own(new THREE.BoxGeometry(0.34, 0.12, 0.05)), glowM('#ff4d5e', 3)); e.position.set(sx * 0.32, 7.35, 0.42); root.add(e); P.eyes.push(e); }
         return {
@@ -365,7 +365,7 @@ window.RushScene = (() => {
           anim(t, dt, s) {
             P.blocks.forEach(g => { const u = g.userData; g.position.set(u.x + Math.sin(t * 1.3 + u.ph) * 0.06, u.y + Math.sin(t * 1.7 + u.ph) * 0.08 + s.wind * (u.y > 5 ? 0.4 : 0), u.z - s.atk * 1.2 * (u.y > 4 ? 1 : 0)); g.rotation.set(t * 0.2 + u.ph, t * 0.3, 0); });
             P.core.rotation.set(t * 0.6, t * 0.9, 0);
-            P.core.material.color.copy(C(s.wind > 0 ? '#ff4d5e' : s.stun ? '#3ee6ff' : '#39ff88', 1.3 + s.wind));
+            P.core.material.color.copy(C(s.wind > 0 ? '#ff4d5e' : s.stun ? '#3ee6ff' : Theme.hex('accent'), 1.3 + s.wind));
             P.eyes.forEach(e => e.scale.x = 1 + s.wind * 1.5);
           },
         };
@@ -381,7 +381,7 @@ window.RushScene = (() => {
     charge.visible = false; scene.add(charge);
     const halo = new THREE.Group(); scene.add(halo); halo.visible = false;
     for (let k = 0; k < 8; k++) {
-      const s = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glyph('?!#*?!%&'[k]), color: C('#39ff88', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+      const s = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glyph('?!#*?!%&'[k]), color: C(Theme.hex('accent'), 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
       s.scale.setScalar(0.55); halo.add(s);
     }
 
@@ -410,7 +410,7 @@ window.RushScene = (() => {
 
     // tier-0 bolts: a few pooled glow sprites
     const bolts = Array.from({ length: 10 }, () => {
-      const s = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glowTex, color: C('#39ff88', 2.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+      const s = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glowTex, color: C(Theme.hex('accent'), 2.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
       s.visible = false; s.scale.setScalar(0.7); scene.add(s);
       return { s, on: false, t: 0, from: new V(), h: null };
     });
@@ -641,7 +641,7 @@ window.RushScene = (() => {
       }
       const b = bolts[boltI = (boltI + 1) % bolts.length];
       b.on = true; b.t = 0; b.h = h; b.land = land; b.from.copy(from); b.s.visible = true;
-      b.s.material.color.copy(C(h.kind === 'weak' ? '#ffc46b' : '#39ff88', 2.2));
+      b.s.material.color.copy(C(h.kind === 'weak' ? '#ffc46b' : Theme.hex('accent'), 2.2));
     }
 
     // ---------- loop ----------

@@ -15,7 +15,7 @@ Router.register('duel', (() => {
   const e = s => UI.esc(s);
   let el = null, off = [], mode = 'menu', info = null, scene = null, raf = 0, keys = null, onDoc = null;
   let ty = null, lastState = null, fog = 0, endShown = false, waitC = null, incoming = null, incT = 0, ctl = null, noticeT = 0;
-  const SIDE_COL = ['#39ff88', '#f29d30'];
+  const SIDE_COL = [Theme.hex('accent'), '#f29d30'];
 
   function mount(root, params) {
     el = root;

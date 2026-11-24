@@ -27,7 +27,7 @@ window.StatsView = (() => {
   const SURF = [7, 16, 11], RED = [255, 77, 94];
   const mix = a => SURF.map((s, i) => Math.round(s + (RED[i] - s) * a));
   const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-  const fill = i => { const c = mix(ALPHA[i]); return { bg: `rgb(${c})`, ink: lum(c) > 0.18 ? '#040806' : '#d7f5e3' }; };
+  const fill = i => { const c = mix(ALPHA[i]); return { bg: `rgb(${c})`, ink: lum(c) > 0.18 ? Theme.hex('bg') : Theme.hex('ink') }; };
   const MIN_TRIES = 10;   // a key needs this many presses before its miss rate counts
 
   const avg = (a, f) => (a.length ? a.reduce((s, x) => s + f(x), 0) / a.length : 0);

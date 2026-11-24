@@ -72,7 +72,7 @@ window.KB3D = (() => {
   key.shadow.bias = -0.0004;
   key.shadow.radius = 4;
   scene.add(key);
-  const fill = new THREE.DirectionalLight('#39ff88', 0.7);
+  const fill = new THREE.DirectionalLight(Theme.hex('accent'), 0.7);
   fill.position.set(8, 5, -6);
   scene.add(fill);
 
@@ -84,7 +84,7 @@ window.KB3D = (() => {
   mat.position.y = -0.06;
   mat.receiveShadow = true;
   scene.add(mat);
-  const grid = new THREE.GridHelper(80, 40, '#1f9e57', '#0f3a24');
+  const grid = new THREE.GridHelper(80, 40, Theme.hex('accent-dim'), '#0f3a24');
   grid.position.y = 0.005;
   grid.material.transparent = true;
   grid.material.opacity = 0.55;
@@ -129,7 +129,7 @@ window.KB3D = (() => {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.draw = text => {
       c.fillStyle = '#04100a'; c.fillRect(0, 0, 256, 128);
-      c.fillStyle = '#39ff88'; c.font = '600 54px "JetBrains Mono", monospace';
+      c.fillStyle = Theme.hex('accent'); c.font = '600 54px "JetBrains Mono", monospace';
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(text, 128, 66);
       tex.needsUpdate = true;

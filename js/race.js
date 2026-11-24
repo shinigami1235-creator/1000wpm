@@ -5,12 +5,12 @@ window.RaceView = (() => {
   const SEG = 200, ROAD = 2000, CAM_H = 1000, DEPTH = 0.84, DRAW = 160, LANES = 3;
   // Night courses in the site's terminal colours. The grid city comes first and shows up most.
   const THEMES = [
-    { name: 'Grid city', sky: ['#010402', '#062014'], ground: ['#020805', '#030a06'], rumble: ['#1f9e57', '#06301a'], road: ['#04100a', '#04120b'], lane: '#39ff88', far: '#041a0e', near: '#062615', props: 'neon', sun: '#39ff88', sunY: 0.44, hills: 'city', grid: true, win: 'rgba(57,255,136,.75)' },
+    { name: 'Grid city', sky: ['#010402', '#062014'], ground: ['#020805', '#030a06'], rumble: [Theme.hex('accent-dim'), '#06301a'], road: ['#04100a', '#04120b'], lane: Theme.hex('accent'), far: '#041a0e', near: '#062615', props: 'neon', sun: Theme.hex('accent'), sunY: 0.44, hills: 'city', grid: true, win: Theme.rgba('accent', .75) },
     { name: 'Grid city', sky: ['#010402', '#062014'], ground: ['#020805', '#030a06'], rumble: ['#1d8fa0', '#06222a'], road: ['#04100a', '#04120b'], lane: '#3ee6ff', far: '#041a0e', near: '#062615', props: 'neon', sun: '#3ee6ff', sunY: 0.44, hills: 'city', grid: true, win: 'rgba(62,230,255,.7)' },
-    { name: 'City at night', sky: ['#020604', '#0b2418'], ground: ['#060c09', '#08100c'], rumble: ['#d7f5e3', '#1f9e57'], road: ['#141a17', '#161d19'], lane: '#d7f5e3', far: '#0a1a12', near: '#07120c', props: 'lamp', sun: '#d7f5e3', sunY: 0.25, hills: 'city', win: 'rgba(57,255,136,.6)' },
-    { name: 'Coast road at night', sky: ['#01060a', '#0a2a2e'], ground: ['#1a1a12', '#1d1d14'], rumble: ['#d7f5e3', '#1f9e57'], road: ['#191b19', '#1c1e1c'], lane: '#d7f5e3', far: '#0c2a30', near: '#0a221c', props: 'palm', sun: '#d7f5e3', sunY: 0.5, hills: 'hills' },
-    { name: 'Desert at night', sky: ['#010508', '#102530'], ground: ['#231c12', '#261f14'], rumble: ['#d7f5e3', '#ff4d5e'], road: ['#1c1a17', '#1f1d1a'], lane: '#d7f5e3', far: '#2a2018', near: '#201810', props: 'cactus', sun: '#f6f3e0', sunY: 0.2, hills: 'mesa' },
-    { name: 'Snow pass at night', sky: ['#02060c', '#14243a'], ground: ['#9aa9b5', '#909fab'], rumble: ['#ff4d5e', '#d7f5e3'], road: ['#1d2126', '#20242a'], lane: '#d7f5e3', far: '#1d2c40', near: '#16222f', props: 'pine', sun: '#ffffff', sunY: 0.3, hills: 'peaks' },
+    { name: 'City at night', sky: ['#020604', '#0b2418'], ground: ['#060c09', '#08100c'], rumble: [Theme.hex('ink'), Theme.hex('accent-dim')], road: ['#141a17', '#161d19'], lane: Theme.hex('ink'), far: '#0a1a12', near: '#07120c', props: 'lamp', sun: Theme.hex('ink'), sunY: 0.25, hills: 'city', win: Theme.rgba('accent', .6) },
+    { name: 'Coast road at night', sky: ['#01060a', '#0a2a2e'], ground: ['#1a1a12', '#1d1d14'], rumble: [Theme.hex('ink'), Theme.hex('accent-dim')], road: ['#191b19', '#1c1e1c'], lane: Theme.hex('ink'), far: '#0c2a30', near: '#0a221c', props: 'palm', sun: Theme.hex('ink'), sunY: 0.5, hills: 'hills' },
+    { name: 'Desert at night', sky: ['#010508', '#102530'], ground: ['#231c12', '#261f14'], rumble: [Theme.hex('ink'), '#ff4d5e'], road: ['#1c1a17', '#1f1d1a'], lane: Theme.hex('ink'), far: '#2a2018', near: '#201810', props: 'cactus', sun: '#f6f3e0', sunY: 0.2, hills: 'mesa' },
+    { name: 'Snow pass at night', sky: ['#02060c', '#14243a'], ground: ['#9aa9b5', '#909fab'], rumble: ['#ff4d5e', Theme.hex('ink')], road: ['#1d2126', '#20242a'], lane: Theme.hex('ink'), far: '#1d2c40', near: '#16222f', props: 'pine', sun: '#ffffff', sunY: 0.3, hills: 'peaks' },
   ];
   const BOARDS = ['AULA', 'WOMIER', 'LOGA', 'ATTACK SHARK', 'CORSAIR', 'CHILKEY', 'STORMTYPER'];
 
@@ -181,7 +181,7 @@ window.RaceView = (() => {
       ctx.lineTo(W, H); ctx.fill();
       if (T.hills === 'city' && par > 0.5) {
         for (let xx = 0; xx < W; xx += 14) {
-          if (Math.sin((xx + off) * 0.37) > 0.6) { ctx.fillStyle = T.win || 'rgba(57,255,136,.6)'; ctx.fillRect(xx, H * base - amp * 0.3 - (xx % 3) * 6, 3, 3); }
+          if (Math.sin((xx + off) * 0.37) > 0.6) { ctx.fillStyle = T.win || Theme.rgba('accent', .6); ctx.fillRect(xx, H * base - amp * 0.3 - (xx % 3) * 6, 3, 3); }
         }
       }
       if (T.grid && par > 0.5) {
@@ -196,7 +196,7 @@ window.RaceView = (() => {
       const quad = (x1, y1, w1, x2, y2, w2, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x1 - w1, y1 + 0.5); ctx.lineTo(x2 - w2, y2 - 0.5); ctx.lineTo(x2 + w2, y2 - 0.5); ctx.lineTo(x1 + w1, y1 + 0.5); ctx.fill(); };
       const r1 = p1.w / 8, r2 = p2.w / 8;
       quad(p1.x, p1.y, p1.w + r1, p2.x, p2.y, p2.w + r2, T.rumble[alt]);
-      quad(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, finish ? (alt ? '#d7f5e3' : '#040806') : T.road[alt]);
+      quad(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, finish ? (alt ? Theme.hex('ink') : Theme.hex('bg')) : T.road[alt]);
       if (T.grid) {
         // a floor of grid lines that run toward the horizon
         ctx.fillStyle = T.lane;
@@ -227,10 +227,10 @@ window.RaceView = (() => {
       ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
       const k = pr.kind;
       if (k === 'board') {
-        ctx.fillStyle = '#0c1a12'; ctx.fillRect(-4, -160, 8, 160);
-        ctx.fillStyle = '#040806'; ctx.fillRect(-110, -230, 220, 80);
-        ctx.strokeStyle = '#39ff88'; ctx.lineWidth = 4; ctx.strokeRect(-110, -230, 220, 80);
-        ctx.fillStyle = '#39ff88'; ctx.font = '700 40px "Chakra Petch", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(pr.text, 0, -175);
+        ctx.fillStyle = Theme.hex('bg-3'); ctx.fillRect(-4, -160, 8, 160);
+        ctx.fillStyle = Theme.hex('bg'); ctx.fillRect(-110, -230, 220, 80);
+        ctx.strokeStyle = Theme.hex('accent'); ctx.lineWidth = 4; ctx.strokeRect(-110, -230, 220, 80);
+        ctx.fillStyle = Theme.hex('accent'); ctx.font = '700 40px "Chakra Petch", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(pr.text, 0, -175);
       } else if (k === 'neon') {
         const hgt = 260 + (pr.text.length * 37) % 140;
         ctx.fillStyle = '#020a06'; ctx.fillRect(-55, -hgt, 110, hgt);
@@ -288,12 +288,12 @@ window.RaceView = (() => {
 
     hud(ctx, st) {
       const you = st.you;
-      const G = '#39ff88', DIM = '#1f9e57', INK = '#d7f5e3', CY = '#3ee6ff';
+      const G = Theme.hex('accent'), DIM = Theme.hex('accent-dim'), INK = Theme.hex('ink'), CY = '#3ee6ff';
       // speedometer
       const cx = W - 92, cy = H - 64, r = 52;
       ctx.fillStyle = 'rgba(4,8,6,.85)'; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(57,255,136,.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.stroke();
-      ctx.strokeStyle = 'rgba(57,255,136,.15)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2); ctx.stroke();
+      ctx.strokeStyle = Theme.rgba('accent', .35); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r + 10, 0, 7); ctx.stroke();
+      ctx.strokeStyle = Theme.rgba('accent', .15); ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2); ctx.stroke();
       const f = Math.min(1, this.speedShown / 400);
       ctx.strokeStyle = you.boost > 0 ? CY : G; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 10;
       ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * (0.8 + 1.4 * f)); ctx.stroke(); ctx.shadowBlur = 0;
@@ -304,7 +304,7 @@ window.RaceView = (() => {
       // map of the course with each car on it
       const mx = 24, my = 22, mw = W - 48;
       ctx.fillStyle = 'rgba(4,8,6,.8)'; ctx.fillRect(mx, my - 4, mw, 8);
-      ctx.strokeStyle = 'rgba(57,255,136,.4)'; ctx.lineWidth = 1; ctx.strokeRect(mx + .5, my - 3.5, mw - 1, 7);
+      ctx.strokeStyle = Theme.rgba('accent', .4); ctx.lineWidth = 1; ctx.strokeRect(mx + .5, my - 3.5, mw - 1, 7);
       ctx.fillStyle = G; ctx.fillRect(mx + mw - 3, my - 10, 3, 20);
       let lastX = -99;
       const dot = (p, col, lbl, below) => {

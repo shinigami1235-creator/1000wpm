@@ -40,7 +40,7 @@ Combat.FX = (() => {
     const root = new THREE.Group();
     scene.add(root);
 
-    const WHITE = C('#ffffff'), GREEN = C('#39ff88'), CYAN = C('#3ee6ff');
+    const WHITE = C('#ffffff'), GREEN = C(Theme.hex('accent')), CYAN = C('#3ee6ff');
 
     // ---------- lines and shapes: instanced glowing boxes, rebuilt every frame ----------
     const SEG = 1600;
@@ -438,7 +438,7 @@ Combat.FX = (() => {
           burst(e.at, 10 + Math.round(30 * P2), 7 + 6 * P2, WHITE, 0.5, 0.9, P2 > 0.5 ? G.one : G.zero, { drag: 1.2, up: 0.4 });
           juice('shake', reduce ? 0 : 0.18 + 0.6 * P2);
           juice('stop', reduce ? 0 : Math.round(40 + 90 * P2));
-          if (P2 > 0.6 && canFlash()) juice('tint', tier >= 4 ? 0x3ee6ff : 0x39ff88, 0.25);
+          if (P2 > 0.6 && canFlash()) juice('tint', tier >= 4 ? 0x3ee6ff : Theme.num('accent'), 0.25);
           if (onLand) onLand(e.at.clone());
         }
         // shockwaves and spikes after the hit, facing the camera so they read as rings
@@ -465,7 +465,7 @@ Combat.FX = (() => {
     const SP = {};
 
     SP['data-spike'] = (e, cs, tg) => {
-      const S = sizeOf(tg) / 6, col = C('#39ff88'), core = C('#d7ffe8');
+      const S = sizeOf(tg) / 6, col = C(Theme.hex('accent')), core = C('#d7ffe8');
       P(tg, 'base', e.base = new V()); P(cs, 'pos', e.src = new V()); e.src.y = 0.1;
       e.spikes = [];
       e.strike = (i, h) => {

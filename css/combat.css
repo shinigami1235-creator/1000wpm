@@ -13,16 +13,16 @@
 .page-boss .wb-combo-l span { font: 400 var(--t-xs)/1 var(--f-head); color: var(--ink-2); }
 .page-boss .wb-combo-l em { font: 600 var(--t-s)/1 var(--f-head); font-style: normal; color: var(--ink-2); white-space: nowrap; }
 .page-boss .wb-cbar { grid-column: 1 / -1; position: relative; display: block; height: 3px; background: rgba(255,255,255,.08); }
-.page-boss .wb-cbar > i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--green-dim); transition: width 120ms linear; }
+.page-boss .wb-cbar > i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--accent-dim); transition: width 120ms linear; }
 .page-boss .wb-cbar small { position: absolute; right: 0; top: 6px; font: 400 10px/1 var(--f-mono); color: var(--ink-3); }
-.page-boss .wb-combo[data-t="1"] > b, .page-boss .wb-combo[data-t="1"] em { color: var(--green); }
-.page-boss .wb-combo[data-t="2"] > b { color: var(--green); text-shadow: 0 0 12px rgba(57,255,136,.55); }
-.page-boss .wb-combo[data-t="2"] em { color: var(--green); }
-.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) > b { color: #eafff2; text-shadow: 0 0 14px rgba(57,255,136,.95), 0 0 3px rgba(255,255,255,.8); }
-.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) em { color: #eafff2; }
+.page-boss .wb-combo[data-t="1"] > b, .page-boss .wb-combo[data-t="1"] em { color: var(--accent); }
+.page-boss .wb-combo[data-t="2"] > b { color: var(--accent); text-shadow: 0 0 12px rgba(var(--accent-rgb),.55); }
+.page-boss .wb-combo[data-t="2"] em { color: var(--accent); }
+.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) > b { color: var(--ink-hi); text-shadow: 0 0 14px rgba(var(--accent-rgb),.95), 0 0 3px rgba(255,255,255,.8); }
+.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) em { color: var(--ink-hi); }
 .page-boss .wb-combo[data-t="4"] > b { text-shadow: 0 0 18px rgba(62,230,255,.9), 0 0 4px #fff; }
-.page-boss :is(.wb-combo[data-t="1"], .wb-combo[data-t="2"]) .wb-cbar > i { background: var(--green); }
-.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) .wb-cbar > i { background: #eafff2; box-shadow: 0 0 8px rgba(57,255,136,.9); }
+.page-boss :is(.wb-combo[data-t="1"], .wb-combo[data-t="2"]) .wb-cbar > i { background: var(--accent); }
+.page-boss :is(.wb-combo[data-t="3"], .wb-combo[data-t="4"]) .wb-cbar > i { background: var(--ink-hi); box-shadow: 0 0 8px rgba(var(--accent-rgb),.9); }
 .page-boss .wb-combo.up > b { animation: wb-cup 420ms var(--ease-out); }
 .page-boss .wb-combo.drop > b { animation: wb-cdrop 380ms ease-out; }
 @keyframes wb-cup { 0% { transform: scale(1.45); } 100% { transform: none; } }
@@ -30,16 +30,16 @@
 
 /* spell chips sit after the attack chips in the same row */
 .page-boss .wb-spells { display: flex; flex-wrap: wrap; gap: 8px; margin-left: 14px; }
-.page-boss .wb-chip.spell { --k: var(--green); --kb: rgba(57,255,136,.09); --kl: rgba(57,255,136,.15); }
-.page-boss .wb-chip.spell small { color: var(--sc, var(--green)); }
-.page-boss .wb-chip.spell .w { color: #eafff2; }
-.page-boss .wb-chip.spell.r3, .page-boss .wb-chip.spell.r4 { box-shadow: 0 0 18px -6px var(--sc, var(--green)); }
+.page-boss .wb-chip.spell { --k: var(--accent); --kb: rgba(var(--accent-rgb),.09); --kl: rgba(var(--accent-rgb),.15); }
+.page-boss .wb-chip.spell small { color: var(--sc, var(--accent)); }
+.page-boss .wb-chip.spell .w { color: var(--ink-hi); }
+.page-boss .wb-chip.spell.r3, .page-boss .wb-chip.spell.r4 { box-shadow: 0 0 18px -6px var(--sc, var(--accent)); }
 .page-boss .wb-chip.spell.r4 { --kb: rgba(255,59,79,.12); --k: var(--red); }
 .page-boss .wb-chip.spell.on { box-shadow: inset 0 0 0 1px var(--k); }
 .page-boss .wb-chip.frozen { --k: #bfefff; --kb: rgba(191,239,255,.12); --kl: rgba(191,239,255,.2); }
 
 /* buffs and debuffs, with the other flags at the arena's top left */
-.page-boss .wb-flag.buff { color: var(--green); background: linear-gradient(rgba(57,255,136,.12), rgba(57,255,136,.12)), var(--scrim); }
+.page-boss .wb-flag.buff { color: var(--accent); background: linear-gradient(rgba(var(--accent-rgb),.12), rgba(var(--accent-rgb),.12)), var(--scrim); }
 .page-boss .wb-flag.hyper { color: #ffb066; background: linear-gradient(rgba(255,176,102,.14), rgba(255,176,102,.14)), var(--scrim); }
 .page-boss .wb-flag.root { color: var(--amber-2); background: linear-gradient(rgba(255,196,107,.14), rgba(255,196,107,.14)), var(--scrim); }
 .page-boss .wb-flag.split { color: #d6b8ff; background: linear-gradient(rgba(214,184,255,.12), rgba(214,184,255,.12)), var(--scrim); }
@@ -47,9 +47,9 @@
 .page-boss .wb-flag.stunned-target { color: #9fbcff; background: linear-gradient(rgba(61,123,255,.16), rgba(61,123,255,.16)), var(--scrim); }
 
 /* the spell name as typed, and spell damage numbers */
-.page-boss .wb-pop.spell { color: #eafff2; font-family: var(--f-mono); font-weight: 600; letter-spacing: .02em; text-shadow: 0 2px 0 #000, 0 0 16px var(--green); }
-.page-boss .dmg.you.spell { color: #eafff2; }
-.page-boss .dmg.you.huge { font-size: 52px; text-shadow: 0 0 16px rgba(57,255,136,.95), 0 3px 0 #000; }
+.page-boss .wb-pop.spell { color: var(--ink-hi); font-family: var(--f-mono); font-weight: 600; letter-spacing: .02em; text-shadow: 0 2px 0 #000, 0 0 16px var(--accent); }
+.page-boss .dmg.you.spell { color: var(--ink-hi); }
+.page-boss .dmg.you.huge { font-size: 52px; text-shadow: 0 0 16px rgba(var(--accent-rgb),.95), 0 3px 0 #000; }
 
 @media (max-width: 1000px) {
   .page-boss .wb-combo:not([hidden]) ~ .wb-tip { bottom: 84px; }

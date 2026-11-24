@@ -17,7 +17,7 @@
 //   b.blocks         the data-block plates: { mesh, list[{ bone, local, size }] } for knocking off later
 //   b.dispose()
 window.BossKit = (() => {
-  const LIME = '#39ff88';
+  const LIME = Theme.hex('accent');
 
   function create(THREE, id, opts = {}) {
     const V = THREE.Vector3;

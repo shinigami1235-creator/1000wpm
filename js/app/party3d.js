@@ -84,8 +84,8 @@ window.PartyScene = (() => {
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#010503');
-    scene.fog = new THREE.Fog('#010503', 34, 80);
+    scene.background = new THREE.Color(Theme.hex('bg-0'));
+    scene.fog = new THREE.Fog(Theme.hex('bg-0'), 34, 80);
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -95,9 +95,9 @@ window.PartyScene = (() => {
 
     // ---------- palettes, one per area ----------
     const PALS = [
-      { bg: '#010503', a: '#39ff88', b: '#1f9e57', c: '#3ee6ff', eye: '#ff4d5e' },   // relay: the hydra
+      { bg: Theme.hex('bg-0'), a: Theme.hex('accent'), b: Theme.hex('accent-dim'), c: '#3ee6ff', eye: '#ff4d5e' },   // relay: the hydra
       { bg: '#070401', a: '#f2b330', b: '#8f5f13', c: '#ff6a3d', eye: '#fff2c4' },   // market: the wraith
-      { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: '#39ff88', eye: '#ffffff' },   // transit: the train
+      { bg: '#01060a', a: '#3ee6ff', b: '#147d8f', c: Theme.hex('accent'), eye: '#ffffff' },   // transit: the train
       { bg: '#0a0402', a: '#ff7a3d', b: '#8f3a13', c: '#ffd24d', eye: '#ffd24d' },   // firmware: the golem
       { bg: '#07010a', a: '#ff4dd8', b: '#7a1f6e', c: '#3ee6ff', eye: '#ffffff' },   // core: the twins
       { bg: '#0a0300', a: '#ffb02e', b: '#8a4a0c', c: '#ff5a2e', eye: '#fff2c4' },   // foundry: golem and mites
@@ -147,7 +147,7 @@ window.PartyScene = (() => {
     wall.position.set(0, 20, -42); scene.add(wall);
     const grid = new THREE.GridHelper(160, 80, '#ffffff', '#ffffff');
     grid.material.transparent = true; grid.material.opacity = 0.28; scene.add(grid);
-    const pillarMat = edgeMat('#1f9e57', 0.35);
+    const pillarMat = edgeMat(Theme.hex('accent-dim'), 0.35);
     const pillars = [];
     for (let k = 0; k < 18; k++) {
       const side = k % 2 ? 1 : -1, h = rnd(6, 22);
@@ -259,7 +259,7 @@ window.PartyScene = (() => {
       laneCache.set(id, out.clone());
       return out;
     }
-    const colorOf = id => C(opts.color ? opts.color(id) : '#39ff88');
+    const colorOf = id => C(opts.color ? opts.color(id) : Theme.hex('accent'));
 
     // ---------- creatures ----------
     let cre = null, kind = '', foes = new Map(), st = null, deadAt = -9, feintAt = 0;

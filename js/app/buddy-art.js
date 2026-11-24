@@ -5,7 +5,7 @@
 // live character that buddy.js moves around the page.
 window.BuddyArt = (() => {
   const C = {
-    g: '#39ff88', gd: '#1f9e57', ink: '#d7f5e3', bg: '#040806', cy: '#3ee6ff', gold: '#f2c230', red: '#ff4d5e',
+    g: Theme.hex('accent'), gd: Theme.hex('accent-dim'), ink: Theme.hex('ink'), bg: Theme.hex('bg'), cy: '#3ee6ff', gold: '#f2c230', red: '#ff4d5e',
     capHi: '#2e8a58', capMid: '#1a5537', capLo: '#0c2c1c', top: '#3fae72', screen: '#03140b', screenEdge: '#0e3a24',
   };
   const EXPRESSIONS = ['happy', 'blink', 'wink', 'excited', 'proud', 'curious', 'thinking', 'surprised', 'sleepy', 'oops', 'dizzy', 'focused', 'love'];

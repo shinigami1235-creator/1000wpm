@@ -35,6 +35,14 @@ Router.register('profile', (() => {
             </dl>
           </section>
           ${window.OpsUI ? '<section class="panel" data-ops-pick aria-label="Division"></section>' : ''}
+          <section class="panel" aria-labelledby="theme-h">
+            <div class="ph" id="theme-h">// THEME</div>
+            <div class="theme-pick" role="group" aria-labelledby="theme-h">
+              ${Theme.list.map(t => `<button type="button" class="theme-sw" data-theme-id="${t.id}" aria-pressed="${t.id === Theme.id()}" style="--sw-bg:${t.bg};--sw-a:${t.accent};--sw-ink:${t.ink}">
+                <span class="theme-prev" aria-hidden="true"><i>&gt; ${e(t.name.toLowerCase())}_</i><b></b></span>
+                <span class="theme-name">${e(t.name)}</span><span class="theme-note">${e(t.note)}</span></button>`).join('')}
+            </div>
+          </section>
           <section class="panel trio">
             <div><span class="label">Coins</span><b class="mid gold">${UI.fmt(WPM.coins())}</b></div>
             <div><span class="label">Items</span><b class="mid">${WPM.owned().length}</b></div>
@@ -96,6 +104,12 @@ Router.register('profile', (() => {
     if (window.ProgressUI) { off.push(ProgressUI.profile(el, jump)); jump = false; }
     if (window.MultiUI) MultiUI.profilePanel(el.querySelector('[data-multi-prof]'));
     if (window.OpsUI) { if (pickOff) pickOff(); pickOff = OpsUI.picker(el.querySelector('[data-ops-pick]')); }
+    // a new theme reloads the page, since canvases and 3D scenes read their colours when they load
+    el.querySelectorAll('[data-theme-id]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.themeId === Theme.id()) return;
+      Theme.set(b.dataset.themeId);
+      location.reload();
+    }));
   }
 
   function editName() {
