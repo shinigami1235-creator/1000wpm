@@ -110,7 +110,7 @@ window.WorldBossNet = (() => {
       const weak = R.weakMult(st, t) > 1;
       const base = kind === 'return' ? letters * R.RETURN_X : kind === 'block' ? letters * R.BLOCK_X : letters;
       // the combat layer's multiplier (combo tier, accuracy, speed, buffs) for words; spells arrive already multiplied
-      const cm = kind === 'word' ? Math.max(0.5, Math.min(8, +opts.mult || 1)) : 1;
+      const cm = kind === 'word' ? Math.max(0.5, Math.min(20, +opts.mult || 1)) : 1;
       let dmg = Math.max(1, Math.round(base * cm * R.multiplier(st, t, opts)));
       let toShield = 0;
       if (st.shield && !opts.pierce) {

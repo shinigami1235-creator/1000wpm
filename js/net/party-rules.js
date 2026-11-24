@@ -201,7 +201,7 @@
     function startFight(at) {
       clock = at; f++;
       const A = AREAS[R.fights[f]];
-      const hp = Math.round(A.hp * sizeK * D.hp);
+      const hp = Math.round(A.hp * sizeK * D.hp * (root.Combat && root.Combat.hpScale ? root.Combat.hpScale('party') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
       boss = { key: R.fights[f], ...A, hp, maxHp: hp, dmg: Math.round(A.dmg * D.dmg) };
       phase = 'fight'; attack = null; queue.length = 0; foes = []; weakUntil = 0; relinkAt = 0; recent.clear();
       if (A.kind === 'hydra') A.heads.forEach((h, i) => addFoe({ kind: 'head', name: h, slot: i, hp: Math.round(hp / 3), maxHp: Math.round(hp / 3), regrowAt: 0 }));

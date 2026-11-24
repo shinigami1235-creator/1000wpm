@@ -239,8 +239,8 @@ Combat.FX = (() => {
 
     // ---------- basic attacks by combo tier ----------
     function shot(tier, from, to, onLand, opt = {}) {
-      const col = opt.color ? C(opt.color) : null;
-      const e = add({ from: from.clone(), to, onLand, tier, landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
+      const col = opt.color ? C(opt.color) : tier >= 1 && TIER_COL[Math.min(tier, TOP)] !== GREEN ? TIER_COL[Math.min(tier, TOP)] : null;
+      const e = add({ from: from.clone(), to, onLand, tier: Math.min(tier, 4), landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
       const dur = tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15;
       const life = tier >= 3 ? 0.3 : dur + 0.14;
       if (tier === 1) flare(from, col || GREEN, 2.2, 0.12, 1.2);
@@ -316,12 +316,14 @@ Combat.FX = (() => {
     // Fast typing used to fire one small bolt per word. Words now feed an orb in front of
     // the player, and the orb winds up and fires one attack whose size follows how much
     // went in. The tier (the combo) sets the colours.
-    const TIER_COL = [GREEN, GREEN, CYAN, WHITE, CYAN];
+    // each combo level shoots in its own colour (Combat.TIERS)
+    const TIER_COL = Combat.TIERS.map(x => (x.color ? C(x.color) : GREEN));
+    const TOP = TIER_COL.length - 1;
     const coreSpr = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: glowTex, color: '#ffffff', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0, fog: false })));
     coreSpr.visible = false; coreSpr.renderOrder = 8; root.add(coreSpr);
     const chg = { on: false, at: new V(), L: 0, show: 0, tier: 0, sh: null, spin: 0, wind: 0, pull: -1 };
     function charge(at, level, tier = 0) {
-      chg.at.copy(at); chg.L = clamp(level, 0, 1); chg.tier = clamp(tier | 0, 0, 4);
+      chg.at.copy(at); chg.L = clamp(level, 0, 1); chg.tier = clamp(tier | 0, 0, TOP);
       if (chg.L > 0 && !chg.on) { chg.on = true; chg.show = 0; }
     }
     function feed(from, at) {
@@ -394,7 +396,7 @@ Combat.FX = (() => {
     }
     const tmpPts = [];
     function release(tier, power, from, to, onLand) {
-      tier = clamp(tier | 0, 0, 4); power = clamp(power, 0, 1);
+      tier = clamp(tier | 0, 0, TOP); power = clamp(power, 0, 1);
       const col = TIER_COL[tier], WIND = reduce ? 0.08 : 0.22, FLY = 0.12 + 0.06 * (1 - power);
       const e = add({ from: from.clone(), to, onLand, landed: false, fired: false, tier, power });
       e.update = dt => {

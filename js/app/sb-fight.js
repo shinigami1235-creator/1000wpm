@@ -30,7 +30,7 @@ window.SuperFight = (() => {
     const bus = Combat.Bus();
     const emit = (n, p = {}) => bus.emit(n, p);
     const me = Combat.create({ now, rng });
-    const maxHp = Math.round(T.wpm * 26 * B.hpK);
+    const maxHp = Math.round(T.wpm * 26 * B.hpK * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('superboss') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
     const ART_MAX = 100;
 
     let hp = maxHp, phase = 1, status = 'ready', t0 = 0, endAt = 0, enraged = false, lastTick = 0;

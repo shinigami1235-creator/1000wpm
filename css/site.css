@@ -821,7 +821,28 @@ body:has(.page-boss) #rain { opacity: 0; }
 .page-boss .wb-chip .c.at, .page-boss .wb-label .c.at { box-shadow: inset 2px 0 0 var(--accent); }
 .page-boss .wb-more { align-self: center; font: 400 var(--t-s)/1 var(--f-mono); color: var(--ink-2); }
 
-/* the word stack: the current word alone and large, the next words in one line under it */
+/* the word stack: a block of lines, Monkeytype style (js/app/wordflow.js) */
+.fw-lines {
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0 .62em; max-width: 980px; margin: 0 auto;
+  height: calc(var(--fw-lines, 3) * 1.6em); overflow: hidden;
+  font: 400 30px/1.6 var(--f-mono); color: var(--ink-3); text-align: left;
+}
+.fw { position: relative; white-space: nowrap; }
+.fw i { font-style: normal; position: relative; }
+.fw.done i.ok { color: var(--ink-hi); }
+.fw.done.miss { text-decoration: underline; text-decoration-color: rgba(255,77,94,.7); text-underline-offset: 6px; }
+.fw.done i.bad, .fw.cur i.bad { color: var(--red); }
+.fw i.extra { color: #b8323e; }
+.fw.cur i.ok { color: var(--accent); }
+.fw.cur { color: var(--ink-2); }
+.fw.cur::after { content: ""; position: absolute; left: -.2em; right: -.2em; top: .2em; bottom: .15em; background: rgba(var(--accent-rgb),.08); pointer-events: none; }
+.fw.cur.wait { color: var(--ink-3); }
+.fw.cur.wait::after { background: transparent; }
+.fw i.at::before { content: ""; position: absolute; left: -1px; top: 18%; bottom: 14%; width: 2px; background: var(--accent); }
+.fw i.at.end { display: inline-block; width: .1em; }
+.typebox.focused .fw i.at::before { animation: blink 1s steps(1) infinite; }
+@media (max-width: 760px) { .fw-lines { font-size: 21px; } }
+@media (prefers-reduced-motion: reduce) { .typebox.focused .fw i.at::before { animation: none; } }
 .page-boss .boss-words { padding: 2px 0 0; outline: none; transition: opacity 150ms; }
 .page-boss .boss-words.locked { opacity: .45; }
 .page-boss .boss-queue { display: grid; justify-items: center; gap: 8px; }

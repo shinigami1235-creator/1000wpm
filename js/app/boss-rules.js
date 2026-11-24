@@ -8,7 +8,7 @@
 // with the same words at the same time without any extra messages.
 window.WorldBossRules = (() => {
   // The boss and phase names. Change them here.
-  const BOSS = { name: 'Syntax Error', maxHp: 1000000 };
+  const BOSS = { name: 'Syntax Error', maxHp: Math.round(1000000 * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('boss') : 1)) };
 
   // at:      the phase starts when HP left drops to this share
   // cycle:   ms between attacks

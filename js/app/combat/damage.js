@@ -8,7 +8,7 @@
 // these (the world boss's weak point, crits and the damage-halved debuff).
 window.Combat = window.Combat || {};
 Combat.Damage = (() => {
-  const MAX = 6;
+  const MAX = 20;   // x6 over the old top tier of x2.5, kept in proportion for Zero Limit's x8
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const accMult = acc => 0.6 + 0.4 * Math.pow(clamp(acc, 0, 1), 4);
   const speedMult = wpm => 1 + 0.3 * clamp(((wpm || 0) - 40) / 140, 0, 1);

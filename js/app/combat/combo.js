@@ -7,13 +7,22 @@
 //   c.break()  -> { combo, tier, from, down }   an unblocked hit
 //   c.set(n), c.state(), c.tierOf(n)
 window.Combat = window.Combat || {};
+// Art's combo levels (2026-11-25): names, colours and multipliers are his.
 Combat.TIERS = [
-  { at: 0, name: 'Bolt', mult: 1 },
-  { at: 10, name: 'Charged bolt', mult: 1.25 },
-  { at: 25, name: 'Twin beam', mult: 1.5 },
-  { at: 50, name: 'Rail shot', mult: 2 },
-  { at: 100, name: 'Overload', mult: 2.5 },
+  { at: 0, name: 'Bolt', mult: 1, color: null },
+  { at: 10, name: 'Pulse', mult: 1.5, color: '#2fe07a' },
+  { at: 25, name: 'Surge', mult: 2, color: '#38b6ff' },
+  { at: 50, name: 'Overdrive', mult: 3, color: '#a35bff' },
+  { at: 100, name: 'Critical', mult: 5, color: '#ffb020' },
+  { at: 200, name: 'Zero Limit', mult: 8, color: '#ff4d5e' },
 ];
+// Boss HP in each mode is multiplied by these, since Art's tiers deal more than the old ones (x1.25
+// to x2.5). A combo walk over our typo rule gives 1.2x the damage for a 93%-clean typist and 1.3x
+// to 1.9x for 96% to 99%. Each mode's own number came from its balance tool, matched to the times
+// before the change (tools/superboss/balance.js, tools/net/party-balance.js, tools/rush/sim.js);
+// the World Boss has no tool and its raiders hold long combos, so it takes the walk's middle value.
+Combat.HP_SCALE = { boss: 1.5, rush: 1.3, superboss: 1.1, party: 1 };
+Combat.hpScale = mode => (Combat.HP_SCALE && Combat.HP_SCALE[mode]) || 1;
 Combat.Combo = function Combo(opts = {}) {
   const tiers = opts.tiers || Combat.TIERS;
   let combo = 0, best = 0;

@@ -25,15 +25,20 @@ Load order: `bus`, `spells`, `combo`, `damage`, `engine`, `sfx`, `fx3d`, then th
 - A typo drops the combo to the start of the tier below: 63 goes to 25, 30 to 10, 12 to 0. One slip at combo 90 costs a tier and keeps the run alive, which played better than a full reset over a long boss fight.
 - An attack that hits you and isn't blocked breaks the combo to 0.
 
-| Tier | From combo | Shot | Damage |
-|---|---|---|---|
-| 0 | 0 | Bolt | x1 |
-| 1 | 10 | Charged bolt | x1.25 |
-| 2 | 25 | Twin beam | x1.5 |
-| 3 | 50 | Rail shot, with screen shake | x2 |
-| 4 | 100 | Overload: a rail shot wrapped in a spiral, with a shock ring | x2.5 |
+Art's combo levels (25 Nov 2026). Each has its own colour, which runs through the shot, the combo box, the word block and the level track; reaching one shows "<NAME> PROTOCOL ACTIVATED".
 
-Damage multiplier for a word = tier x accuracy x speed x buffs, capped at 6.
+| Tier | From combo | Name | Colour | Shot | Damage |
+|---|---|---|---|---|---|
+| 0 | 0 | Bolt | theme | Bolt | x1 |
+| 1 | 10 | Pulse | green `#2fe07a` | Charged bolt | x1.5 |
+| 2 | 25 | Surge | blue `#38b6ff` | Twin beam | x2 |
+| 3 | 50 | Overdrive | purple `#a35bff` | Rail shot, with screen shake | x3 |
+| 4 | 100 | Critical | gold `#ffb020` | Overload: a rail shot wrapped in a spiral, with a shock ring | x5 |
+| 5 | 200 | Zero Limit | red `#ff4d5e` | Overload for now; its own distortion wave is still to come | x8 |
+
+Damage multiplier for a word = tier x accuracy x speed x buffs, capped at 20 (x6 over the old top tier of x2.5, kept in proportion for x8).
+
+Boss HP in each mode is multiplied by `Combat.HP_SCALE` to keep fights as long as before: World Boss x1.5 (1,500,000 HP), Boss Rush x1.3, Superboss x1.1, party x1. Superboss and party were matched with their balance tools; the World Boss has none and takes the middle of a combo walk (1.2x the damage at 93% clean words, 1.3x to 1.9x at 96% to 99%). Duels keep their own x3.5 cap, so they barely change.
 
 - Accuracy: `0.6 + 0.4 * acc^4` over the last 60 keys. 100% gives x1, 95% x0.93, 90% x0.86, 80% x0.76.
 - Speed: from x1 at 40 wpm to x1.3 at 180 wpm or faster, measured on the word itself.

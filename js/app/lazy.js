@@ -21,7 +21,7 @@ window.Lazy = (() => {
     net: { need: ['words', 'combat'], css: ['css/multi.css'],
       js: ['core', 'filter', 'chat-rules', 'chat-rooms', 'chat-lines', 'chat-sim', 'friends-sim', 'rating', 'typist', 'bot', 'duel-rules', 'party-rules', 'sim', 'ws', 'net']
         .map(f => `js/net/${f}.js`).concat('js/app/multi-ui.js') },
-    boss: { need: ['words', 'combat'], js: ['js/app/boss-rules.js', 'js/app/boss-net.js', 'js/app/boss-squad.js', 'js/app/boss-audio.js', 'js/app/bosskit.js', 'js/app/operator3d.js', 'js/app/boss3d.js'] },
+    boss: { need: ['words', 'combat'], js: ['js/app/boss-rules.js', 'js/app/boss-net.js', 'js/app/boss-squad.js', 'js/app/boss-audio.js', 'js/app/bosskit.js', 'js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/boss3d.js'] },
     rushBoard: { css: ['css/rush.css'], js: ['js/app/rush/board.js'] },
     rush: { need: ['words', 'combat', 'boss', 'rushBoard'], css: ['css/rush.css'],
       js: ['data', 'director', 'fight', 'audio', 'scene', 'page'].map(f => `js/app/rush/${f}.js`) },

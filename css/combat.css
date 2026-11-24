@@ -67,3 +67,44 @@
   .page-boss .wb-combo.up > b, .page-boss .wb-combo.drop > b { animation: none; }
   .page-boss .wb-cbar > i { transition: none; }
 }
+
+/* Art's combo levels (Combat.TIERS): each level has its own colour, set as --tc by boss.js */
+.page-boss .wb-combo:not([data-t="0"]) > b, .page-boss .wb-combo:not([data-t="0"]) em { color: var(--tc); }
+.page-boss .wb-combo:not([data-t="0"]) .wb-cbar > i { background: var(--tc); }
+.page-boss .wb-combo:is([data-t="3"], [data-t="4"], [data-t="5"]) > b { color: var(--ink-hi); text-shadow: 0 0 14px var(--tc), 0 0 3px rgba(255,255,255,.8); }
+.page-boss .wb-combo[data-t="5"] > b { animation: wb-zero 900ms steps(2) infinite; }
+@keyframes wb-zero { 50% { text-shadow: 0 0 18px var(--tc), -2px 0 0 #fff, 2px 0 0 var(--tc); } }
+.page-boss .wb-combo-l span[data-k="cmult"] { font-family: var(--f-mono); }
+.page-boss .wb-combo:not([data-t="0"]) .wb-combo-l span { color: var(--tc); }
+
+/* the word block takes your level's colour: a line above and below it */
+.page-boss .boss-words:not([data-t="0"])[data-t] { box-shadow: 0 -1px 0 color-mix(in srgb, var(--tc) 70%, transparent), 0 1px 0 color-mix(in srgb, var(--tc) 70%, transparent); }
+.page-boss .boss-words[data-t]:not([data-t="0"]) .fw.cur i.ok { color: var(--tc); }
+.page-boss .boss-words[data-t]:not([data-t="0"]) .fw i.at::before { background: var(--tc); }
+.page-boss .boss-words[data-t]:not([data-t="0"]) .fw.cur::after { background: color-mix(in srgb, var(--tc) 12%, transparent); }
+
+/* the level-up banner across the arena */
+.page-boss .wb-level {
+  position: absolute; left: 50%; top: 38%; z-index: 4; transform: translateX(-50%); pointer-events: none;
+  display: grid; justify-items: center; gap: 4px; padding: 10px 26px 12px; white-space: nowrap;
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,.72) 18%, rgba(0,0,0,.72) 82%, transparent);
+}
+.page-boss .wb-level[hidden] { display: none; }
+.page-boss .wb-level small { font: 500 var(--t-xs)/1 var(--f-mono); color: var(--ink-2); letter-spacing: .08em; }
+.page-boss .wb-level b { font: 700 clamp(20px, 3vw, 34px)/1 var(--f-head); color: var(--tc); text-shadow: 0 0 18px var(--tc); letter-spacing: .02em; }
+.page-boss .wb-level span { font: 600 var(--t-s)/1 var(--f-mono); color: var(--ink-hi); }
+.page-boss .wb-level.go { animation: wb-level 1.9s var(--ease-out) forwards; }
+@keyframes wb-level { 0% { opacity: 0; transform: translateX(-50%) scale(1.25); } 12% { opacity: 1; transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* the five levels under the words: done, current, locked */
+.page-boss .wb-track { display: flex; justify-content: center; gap: 6px; margin: 10px auto 0; padding: 0; list-style: none; max-width: 760px; }
+.page-boss .wb-track li { flex: 1; display: grid; grid-template-columns: auto 1fr; column-gap: 7px; align-items: baseline; padding: 6px 9px 7px; border-top: 2px solid rgba(255,255,255,.08); }
+.page-boss .wb-track b { grid-row: span 2; font: 600 var(--t-m)/1 var(--f-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.page-boss .wb-track span { font: 600 var(--t-xs)/1.1 var(--f-head); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.page-boss .wb-track small { font: 400 var(--t-xs)/1.1 var(--f-mono); color: var(--ink-3); }
+.page-boss .wb-track li.done { border-top-color: color-mix(in srgb, var(--tc) 55%, transparent); }
+.page-boss .wb-track li.done :is(b, span) { color: color-mix(in srgb, var(--tc) 75%, var(--ink-2)); }
+.page-boss .wb-track li.on { border-top-color: var(--tc); background: color-mix(in srgb, var(--tc) 10%, transparent); }
+.page-boss .wb-track li.on :is(b, span, small) { color: var(--tc); }
+@media (max-width: 760px) { .page-boss .wb-track li { grid-template-columns: 1fr; padding: 5px 4px; } .page-boss .wb-track b { grid-row: auto; font-size: var(--t-s); } .page-boss .wb-track small { display: none; } }
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-level.go, .page-boss .wb-combo[data-t="5"] > b { animation: none; } }

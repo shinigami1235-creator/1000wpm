@@ -31,7 +31,7 @@ window.RushFight = (() => {
     const emit = o.emit || (() => {});
     const pick = o.pick || (opts => (window.WordBank ? WordBank.pick(opts) : []));
     const B = plan.boss, K = plan.knobs, tw = new Set(plan.twists);
-    const max = K.hp;
+    const max = Math.round(K.hp * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('rush') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
     const rnd = (a, b) => a + rng() * (b - a);
 
     let phase = 'new', fightAt = 0, endAt = 0, idN = 0, lastCounter = '', fightBest = 0;

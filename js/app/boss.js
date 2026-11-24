@@ -103,6 +103,7 @@ Router.register('boss', (() => {
   function resetFight() {
     newSession();
     feed = []; hist = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
+    flow = null;
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
     spellT.forEach(clearTimeout); spellT = []; grace = {}; frostMs = 0; castDmg = {}; avoid = new Set(); comboShown = false;
@@ -153,9 +154,10 @@ Router.register('boss', (() => {
           <ol class="wb-mini" data-k="mini" aria-label="Top raiders"></ol>
           <div class="wb-combo" data-k="cbox" data-t="0" hidden aria-live="off">
             <b data-k="cnum">0</b>
-            <span class="wb-combo-l"><span>Combo</span><em data-k="ctier">Bolt</em></span>
+            <span class="wb-combo-l"><span data-k="cmult">Combo</span><em data-k="ctier">Bolt</em></span>
             <i class="wb-cbar"><i data-k="cbar"></i><small data-k="cnext"></small></i>
           </div>
+          <div class="wb-level" data-k="level" hidden aria-live="polite"></div>
           <p class="wb-tip" data-k="tip" aria-live="polite"></p>
           <div class="wb-pop" data-k="pop" aria-hidden="true"></div>
           <div class="wb-banner" data-k="banner" hidden></div>
@@ -168,6 +170,7 @@ Router.register('boss', (() => {
             <div class="boss-queue" data-k="queue"></div>
             <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
           </div>
+          <ol class="wb-track" data-k="track" aria-label="Combo levels"></ol>
           <div class="wb-over" data-k="over"><button class="btn" type="button" data-k="again">New demo boss</button></div>
         </section>
         <section class="wb-squad" data-k="squad" aria-label="Your squad"></section>
@@ -416,6 +419,7 @@ Router.register('boss', (() => {
     }
     hist.push({ word, ok });
     if (hist.length > 3) hist.shift();
+    if (flow) flow.push(word, typed, ok);
     typed = ''; target = null; clean = true;
     if (stack.length < 40) stack.push(...moreWords(60));
     renderQueue();
@@ -446,8 +450,8 @@ Router.register('boss', (() => {
     me.on('tierUp', e => {
       if (!el) return;
       cSfx('tierUp', e.tier);
-      pop(e.name.toUpperCase(), 'green');
-      pushFeed({ text: `Combo ${e.combo}: ${e.name.toLowerCase()}`, cls: 'mile' });
+      levelUp(e.tier);
+      pushFeed({ text: `${e.name} activated at combo ${e.combo}: x${Combat.TIERS[e.tier].mult} damage`, cls: 'mile' });
       tip('combo');
       const b = q('cbox'); if (b) { b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); }
     });
@@ -529,6 +533,26 @@ Router.register('boss', (() => {
     }
     tick();
   }
+  // Art's combo levels: the level's colour runs through the combo box, the word block and the track
+  const tierCol = t => (Combat.TIERS[t] && Combat.TIERS[t].color) || null;
+  function levelUp(t) {
+    const L = q('level'); if (!L) return;
+    const T = Combat.TIERS[t];
+    L.style.setProperty('--tc', T.color);
+    L.innerHTML = `<small>Combo ${T.at}</small><b>${esc(T.name.toUpperCase())} PROTOCOL ACTIVATED</b><span>x${T.mult} damage</span>`;
+    L.hidden = false; L.classList.remove('go'); void L.offsetWidth; L.classList.add('go');
+    clearTimeout(levelUp.t); levelUp.t = setTimeout(() => { L.hidden = true; }, 1900);
+  }
+  function paintTrack(c) {
+    const tr = q('track'); if (!tr) return;
+    const key = c.tier + ':' + c.best;
+    if (tr.dataset.key === key) return;
+    tr.dataset.key = key;
+    tr.innerHTML = Combat.TIERS.slice(1).map((T, i) => {
+      const n = i + 1, st = n < c.tier ? 'done' : n === c.tier ? 'on' : 'off';
+      return `<li class="${st}" style="--tc:${T.color}"><b>${T.at}</b><span>${esc(T.name)}</span><small>x${T.mult}</small></li>`;
+    }).join('');
+  }
   function paintCombo(drop) {
     const box = q('cbox'); if (!box || !me) return;
     const c = me.state();
@@ -536,41 +560,28 @@ Router.register('boss', (() => {
     box.hidden = !comboShown;
     q('cnum').textContent = c.combo;
     q('ctier').textContent = c.name;
+    q('cmult').textContent = c.tier ? `x${Combat.TIERS[c.tier].mult} damage` : 'Combo';
     box.dataset.t = c.tier;
+    const col = tierCol(c.tier);
+    for (const n of [box, q('box')]) if (n) { if (col) n.style.setProperty('--tc', col); else n.style.removeProperty('--tc'); n.dataset.t = c.tier; }
+    paintTrack(c);
     q('cbar').style.width = (100 * Math.min(1, c.progress)).toFixed(1) + '%';
     q('cnext').textContent = c.next ? c.next : '';
     if (drop) { box.classList.remove('drop'); void box.offsetWidth; box.classList.add('drop'); }
   }
 
+  // the words as a block of lines, Monkeytype style (js/app/wordflow.js): typed words stay on their
+  // line, the current word is marked, and it waits dimmed while you type an attack word or a spell
   function renderQueue() {
     const box = q('queue'); if (!box) return;
-    const w = stack[0];
+    if (!flow) flow = WordFlow.create(box, { lines: 3 });
     const mineNow = !target || target.stack;
-    const t = mineNow ? typed : '';
-    let cur = '';
-    for (let i = 0; i < Math.max(w.length, t.length); i++) {
-      const a = t[i], c = w[i];
-      if (a === undefined) cur += `<span class="c${i === t.length && mineNow ? ' at' : ''}">${esc(c)}</span>`;
-      else if (c === undefined) cur += `<span class="c bad extra">${esc(a)}</span>`;
-      else cur += `<span class="c ${a === c ? 'ok' : 'bad'}">${esc(c)}</span>`;
-    }
-    if (mineNow && t.length >= w.length) cur += '<span class="c at">&nbsp;</span>';
-    // The current word sits alone on the first line and the word just typed fades
-    // out beside it. The fade keeps its own clock since the page redraws on every key.
-    const last = hist[hist.length - 1];
-    let ghost = '';
-    if (last) {
-      if (!ghostAt.has(last)) { ghostAt.clear(); ghostAt.set(last, performance.now()); }
-      const age = performance.now() - ghostAt.get(last);
-      if (age < GHOST_MS) ghost = `<span class="bw done ${last.ok ? 'hit' : 'miss'}" style="animation-delay:-${Math.round(age)}ms">${esc(last.word)}</span>`;
-    }
-    box.innerHTML =
-      `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mineNow ? '' : ' wait'}" aria-current="${mineNow}">${cur}</span></span></div>` +
-      `<div class="bq-next">${stack.slice(1, 13).map((x, i) => `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`).join('')}</div>`;
+    flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: stack.slice(1, 50) });
+    if (me && q('track') && !q('track').dataset.key) paintTrack(me.state());
     q('combo').textContent = combo;
     q('box').classList.toggle('locked', now() < lockUntil);
   }
-  const GHOST_MS = 700, ghostAt = new Map();
+  let flow = null;
   function lettersHtml(word, t, caret) {
     let s = '';
     for (let i = 0; i < word.length; i++) {
