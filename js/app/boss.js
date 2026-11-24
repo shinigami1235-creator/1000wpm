@@ -215,7 +215,7 @@ Router.register('boss', (() => {
 
     renderQueue();
     tip('start');
-    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels });
+    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, bossId: 'syntax' });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = 'The boss needs an internet connection to draw.'; });
 

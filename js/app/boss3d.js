@@ -324,7 +324,7 @@ window.BossScene = (() => {
       kit.lights = [
         new THREE.HemisphereLight('#b8c4cc', '#06080a', 0.4),
         new THREE.DirectionalLight('#f2f6ff', 2.6),
-        new THREE.DirectionalLight(Theme.hex('accent'), 1.5),
+        new THREE.DirectionalLight(kit.tips ? kit.glowColor : Theme.hex('accent'), kit.tips ? 2.2 : 1.5),   // Syntax Error: a red rim
         new THREE.DirectionalLight('#9fe8ff', 1.0),
       ];
       kit.lights[1].position.set(-8, 16, 14);
@@ -349,6 +349,41 @@ window.BossScene = (() => {
       const front = (b, top) => own(b).filter(o => o.position.z > 0.5 && (top ? o.position.y > 0 : o.position.y <= 0));
       kit.shedSets = [own(B0.shL), own(B0.shR), front(B0.chest, true), front(B0.chest, false)];
       kit.shed = [];
+      // Syntax Error's lightning: short arcs that crackle round a gauntlet through a wind-up, and a
+      // stream from the open claw to the raid on the reach (Art's Data Erasure); redrawn jagged each
+      // frame so it flickers, all in one line mesh
+      if (kit.tips) {
+        const MAXSEG = 900, arcPos = new Float32Array(MAXSEG * 6);
+        const arcGeo = keep(new THREE.BufferGeometry()); arcGeo.setAttribute('position', new THREE.BufferAttribute(arcPos, 3));
+        const arcMat = keep(new THREE.LineBasicMaterial({ color: C(kit.glowColor, 2.4), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        const arcLines = new THREE.LineSegments(arcGeo, arcMat); arcLines.frustumCulled = false; scene.add(arcLines);
+        const hot = keep(new THREE.LineBasicMaterial({ color: C('#ffffff', 1.6), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        const core2 = new THREE.LineSegments(arcGeo, hot); core2.frustumCulled = false; core2.scale.setScalar(1); scene.add(core2);
+        const live = [], a0 = new V(), d = new V(), side = new V(), up = new V(0, 1, 0), p0 = new V(), p1 = new V();
+        kit.arcs = {
+          add(a, b, life, jit = 0.6, segs = 10) { if (live.length < 60) live.push({ a: a.clone(), b: b.clone(), life, left: life, jit, segs }); },
+          tick(dt) {
+            let n = 0;
+            for (let i = live.length - 1; i >= 0; i--) { live[i].left -= dt; if (live[i].left <= 0) live.splice(i, 1); }
+            for (const r of live) {
+              d.subVectors(r.b, r.a); side.crossVectors(d, up).normalize(); if (side.lengthSq() < 0.1) side.set(1, 0, 0);
+              const up2 = new V().crossVectors(side, d).normalize();
+              p0.copy(r.a);
+              for (let k = 1; k <= r.segs && n < MAXSEG; k++) {
+                const f = k / r.segs, j = k === r.segs ? 0 : r.jit * Math.sin(f * Math.PI);
+                p1.copy(r.a).addScaledVector(d, f).addScaledVector(side, (Math.random() - 0.5) * 2 * j).addScaledVector(up2, (Math.random() - 0.5) * 2 * j);
+                arcPos.set([p0.x, p0.y, p0.z, p1.x, p1.y, p1.z], n * 6); n++;
+                // a fork now and then
+                if (Math.random() < 0.12 && n < MAXSEG) { a0.copy(p1).addScaledVector(side, (Math.random() - 0.5) * r.jit * 3).addScaledVector(up2, (Math.random() - 0.5) * r.jit * 3); arcPos.set([p1.x, p1.y, p1.z, a0.x, a0.y, a0.z], n * 6); n++; }
+                p0.copy(p1);
+              }
+            }
+            arcGeo.setDrawRange(0, n * 2); arcGeo.attributes.position.needsUpdate = true;
+            arcLines.visible = core2.visible = n > 0;
+          },
+        };
+        kit.glitchAt = 0;
+      }
     }
     const vF = new V(), vG = new V();
     function shedArmour(i, instant) {
@@ -1160,7 +1195,7 @@ window.BossScene = (() => {
       let busy = 0, tremble = 0, gl = 0, gr = 0, trail = 0;
       const sl = current(t, 'slam');
       if (sl) {
-        const K = KIND[sl.kind] || KIND.slam;
+        const K = sl.kind === 'lunge' && kit.POSES.reach ? ['coil', 'reach', 0.12] : KIND[sl.kind] || KIND.slam;
         // the strike swings in over the last K[2] seconds, so the blow has landed at the hit
         // time and the hit-stop holds the landed pose
         const sAt = sl.h - K[2], w = clamp((t - sl.s) / (sAt - sl.s), 0, 1), after = t - sl.h;
@@ -1215,6 +1250,7 @@ window.BossScene = (() => {
       if (phase >= 4 && !reduce && !busy) { Bn.armL.rotation.x += Math.sin(at * 3.1) * 0.12; Bn.armR.rotation.x += Math.sin(at * 2.7 + 1) * 0.12; }
       kit.group.visible = !(dead && deadBoom);
       kit.update(at, dt);
+      if (kit.arcs) syntaxFx(t, dt, gl, gr, trail);
       // sparks streak off the striking fist so the arc of the blow stays on screen
       if (trail) {
         kit.group.updateMatrixWorld(true);
@@ -1222,6 +1258,35 @@ window.BossScene = (() => {
         kit.fists[1].at.getWorldPosition(vG); burst(vG, 5, 2.5, RED, 0.3, 2); burst(vG, 2, 1.5, WHITE, 0.3, 1);
       }
       shedTick(dt);
+    }
+    // Syntax Error's own effects: lightning round a charging gauntlet, the Data Erasure stream from
+    // the open claw to the raid on the reach, and red glitch bits shed from the shard tips
+    const vA = new V(), vB = new V();
+    function syntaxFx(t, dt, gl, gr, trail) {
+      kit.group.updateMatrixWorld(true);
+      for (const [i, g] of [[0, gl], [1, gr]]) {
+        if (g < 0.25 || reduce) continue;
+        if (Math.random() < g * 0.9) {
+          kit.fists[i].at.getWorldPosition(vA);
+          vB.copy(vA).add(new V((Math.random() - 0.5) * 6, (Math.random() - 0.3) * 5, (Math.random() - 0.5) * 6));
+          kit.arcs.add(vA, vB, 0.08 + Math.random() * 0.08, 0.5 + g * 0.6, 7);
+        }
+      }
+      const ln = current(t, 'slam');
+      if (ln && ln.kind === 'lunge' && t >= ln.h - 0.12 && t < ln.h + 0.45 && !reduce) {
+        kit.fists[1].at.getWorldPosition(vA);
+        root.localToWorld(vB.copy(raidPos[RAID])); vB.y += 0.8;
+        for (let k = 0; k < 3; k++) kit.arcs.add(vA, vB, 0.06, 1.4, 16);
+        if (Math.random() < 0.5) burst(vB, 6, 6, RED, 1, 6);
+      }
+      kit.glitchAt -= dt;
+      if (kit.glitchAt <= 0 && !reduce) {
+        kit.glitchAt = 0.07;
+        const tip = kit.tips[Math.floor(Math.random() * kit.tips.length)];
+        kit.tail.localToWorld(vA.copy(tip));
+        burst(vA, 2, 1.2, RED, -0.3, 1.5);
+      }
+      kit.arcs.tick(dt);
     }
     function motion(t, at, dt) {
       const M = MOVE[phase];

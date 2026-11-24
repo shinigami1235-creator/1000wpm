@@ -7,6 +7,9 @@
 //   king    Kernel King        sits on a throne with a cable cape and giant gauntlets
 //   half    Half-Compiled      one side armour, the other a bare wireframe body
 //   brute   Overclocked Brute  gorilla stance, cracked armour, steam vents
+//   syntax  Syntax Error       the World Boss (Gemini sheet, 25 Nov 2026): gunmetal armour with red
+//                              seams, horns and a V visor, a red triangle core, open claws, and no
+//                              legs: it floats on a cluster of shards
 //
 //   const b = BossKit.create(THREE, 'siege', { scale })
 //   b.group          add to the scene; the feet (or the hover point) sit at y = 0
@@ -27,7 +30,7 @@ window.BossKit = (() => {
     for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483647;
     const rnd = (a = 0, b = 1) => { seed = (seed * 16807) % 2147483647; return a + (seed / 2147483647) * (b - a); };
     const S = BOSSES[id] || BOSSES.siege;
-    const G = new THREE.Color(LIME), RED = new THREE.Color('#ff3a2e');
+    const G = new THREE.Color(S.glow || LIME), RED = new THREE.Color('#ff3a2e');
 
     // ---------- materials ----------
     // panel lines: glowing grooves drawn in each piece's own space, broken up so they read
@@ -55,7 +58,7 @@ window.BossKit = (() => {
       return m;
     }
     const plate = own(seamed(new THREE.MeshStandardMaterial({ color: S.metal || '#4f5962', metalness: 0.5, roughness: 0.55, flatShading: true })));
-    const dark = own(seamed(new THREE.MeshStandardMaterial({ color: '#272e34', metalness: 0.6, roughness: 0.5, flatShading: true }), 0.6));
+    const dark = own(seamed(new THREE.MeshStandardMaterial({ color: S.dark || '#272e34', metalness: 0.6, roughness: 0.5, flatShading: true }), 0.6));
     const seam = own(new THREE.LineBasicMaterial({ color: G.clone().multiplyScalar(S.seam || 1.6), transparent: true, opacity: 0.9, toneMapped: false }));
     const glow = c => own(new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(2.6), toneMapped: false }));
     const wire = own(new THREE.MeshBasicMaterial({ color: G.clone().multiplyScalar(1.8), wireframe: true, toneMapped: false, transparent: true, opacity: 0.85 }));
@@ -131,9 +134,11 @@ window.BossKit = (() => {
       piece(B.hips, cbox(W * 0.7, 1.3, D * 0.85, 0.2, 1, 0.8), [0, -0.3, 0]);
       // the core in a hex frame on the chest
       const core = new THREE.Group(); core.position.set(0, S.coreY || 0.3, D / 2 + 0.05); B.chest.add(core);
-      piece(core, own(new THREE.CylinderGeometry(1.25, 1.25, 0.5, 6)), [0, 0, -0.1], [Math.PI / 2, 0, 0], dark, 0.9);
-      const gem = new THREE.Mesh(own(new THREE.CylinderGeometry(0.95, 0.95, 0.6, 6)), glow(LIME));
+      const sides = S.tri ? 3 : 6;   // Syntax Error's core is an inverted triangle
+      const fr = piece(core, own(new THREE.CylinderGeometry(S.tri ? 1.55 : 1.25, S.tri ? 1.55 : 1.25, 0.5, sides)), [0, 0, -0.1], [Math.PI / 2, 0, 0], dark, 0.9);
+      const gem = new THREE.Mesh(own(new THREE.CylinderGeometry(S.tri ? 1.05 : 0.95, S.tri ? 1.05 : 0.95, 0.6, sides)), glow(S.glow || LIME));
       gem.rotation.x = Math.PI / 2; core.add(gem);
+      // a three-sided cylinder turned to face forward already has a vertex pointing down: the inverted triangle
       // pectoral plates either side of the core, angled into a V, and a collar ridge
       for (const sx of [-1, 1]) {
         piece(B.chest, cbox(W * 0.4, S.chestH * 0.46, 0.6, 0.3, 0.9, 1), [sx * W * 0.27, S.chestH * 0.18, D / 2 + 0.1], [0.14, sx * 0.3, sx * -0.12]);
@@ -148,6 +153,19 @@ window.BossKit = (() => {
     }
     function head() {
       const h = S.head;
+      if (S.horns) {
+        // a narrow helmet, two horns swept up and back, a V visor and a brow ridge
+        piece(B.neck, cbox(1.1, 0.9, 1.1, 0.3), [0, 0.1, 0], [0, 0, 0], dark, 0);
+        piece(B.head, cbox(h * 0.95, h * 1.05, h * 1.1, 0.3, 0.7, 1), [0, h * 0.45, 0]);
+        piece(B.head, cbox(h * 1.05, h * 0.3, h * 0.6, 0.3, 0.8, 1), [0, h * 0.78, h * 0.32], [0.2, 0, 0], dark);
+        piece(B.head, cbox(h * 0.85, h * 0.42, h * 0.45, 0.3, 1, 0.6), [0, h * 0.1, h * 0.45], [0.15, 0, 0]);
+        for (const sx of [-1, 1]) {
+          piece(B.head, own(new THREE.ConeGeometry(h * 0.16, h * 0.85, 4)), [sx * h * 0.38, h * 1.12, -h * 0.05], [-0.35, 0, sx * -0.38], dark, 0);
+          const v = new THREE.Mesh(own(new THREE.BoxGeometry(h * 0.42, h * 0.1, 0.18)), glow(S.glow || '#ff3a2e'));
+          v.position.set(sx * h * 0.2, h * 0.5, h * 0.58); v.rotation.z = sx * 0.32; B.head.add(v);
+        }
+        return;
+      }
       piece(B.neck, cbox(1.0, 0.9, 1.0, 0.3), [0, 0.1, 0], [0, 0, 0], dark, 0);
       piece(B.head, cbox(h * 1.05, h * 1.1, h * 1.15, 0.28, 0.82, 1), [0, h * 0.45, 0]);
       const vis = new THREE.Mesh(own(new THREE.BoxGeometry(h * 0.85, h * 0.16, 0.2)), glow('#ff3a2e'));
@@ -172,6 +190,23 @@ window.BossKit = (() => {
       piece(B['fore' + k], cbox(t * 1.45, f * 0.28, t * 1.4, 0.25), [0, -f * 0.82, 0], [0, 0, 0], dark);   // cuff
       piece(B['arm' + k], cbox(t * 1.1, u * 0.35, t * 1.15, 0.3), [0, -u * 0.25, 0], [0, 0, 0], dark);   // bicep band
       const F = S.fist * (o.fist || 1);
+      if (S.bands) for (const y of [0.25, 0.62]) {   // glowing bands around the gauntlet
+        const b = new THREE.Mesh(own(new THREE.BoxGeometry(t * 1.32, 0.14, t * 1.28)), glow(S.glow));
+        b.position.set(0, -f * y, 0); B['fore' + k].add(b);
+      }
+      if (S.claws) {
+        // an open claw: a palm, and four two-jointed fingers and a thumb on a claw bone that curls them into a fist
+        piece(B['hand' + k], cbox(F * 0.95, F * 0.7, F * 0.75, 0.22), [0, -F * 0.35, 0]);
+        const c = B['claw' + k] = new THREE.Group(); c.position.set(0, -F * 0.68, F * 0.1); B['hand' + k].add(c);
+        for (let i = 0; i < 4; i++) {
+          const x = (i - 1.5) * F * 0.23, fg = new THREE.Group(); fg.position.set(x, 0, 0); fg.rotation.z = (i - 1.5) * -0.08; c.add(fg);
+          piece(fg, cbox(F * 0.18, F * 0.42, F * 0.2, 0.3), [0, -F * 0.2, 0], [0, 0, 0], dark, 0.3);
+          piece(fg, cbox(F * 0.15, F * 0.4, F * 0.17, 0.3, 0.3, 1), [0, -F * 0.56, F * 0.07], [0.35, 0, 0], plate, 0.2);   // tip
+        }
+        const th = new THREE.Group(); th.position.set(sx * -F * 0.48, F * 0.2, F * 0.12); th.rotation.z = sx * 0.6; c.add(th);
+        piece(th, cbox(F * 0.2, F * 0.5, F * 0.22, 0.3, 0.4, 1), [0, -F * 0.25, 0], [0.3, 0, 0], dark, 0.2);
+        return;
+      }
       piece(B['hand' + k], cbox(F, F * 0.95, F * 0.9, 0.22), [0, -F * 0.5, 0]);
       for (let i = 0; i < 3; i++) piece(B['hand' + k], cbox(F * 0.28, F * 0.35, F * 0.3, 0.3), [(i - 1) * F * 0.3, -F * 1.05, F * 0.15], [0.3, 0, 0], plate, 0.3);
     }
@@ -235,6 +270,23 @@ window.BossKit = (() => {
         const s = 1.1 - t * 0.6;
         const m = piece(tail, cbox(s, s * 0.8, s * 1.1, 0.25), [p.x, p.y, p.z], [0, 0, 0], plate, 0.4);
         m.lookAt(prev.x + tail.position.x, prev.y, prev.z); prev = p;
+      }
+    }
+    if (id === 'syntax') {
+      // no legs: a cluster of shards tapers from the hips to a point, sways and sheds red glitch bits
+      const tail = new THREE.Group(); B.hips.add(tail); extra.tail = tail;
+      piece(tail, cbox(2.6, 6.8, 1.8, 0.1, 1, 0.05), [0, -3.9, 0], [0, 0, 0], plate, 0.5);
+      const ring = [[-1.6, 5.2, 0.4], [1.6, 5.0, 0.4], [-0.9, 4.2, 1.0], [0.9, 4.4, 1.0], [-1.3, 4.6, -0.8], [1.3, 4.4, -0.8], [0, 5.8, -1.0], [0, 3.6, 1.2]];
+      for (const [x, len, z] of ring) {
+        const m = piece(tail, cbox(1.0, len, 0.8, 0.12, 1, 0.08), [x, -len / 2 - 0.4, z], [z * -0.12, 0, x * 0.1], rnd() < 0.5 ? dark : plate, 0.4);
+        m.userData.shard = true;
+      }
+      extra.tips = [new V(0, -7.3, 0), new V(-1.9, -5.6, 0.4), new V(1.9, -5.4, 0.4), new V(0, -6.2, -1.0)];
+      // red lines down the chest from the shoulders to the core, and vents on the back
+      for (const sx of [-1, 1]) {
+        const l = new THREE.Mesh(own(new THREE.BoxGeometry(0.14, S.chestH * 0.55, 0.14)), glow(S.glow));
+        l.position.set(sx * S.chestW * 0.2, S.chestH * 0.12, S.chestD / 2 + 0.22); l.rotation.z = sx * 0.45; B.chest.add(l);
+        for (let i = 0; i < 3; i++) piece(B.chest, cbox(0.9, 0.35, 0.5, 0.3), [sx * 1.3, S.chestH * 0.25 - i * 0.6, -S.chestD / 2 - 0.15], [0, 0, 0], dark, 0);
       }
     }
     if (id === 'king') {
@@ -397,7 +449,10 @@ window.BossKit = (() => {
       const pulse = 0.85 + 0.15 * Math.sin(t * 3.2);
       coreGlow.scale.setScalar(4.2 * pulse);
       if (L == null) group.position.y = (opts.y || 0) + Math.sin(t * 0.9) * 0.25;
-      if (extra.tail) extra.tail.rotation.y = Math.sin(t * 0.8) * 0.18;
+      if (extra.tail) {
+        extra.tail.rotation.y = Math.sin(t * 0.8) * 0.18;
+        if (id === 'syntax') { extra.tail.rotation.x = Math.sin(t * 1.1) * 0.06; extra.tail.rotation.z = Math.sin(t * 0.7 + 1) * 0.05; }
+      }
       for (const st of steam) for (const p of st.ps) {
         const u = (t * 0.45 + p.k) % 1;
         p.s.position.copy(st.at).add(new V(Math.sin(u * 6 + p.k * 9) * 0.3, u * 4.5, -u * 1.5));
@@ -422,7 +477,7 @@ window.BossKit = (() => {
     for (const m of meshes) if (m.material !== wire && m.geometry) { m.geometry.computeBoundingBox(); parts[partOf(m)].push(m); }
     blockList.forEach(b => { b.size0 = b.size; });
     return {
-      group, bones: B, core, pose, mix, update, POSES, parts, meshes,
+      group, bones: B, core, pose, mix, update, POSES, parts, meshes, tips: extra.tips || null, tail: extra.tail, glowColor: S.glow || LIME,
       // hide the data-block plates as health drops: f is the share of health left
       plates(f) { blockList.forEach((b, i) => { if (b.fallK == null) b.size = ((i * 0.6180339) % 1) < f + 0.05 ? b.size0 : 0; }); },
       blocks: { mesh: blockMesh, list: blockList },
@@ -443,6 +498,9 @@ window.BossKit = (() => {
       neckY: 2.2, head: 1.7, shoulderX: 3.5, shoulderY: 1.4, pauldron: [2.9, 2.5, 2.9], upper: 3.0, fore: 2.8, limb: 1.3, fist: 2.0, fistL: 1.0, fistR: 1.55, plates: 10, floaters: 4, metal: '#4a5258' },
     half: { height: 16, legs: { hip: 5.8, hipX: 1.3, thigh: 2.9, shin: 2.8, thick: 1.25 }, chestY: 2.4, chestW: 4.8, chestH: 4.2, chestD: 2.8, waistTaper: 0.62,
       neckY: 2.2, head: 1.6, shoulderX: 3.1, shoulderY: 1.4, pauldron: [2.5, 2.0, 2.5], upper: 3.0, fore: 2.8, limb: 1.2, fist: 1.5, plates: 8, floaters: 3 },
+    syntax: { height: 17, legs: null, hover: 5.9, chestY: 2.6, chestW: 6.6, chestH: 4.8, chestD: 3.6, waistTaper: 0.55,
+      neckY: 2.3, neckZ: 0.5, head: 1.75, shoulderX: 4.1, shoulderY: 1.5, pauldron: [3.9, 3.3, 3.9], upper: 3.0, fore: 3.3, limb: 1.6, fist: 2.3,
+      plates: 6, floaters: 10, glow: '#ff2a3a', metal: '#3a3f47', dark: '#1d2026', seam: 1.4, tri: true, horns: true, claws: true, bands: true },
     brute: { height: 14, legs: { hip: 3.6, hipX: 1.8, thigh: 2.0, shin: 1.8, thick: 1.6 }, chestY: 2.6, chestW: 6.0, chestH: 4.6, chestD: 3.8, waistTaper: 0.6,
       neckY: 1.9, neckZ: 1.2, head: 1.7, shoulderX: 3.8, shoulderY: 1.3, pauldron: [3.2, 2.8, 3.2], upper: 3.8, fore: 3.8, limb: 1.6, fist: 2.4, plates: 14, floaters: 6, seam: 2.2 },
   };
@@ -472,6 +530,15 @@ window.BossKit = (() => {
     if (id === 'warden') base.idle = { ...base.idle, armL: [-0.55, 0.4, -0.25], foreL: [-0.9, 0, 0], armR: [0.1, 0, 0.22], foreR: [-0.6, 0, 0] };
     if (id === 'colossus') base.idle = { ...base.idle, chest: [0.18, 0, 0], armL: [0.2, 0, -0.55], armR: [0.2, 0, 0.55], foreL: [-0.6, 0, 0], foreR: [-0.6, 0, 0] };
     if (id === 'king') base.idle = { ...base.idle, thighL: [-1.5, 0, -0.15], thighR: [-1.5, 0, 0.15], shinL: [1.5, 0, 0], shinR: [1.5, 0, 0], armL: [-0.75, 0, -0.35], armR: [-0.75, 0, 0.35], foreL: [-0.6, 0, 0], foreR: [-0.6, 0, 0], chest: [-0.05, 0, 0] };
+    if (id === 'syntax') {
+      // floats leaning over the raid, claws half open; fists close for the slams and the punch,
+      // and the punch becomes a reach: the claw thrown open at the raid (Art's Data Erasure)
+      base.idle = { chest: [0.16, 0, 0], head: [0.12, 0, 0], armL: [0.18, 0, -0.5], armR: [0.18, 0, 0.5], foreL: [-0.55, 0, 0], foreR: [-0.55, 0, 0], clawL: [0.55, 0, 0], clawR: [0.55, 0, 0], handL: [0, 0.4, 0], handR: [0, -0.4, 0] };
+      for (const n of ['raise', 'slam', 'guard', 'coil']) base[n] = { ...base[n], clawL: [1.5, 0, 0], clawR: [1.5, 0, 0] };
+      base.reach = { chest: [0.35, 0.45, 0], spine: [0.15, 0.1, 0], armR: [-1.55, -0.15, 0.15], foreR: [-0.05, 0, 0], handR: [0.25, -0.5, 0], clawR: [-0.25, 0, 0], armL: [0.7, 0, -0.55], foreL: [-1.4, 0, 0], clawL: [1.3, 0, 0], head: [0.25, -0.35, 0], _hips: -0.6 };
+      base.beam = { ...base.beam, clawL: [-0.3, 0, 0], clawR: [-0.3, 0, 0] };
+      base.roar = { ...base.roar, clawL: [-0.35, 0, 0], clawR: [-0.35, 0, 0] };
+    }
     if (id === 'brute') base.idle = { ...base.idle, chest: [0.6, 0, 0], spine: [0.25, 0, 0], head: [-0.65, 0, 0], armL: [0.05, 0, -0.32], armR: [0.05, 0, 0.32], foreL: [-0.2, 0, 0], foreR: [-0.2, 0, 0], thighL: [-0.35, 0, -0.25], thighR: [-0.35, 0, 0.25], shinL: [0.45, 0, 0], shinR: [0.45, 0, 0], _hips: -0.3 };
     return base;
   }
