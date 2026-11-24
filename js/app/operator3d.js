@@ -7,9 +7,11 @@
 //   op.at(name, t)   hold one moment of an animation, for stills and tests
 //   op.dispose()
 //
-// Until the generated models arrive (Higgsfield, 2026-11-24 plan) each base is a stand-in mannequin
-// built here, on the same skeleton the models will be fitted to. Bones follow the usual humanoid
-// names (Hips, Spine, LeftArm...), the character faces +z and its left side is +x.
+// A base with a generated model (MODELS: Tripo via Higgsfield, rigged in Blender on this skeleton,
+// 2026-11-24) loads it in the background and swaps it in when it arrives; until then, and for bases
+// without one, the base is a stand-in mannequin built here. Bones follow the usual humanoid names
+// (Hips, Spine, LeftArm...), the character faces +z and its left side is +x. Every bone's bind pose
+// has no rotation, so a pose means the same thing on the model and on the stand-in.
 // Poses are written in body terms (shoulder forward 40, elbow 80, in degrees) and turned into bone
 // rotations by limb(), so a sign can't flip an elbow backward (joint-check skill).
 window.Operator = (() => {
@@ -21,6 +23,8 @@ window.Operator = (() => {
     ['beanie', 'Beanie'], ['visor', 'Visor'], ['scarf', 'Scarf'], ['mask', 'Face mask'],
     ['wrist', 'Wrist device'], ['pouches', 'Belt pouches'], ['harness', 'Harness'],
   ];
+  // the virtual keyboard each operator types on: their weapon, so its shape and colour are theirs to pick
+  const KB_STYLES = [['slab', 'Slab'], ['split', 'Split'], ['arc', 'Arc'], ['compact', 'Compact']];
   const ANIMS = [['idle', 'Idle'], ['walk', 'Walk'], ['type', 'Typing'], ['victory', 'Victory'], ['defeat', 'Defeat']];
   const ONCE = [['cast', 'Cast'], ['hit', 'Hit']];
 
@@ -38,6 +42,7 @@ window.Operator = (() => {
         pants: '#16181b', boots: '#2b2d31', gloves: '#1b1c1e', straps: '#4a4a32', beanie: '#3c3d2e', scarf: '#24232b', glow: 'theme',
       },
       acc: { beanie: !f, visor: true, scarf: true, mask: false, wrist: true, pouches: true, harness: true },
+      kb: { style: 'slab', color: 'theme' },
     };
   }
   // a saved or pasted preset with anything missing filled from the base's defaults
@@ -47,16 +52,45 @@ window.Operator = (() => {
     const colors = {}, acc = {};
     for (const [z] of ZONES) colors[z] = hex(p && p.colors && p.colors[z]) || d.colors[z];
     for (const [a] of ACCESSORIES) acc[a] = p && p.acc && typeof p.acc[a] === 'boolean' ? p.acc[a] : d.acc[a];
-    return { v: 1, base, colors, acc };
+    const k = (p && p.kb) || {};
+    const kb = { style: KB_STYLES.some(([id]) => id === k.style) ? k.style : d.kb.style, color: hex(k.color) || d.kb.color };
+    return { v: 1, base, colors, acc, kb };
+  }
+
+  // generated bodies: full detail for you, lite for everyone else; the far crowd stays stand-ins
+  const MODELS = { male: { full: 'assets/operators/male.glb', lite: 'assets/operators/male-lite.glb' } };
+  const tpl = {}, live = new Set();
+  let loading = null;
+  // the generated texture is dark (navy leather, black cargo pants) and the arenas are dim, so lift it:
+  // a brighter base colour, plus the texture glowing faintly so the shadow side keeps its detail
+  const LIFT = { color: 1.7, glow: 0.32, rough: 0.62 };
+  let THREE = null;
+  function brighten(m) {
+    if (!m || !m.map) return;
+    m.color.setScalar(LIFT.color);
+    m.emissiveMap = m.map; m.emissive.setScalar(1); m.emissiveIntensity = LIFT.glow;
+    m.roughness = LIFT.rough; m.metalness = 0;
+    m.side = THREE.DoubleSide;   // a fold at the elbow turns a few faces round; draw their backs instead of a hole
+    m.needsUpdate = true;
+  }
+  function loadModels(T) {
+    if (T) THREE = T;
+    if (!loading) loading = import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
+      const L = new GLTFLoader();
+      return Promise.all(Object.entries(MODELS).flatMap(([base, lods]) => Object.entries(lods).map(([lod, url]) =>
+        L.loadAsync(url).then(g => { g.scene.traverse(o => o.isMesh && brighten(o.material)); tpl[base + ':' + lod] = g.scene; }).catch(e => console.warn('operator model', url, e)))));
+    }).then(() => { for (const op of live) op._upgrade(); });
+    return loading;
   }
 
   const R = Math.PI / 180;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ease = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
+  const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
 
   // ---------- poses, in degrees ----------
   // lean: spine forward; side: toward the character's left; twist: chest turned to its left
-  // arm/leg: { flex: forward, abd: out to its side, twist }; elbow and knee: bend; wrist: bend forward
+  // arm/leg: { flex: forward, abd: out to its side, twist: + rolls it inward }; elbow and knee: bend; wrist: bend forward
   const BLANK = () => ({ lean: 0, side: 0, twist: 0, nod: 0, turn: 0, tilt: 0,
     armL: { flex: 0, abd: 0, twist: 0 }, armR: { flex: 0, abd: 0, twist: 0 }, elbowL: 0, elbowR: 0, wristL: 0, wristR: 0,
     legL: { flex: 0, abd: 0 }, legR: { flex: 0, abd: 0 }, kneeL: 0, kneeR: 0 });
@@ -82,27 +116,21 @@ window.Operator = (() => {
     walk(t) {
       const p = BLANK(), ph = t * Math.PI * 2 / 1.05, s = Math.sin(ph), c = Math.cos(ph);
       p.lean = 4; p.twist = 5 * s; p.nod = 2; p.turn = -2 * s;
-      p.legL = { flex: 24 * s, abd: 3 }; p.legR = { flex: -24 * s, abd: 3 };
-      p.kneeL = 6 + 50 * Math.max(0, c); p.kneeR = 6 + 50 * Math.max(0, -c);
+      p.legL = { flex: 21 * s, abd: 3 }; p.legR = { flex: -21 * s, abd: 3 };
+      // the knee bends through the swing on a smooth curve, with no corner where it starts
+      p.kneeL = 6 + 50 * Math.pow((1 + c) / 2, 2); p.kneeR = 6 + 50 * Math.pow((1 - c) / 2, 2);
       p.armL = { flex: -18 * s, abd: 8, twist: 0 }; p.armR = { flex: 18 * s, abd: 8, twist: 0 };
-      p.elbowL = 16 + 14 * Math.max(0, -s); p.elbowR = 16 + 14 * Math.max(0, s); p.wristL = p.wristR = 5;
+      p.elbowL = 16 + 14 * Math.pow((1 - s) / 2, 2); p.elbowR = 16 + 14 * Math.pow((1 + s) / 2, 2); p.wristL = p.wristR = 5;
       return p;
     },
-    type(t) {
-      // standing at a terminal: forearms level, hands on the keys, quick strokes from each hand
-      const p = BLANK(), kl = Math.max(0, Math.sin(t * 17)), kr = Math.max(0, Math.sin(t * 19 + 1.3));
-      p.lean = 9; p.nod = 16 + Math.sin(t * 2.1) * 2; p.turn = Math.sin(t * 0.8) * 4;
-      p.armL = { flex: 36 + kl * 3, abd: 14, twist: 0 }; p.armR = { flex: 36 + kr * 3, abd: 14, twist: 0 };
-      p.elbowL = 80 - kl * 6; p.elbowR = 80 - kr * 6; p.wristL = -8 + kl * 10; p.wristR = -8 + kr * 10;
-      p.legL = { flex: 3, abd: 5 }; p.legR = { flex: -1, abd: 5 }; p.kneeL = p.kneeR = 6;
-      return p;
-    },
+    type(t) { return typePose(t, strokes(t)); },
     victory(t) {
       const p = BLANK(), b = Math.abs(Math.sin(t * 4));
       p.lean = -6; p.nod = -16; p.turn = Math.sin(t * 2) * 6;
-      p.armL = { flex: 150, abd: 32, twist: 0 }; p.armR = { flex: 150, abd: 32, twist: 0 };
-      p.elbowL = p.elbowR = 22 + b * 10; p.wristL = p.wristR = -10;
-      p.legL = { flex: 4 + b * 10, abd: 6 }; p.legR = { flex: 4 + b * 10, abd: 6 }; p.kneeL = p.kneeR = 6 + b * 22;
+      // both fists up in a V, upper arms rolled so the forearms come in over the head (Gid's references)
+      p.armL = { flex: 142, abd: 38, twist: 50 }; p.armR = { flex: 142, abd: 38, twist: 50 };
+      p.elbowL = p.elbowR = 28 + b * 8; p.wristL = p.wristR = 0;
+      p.legL = { flex: 4 + b * 10, abd: 9 }; p.legR = { flex: 4 + b * 10, abd: 9 }; p.kneeL = p.kneeR = 6 + b * 22;
       return p;
     },
     defeat(t) {
@@ -115,14 +143,14 @@ window.Operator = (() => {
     // one-shots: weight 0 to 1 and back over their length
     cast(t) {
       // the right arm draws back with the chest turned away, then throws forward
-      const p = A.idle(t), wind = ease(t / 0.32), strike = ease((t - 0.32) / 0.14);
+      const p = A.idle(t), wind = smooth(t / 0.4), strike = ease((t - 0.4) / 0.22);
       const w = mixPose(BLANK(), { ...BLANK(), lean: 2, twist: -22, nod: -4, turn: 14,
-        armR: { flex: -28, abd: 34, twist: 0 }, elbowR: 70, wristR: 10, armL: { flex: 30, abd: 12, twist: 0 }, elbowL: 72,
+        armR: { flex: -28, abd: 34, twist: 0 }, elbowR: 70, wristR: 10, armL: { flex: 30, abd: 12, twist: 40 }, elbowL: 72,
         legL: { flex: 8, abd: 6 }, legR: { flex: -10, abd: 6 }, kneeL: 10, kneeR: 8 }, wind);
       const s = { ...BLANK(), lean: 10, twist: 20, nod: 2, turn: -12,
         armR: { flex: 86, abd: 6, twist: 0 }, elbowR: 6, wristR: -6, armL: { flex: 24, abd: 16, twist: 0 }, elbowL: 64,
         legL: { flex: 16, abd: 6 }, legR: { flex: -14, abd: 6 }, kneeL: 14, kneeR: 6 };
-      return { pose: strike > 0 ? mixPose(w, s, strike) : w, len: 0.95, base: p };
+      return { pose: strike > 0 ? mixPose(w, s, strike) : w, len: 1.15, base: p };
     },
     hit(t) {
       const p = { ...BLANK(), lean: -14, side: 5, nod: -18, turn: 8,
@@ -131,7 +159,22 @@ window.Operator = (() => {
       return { pose: p, len: 0.5, base: A.idle(t) };
     },
   };
-  const ONCE_LEN = { cast: 0.95, hit: 0.5 };
+  const ONCE_LEN = { cast: 1.15, hit: 0.5 };
+  // standing at the keyboard, after Gid's posture references (2026-11-24): back straight, upper arms
+  // close to the body, elbows near 90, forearms level and angled in so the hands meet the keys about
+  // shoulder width apart, eyes ahead with a small nod; each hand strikes from the wrist and elbow
+  // each hand rises and falls with the forearm (1 is the bottom of a stroke) and the wrist follows a
+  // beat behind, so the hands bob over the keys instead of twitching
+  const strokes = t => [Math.sin(t * 12.5), Math.sin(t * 14 + 1.3)];
+  function typePose(t, [kl, kr]) {
+    const p = BLANK();
+    const wl = Math.sin(t * 12.5 - 0.9), wr = Math.sin(t * 14 + 0.4);
+    p.lean = 2; p.nod = 8 + Math.sin(t * 2.1) * 1.5; p.turn = Math.sin(t * 0.8) * 3;
+    p.armL = { flex: 14 + kl * 2, abd: 18, twist: 42 }; p.armR = { flex: 14 + kr * 2, abd: 18, twist: 42 };
+    p.elbowL = 90 - kl * 10; p.elbowR = 90 - kr * 10; p.wristL = 3 + wl * 7; p.wristR = 3 + wr * 7;
+    p.legL = { flex: 2, abd: 6 }; p.legR = { flex: -1, abd: 6 }; p.kneeL = p.kneeR = 4;
+    return p;
+  }
 
   function create(THREE, preset, opts = {}) {
     const V = THREE.Vector3;
@@ -141,7 +184,8 @@ window.Operator = (() => {
     const group = new THREE.Group();
     const owned = [];
     const own = x => (owned.push(x), x);
-    let B = {}, mats = {}, accs = {}, built = null;
+    let B = {}, mats = {}, accs = {}, built = null, isModel = false;
+    const model = () => (opts.tiny ? null : tpl[P.base + ':' + (lite ? 'lite' : 'full')] || tpl[P.base + ':full'] || null);
 
     // ---------- materials, one set per character so two operators can differ ----------
     function mat(zone) {
@@ -152,6 +196,7 @@ window.Operator = (() => {
     function paint() {
       for (const [z] of ZONES) {
         const v = P.colors[z], m = mats[z];
+        if (!m) continue;
         const hex = v === 'theme' ? (window.Theme ? Theme.hex('accent') : '#39ff88') : v;
         if (z === 'glow') m.emissive.set(hex); else m.color.set(hex);
       }
@@ -170,7 +215,24 @@ window.Operator = (() => {
     const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
     const rbox = (w, h, d, r) => (THREE.RoundedBoxGeometry && !opts.tiny ? new THREE.RoundedBoxGeometry(w, h, d, lite ? 1 : 2, r) : box(w, h, d));
 
+    // the generated body: a copy of the loaded model on its own bones (geometry and texture are shared)
+    function buildModel(t) {
+      B = {}; mats = {}; accs = {};
+      const root = t.clone(true);
+      root.name = 'operator';
+      root.traverse(o => { if (o.isBone) B[o.name] = o; });
+      root.traverse(o => {
+        if (!o.isSkinnedMesh) return;
+        const sk = o.skeleton;
+        o.bind(new THREE.Skeleton(sk.bones.map(b => B[b.name]), sk.boneInverses.map(m => m.clone())), o.bindMatrix);
+        o.frustumCulled = false; o.userData.zone = 'model';
+      });
+      return root;
+    }
     function build() {
+      const t = model();
+      isModel = !!t;
+      if (t) return buildModel(t);
       const S = BASES[P.base], k = S.scale;
       B = {}; mats = {}; accs = {};
       for (const [z] of ZONES) mats[z] = mat(z);
@@ -304,37 +366,145 @@ window.Operator = (() => {
       if (built) { group.remove(built); }
       while (owned.length) owned.pop().dispose();
       built = build();
-      compact(built);
+      if (!isModel) compact(built);
       group.add(built);
       paint(); showAcc();
       rest = {}; for (const n in B) rest[n] = B[n].position.clone();
+      // each limb's direction at rest, and the turn that straightens a rest bend in elbows and knees,
+      // so 0 means a straight limb hanging down on both the stand-in and the model
+      dirs = {}; straight = {};
+      for (const [n, c] of Object.entries(CHILD)) dirs[n] = rest[c].clone().normalize();
+      for (const n of ['LeftForeArm', 'RightForeArm', 'LeftLeg', 'RightLeg']) straight[n] = new THREE.Quaternion().setFromUnitVectors(dirs[n], dirs[B[n].parent.name]);
+      legs = {};
+      for (const s of ['Left', 'Right']) legs[s] = { a: rest[s + 'Leg'].length(), c: rest[s + 'Foot'].length(), drop: -(rest[s + 'Leg'].y + rest[s + 'Foot'].y) };
+      placeKb(); buildKb();
     }
-    let rest = {};
-    rebuild();
+    // ---------- the virtual keyboard ----------
+    // keys are one instanced mesh, so a board costs three draw calls; it hangs off the body, not the
+    // hands, sits under the fingertips of the typing pose and fades in while the operator types
+    let kb = null, kbV = 0, kbAt = new V(), lastStroke = [0, 0];
+    const KEY = 0.032;   // key pitch, well over a real 19 mm key so the board reads from the arena camera
+    function kbLayout(style) {
+      const keys = [];   // [x, z, w, side, rotY]
+      const rows = style === 'compact' ? [10, 10, 9] : [12, 12, 11, 10];
+      rows.forEach((n, r) => { for (let i = 0; i < n; i++) keys.push([(i - (n - 1) / 2) * KEY + r * KEY * 0.25, (r - rows.length / 2) * KEY, 1]); });
+      keys.push([0, (rows.length / 2) * KEY, style === 'compact' ? 4 : 6]);   // space
+      if (style === 'split') for (const k of keys) { const s = k[0] >= 0 ? 1 : -1; k[0] += s * KEY * 1.6; k[4] = -s * 0.22; }
+      if (style === 'arc') for (const k of keys) { const a = k[0] / 0.26; k[4] = -a; k[0] = Math.sin(a) * 0.26; k[1] = k[1] - (1 - Math.cos(a)) * 0.26; }
+      for (const k of keys) k[3] = k[0] >= 0 ? 0 : 1;   // 0: under the left hand (+x), 1: the right
+      return keys;
+    }
+    function kbColor() { const v = P.kb.color; return v === 'theme' ? (window.Theme ? Theme.hex('accent') : '#39ff88') : v; }
+    function buildKb() {
+      if (kb) { group.remove(kb.group); kb.parts.forEach(x => x.dispose()); kb = null; }
+      if (opts.tiny) return;
+      const layout = kbLayout(P.kb.style), g = new THREE.Group(), parts = [];
+      const c = new THREE.Color(kbColor());
+      const glow = (o) => { const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }); parts.push(m); return m; };
+      // the plate under the keys and its glowing rim
+      const xs = layout.map(k => k[0]), zs = layout.map(k => k[1]);
+      const w = Math.max(...xs) - Math.min(...xs) + KEY * 2.6, d = Math.max(...zs) - Math.min(...zs) + KEY * 2.2;
+      const plateGeo = new THREE.PlaneGeometry(w, d); plateGeo.rotateX(-Math.PI / 2); parts.push(plateGeo);
+      const plate = new THREE.Mesh(plateGeo, glow(0.16)); plate.position.y = -0.004;
+      const rimGeo = new THREE.EdgesGeometry(plateGeo); parts.push(rimGeo);
+      const rim = new THREE.LineSegments(rimGeo, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      parts.push(rim.material); rim.position.y = -0.004;
+      if (P.kb.style !== 'arc' && P.kb.style !== 'split') g.add(plate, rim);
+      else for (const s of [1, -1]) {   // one plate per half for the split and the curve
+        const half = layout.filter(k => (k[0] >= 0 ? 1 : -1) === s);
+        const hx = half.reduce((a, k) => a + k[0], 0) / half.length, hz = half.reduce((a, k) => a + k[1], 0) / half.length;
+        const pg = new THREE.PlaneGeometry(w / 2 - KEY * 0.4, d); pg.rotateX(-Math.PI / 2); parts.push(pg);
+        const eg = new THREE.EdgesGeometry(pg); parts.push(eg);
+        const pm = new THREE.Mesh(pg, plate.material), rm = new THREE.LineSegments(eg, rim.material);
+        for (const o of [pm, rm]) { o.position.set(hx, -0.004, hz); o.rotation.y = half[0][4] || 0; g.add(o); }
+      }
+      const capGeo = new THREE.BoxGeometry(KEY * 0.8, 0.004, KEY * 0.8); parts.push(capGeo);
+      const capMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }); parts.push(capMat);
+      const caps = new THREE.InstancedMesh(capGeo, capMat, layout.length);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new V(), pos = new V(), up = new V(0, 1, 0);
+      layout.forEach((k, i) => { caps.setMatrixAt(i, m4.compose(pos.set(k[0], 0, k[1]), q.setFromAxisAngle(up, k[4] || 0), sc.set(k[2] + (k[2] > 1 ? (k[2] - 1) * 0.25 : 0), 1, 1))); caps.setColorAt(i, c); });
+      caps.frustumCulled = false; g.add(caps);
+      g.rotation.x = -0.22;   // far edge up, like a real keyboard
+      g.position.copy(kbAt); g.visible = false;
+      group.add(g);
+      kb = { group: g, caps, layout, base: c.clone(), flash: new Float32Array(layout.length), parts, mats: [plate.material, rim.material, capMat], op: [0.16, 0.9, 0.85] };
+    }
+    // where the board sits: under the fingertips at the bottom of a stroke
+    function placeKb() {
+      apply(typePose(0, [1, 1]));   // the bottom of a stroke: fingers on the keys
+      group.updateMatrixWorld(true);
+      const a = B.LeftHand.getWorldPosition(new V()), b = B.RightHand.getWorldPosition(new V());
+      group.worldToLocal(a); group.worldToLocal(b);
+      kbAt.copy(a).add(b).multiplyScalar(0.5).add(new V(0, -0.04, 0.07));
+    }
+    const kc = new THREE.Color(), white = new THREE.Color(0xffffff);
+    function kbTick(dt, typing, tt) {
+      if (!kb) return;
+      kbV += ((typing ? 1 : 0) - kbV) * Math.min(1, dt * 7);
+      kb.group.visible = kbV > 0.02;
+      if (!kb.group.visible) return;
+      kb.group.scale.set(0.7 + 0.3 * kbV, 1, 0.85 + 0.15 * kbV);
+      kb.mats.forEach((m, i) => { m.opacity = kb.op[i] * kbV; });
+      // a key lights under each stroke, on that hand's half of the board
+      if (typing) {
+        const st = strokes(tt);
+        for (const h of [0, 1]) {
+          if (st[h] > 0.85 && lastStroke[h] <= 0.85) {
+            const pick = kb.layout.map((k, i) => (k[3] === h ? i : -1)).filter(i => i >= 0);
+            kb.flash[pick[Math.floor(Math.random() * pick.length)]] = 1;
+          }
+          lastStroke[h] = st[h];
+        }
+      }
+      for (let i = 0; i < kb.flash.length; i++) {
+        kb.flash[i] *= Math.exp(-dt * 9);
+        kc.copy(kb.base).multiplyScalar(0.55).lerp(white, kb.flash[i] * 0.7);
+        kb.caps.setColorAt(i, kc);
+      }
+      kb.caps.instanceColor.needsUpdate = true;
+    }
+
+    const CHILD = { LeftArm: 'LeftForeArm', RightArm: 'RightForeArm', LeftForeArm: 'LeftHand', RightForeArm: 'RightHand',
+      LeftUpLeg: 'LeftLeg', RightUpLeg: 'RightLeg', LeftLeg: 'LeftFoot', RightLeg: 'RightFoot' };
+    let rest = {}, dirs = {}, straight = {}, legs = {};
 
     // ---------- applying a pose ----------
-    const DOWN = new V(0, -1, 0), qT = new THREE.Quaternion(), dir = new V(), q0 = new THREE.Quaternion(), qw = new THREE.Quaternion();
-    const S = () => BASES[P.base];
+    const qT = new THREE.Quaternion(), dir = new V(), q0 = new THREE.Quaternion(), qw = new THREE.Quaternion(), X = new V(1, 0, 0);
+    // a limb swings forward (about the body's side-to-side axis), then out toward its side, the way a
+    // shoulder or hip moves; the shortest-arc turn used before spun a raised arm a quarter turn about
+    // its own length, so the elbow bent toward the head and the wrist device ended up on the inside
+    const qa = new THREE.Quaternion(), qf = new THREE.Quaternion(), qd = new THREE.Quaternion(), axs = new V(), sx = new V(), DOWN = new V(0, -1, 0);
     function limb(b, side, { flex = 0, abd = 0, twist = 0 }) {
       const f = flex * R, a = abd * R;
-      dir.set(side * Math.sin(a), -Math.cos(a) * Math.cos(f), Math.cos(a) * Math.sin(f)).normalize();
-      b.quaternion.setFromUnitVectors(DOWN, dir);
-      if (twist) b.quaternion.multiply(qT.setFromAxisAngle(DOWN, -twist * R));
+      qf.setFromAxisAngle(X, -f);
+      dir.set(0, -Math.cos(f), Math.sin(f));
+      qa.setFromAxisAngle(axs.copy(dir).cross(sx.set(side, 0, 0)).normalize(), a);
+      b.quaternion.copy(qa).multiply(qf).multiply(qd.setFromUnitVectors(dirs[b.name], DOWN));
+      if (twist) b.quaternion.multiply(qT.setFromAxisAngle(dirs[b.name], side * twist * R));   // mirrored, so + rolls either arm inward
     }
+    function hinge(b, deg) { b.quaternion.setFromAxisAngle(X, deg * R).multiply(straight[b.name]); }
     function apply(p) {
-      const k = S().scale;
       for (const n of ['Spine', 'Spine1', 'Spine2']) B[n].rotation.set(p.lean / 3 * R, p.twist / 3 * R, -p.side / 3 * R);
       B.Neck.rotation.set(p.nod * 0.4 * R, p.turn * 0.4 * R, -p.tilt * 0.4 * R);
       B.Head.rotation.set(p.nod * 0.6 * R, p.turn * 0.6 * R, -p.tilt * 0.6 * R);
+      // the collarbone lifts once an arm goes past shoulder height, as a real shoulder does; the arm
+      // keeps its direction, so only the shoulder line moves
+      for (const [s, x, arm] of [['Left', 1, p.armL], ['Right', -1, p.armR]]) {
+        const lift = Math.max(0, arm.flex - 70) * 0.25 + Math.max(0, arm.abd - 50) * 0.35;
+        B[s + 'Shoulder'].rotation.set(0, 0, x * lift * R);
+      }
       limb(B.LeftArm, 1, p.armL); limb(B.RightArm, -1, p.armR);
-      B.LeftForeArm.rotation.set(-p.elbowL * R, 0, 0); B.RightForeArm.rotation.set(-p.elbowR * R, 0, 0);
+      B.LeftArm.quaternion.premultiply(q0.copy(B.LeftShoulder.quaternion).invert());
+      B.RightArm.quaternion.premultiply(q0.copy(B.RightShoulder.quaternion).invert());
+      hinge(B.LeftForeArm, -p.elbowL); hinge(B.RightForeArm, -p.elbowR);
       B.LeftHand.rotation.set(-p.wristL * R, 0, 0); B.RightHand.rotation.set(-p.wristR * R, 0, 0);
       limb(B.LeftUpLeg, 1, p.legL); limb(B.RightUpLeg, -1, p.legR);
-      B.LeftLeg.rotation.set(p.kneeL * R, 0, 0); B.RightLeg.rotation.set(p.kneeR * R, 0, 0);
-      // the lower foot sits on the floor: drop the hips by what the bent legs lost in height
-      const a = 0.43 * k, c = 0.42 * k;
-      const reach = (l, kn) => { const f = l.flex * R, ab = l.abd * R; return (a * Math.cos(f) + c * Math.cos(kn * R - f)) * Math.cos(ab); };
-      const lost = (a + c) - Math.max(reach(p.legL, p.kneeL), reach(p.legR, p.kneeR));
+      hinge(B.LeftLeg, p.kneeL); hinge(B.RightLeg, p.kneeR);
+      // the lower foot sits on the floor: move the hips by the height the legs lost or gained against rest
+      const reach = (L, l, kn) => { const f = l.flex * R, ab = l.abd * R; return (L.a * Math.cos(f) + L.c * Math.cos(kn * R - f)) * Math.cos(ab); };
+      // a soft minimum of the two legs, so the hips glide instead of jumping when the feet swap
+      const la = legs.Left.drop - reach(legs.Left, p.legL, p.kneeL), lb = legs.Right.drop - reach(legs.Right, p.legR, p.kneeR), k = 0.035;
+      const lost = Math.min(la, lb) - k * Math.log(1 + Math.exp(-Math.abs(la - lb) / k));
       B.Hips.position.y = rest.Hips.y - lost;
       // feet stay level with the ground whatever the leg does
       group.updateMatrixWorld(true);
@@ -346,6 +516,8 @@ window.Operator = (() => {
       }
     }
 
+    rebuild();   // after the pose code above, since placing the keyboard poses the body once
+
     // ---------- playing ----------
     let anim = 'idle', t = 0, prev = null, blend = 1, once = null;
     function poseAt(name, tt) { return (A[name] || A.idle)(tt); }
@@ -354,37 +526,47 @@ window.Operator = (() => {
       if (prev && blend < 1) p = mixPose(poseAt(prev.name, prev.t), p, ease(blend));
       if (once) {
         const r = A[once.name](once.t), len = ONCE_LEN[once.name];
-        const w = once.name === 'hit' ? Math.sin(clamp(once.t / len, 0, 1) * Math.PI) : (once.t < len - 0.3 ? 1 : 1 - ease((once.t - (len - 0.3)) / 0.3));
-        p = mixPose(p, r.pose, clamp(once.name === 'cast' ? Math.min(w, ease(once.t / 0.12)) : w, 0, 1));
+        // the cast eases in over 0.2 s and back to idle over its last 0.45 s
+        const w = once.name === 'hit' ? Math.sin(clamp(once.t / len, 0, 1) * Math.PI) : Math.min(smooth(once.t / 0.2), 1 - smooth((once.t - (len - 0.45)) / 0.45));
+        p = mixPose(p, r.pose, clamp(w, 0, 1));
       }
       apply(p);
     }
     const ctl = {
       group, get bones() { return B; }, get preset() { return JSON.parse(JSON.stringify(P)); },
-      height: () => 1.8 * S().scale,
+      height: () => 1.8 * BASES[P.base].scale,
+      get model() { return isModel; },
       play(name) { if (!A[name] || ONCE_LEN[name] || name === anim) return; prev = { name: anim, t }; anim = name; t = 0; blend = 0; },
       once(name) { if (ONCE_LEN[name]) once = { name, t: 0 }; },
       update(dt) {
         t += dt; if (prev) { prev.t += dt; blend = Math.min(1, blend + dt / 0.25); if (blend >= 1) prev = null; }
         if (once) { once.t += dt; if (once.t > ONCE_LEN[once.name]) once = null; }
         frame();
+        kbTick(dt, anim === 'type', t);
       },
       // hold one moment: an animation, or a one-shot at time tt over idle
       at(name, tt) {
         prev = null; once = null;
         if (ONCE_LEN[name]) { anim = 'idle'; t = tt; once = { name, t: tt }; } else { anim = name; t = tt; }
         frame();
+        kbV = anim === 'type' ? 0.98 : 0; lastStroke = [1, 1]; kbTick(1 / 60, anim === 'type', t);
       },
       set(next) {
-        const n = clean(next), rebuildNeeded = n.base !== P.base;
+        const n = clean(next), rebuildNeeded = n.base !== P.base, kbChanged = n.kb.style !== P.kb.style || n.kb.color !== P.kb.color;
         P = n;
-        if (rebuildNeeded) rebuild(); else { paint(); showAcc(); }
+        if (rebuildNeeded || !isModel !== !model()) rebuild(); else { paint(); showAcc(); if (kbChanged) buildKb(); }
+        if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
         frame();
       },
-      repaint() { paint(); },
-      dispose() { if (built) group.remove(built); while (owned.length) owned.pop().dispose(); },
+      repaint() { paint(); if (P.kb.color === 'theme') buildKb(); },
+      dispose() { live.delete(ctl); if (built) group.remove(built); while (owned.length) owned.pop().dispose(); if (kb) kb.parts.forEach(x => x.dispose()); },
+      // tests: hold an exact pose given in body terms, missing parts filled from a blank pose
+      _pose(p) { prev = null; once = null; const b = BLANK(); for (const k in p) b[k] = typeof p[k] === 'object' ? { ...b[k], ...p[k] } : p[k]; apply(b); },
+      // the model for this base finished loading: rebuild on it, keeping the animation where it was
+      _upgrade() { if (!isModel && model()) { rebuild(); frame(); } },
     };
     frame();
+    if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
     return ctl;
   }
 
@@ -405,6 +587,7 @@ window.Operator = (() => {
     const p = defaults(r() < 0.5 ? 'male' : 'female');
     for (const z of Object.keys(PAL)) p.colors[z] = pick(PAL[z]);
     p.colors.beanie = pick(['#3c3d2e', '#26282b', '#5a2b2b', '#2b3a4a']);
+    p.kb = { style: pick(KB_STYLES)[0], color: r() < 0.5 ? 'theme' : pick(['#39ff88', '#4fd8ff', '#ff4fd8', '#ffb84f', '#b48cff', '#ff5a5a']) };
     p.acc.beanie = r() < 0.5; p.acc.visor = r() < 0.7; p.acc.mask = r() < 0.25; p.acc.harness = r() < 0.6; p.acc.pouches = r() < 0.7;
     return p;
   }
@@ -444,5 +627,5 @@ window.Operator = (() => {
     return { meshes, dispose() { parts.forEach(g => g.dispose()); mat.dispose(); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, defaults, clean, random, mine, crowd, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
+  return { create, defaults, clean, random, mine, crowd, loadModels, MODELS, KB_STYLES, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
 })();

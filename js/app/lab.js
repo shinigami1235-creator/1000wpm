@@ -35,6 +35,13 @@ Router.register('lab', (() => {
             <div class="lab-colors" data-colors></div>
           </div>
           <div class="lab-group">
+            <span class="label">Keyboard</span>
+            <div class="seg" role="group" aria-label="Keyboard shape" data-kb>
+              ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
+            </div>
+            <div class="lab-colors" data-kbc></div>
+          </div>
+          <div class="lab-group">
             <span class="label">Accessories</span>
             <div class="lab-acc" data-acc></div>
           </div>
@@ -65,6 +72,17 @@ Router.register('lab', (() => {
       P.colors[z] = e.target.value;
       const code = e.target.parentElement.querySelector('code'); if (code) code.textContent = e.target.value;
       apply();
+    });
+    // the keyboard only shows while typing, so changing it starts the typing animation
+    const showKb = () => { if (op) { op.play('type'); markAnim('type'); } };
+    el.querySelector('[data-kb]').addEventListener('click', e => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      P.kb.style = b.dataset.v; apply(); paintForm(); showKb();
+    });
+    el.querySelector('[data-kbc]').addEventListener('input', e => {
+      if (e.target.type === 'checkbox') P.kb.color = e.target.checked ? 'theme' : Theme.hex('accent');
+      else P.kb.color = e.target.value;
+      apply(); paintForm(); showKb();
     });
     el.querySelector('[data-acc]').addEventListener('change', e => {
       const a = e.target.dataset.acc; if (!a) return;
@@ -100,6 +118,11 @@ Router.register('lab', (() => {
         <input type="color" value="${hex}" data-zone="${z}" ${theme ? 'disabled' : ''} aria-label="${esc(name)} colour">
         ${z === 'glow' ? `<span class="lab-theme"><input type="checkbox" data-zone="glow" ${theme ? 'checked' : ''}> Theme</span>` : `<code>${hex}</code>`}</label>`;
     }).join('');
+    el.querySelectorAll('[data-kb] [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === P.kb.style)));
+    const kt = P.kb.color === 'theme', kh = kt ? Theme.hex('accent') : P.kb.color;
+    el.querySelector('[data-kbc]').innerHTML = `<label class="lab-color"><span>Glow</span>
+      <input type="color" value="${kh}" ${kt ? 'disabled' : ''} aria-label="Keyboard colour">
+      <span class="lab-theme"><input type="checkbox" ${kt ? 'checked' : ''}> Theme</span></label>`;
     el.querySelector('[data-acc]').innerHTML = Operator.ACCESSORIES.map(([a, name]) =>
       `<label class="lab-switch"><input type="checkbox" data-acc="${a}" ${P.acc[a] ? 'checked' : ''}><span>${esc(name)}</span></label>`).join('');
   }
@@ -157,7 +180,7 @@ Router.register('lab', (() => {
       ctl.update();
       renderer.render(scene, camera);
     });
-    window._lab = { op: () => op, at: (n, t) => { hold = true; op.at(n, t); }, play: () => { hold = false; }, view: a => { const d = camera.position.distanceTo(ctl.target); camera.position.set(Math.sin(a) * d, 1.25, Math.cos(a) * d); ctl.update(); renderer.render(scene, camera); } };
+    window._lab = { op: () => op, at: (n, t) => { hold = true; op.at(n, t); }, play: () => { hold = false; }, bg: hex => { scene.background.set(hex); }, view: (a, dist, h) => { const d = dist || camera.position.distanceTo(ctl.target); camera.position.set(Math.sin(a) * d, h || 1.25, Math.cos(a) * d); ctl.update(); renderer.render(scene, camera); } };
     stop = () => {
       live = false; renderer.setAnimationLoop(null); ro.disconnect(); ctl.dispose();
       op.dispose(); op = null;
