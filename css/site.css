@@ -756,6 +756,17 @@ body:has(.page-boss) #rain { opacity: 0; }
 .page-boss .wb-cover-phases li { white-space: nowrap; }
 .page-boss .wb-cover-phases li + li::before { content: "→"; margin: 0 8px; color: rgba(255,42,58,.6); }
 .page-boss .wb-cover .btn kbd { font: inherit; font-size: 12px; color: var(--bg); opacity: .65; border: 1px solid currentColor; padding: 2px 5px; border-radius: 3px; }
+.page-boss .wb-cover-live { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; margin: 0 0 20px; max-width: 380px; }
+.page-boss .wb-cover-tag { font: 600 var(--t-xs)/1 var(--f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--bg); background: var(--red); padding: 4px 7px; }
+.page-boss .wb-cover-ph { font: 500 var(--t-s)/1.2 var(--f-head); color: var(--red); }
+.page-boss .wb-cover-hp { grid-column: 1 / -1; display: block; height: 6px; background: rgba(255,77,94,.16); }
+.page-boss .wb-cover-hp i { display: block; height: 100%; background: var(--red); box-shadow: 0 0 10px rgba(255,77,94,.6); }
+.page-boss .wb-cover-n { grid-column: 1 / -1; font: 400 var(--t-s)/1.2 var(--f-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* the attack state: the boss flares and shudders, red light washes the floor */
+.page-boss .wb-cover.live .wb-cover-boss { filter: drop-shadow(0 0 30px rgba(255,42,58,.6)) saturate(1.25); animation: wb-hover 5.6s ease-in-out infinite, wb-rage 2.4s steps(1) infinite; }
+.page-boss .wb-cover.live::after { background: radial-gradient(60% 80% at 68% 0%, rgba(255,42,58,.3), transparent 70%); }
+@keyframes wb-rage { 0%, 88%, 100% { translate: -40% 0; } 90% { translate: calc(-40% - 6px) 2px; } 93% { translate: calc(-40% + 5px) -2px; } 96% { translate: calc(-40% - 2px) 0; } }
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-cover.live .wb-cover-boss { animation: none; } }
 @media (max-width: 760px) {
   .page-boss .wb-cover { grid-template-columns: 1fr; gap: 8px; min-height: 0; padding: 12px 16px 24px; }
   .page-boss .wb-cover::after { bottom: auto; top: calc(12px + 40vh); height: 30%; }

@@ -3,6 +3,7 @@
 //
 //   WorldBossNet.connect({ id, name })    -> Promise<state>   join the current fight
 //   WorldBossNet.now()                    -> ms               the fight clock (server time)
+//   WorldBossNet.peek()                   -> Promise<{ hp, maxHp, phase, raiders, defeatedAt, startedAt } | null>  without joining
 //   WorldBossNet.sendDamage(letters, opt) -> void             one correctly typed word from the stack, or one spell hit
 //                                                             opt: { crit, jam } from the player's streak and missed blocks
 //                                                             plus the combat layer's { mult, tier, pierce, color } and,
@@ -306,6 +307,12 @@ window.WorldBossNet = (() => {
         return { ok: true };
       },
       onState(fn) { stateSubs.add(fn); return () => stateSubs.delete(fn); },
+      // the fight as it stands, without joining it (the cover before the fight)
+      peek() {
+        const s = st || load();
+        if (!s) return Promise.resolve(null);
+        return Promise.resolve({ hp: s.hp, maxHp: s.maxHp, phase: R.phaseOf(s.hp / s.maxHp), raiders: s.raiders.filter(r => r.id !== 'you').length + 1, defeatedAt: s.defeatedAt, startedAt: s.startedAt });
+      },
       onHit(fn) { hitSubs.add(fn); return () => hitSubs.delete(fn); },
       onEvent(fn) { eventSubs.add(fn); return () => eventSubs.delete(fn); },
       async newBoss() {
@@ -348,6 +355,7 @@ window.WorldBossNet = (() => {
     LocalDemo,
     use(next) { impl = next; },
     connect: who => impl.connect(who),
+    peek: () => (impl.peek ? impl.peek() : Promise.resolve(null)),
     now: () => (impl.now ? impl.now() : Date.now()),
     sendDamage: (letters, opts) => impl.sendDamage(letters, opts),
     sendBlock: (id, text, opts) => impl.sendBlock(id, text, opts),

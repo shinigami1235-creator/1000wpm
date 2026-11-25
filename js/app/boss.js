@@ -133,6 +133,12 @@ Router.register('boss', (() => {
             <div><dt>Phases</dt><dd>${R.PHASES.length}</dd></div>
           </dl>
           <ol class="wb-cover-phases">${R.PHASES.map(ph => `<li>${esc(ph.name)}</li>`).join('')}</ol>
+          <div class="wb-cover-live" data-k="clive" hidden>
+            <span class="wb-cover-tag">Raid in progress</span>
+            <span class="wb-cover-ph" data-k="cph"></span>
+            <i class="wb-cover-hp"><i data-k="chp"></i></i>
+            <span class="wb-cover-n" data-k="cn"></span>
+          </div>
           <button class="btn" type="button" data-k="join">Join the raid <kbd>Enter</kbd></button>
         </div>
       </section>`;
@@ -143,6 +149,16 @@ Router.register('boss', (() => {
     document.addEventListener('keydown', key);
     coverOff = () => document.removeEventListener('keydown', key);
     if (matchMedia('(pointer: fine)').matches) btn.focus({ preventScroll: true });
+    // Art's attack state: when a fight is already running, the cover shows it live
+    WorldBossNet.peek().then(p => {
+      if (!el || started || !p || p.defeatedAt || p.hp >= p.maxHp) return;
+      const cov = el.querySelector('.wb-cover'); if (!cov) return;
+      cov.classList.add('live');
+      q('clive').hidden = false;
+      q('cph').textContent = `Phase ${p.phase + 1} of ${R.PHASES.length}: ${R.PHASES[p.phase].name}`;
+      q('chp').style.width = (100 * p.hp / p.maxHp).toFixed(1) + '%';
+      q('cn').textContent = `${fmt0(Math.ceil(p.hp))} HP left, ${p.raiders} operators fighting`;
+    }).catch(() => {});
   }
 
   function begin() {
