@@ -1358,3 +1358,6 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .theme-name { font: 600 13px/1.2 var(--f-head); text-transform: uppercase; }
 .theme-note { font: 400 11px/1.2 var(--f-label); color: var(--ink-2); }
 .item .item-desc { margin: 2px 0 6px; font-size: 12px; line-height: 1.35; color: var(--ink-2); }
+/* testing only, removed before launch (js/state.js, test coins) */
+.shop-wallet { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.test-coins[aria-pressed="true"] { color: var(--gold); border-color: var(--gold); }

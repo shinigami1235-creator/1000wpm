@@ -11,9 +11,18 @@ Router.register('shop', (() => {
     el.innerHTML = `
       <div class="panel shop-hero">
         <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR MY ROOM AND AVATAR</p></div>
-        <div class="panel coin-box hot">${UI.coin()}<b data-coins>${UI.fmt(WPM.coins())}</b></div>
+        <div class="shop-wallet">
+          <div class="panel coin-box hot">${UI.coin()}<b data-coins>${UI.fmt(WPM.coins())}</b></div>
+          <button type="button" class="btn out sm test-coins" data-test aria-pressed="${WPM.testing()}">${WPM.testing() ? 'Test coins: on' : 'Test coins: off'}</button>
+        </div>
       </div>
       <div data-body></div>`;
+    // testing only, removed before launch (js/state.js, test coins)
+    el.querySelector('[data-test]').addEventListener('click', e => {
+      WPM.testCoins(!WPM.testing());
+      e.currentTarget.textContent = WPM.testing() ? 'Test coins: on' : 'Test coins: off';
+      e.currentTarget.setAttribute('aria-pressed', String(WPM.testing()));
+    });
     off.push(WPM.on('coins', () => { if (el) el.querySelector('[data-coins]').textContent = UI.fmt(WPM.coins()); paintItems(false); }));
     off.push(WPM.on('inventory', () => paintItems(false)));
     const body = el.querySelector('[data-body]');

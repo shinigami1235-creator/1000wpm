@@ -38,20 +38,19 @@ window.WPM = (() => {
   };
 
   // ---------- test coins (Gid, 25 Nov 2026) ----------
-  // Open the site with ?coins=test to try everything in the shop: the balance shows 9,999,999 and
-  // nothing costs anything. ?coins=off puts the real balance back and takes back what was bought
-  // with test coins. It only touches this browser's save, like everything else until the server
-  // exists. Remove it before coins move to the server.
+  // The "Test coins" button in the shop (or ?coins=test in the address) sets the balance to
+  // 9,999,999 and makes everything free. Turning it off (the button again, or ?coins=off) puts the
+  // real balance back and takes back what was bought with test coins. It only touches this
+  // browser's save. REMOVE BEFORE LAUNCH: this block, the button in js/app/shop.js and .test-coins.
   const TEST_BAL = 9999999;
-  try {
-    const q = new URLSearchParams(location.search), v = q.get('coins');
-    if (v === 'test' && !data.test) { data.test = { real: data.coins, bought: [] }; data.coins = TEST_BAL; save(); }
-    if (v === 'off' && data.test) {
+  function testCoins(on) {
+    if (on && !data.test) { data.test = { real: data.coins, bought: [] }; data.coins = TEST_BAL; }
+    else if (!on && data.test) {
       data.owned = data.owned.filter(id => !data.test.bought.includes(id));
-      data.coins = data.test.real; delete data.test; save();
-    }
-    if (v) { q.delete('coins'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); }
-  } catch (e) {}
+      data.coins = data.test.real; delete data.test;
+    } else return;
+    save(); emit('coins', { coins: data.coins, delta: 0, reason: 'test' }); emit('inventory', {});
+  }
   const testing = () => !!data.test;
 
   // ---------- events ----------
@@ -250,10 +249,15 @@ window.WPM = (() => {
   // The progress module's own saved state. It changes the object and then calls saveProgress().
   const progress = () => (data.prog ||= {});
 
+  // test coins from the address, ?coins=test or ?coins=off
+  try {
+    const q = new URLSearchParams(location.search), v = q.get('coins');
+    if (v === 'test' || v === 'off') { testCoins(v === 'test'); q.delete('coins'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); }
+  } catch (e) {}
   return {
     ART_BEST, on, record, track, events, now, day, progress, saveProgress: save,
     useAchievements, unlock, unlockedOn, grant, stats, streak, levelInfo, achievements,
-    coins: () => data.coins, testing, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
+    coins: () => data.coins, testing, testCoins, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,
