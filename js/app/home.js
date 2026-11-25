@@ -17,6 +17,8 @@ Router.register('home', (() => {
 
   function mount(el) {
     const e = UI.esc;
+    // the network layer only adds names and profile links, so it waits until the page is up
+    if (window.Lazy && !window.MultiUI) (window.requestIdleCallback || (f => setTimeout(f, 1200)))(() => Lazy.need('net').catch(() => {}), { timeout: 4000 });
     el.innerHTML = `
       <div class="home">
         <section class="hero-map" aria-labelledby="map-h">

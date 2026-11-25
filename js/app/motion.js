@@ -21,7 +21,7 @@ window.Motion = (() => {
 
   function load() {
     if (!loading) {
-      loading = import(new URL('lib/anime/anime.esm.min.js', document.baseURI).href)
+      loading = import(new URL('lib/anime/anime-lite.esm.min.js', document.baseURI).href)
         .then(m => { A = m; boxes.forEach(paintBox); return m; })
         .catch(e => { console.error('Anime.js did not load', e); return null; });
     }

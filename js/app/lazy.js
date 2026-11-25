@@ -31,22 +31,42 @@ window.Lazy = (() => {
     operator: { js: ['js/app/operator3d.js'] },
 
     // pages
-    'page:home': { need: ['map', 'kb', 'net'], js: ['js/hero.js', 'js/app/home.js'] },
+    // home draws without the network layer (and the combat code it needs); js/app/home.js loads it
+    // once the browser is idle, for the player names and links on the map
+    'page:home': { need: ['map', 'kb'], js: ['js/hero.js', 'js/app/home.js'] },
     'page:type': { need: ['mt'], js: ['js/app/type.js', 'js/app/type-tabs.js'] },
     'page:play': { need: ['race'], js: ['js/app/missions.js', 'js/app/play-picker.js', 'js/app/play.js'] },
-    'page:boss': { need: ['boss'], js: ['js/app/boss.js'] },
+    'page:boss': { need: ['boss'], js: ['js/app/boss.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
       js: ['js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
-    'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/duel3d.js', 'js/app/duel.js'] },
-    'page:party': { need: ['net'], js: ['js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/party3d.js', 'js/app/party.js'] },
+    'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/duel3d.js', 'js/app/duel.js'], pre: ['three', 'gltf', 'model-full'] },
+    'page:party': { need: ['net'], js: ['js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:u': { need: ['net'], js: ['js/app/players.js'] },
     'page:commons': { need: ['net'], css: ['css/commons.css'], js: ['js/app/player-card.js', 'js/app/commons.js'] },
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
     'page:shop': { js: ['js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
-    'page:lab': { css: ['css/lab.css'], js: ['js/app/operator3d.js', 'js/app/lab.js'] },
+    'page:lab': { css: ['css/lab.css'], js: ['js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
+  // Files a 3D page fetches only once its scripts run (three.js through the import map, the model
+  // loader, the operator model): fetched from the start instead, alongside the page's scripts
+  const PRE = {
+    three: [['modulepreload', 'lib/three/build/three.module.min.js']],
+    gltf: [['modulepreload', 'lib/three/examples/jsm/loaders/GLTFLoader.js'], ['modulepreload', 'lib/three/examples/jsm/libs/meshopt_decoder.module.js'],
+      ['modulepreload', 'lib/three/examples/jsm/utils/BufferGeometryUtils.js']],
+    'model-full': [['preload', 'assets/operators/male.glb', 'fetch'], ['preload', 'assets/operators/male-mask.png', 'image']],
+    'model-lite': [['preload', 'assets/operators/male-lite.glb', 'fetch']],
+  };
+  function preload(keys) {
+    for (const k of keys || []) for (const [rel, f, as] of PRE[k] || []) {
+      if (document.querySelector(`link[href="${f}"]`)) continue;
+      const l = Object.assign(document.createElement('link'), { rel, href: f });
+      if (as) l.as = as;
+      if (as) l.crossOrigin = 'anonymous';   // the same request three.js makes (fetch and img both anonymous), so the browser reuses it
+      document.head.append(l);
+    }
+  }
   // the group that defines each global other pages wait on
   const PROVIDES = { Breach: 'breach', Room: 'room', RoomItems: 'room', RushPage: 'rush', RushBoard: 'rushBoard',
     MultiUI: 'net', Net: 'net', WordBank: 'words', LEARN: 'learn', Combat: 'combat' };
@@ -78,6 +98,7 @@ window.Lazy = (() => {
     if (groups.has(name)) return groups.get(name);
     const g = G[name];
     if (!g) return Promise.reject(new Error('no group ' + name));
+    preload(g.pre);
     const p = Promise.all((g.need || []).map(need))
       .then(() => Promise.all([...(g.css || []).map(css), ...g.js.map(js)]))
       .then(() => g.ready && until(g.ready))

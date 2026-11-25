@@ -91,15 +91,23 @@ window.Operator = (() => {
     m.side = THREE.DoubleSide;   // a fold at the elbow turns a few faces round; draw their backs instead of a hole
     m.needsUpdate = true;
   }
-  function loadModels(T) {
+  // Each detail level loads the first time something asks for it (Gid, 25 Nov 2026: pages were
+  // fetching both the full and the lite model). The models are meshopt-compressed, so the loader
+  // needs the decoder from lib/three.
+  let loader = null, masksLoading = null;
+  const lodLoading = {};
+  function getLoader() {
+    return loader ||= Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/libs/meshopt_decoder.module.js')])
+      .then(([{ GLTFLoader }, { MeshoptDecoder }]) => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder));
+  }
+  function loadModels(T, lod = 'lite') {
     if (T) THREE = T;
-    if (!loading) loading = import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
-      const L = new GLTFLoader();
-      return Promise.all(Object.entries(MODELS).flatMap(([base, lods]) => Object.entries(lods).map(([lod, url]) =>
-        L.loadAsync(url).then(g => { g.scene.traverse(o => o.isMesh && brighten(o.material)); tpl[base + ':' + lod] = g.scene; }).catch(e => console.warn('operator model', url, e))).concat(
-        Object.entries(MASKS).map(([base, url]) => new THREE.TextureLoader().loadAsync(url).then(t => { t.flipY = false; t.colorSpace = THREE.NoColorSpace; maskTex[base] = t; }).catch(e => console.warn('operator mask', url, e))))));
-    }).then(() => { for (const op of live) op._upgrade(); });
-    return loading;
+    if (lodLoading[lod]) return lodLoading[lod];
+    masksLoading ||= Promise.all(Object.entries(MASKS).map(([base, url]) => new THREE.TextureLoader().loadAsync(url).then(t => { t.flipY = false; t.colorSpace = THREE.NoColorSpace; maskTex[base] = t; }).catch(e => console.warn('operator mask', url, e))));
+    lodLoading[lod] = getLoader().then(L => Promise.all([masksLoading, ...Object.entries(MODELS).filter(([, lods]) => lods[lod]).map(([base, lods]) =>
+      L.loadAsync(lods[lod]).then(g => { g.scene.traverse(o => o.isMesh && brighten(o.material)); tpl[base + ':' + lod] = g.scene; }).catch(e => console.warn('operator model', lods[lod], e)))]))
+      .then(() => { for (const op of live) op._upgrade(); });
+    return lodLoading[lod];
   }
 
   const R = Math.PI / 180;
@@ -208,7 +216,10 @@ window.Operator = (() => {
     const owned = [];
     const own = x => (owned.push(x), x);
     let B = {}, mats = {}, accs = {}, built = null, isModel = false;
-    const model = () => (opts.tiny ? null : tpl[P.base + ':' + (lite ? 'lite' : 'full')] || tpl[P.base + ':full'] || null);
+    // the asked-for detail, or the other one while it loads; the full one swaps in when it arrives
+    const LOD = lite ? 'lite' : 'full';
+    const model = () => (opts.tiny ? null : tpl[P.base + ':' + LOD] || tpl[P.base + ':' + (lite ? 'full' : 'lite')] || null);
+    let modelLod = null;
 
     // ---------- materials, one set per character so two operators can differ ----------
     function mat(zone) {
@@ -312,6 +323,7 @@ window.Operator = (() => {
     function build() {
       const t = model();
       isModel = !!t;
+      modelLod = t ? (t === tpl[P.base + ':' + LOD] ? LOD : (lite ? 'full' : 'lite')) : null;
       if (t) return buildModel(t);
       const S = BASES[P.base], k = S.scale;
       B = {}; mats = {}; accs = {};
@@ -715,7 +727,7 @@ window.Operator = (() => {
         const n = clean(next), rebuildNeeded = n.base !== P.base, kbChanged = n.kb.style !== P.kb.style || n.kb.color !== P.kb.color;
         P = n;
         if (rebuildNeeded || !isModel !== !model()) rebuild(); else { paint(); showAcc(); shape(); if (kbChanged) buildKb(); }
-        if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
+        if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE, LOD); }
         frame();
       },
       repaint() { paint(); if (P.kb.color === 'theme') buildKb(); },
@@ -723,10 +735,13 @@ window.Operator = (() => {
       // tests: hold an exact pose given in body terms, missing parts filled from a blank pose
       _pose(p) { prev = null; once = null; const b = BLANK(); for (const k in p) b[k] = typeof p[k] === 'object' ? { ...b[k], ...p[k] } : p[k]; apply(b); },
       // the model for this base finished loading: rebuild on it, keeping the animation where it was
-      _upgrade() { if (!isModel && model()) { rebuild(); frame(); if (opts.onModel) opts.onModel(); } },
+      _upgrade() {
+        const want = tpl[P.base + ':' + LOD];
+        if ((!isModel && model()) || (want && isModel && modelLod !== LOD)) { rebuild(); frame(); if (opts.onModel) opts.onModel(); }
+      },
     };
     frame();
-    if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
+    if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE, LOD); }
     return ctl;
   }
 

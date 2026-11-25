@@ -26,6 +26,7 @@ What changed:
 - **Home keyboards** start three.js when they scroll near the screen, not on load.
 - **The Academy, Free typing and Reel tabs** load when one of them opens, so the typing test starts light.
 - **three.js** is the minified build from `lib/three/` (690 KB instead of 1.3 MB).
+- **25 Nov 2026 pass.** The operator models are meshopt-compressed (868 KB to 300 KB full, 373 KB to 129 KB lite) and each page loads only the detail it uses; portraits use the lite one. Anime.js is cut to the three functions the site uses (119 KB to 38 KB). The three.js add-ons in `lib/three/examples` are minified (275 KB to 145 KB). The home page draws without the network layer and loads it once idle. 3D pages start fetching three.js, the model loader and the operator model as soon as they're opened (`pre` in `js/app/lazy.js`). On a throttled 10 Mbps test with no cache: profile 3.4 MB to 2.1 MB, duel 3.5 MB to 2.6 MB, Operator page 2.9 MB to 1.8 MB.
 
 ## Security and privacy
 

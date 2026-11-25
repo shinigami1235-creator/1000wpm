@@ -46,7 +46,7 @@ window.Avatar = (() => {
     const [T, RB] = await Promise.all([import('three'), import('three/addons/geometries/RoundedBoxGeometry.js'),
       window.Lazy ? Lazy.need('operator') : Promise.resolve()]);
     const THREE = { ...T, RoundedBoxGeometry: RB.RoundedBoxGeometry };
-    await Operator.loadModels(THREE);
+    await Operator.loadModels(THREE, 'lite');   // portraits are small; a big one swaps in the full model when it loads
     const canvas = document.createElement('canvas');
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -69,7 +69,7 @@ window.Avatar = (() => {
       async thumb(look, size) {
         rim.color.set(window.Theme ? Theme.hex('accent') : '#39ff88');
         renderer.setPixelRatio(1); renderer.setSize(size, size, false);
-        const op = Operator.create(THREE, preset(look), { lite: size <= 128 });
+        const op = Operator.create(THREE, preset(look), { lite: size <= 320 });
         scene.add(op.group);
         op.at('idle', 0.4);
         op.group.updateMatrixWorld(true);
