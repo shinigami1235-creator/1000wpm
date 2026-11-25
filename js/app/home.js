@@ -97,8 +97,7 @@ Router.register('home', (() => {
             <span><b>25.5K</b> followers on <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a></span>
             <span><b>983</b> posts</span>
           </p>
-          <p class="ha-bio">Art types his follower count on Monkeytype with one word for each follower and runs sound tests on the keyboards brands send him.</p>
-          <p class="ha-more">Every run in the <a href="#/type">typing test</a>, <a href="#/play/breach">Breach</a> or the <a href="#/play/race">race</a> pays coins and XP. Spend the coins in the <a href="#/shop">shop</a> on <a href="#/room">your room</a>.</p>
+          <p class="ha-bio">Art types random words from Monkeytype's common 1,000 English words in his reels and runs sound tests on the keyboards brands send him.</p>
         </section>
 
         <section class="sec" id="keyboards">

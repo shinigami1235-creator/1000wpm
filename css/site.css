@@ -476,10 +476,12 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 }
 
 /* ---------- type page ---------- */
-.type-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: stretch; }
-.type-opts { display: grid; gap: 10px; align-content: center; }
-.type-opts .row { display: grid; grid-template-columns: 84px auto; align-items: center; gap: 10px; }
-.type-stats { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); gap: 16px; margin-top: 16px; }
+.type-top { display: block; }
+/* the settings sit in one bar above the test, the way Monkeytype does it */
+.type-opts { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; padding: 12px 18px; }
+.type-opts .row { display: flex; align-items: center; gap: 10px; }
+.type-opts .row[hidden] { display: none; }
+.type-stats { display: block; margin-top: 16px; }
 .statrow { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); align-items: center; }
 .statrow > div { padding: 2px 18px; border-left: 1px solid var(--line-2); display: grid; gap: 6px; }
 .statrow > div:first-child { border: 0; padding-left: 4px; }
@@ -493,13 +495,11 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 .wpm-gauge .g-hub { fill: var(--accent); }
 .statrow .mid { font-size: clamp(22px, 2.4vw, 34px); white-space: nowrap; }
 .statrow .mid.time { font-size: clamp(20px, 2vw, 30px); }
-.progress { display: grid; gap: 12px; align-content: center; }
-.segbar { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; height: 26px; flex: 1; }
-.segbar i { background: rgba(var(--accent-rgb),.08); border: 1px solid var(--line-2); transform: skewX(-12deg); }
-.segbar i.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb),.6); }
-.progress .row { display: flex; align-items: center; gap: 14px; }
-.progress .pct { font: 600 26px/1 var(--f-mono); color: var(--accent); min-width: 3.4ch; text-align: right; }
-.type-text { margin-top: 16px; padding: 16px 26px 22px; }
+.type-text { position: relative; margin-top: 16px; padding: 22px 26px 22px; }
+/* how far through the test: a thin line along the top of the text */
+.type-prog { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: rgba(var(--accent-rgb),.08); }
+.type-prog i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb),.6); }
+.type-run { position: absolute; right: 18px; top: 8px; font: 400 12px/1 var(--f-label); letter-spacing: .08em; color: var(--ink-3); }
 .type-window { position: relative; height: calc(4 * 1.6em); overflow: hidden; font-size: clamp(20px, 2vw, 28px); }
 .type-window .typetext { font-size: inherit; transition: transform 140ms ease; }
 @media (prefers-reduced-motion: reduce) { .type-window .typetext { transition: none; } }
@@ -512,7 +512,7 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 .result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 20px; }
 .result-note { grid-column: 1 / -1; font: 400 15px/1.5 var(--f-label); color: var(--ink); }
 .result-note .new { color: var(--gold); }
-.type-bottom { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+.type-bottom { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-top: 16px; }
 .chart-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 14px; }
 .chart { width: 100%; height: 170px; display: block; }
 .side-nums { display: grid; gap: 10px; align-content: start; }
@@ -1216,8 +1216,7 @@ body:has(.page-boss) #rain { opacity: 0; }
   .grid2, .grid3, .type-bottom, .prof, .lb-side { grid-template-columns: 1fr; }
   .prof .col.mid-col { grid-row: auto; }
   .type-top { grid-template-columns: 1fr; }
-  .type-top > .title-block { display: none; }
-  .type-opts .row { grid-template-columns: 1fr; gap: 6px; }
+  .type-opts .row { flex-wrap: wrap; gap: 6px; }
   .statrow { grid-template-columns: 1fr 1fr; }
   .statrow > div { padding: 2px 10px; }
   .statrow > div:nth-child(odd) { border: 0; padding-left: 4px; }

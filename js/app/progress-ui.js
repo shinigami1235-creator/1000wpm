@@ -70,11 +70,15 @@ window.ProgressUI = (() => {
     </li>`).join('')}</ul>`;
   }
 
-  let achFilter = 'all';
+  // Next is the default so the profile isn't a wall of 100 locked cards: the 8 locked ones
+  // you're closest to, then Earned and All
+  let achFilter = 'next';
   function achHTML() {
     const list = P.achievements();
     const got = list.filter(a => a.unlocked).length;
-    const show = list.filter(a => achFilter === 'all' || (achFilter === 'got' ? a.unlocked : !a.unlocked));
+    const show = achFilter === 'next'
+      ? list.filter(a => !a.unlocked && !a.hidden).sort((a, b) => b.v / b.goal - a.v / a.goal).slice(0, 8).map(a => ({ ...a, group: 'Closest to earning' }))
+      : list.filter(a => achFilter === 'all' || (achFilter === 'got' ? a.unlocked : !a.unlocked));
     const groups = [...new Set(show.map(a => a.group))];
     return {
       got, total: list.length,
@@ -155,7 +159,7 @@ window.ProgressUI = (() => {
         <section class="panel ach-panel" id="achievements">
           <div class="ph">// ACHIEVEMENTS<span class="meta">${A.got} / ${A.total}</span>
             <div class="seg" role="group" aria-label="Show">
-              ${[['all', 'All'], ['got', 'Earned'], ['left', 'Locked']].map(([v, l]) => `<button type="button" data-ach-f="${v}" aria-pressed="${v === achFilter}">${l}</button>`).join('')}
+              ${[['next', 'Next'], ['got', 'Earned'], ['all', 'All']].map(([v, l]) => `<button type="button" data-ach-f="${v}" aria-pressed="${v === achFilter}">${l}</button>`).join('')}
             </div>
           </div>
           ${A.html}

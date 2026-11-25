@@ -32,12 +32,8 @@ Router.register('type', (() => {
     el = root;
     opt = { mode: 'time', secs: 60, count: 50, caps: 1, ...TT.store.get('wpm-type-opts', {}), wset: TT.wordset() };
     el.innerHTML = `
+      <h1 class="sr-only">Typing test</h1>
       <div class="type-top">
-        <div class="panel title-block">
-          <div class="ph">&gt; TYPING TEST</div>
-          <h1>Type_</h1>
-          <p data-k="sub"></p>
-        </div>
         <div class="panel type-opts">
           <div class="row"><span class="label">Mode</span>
             <div class="seg" data-g="mode" role="group" aria-label="Mode">
@@ -72,14 +68,11 @@ Router.register('type', (() => {
           <div><span class="label">Incorrect</span><b class="mid red" data-k="bad">0</b></div>
           <div><span class="label">Time</span><b class="mid time" data-k="time">0:00</b></div>
         </div>
-        <div class="panel progress">
-          <div class="ph">&gt; PROGRESS</div>
-          <div class="row"><div class="segbar" data-k="bar">${'<i></i>'.repeat(20)}</div><b class="pct" data-k="pct">0%</b></div>
-        </div>
       </div>
 
       <div class="panel hot type-text">
-        <div class="ph">&gt; TYPE THE TEXT BELOW<span class="meta" data-k="run"></span></div>
+        <div class="type-prog" aria-hidden="true"><i data-k="bar"></i></div>
+        <span class="type-run" data-k="run"></span>
         <div data-k="stage"></div>
         <div class="type-help" data-k="help"></div>
       </div>
@@ -94,16 +87,6 @@ Router.register('type', (() => {
               <div><span class="label">Avg wpm</span><b class="mid" data-k="avg">0</b></div>
             </div>
           </div>
-        </div>
-        <div class="panel">
-          <div class="ph">&gt; SESSION INFO</div>
-          <dl class="kv">
-            <dt>Mode</dt><dd class="green" data-k="i-mode"></dd>
-            <dt>Total chars</dt><dd data-k="i-total">0</dd>
-            <dt>Correct chars</dt><dd data-k="i-ok">0</dd>
-            <dt>Incorrect chars</dt><dd data-k="i-bad">0</dd>
-            <dt>Calculation</dt><dd>correct ÷ 5 ÷ minutes</dd>
-          </dl>
         </div>
         <div class="panel">
           <div class="ph">&gt; RECORDS</div>
@@ -172,10 +155,8 @@ Router.register('type', (() => {
     el.querySelector('[data-row="caps"]').hidden = opt.mode !== 'quote';
     el.querySelectorAll('[data-focus] button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.v === 'on') === Focus.enabled()));
     el.q('len').textContent = opt.mode === 'quote' ? 'One passage from a book or a speech' : 'Your own text';
-    el.q('i-mode').textContent = UI.modeName(modeKey());
     const n = WPM.sessions().length + 1;
-    el.q('run').textContent = `[ RUN ${n} ]`;
-    el.q('sub').textContent = `// ${UI.modeName(modeKey()).toUpperCase()}`;
+    el.q('run').textContent = `Run ${n}`;
   }
 
   function paintRecords() {
@@ -293,17 +274,12 @@ Router.register('type', (() => {
     el.q('ok').textContent = UI.fmt(tt.correct);
     el.q('bad').textContent = UI.fmt(tt.errors);
     el.q('time').textContent = opt.mode === 'time' ? `${UI.clock(ms / 1000)} / ${UI.clock(opt.secs)}` : UI.clock(ms / 1000);
-    el.q('i-total').textContent = UI.fmt(tt.typed);
-    el.q('i-ok').textContent = UI.fmt(tt.correct);
-    el.q('i-bad').textContent = UI.fmt(tt.errors);
     paintProgress(opt.mode === 'time' ? ms / (opt.secs * 1000) : tt.pos / tt.spans.length);
   }
 
   function paintProgress(f) {
     f = Math.max(0, Math.min(1, f));
-    const on = Math.round(f * 20);
-    el.q('bar').querySelectorAll('i').forEach((b, i) => b.classList.toggle('on', i < on));
-    el.q('pct').textContent = Math.round(f * 100) + '%';
+    el.q('bar').style.width = (f * 100).toFixed(1) + '%';
   }
 
   function drawChart() {

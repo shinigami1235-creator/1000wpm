@@ -2,7 +2,7 @@
 // visitor starts typing and the first key starts a race against Art's caret.
 // HeroRace.mount(root) returns a function that stops it.
 window.HeroRace = (() => {
-  const TEXT = 'hi im art and i type fast sometimes every day i type my follower count with one word for each follower so today i type twenty five thousand words';
+  const TEXT = 'hi im art and i type fast on every keyboard brands send me so race me on this one and see how close you get to two hundred and four words a minute';
 
   function mount(root) {
     const box = root.querySelector('[data-race]');
