@@ -36,6 +36,7 @@ window.RushPage = (() => {
   const secs = ms => (ms / 1000).toFixed(1) + ' s';
 
   function mount(host, pageEl) {
+    TT.useWeaponSound();
     let view = '', scene = null, keys = null, me = null, f = null, dir = null, run = null, plan = null;
     let typed = '', target = null, clean = true, wordT0 = 0, hist = [], over = null;
     let timers = [], offs = [], later = [], hiddenAt = 0, comboShown = false, popT = 0, tintT = 0, chipKey = '';

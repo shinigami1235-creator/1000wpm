@@ -243,6 +243,9 @@ window.TT = (() => {
     creamy: { lp: 1600, knock: 210, kGain: .4,  nGain: .35, len: .045 },
     clack:  { lp: 4200, knock: 320, kGain: .25, nGain: .5,  len: .035 },
     marble: { lp: 2600, knock: 520, kGain: .35, nGain: .4,  len: .03 },
+    // the operator keyboards (useWeaponSound): a sharp click with a metal ping, and a crackle
+    clicky: { lp: 5200, knock: 380, kGain: .22, nGain: .55, len: .03, ping: 3400 },
+    spark:  { lp: 3000, knock: 260, kGain: .35, nGain: .4,  len: .035, zap: true },
   };
   let profile = PROFILES.creamy;
   const clickBufs = new Map();
@@ -281,8 +284,34 @@ window.TT = (() => {
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
         o.connect(og).connect(ac.destination);
         o.start(t); o.stop(t + 0.07);
+        if (p.ping) {
+          // the click jacket's ping
+          const pg = ac.createOscillator(), pgg = ac.createGain();
+          pg.type = 'square'; pg.frequency.value = p.ping * vary;
+          pgg.gain.setValueAtTime(0.035, t); pgg.gain.exponentialRampToValueAtTime(0.001, t + 0.018);
+          pg.connect(pgg).connect(ac.destination); pg.start(t); pg.stop(t + 0.02);
+        }
+        if (p.zap && Math.random() < 0.6) {
+          // a short electric crackle on most keys
+          const z = ac.createOscillator(), zf = ac.createBiquadFilter(), zg = ac.createGain();
+          z.type = 'sawtooth'; z.frequency.setValueAtTime(1600 + Math.random() * 900, t); z.frequency.exponentialRampToValueAtTime(420, t + 0.035);
+          zf.type = 'bandpass'; zf.frequency.value = 2200; zf.Q.value = 3;
+          zg.gain.setValueAtTime(0.05, t); zg.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+          z.connect(zf).connect(zg).connect(ac.destination); z.start(t); z.stop(t + 0.045);
+        }
       }
     } catch (e) { /* no audio */ }
+  }
+  // In fights the key sound comes from the operator's keyboard, its weapon (Gid, 25 Nov 2026).
+  // With no style given it reads the saved operator; a board that isn't owned sounds like the Slab.
+  const KB_SOUND = { slab: 'thock', compact: 'clicky', split: 'creamy', arc: 'spark' };
+  function useWeaponSound(style) {
+    if (!style) {
+      const p = store.get('wpm-operator', null);
+      style = p && p.kb && p.kb.style;
+      if (style && style !== 'slab' && window.WPM && !WPM.owns('kb-' + style)) style = 'slab';
+    }
+    setProfile(KB_SOUND[style] || 'thock');
   }
   function setSound(v) {
     on = v;
@@ -294,5 +323,5 @@ window.TT = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
-  return { randomWords, testWords, wordset, setWordset, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, setSound, soundOn: () => on, store, ART_WPM: 204 };
+  return { randomWords, testWords, wordset, setWordset, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, useWeaponSound, setSound, soundOn: () => on, store, ART_WPM: 204 };
 })();

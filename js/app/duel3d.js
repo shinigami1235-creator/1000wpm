@@ -176,6 +176,7 @@ window.DuelScene = (() => {
         f.card.add(op.group);
         f.card.children.forEach(ch => { if (ch !== op.group) ch.visible = false; });
         f.op = op; f.typeAt = -9; f.won = false;
+        f.kb = (opts.sides[i].preset.kb && opts.sides[i].preset.kb.style) || 'slab';
       });
     }
 
@@ -481,6 +482,10 @@ window.DuelScene = (() => {
       const end = centre(to, new V()).add(tmp.set(rnd(-0.2, 0.2), rnd(-0.1, 0.5), 0.3));
       const ctrl = new V().lerpVectors(start, end, 0.5).add(tmp.set(0, (tier >= 3 ? 0.5 : 1) * rnd(1.4, 2.2), rnd(0, 1.2)));
       const n = word.length, step = Math.min(0.013, (T - 0.12) / Math.max(1, n));
+      // the shooter's keyboard (js/app/combat/fx3d.js, keyboard signatures): Compact splits the word
+      // into three lanes, Split sends it from both halves, Arc rides a lightning bolt
+      const kb = f.kb || 'slab';
+      const side = new V(0, 0, 1).cross(tmp2.subVectors(end, start)).normalize();
       for (let k = 0; k < n; k++) {
         const g = glyphs[gI = (gI + 1) % GN];
         if (g.on && g.cb) { const cb = g.cb; g.cb = null; cb(); }   // pool wrapped: land the oldest now
@@ -490,6 +495,8 @@ window.DuelScene = (() => {
         g.a.copy(start);
         g.b.copy(end).add(tmp.set(rnd(-0.12, 0.12), rnd(-0.12, 0.12), 0));
         g.c.copy(ctrl);
+        if (kb === 'compact') g.c.addScaledVector(side, ((k % 3) - 1) * 0.9).y += ((k % 3) - 1) * 0.5;
+        else if (kb === 'split') { const s = k % 2 ? 1 : -1; g.a.addScaledVector(side, s * 0.45); g.c.addScaledVector(side, s * 1.6); }
         const map = glyph(word[k]);
         g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(2.2);
         g.tr.forEach(x => { x.material.color.copy(col).multiplyScalar(1.2); });
@@ -497,6 +504,7 @@ window.DuelScene = (() => {
         g.cb = order === n - 1 ? () => impact(to, tier, o.crit, col, onLand) : () => tick(to, col);
       }
       burst(start, 4 + tier * 2, 3, col, { size: 0.3, life: 0.3, grav: 0 });
+      if (kb !== 'slab' && fx) { const at = end.clone(); fx.shot(1, start, out => out.copy(at), null, { color: '#' + col.getHexString(), kb, w: 0.6, dur: Math.max(0.15, T - 0.04) }); }
       if (tier >= 2) {
         const grow = T - (n - 1) * step - 0.04, hold = (n - 1) * step + (tier >= 4 ? 0.55 : 0.4);
         const w = (tier === 2 ? 0.16 : tier === 3 ? 0.34 : 0.55) * (o.crit ? 1.3 : 1);

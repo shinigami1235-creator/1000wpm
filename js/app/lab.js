@@ -93,6 +93,9 @@ Router.register('lab', (() => {
     el.querySelector('[data-kb]').addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b) return;
       P.kb.style = b.dataset.v; apply(); paintForm(); showKb();
+      // a short run of keys so the board's sound can be heard
+      TT.useWeaponSound(P.kb.style);
+      [0, 90, 170, 260, 330].forEach((ms, i) => setTimeout(() => TT.click(i === 4), ms));
     });
     el.querySelector('[data-kbc]').addEventListener('input', e => {
       if (e.target.type === 'checkbox') P.kb.color = e.target.checked ? 'theme' : Theme.hex('accent');

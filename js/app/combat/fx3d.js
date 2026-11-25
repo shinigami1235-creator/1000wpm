@@ -244,9 +244,9 @@ Combat.FX = (() => {
     function shot(tier, from, to, onLand, opt = {}) {
       onLand = zeroLand(tier, onLand, 0.7);
       const col = opt.color ? C(opt.color) : tier >= 1 && TIER_COL[Math.min(tier, TOP)] !== GREEN ? TIER_COL[Math.min(tier, TOP)] : null;
-      const kb = KB_SIG[opt.kb] ? opt.kb : null;
+      const kb = KB_SIG[opt.kb] ? opt.kb : null, sw = opt.w || 1;   // w: how wide the board's marks are drawn
       const e = add({ from: from.clone(), to, onLand, tier: Math.min(tier, 4), landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
-      const dur = tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15;
+      const dur = opt.dur || (tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15);   // opt.dur: match a slower flight, as the duel's letters
       const life = tier >= 3 ? 0.3 : dur + 0.14;
       if (tier === 1) flare(from, col || GREEN, 2.2, 0.12, 1.2);
       if (tier === 2) { flare(t0.copy(from).add(t1.set(-1, 0.5, 0)), col || GREEN, 2, 0.12); flare(t0.copy(from).add(t1.set(1, 0.5, 0)), col || CYAN, 2, 0.12); }
@@ -265,8 +265,8 @@ Combat.FX = (() => {
         const ku = clamp(1 - (e.t - dur) / (life - dur), 0, 1);
         if (kb && tier <= 1) {
           // a bought keyboard fires its own basic shot
-          if (u < 1) sigBolt(kb, e.from, t0, u, 1, col || GREEN);
-          else sigLand(kb, t0, e.from, col || GREEN, ku);
+          if (u < 1) sigBolt(kb, e.from, t0, u, 1, col || GREEN, sw);
+          else sigLand(kb, t0, e.from, col || GREEN, ku, sw);
           return e.t < life;
         }
         if (tier === 1) {
@@ -325,7 +325,7 @@ Combat.FX = (() => {
             if (e.t < 0.02) circle(t0, t3, tier >= 5 ? 6 : 4, 0.2, WHITE, 1, 28);
           }
         }
-        if (kb) sigTrail(kb, e.from, t0, e.t, clamp(1 - e.t / life, 0, 1), col || GREEN, 1 + 0.25 * tier);
+        if (kb) sigTrail(kb, e.from, t0, e.t, clamp(1 - e.t / life, 0, 1), col || GREEN, (1 + 0.25 * tier) * sw);
         return e.t < life;
       };
       return e;

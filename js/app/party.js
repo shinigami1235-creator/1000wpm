@@ -16,6 +16,7 @@ Router.register('party', (() => {
   let create = { run: 'relay', difficulty: 'normal' };
 
   function mount(root, params) {
+    TT.useWeaponSound();
     el = root;
     off.push(
       Net.on('lobby', l => { if (view === 'lobby') { if (l) paintLobby(l); else browser(); } }),

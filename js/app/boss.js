@@ -115,6 +115,7 @@ Router.register('boss', (() => {
   // Join (or Enter) builds the fight in the same root.
   let started = false, coverOff = null;
   function mount(root) {
+    TT.useWeaponSound();
     el = root; started = false;
     R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name;
     const fmt0 = n => n.toLocaleString('en-US');
