@@ -600,6 +600,23 @@ table.board { width: 100%; border-collapse: separate; border-spacing: 0 6px; fon
 .coin-box { display: flex; align-items: center; gap: 14px; padding: 14px 18px; }
 .coin-box svg { width: 40px; height: 40px; }
 .coin-box b { font: 600 34px/1 var(--f-mono); color: var(--gold); text-shadow: 0 0 12px rgba(242,194,48,.45); font-variant-numeric: tabular-nums; }
+/* the CTRL Pass and coin packs (js/app/shop.js storeHtml) */
+.store { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 14px; margin-top: 16px; align-items: stretch; }
+.store-pass { padding: 18px 20px; display: grid; gap: 10px; align-content: start; box-shadow: inset 0 0 0 1px rgba(255,210,61,.35); }
+.store-pass h2 { margin: 0; font: 700 var(--t-l, 20px)/1.1 var(--f-head); letter-spacing: .04em; color: var(--gold); text-transform: uppercase; }
+.store-pass p { margin: 0; color: var(--ink); text-wrap: pretty; }
+.store-pass .row, .store-pack { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.store-price { font: 600 18px/1 var(--f-mono); color: var(--ink-hi); }
+.store-packs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.store-pack { flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 14px; }
+.store-pack b { display: inline-flex; align-items: center; gap: 6px; font: 600 20px/1 var(--f-mono); color: var(--gold); font-variant-numeric: tabular-nums; }
+.store-pack span { font: 400 14px/1 var(--f-mono); color: var(--ink-2); }
+.store-pack b > :first-child { width: 22px; height: 22px; flex: none; }
+.store .btn[disabled] { opacity: .55; cursor: not-allowed; }
+.store-note { grid-column: 1 / -1; margin: 0; font: 400 13px/1.3 var(--f-mono); color: var(--ink-3); }
+.item.premium { box-shadow: inset 0 0 0 1px rgba(255,210,61,.5); }
+.item .prem { display: inline-block; margin-bottom: 6px; padding: 2px 6px; font: 600 11px/1.2 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--bg); background: var(--gold); }
+@media (max-width: 760px) { .store { grid-template-columns: 1fr; } .store-packs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .shop { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; margin-top: 16px; }
 .cats { display: grid; gap: 4px; align-content: start; }
 .cats button {

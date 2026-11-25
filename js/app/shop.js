@@ -1,4 +1,5 @@
-// #/shop: room items from window.RoomItems, bought with coins through WPM.buy.
+// #/shop: room items from window.RoomItems, bought with coins through WPM.buy, plus the
+// CTRL Pass and coin packs from REWARDS.shop (js/app/rewards-config.js).
 Router.register('shop', (() => {
   const thumbs = new Map();       // id -> dataURL, kept between visits
   let el, off = [], io = null, cancel = null, queue = [], busy = false;
@@ -45,6 +46,7 @@ Router.register('shop', (() => {
   function build(body) {
     const list = catalog();
     body.innerHTML = `
+      ${storeHtml()}
       <div class="shop">
         <aside class="panel">
           <div class="ph">// CATEGORIES</div>
@@ -80,6 +82,24 @@ Router.register('shop', (() => {
     q.addEventListener('input', () => { search = q.value.trim().toLowerCase(); paintItems(true); });
     io = new IntersectionObserver(es => es.forEach(en => { if (en.isIntersecting) { io.unobserve(en.target); want(en.target); } }), { rootMargin: '200px' });
     paintItems(true);
+  }
+
+  // The CTRL Pass and coin packs (REWARDS.shop). Payments go through the server, so the
+  // buttons stay off until it is live.
+  function storeHtml() {
+    const S = window.REWARDS && REWARDS.shop; if (!S) return '';
+    const p = WPM.pass(), until = p.active ? new Date(p.until).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    return `<section class="store" aria-label="CTRL Pass and coin packs">
+      <article class="panel store-pass${p.active ? ' on' : ''}">
+        <h2>${UI.esc(S.pass.name)}</h2>
+        <p>Double coins from everything you play for ${S.pass.days} days. Every item in the shop can still be bought with coins you earn.</p>
+        <div class="row">${p.active ? `<span class="owned">Active until ${UI.esc(until)}</span>` : `<b class="store-price">${UI.esc(S.pass.price)}</b><button class="btn out sm" type="button" disabled>Opens at launch</button>`}</div>
+      </article>
+      <div class="store-packs">
+        ${S.packs.map(k => `<article class="panel store-pack"><b>${UI.coin()}${UI.fmt(k.coins)}</b><span>${UI.esc(k.price)}</span><button class="btn out sm" type="button" disabled>Opens at launch</button></article>`).join('')}
+      </div>
+      <p class="store-note">Payments open when the game server goes live.</p>
+    </section>`;
   }
 
   // Thumbnails render one at a time since each one is a WebGL draw.
@@ -137,6 +157,10 @@ Router.register('shop', (() => {
     const row = card.querySelector('[data-row]');
     const owned = WPM.owns(item.id);
     card.classList.toggle('is-owned', owned);
+    const S = window.REWARDS && REWARDS.shop;
+    const premium = !!(item.premium || (S && (item.price || 0) >= S.premiumFrom));
+    card.classList.toggle('premium', premium);
+    if (premium && !card.querySelector('.prem')) card.querySelector('.body').insertAdjacentHTML('afterbegin', '<span class="prem">Premium</span>');
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
       row.innerHTML = item.slot ? `<span class="owned">Owned</span><a class="btn out sm" href="#/profile/avatar">Avatar</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;

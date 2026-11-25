@@ -24,6 +24,7 @@ window.WPM = (() => {
     learn: {},                  // academy progress and free typing coins, see js/app/learn.js
     prog: {},                   // sign-in streak, tasks, counters and visual bonuses, owned by js/app/progress.js
     keyStats: {},               // per expected key: [typed right, missed], summed over every run that sends keyStats
+    pass: { until: 0 },         // the CTRL Pass: doubles earned coins until this time (REWARDS.shop.pass)
   });
 
   let data;
@@ -68,8 +69,20 @@ window.WPM = (() => {
   }
 
   // ---------- coins ----------
+  // The CTRL Pass doubles coins earned by playing (REWARDS.shop.earned) while it runs.
+  // The server grants it after a payment clears; grantPass is the hook for that.
+  function passOn() { return (data.pass && data.pass.until) > now().getTime(); }
+  function pass() { return { active: passOn(), until: (data.pass && data.pass.until) || 0 }; }
+  function grantPass(days) {
+    const from = Math.max(now().getTime(), (data.pass && data.pass.until) || 0);
+    data.pass = { until: from + days * 86400000 }; save();
+    emit('pass', pass());
+    return pass();
+  }
   function addCoins(n, reason) {
     n = Math.round(n);
+    const S = window.REWARDS && REWARDS.shop;
+    if (n > 0 && S && passOn() && S.earned.includes(reason)) n = Math.round(n * S.pass.coinMult);
     if (!n) return data.coins;
     data.coins = Math.max(0, data.coins + n); save();
     emit('coins', { coins: data.coins, delta: n, reason });
@@ -220,7 +233,7 @@ window.WPM = (() => {
   return {
     ART_BEST, on, record, track, events, now, day, progress, saveProgress: save,
     useAchievements, unlock, unlockedOn, grant, stats, streak, levelInfo, achievements,
-    coins: () => data.coins, addCoins, spend, addXP, xp: () => data.xp,
+    coins: () => data.coins, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,

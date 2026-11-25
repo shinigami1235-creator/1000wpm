@@ -2,6 +2,25 @@
 // settled yet. js/app/progress.js reads this object and nothing else for amounts.
 // For scale: a 60-second test at 80 wpm and 96% accuracy pays about 37 coins and 115 XP.
 window.REWARDS = {
+  // The shop (Gid, 25 Nov 2026). Coins are the only currency and every item can be bought
+  // with coins earned by playing. The CTRL Pass doubles the coins you earn while it runs,
+  // coin packs sell coins, and premium items (the high-quality props and gear) cost a lot
+  // of coins. Prices are proposals until Gid and Art settle them; payments need the server.
+  shop: {
+    pass: { name: 'CTRL Pass', coinMult: 2, days: 30, price: 'US$4.99 a month' },
+    packs: [
+      { id: 'pack-1200', coins: 1200, price: 'US$0.99' },
+      { id: 'pack-6500', coins: 6500, price: 'US$4.99' },
+      { id: 'pack-14000', coins: 14000, price: 'US$9.99' },
+      { id: 'pack-30000', coins: 30000, price: 'US$19.99' },
+      { id: 'pack-80000', coins: 80000, price: 'US$49.99' },
+    ],
+    premiumFrom: 25000,   // an item at this price or more shows as Premium
+    // the reasons WPM.addCoins doubles while the pass runs: coins earned by playing,
+    // never refunds, bought packs or the shop
+    earned: ['typing', 'boss rush', 'world boss', 'achievement', 'task', 'weekly', 'streak', 'academy', 'free typing', 'level up', 'gift', 'party', 'duel', 'superboss'],
+  },
+
   // Sign-in streak. Day 1 to 7 of each week of the streak, then it starts again at day 1
   // with the week bonus added.
   streak: {
