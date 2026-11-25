@@ -37,6 +37,23 @@ window.WPM = (() => {
     catch (e) { if (!saveFailed) { saveFailed = true; console.warn('progress not saved', e); emit('save-failed', e); } }
   };
 
+  // ---------- test coins (Gid, 25 Nov 2026) ----------
+  // Open the site with ?coins=test to try everything in the shop: the balance shows 9,999,999 and
+  // nothing costs anything. ?coins=off puts the real balance back and takes back what was bought
+  // with test coins. It only touches this browser's save, like everything else until the server
+  // exists. Remove it before coins move to the server.
+  const TEST_BAL = 9999999;
+  try {
+    const q = new URLSearchParams(location.search), v = q.get('coins');
+    if (v === 'test' && !data.test) { data.test = { real: data.coins, bought: [] }; data.coins = TEST_BAL; save(); }
+    if (v === 'off' && data.test) {
+      data.owned = data.owned.filter(id => !data.test.bought.includes(id));
+      data.coins = data.test.real; delete data.test; save();
+    }
+    if (v) { q.delete('coins'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); }
+  } catch (e) {}
+  const testing = () => !!data.test;
+
   // ---------- events ----------
   const subs = {};
   function on(ev, fn) { (subs[ev] ||= []).push(fn); return () => { subs[ev] = subs[ev].filter(f => f !== fn); }; }
@@ -89,6 +106,7 @@ window.WPM = (() => {
     return data.coins;
   }
   function spend(n) {
+    if (testing()) { data.coins = TEST_BAL; save(); emit('coins', { coins: data.coins, delta: 0, reason: 'shop' }); return true; }
     if (data.coins < n) return false;
     addCoins(-n, 'shop');
     return true;
@@ -194,7 +212,9 @@ window.WPM = (() => {
   function buy(item) {
     if (owns(item.id)) return { ok: false, reason: 'owned' };
     if (!spend(item.price)) return { ok: false, reason: 'coins' };
-    data.owned.push(item.id); save();
+    data.owned.push(item.id);
+    if (testing()) data.test.bought.push(item.id);
+    save();
     emit('inventory', { id: item.id });
     track('item_buy', { id: item.id, price: item.price });
     return { ok: true };
@@ -233,7 +253,7 @@ window.WPM = (() => {
   return {
     ART_BEST, on, record, track, events, now, day, progress, saveProgress: save,
     useAchievements, unlock, unlockedOn, grant, stats, streak, levelInfo, achievements,
-    coins: () => data.coins, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
+    coins: () => data.coins, testing, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,
