@@ -1137,9 +1137,9 @@ body:has(.page-boss) #rain { opacity: 0; }
   .page-boss .wb-squad { order: 4; padding: 12px 12px 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page-boss .wb-sqh { display: none; }
   .page.page-boss { padding: 0 0 18px; }
-  .page-boss .boss-stage { order: 3; --stage-h: clamp(220px, 36svh, 330px); }
-  .page-boss .boss-hpbox { order: 1; padding: 10px 12px 0; }
-  .page-boss .boss-type { order: 2; padding: 0 12px; }
+  .page-boss .boss-stage { order: 1; --stage-h: clamp(220px, 36svh, 330px); }
+  .page-boss .boss-hpbox { order: 2; padding: 10px 12px 0; }
+  .page-boss .boss-type { order: 3; padding: 0 12px; }
   .page-boss .wb-strip { order: 5; padding: 12px 12px 0; gap: 6px 18px; }
   .page-boss .wb-demo { order: 6; padding: 0 12px; }
   .page-boss .wb-name { font-size: var(--t-m); }
@@ -1381,18 +1381,28 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .page-boss .wb-chip.k-gift, .page-boss .wb-chip.k-weak { opacity: .7; }
 .page-boss .wb-chip.k-gift.on, .page-boss .wb-chip.k-weak.on { opacity: 1; }
 
-/* Words first (Gid, 25 Nov 2026): the word block sits right under the HP bar, where the eyes land,
-   with the attack and spell chips under it and the arena below them. The order is set here, so the
-   markup in js/app/boss.js and js/app/rush/page.js keeps its reading order for screen readers. */
-.page-boss .wb > * { order: 6; }
-.page-boss .wb > .boss-hpbox { order: 1; }
-.page-boss .wb > .boss-type { order: 2; margin-top: 10px; }
-.page-boss .wb > .boss-stage { order: 3; }
-.page-boss .wb > .wb-squad { order: 4; }
-.page-boss .wb > .wb-strip { order: 5; }
-.page-boss .boss-type { display: flex; flex-direction: column; }
-.page-boss .boss-type > .typebox { order: 1; }
-.page-boss .boss-type > .wb-mech { order: 2; min-height: 54px; padding: 6px 0 8px; }
-.page-boss .boss-type > :not(.typebox):not(.wb-mech) { order: 3; }
-.page-boss .boss-type .wb-chip .w { font-size: var(--t-m); }
-.page-boss .boss-type .wb-chip.first .w { font-size: var(--t-l); }
+/* The words are the focus (Gid, 26 Nov 2026): on wider screens the attack chips sit in a column
+   to the right of the word block instead of a row above it, so the centre of the screen holds
+   only the words and they sit higher. The tag over the boss is kept small for the same reason. */
+@media (min-width: 701px) {
+  .page-boss .boss-type { position: relative; }
+  .page-boss .boss-type > .wb-mech {
+    position: absolute; top: 6px; right: 0; width: 176px; min-height: 0; padding: 0; z-index: 2;
+    display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  }
+  .page-boss .boss-type > .typebox { margin-top: 10px; }
+  .page-boss .boss-queue { max-width: calc(100% - 2 * 196px); margin-inline: auto; }
+  .page-boss .wb-chips { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 6px; }
+  .page-boss .wb-chip { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 10px 8px; }
+  .page-boss .wb-chip small { grid-column: 1 / -1; }
+  .page-boss .wb-chip .w, .page-boss .wb-chip.first .w { font-size: var(--t-m); overflow: hidden; text-overflow: ellipsis; }
+  .page-boss .wb-next { text-align: left; }
+}
+.page-boss .wb-label.block { font-size: 16px; padding: 4px 8px; }
+@media (max-width: 700px) {
+  .page-boss .boss-type { display: flex; flex-direction: column; }
+  .page-boss .boss-type > .typebox { order: 1; }
+  .page-boss .boss-type > .wb-mech { order: 2; justify-content: flex-start; }
+  .page-boss .boss-type > :not(.typebox):not(.wb-mech) { order: 3; }
+  .page-boss .wb-chips { justify-content: flex-start; }
+}
