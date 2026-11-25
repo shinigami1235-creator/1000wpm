@@ -20,6 +20,17 @@ One skeleton for both bodies, with Mixamo-style bone names: Hips, Spine, Spine1,
 | Heads | `assets/operators/heads/<id>.glb` | fits the Neck bone | the body's own head | same |
 | Hair | `assets/operators/hair/<id>.glb` | on the Head bone | code-built short and shag | same; hidden under headgear |
 
+### Editors that work on any generated body
+
+These change the model without bending or stretching it, so a new body gets them for free once its mask is painted (`tools/avatar/operator-masks.py`, run with Blender's bpy: R skin, G eyes, B outfit, saved as `assets/operators/<base>-mask.png`).
+
+- **Outfit tint:** a colour and a strength up to 60%, laid over the outfit while keeping the texture's light and shade. Skin is left alone.
+- **Glow:** the cyan glowing details (shirt print, wrist screen, visor) take the Glow colour, the theme colour by default.
+- **Height** ±4% and **Build** ±6% across the chest and shoulders.
+- **Shop gear** that isn't part of the outfit (the face mask) sits on the model's Head bone (`MODEL_FIT` in operator3d.js).
+
+**Eye colour and skin tone** wait for the separate heads. The male body's texture gives the whole face about 50 px, so an eye is 2 or 3 px and a tint there would smear across the lids. A head generated on its own, with its own 1024 px texture, has eyes big enough to mask, and each head carries its own skin tone. Eye glow (cyber implants) comes with the same heads.
+
 ### Gear (bought in the shop, worn on bones)
 
 Each piece is a solid mesh parented to one bone, so it needs no rigging. Its origin sits on that bone's joint.

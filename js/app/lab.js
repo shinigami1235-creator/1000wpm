@@ -35,6 +35,10 @@ Router.register('lab', (() => {
             <div class="lab-colors" data-colors></div>
           </div>
           <div class="lab-group">
+            <span class="label">Body</span>
+            <div class="lab-sliders" data-body></div>
+          </div>
+          <div class="lab-group">
             <span class="label">Keyboard</span>
             <div class="seg" role="group" aria-label="Keyboard shape" data-kb>
               ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
@@ -67,7 +71,16 @@ Router.register('lab', (() => {
       // a new base starts from that base's outfit colours
       P = Operator.clean({ ...Operator.defaults(b.dataset.v) }); apply(); paintForm();
     });
+    el.querySelector('[data-body]').addEventListener('input', e => {
+      const k = e.target.dataset.body; if (!k) return;
+      P.body[k] = +e.target.value / 100; apply();
+    });
     el.querySelector('[data-colors]').addEventListener('input', e => {
+      if (e.target.dataset.tint) {
+        if (e.target.dataset.tint === 'k') P.tint.k = +e.target.value / 100; else P.tint.color = e.target.value;
+        const code = e.target.parentElement.querySelector('code'); if (code && e.target.type === 'color') code.textContent = e.target.value;
+        apply(); return;
+      }
       const z = e.target.dataset.zone; if (!z) return;
       if (e.target.type === 'checkbox') { P.colors[z] = e.target.checked ? 'theme' : Theme.hex('accent'); apply(); paintForm(); return; }
       P.colors[z] = e.target.value;
@@ -128,7 +141,14 @@ Router.register('lab', (() => {
 
   function paintForm() {
     el.querySelectorAll('[data-base] [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === P.base)));
-    el.querySelector('[data-colors]').innerHTML = Operator.ZONES.map(([z, name]) => {
+    // the generated body takes an outfit tint and the glow colour; the code-built body takes every zone
+    const isModel = !!(op && op.model);
+    const zones = isModel ? Operator.ZONES.filter(([z]) => z === 'glow') : Operator.ZONES;
+    const tintRow = isModel ? `<label class="lab-color"><span>Outfit tint</span><input type="color" value="${P.tint.color}" data-tint="color" aria-label="Outfit tint colour"><code>${P.tint.color}</code></label>
+      <label class="lab-slider"><span>Tint strength</span><input type="range" min="0" max="60" step="1" value="${Math.round(P.tint.k * 100)}" data-tint="k" aria-label="Tint strength"></label>` : '';
+    el.querySelector('[data-body]').innerHTML = [['height', 'Height'], ['build', 'Build']].map(([k, n]) =>
+      `<label class="lab-slider"><span>${n}</span><input type="range" min="-100" max="100" step="5" value="${Math.round(P.body[k] * 100)}" data-body="${k}" aria-label="${n}"></label>`).join('');
+    el.querySelector('[data-colors]').innerHTML = tintRow + zones.map(([z, name]) => {
       const v = P.colors[z], theme = v === 'theme';
       const hex = theme ? Theme.hex('accent') : v;
       return `<label class="lab-color"><span>${esc(name)}</span>
@@ -147,7 +167,9 @@ Router.register('lab', (() => {
     el.querySelector('[data-kbc]').innerHTML = `<label class="lab-color"><span>Glow</span>
       <input type="color" value="${kh}" ${kt ? 'disabled' : ''} aria-label="Keyboard colour">
       <span class="lab-theme"><input type="checkbox" ${kt ? 'checked' : ''}> Theme</span></label>`;
-    el.querySelector('[data-acc]').innerHTML = Operator.ACCESSORIES.map(([a, name]) => {
+    // the generated body wears its outfit; only shop gear goes on over it
+    const accList = isModel ? Operator.ACCESSORIES.filter(([a]) => gearFor('acc', a)) : Operator.ACCESSORIES;
+    el.querySelector('[data-acc]').innerHTML = accList.map(([a, name]) => {
       const g = lockedItem('acc', a);
       return `<label class="lab-switch${g ? ' locked' : ''}"><input type="checkbox" data-acc="${a}" ${P.acc[a] ? 'checked' : ''}><span>${esc(name)}</span>${g ? tag(g) : ''}</label>`;
     }).join('');
@@ -184,7 +206,7 @@ Router.register('lab', (() => {
     const ring = new THREE.Mesh(new THREE.RingGeometry(1.26, 1.3, 96), new THREE.MeshBasicMaterial({ color: Theme.hex('accent'), transparent: true, opacity: 0.6 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; scene.add(ring);
 
-    op = Operator.create(THREE, P, {});
+    op = Operator.create(THREE, P, { onModel: () => el && paintForm() });
     scene.add(op.group);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) op.at('idle', 0);

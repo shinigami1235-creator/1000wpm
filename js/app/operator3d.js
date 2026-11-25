@@ -43,6 +43,8 @@ window.Operator = (() => {
       },
       acc: { beanie: !f, visor: true, scarf: true, mask: false, wrist: true, pouches: true, harness: true },
       kb: { style: 'slab', color: 'theme' },
+      tint: { color: '#3a5a8a', k: 0 },      // the generated body's outfit tint, 0 to 1 (strength)
+      body: { height: 0, build: 0 },         // -1 to 1: ±4% height, ±6% across the chest and shoulders
     };
   }
   // a saved or pasted preset with anything missing filled from the base's defaults
@@ -54,11 +56,20 @@ window.Operator = (() => {
     for (const [a] of ACCESSORIES) acc[a] = p && p.acc && typeof p.acc[a] === 'boolean' ? p.acc[a] : d.acc[a];
     const k = (p && p.kb) || {};
     const kb = { style: KB_STYLES.some(([id]) => id === k.style) ? k.style : d.kb.style, color: hex(k.color) || d.kb.color };
-    return { v: 1, base, colors, acc, kb };
+    const num = (v, lo, hi, dv) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : dv);
+    const t = (p && p.tint) || {}, b = (p && p.body) || {};
+    const tint = { color: hex(t.color) && t.color !== 'theme' ? t.color : d.tint.color, k: num(t.k, 0, 0.6, d.tint.k) };
+    const body = { height: num(b.height, -1, 1, 0), build: num(b.build, -1, 1, 0) };
+    return { v: 1, base, colors, acc, kb, tint, body };
   }
 
   // generated bodies: full detail for you, lite for everyone else; the far crowd stays stand-ins
   const MODELS = { male: { full: 'assets/operators/male.glb', lite: 'assets/operators/male-lite.glb' } };
+  // editor masks painted on each model's texture (R skin, G eyes, B outfit; see MODELS.md)
+  const MASKS = { male: 'assets/operators/male-mask.png' };
+  const maskTex = {};
+  // where shop gear sits on the generated male's Head bone: [height, forward, depth scale]
+  const MODEL_FIT = { mask: [-0.02, 0.07, 1] };
   const tpl = {}, live = new Set();
   let loading = null;
   // the generated texture is dark (navy leather, black cargo pants) and the arenas are dim, so lift it:
@@ -78,7 +89,8 @@ window.Operator = (() => {
     if (!loading) loading = import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
       const L = new GLTFLoader();
       return Promise.all(Object.entries(MODELS).flatMap(([base, lods]) => Object.entries(lods).map(([lod, url]) =>
-        L.loadAsync(url).then(g => { g.scene.traverse(o => o.isMesh && brighten(o.material)); tpl[base + ':' + lod] = g.scene; }).catch(e => console.warn('operator model', url, e)))));
+        L.loadAsync(url).then(g => { g.scene.traverse(o => o.isMesh && brighten(o.material)); tpl[base + ':' + lod] = g.scene; }).catch(e => console.warn('operator model', url, e))).concat(
+        Object.entries(MASKS).map(([base, url]) => new THREE.TextureLoader().loadAsync(url).then(t => { t.flipY = false; t.colorSpace = THREE.NoColorSpace; maskTex[base] = t; }).catch(e => console.warn('operator mask', url, e))))));
     }).then(() => { for (const op of live) op._upgrade(); });
     return loading;
   }
@@ -194,6 +206,7 @@ window.Operator = (() => {
       return own(new THREE.MeshStandardMaterial({ roughness: rough, metalness: zone === 'boots' ? 0.15 : 0 }));
     }
     function paint() {
+      paintModel();
       for (const [z] of ZONES) {
         const v = P.colors[z], m = mats[z];
         if (!m) continue;
@@ -215,9 +228,57 @@ window.Operator = (() => {
     const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
     const rbox = (w, h, d, r) => (THREE.RoundedBoxGeometry && !opts.tiny ? new THREE.RoundedBoxGeometry(w, h, d, lite ? 1 : 2, r) : box(w, h, d));
 
-    // the generated body: a copy of the loaded model on its own bones (geometry and texture are shared)
+    // the generated body: a copy of the loaded model on its own bones (geometry and texture are shared).
+    // Its material is this operator's own, so the safe editors can change it: an outfit tint that keeps
+    // the texture's light and shade (mask B), and the glowing cyan details recoloured to the Glow colour.
+    // Eye colour and skin tone wait for the separate heads, since this texture gives the face ~50 px.
+    let mu = null;
+    function modelMat(src) {
+      const m = src.clone();
+      const u = mu = { uMask: { value: maskTex[P.base] || null }, uTint: { value: new THREE.Color() }, uTintK: { value: 0 }, uGlow: { value: new THREE.Color() } };
+      m.defines = { ...(m.defines || {}), OP_MASK: maskTex[P.base] ? 1 : 0 };
+      m.onBeforeCompile = sh => {
+        Object.assign(sh.uniforms, u);
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', `#include <common>
+            uniform sampler2D uMask; uniform vec3 uTint; uniform float uTintK; uniform vec3 uGlow;
+            // cyan glowing details, and warm skin the tint must leave alone (bare forearms, neck), from the texel in linear colour
+            float opGlowMask(vec3 c) { return clamp(((c.g + c.b) * 0.5 - c.r * 1.2 - 0.04) * 9.0, 0.0, 1.0) * smoothstep(0.1, 0.18, max(c.g, c.b)); }
+            float opSkin(vec3 c) { return smoothstep(1.05, 1.35, c.r / max(c.g, 1e-3)) * step(c.b, c.g) * smoothstep(0.03, 0.08, c.r); }`)
+          .replace('#include <map_fragment>', `#include <map_fragment>
+            {
+              vec3 c0 = diffuseColor.rgb / max(diffuse, vec3(1e-4));
+              float gm = opGlowMask(c0);
+              float l = dot(c0, vec3(0.299, 0.587, 0.114));
+              float cloth = 1.0;
+              #if OP_MASK
+                cloth = texture2D(uMask, vMapUv).b;
+              #endif
+              cloth *= 1.0 - opSkin(c0);
+              vec3 c = mix(c0, uTint * clamp(l * 7.0, 0.0, 1.6), cloth * uTintK * (1.0 - gm));
+              c = mix(c, uGlow * (0.35 + l * 1.4), gm);
+              diffuseColor.rgb = c * diffuse;
+            }`)
+          .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+            { vec3 e0 = texture2D(emissiveMap, vEmissiveMapUv).rgb; float g2 = opGlowMask(e0);
+              float l2 = dot(e0, vec3(0.299, 0.587, 0.114));
+              float cl2 = 1.0 - opSkin(e0);
+              #if OP_MASK
+                cl2 *= texture2D(uMask, vEmissiveMapUv).b;
+              #endif
+              vec3 e = mix(e0, uTint * clamp(l2 * 7.0, 0.0, 1.6), cl2 * uTintK * (1.0 - g2));
+              totalEmissiveRadiance = (e * (1.0 - g2) + uGlow * g2 * 1.6) * emissive; }`);
+      };
+      m.customProgramCacheKey = () => 'op-model-' + m.defines.OP_MASK;
+      return own(m);
+    }
+    function paintModel() {
+      if (!mu) return;
+      const glow = P.colors.glow === 'theme' ? (window.Theme ? Theme.hex('accent') : '#39ff88') : P.colors.glow;
+      mu.uTint.value.set(P.tint.color); mu.uTintK.value = P.tint.k; mu.uGlow.value.set(glow);
+    }
     function buildModel(t) {
-      B = {}; mats = {}; accs = {};
+      B = {}; mats = {}; accs = {}; mu = null;
       const root = t.clone(true);
       root.name = 'operator';
       root.traverse(o => { if (o.isBone) B[o.name] = o; });
@@ -226,7 +287,15 @@ window.Operator = (() => {
         const sk = o.skeleton;
         o.bind(new THREE.Skeleton(sk.bones.map(b => B[b.name]), sk.boneInverses.map(m => m.clone())), o.bindMatrix);
         o.frustumCulled = false; o.userData.zone = 'model';
+        o.material = modelMat(o.material);
       });
+      // shop gear that isn't part of the generated outfit hangs on the model's own bones
+      mats.scarf = mat('scarf');
+      if (B.Head) {
+        const g = new THREE.Group(); g.name = 'acc-mask'; B.Head.add(g); accs.mask = g;
+        const m = new THREE.Mesh(own(new THREE.CylinderGeometry(0.104, 0.094, 0.085, 32, 1, true, -Math.PI * 0.62, Math.PI * 1.24)), mats.scarf);
+        m.position.set(0, MODEL_FIT.mask[0], MODEL_FIT.mask[1]); m.scale.set(1, 1, MODEL_FIT.mask[2]); m.userData.zone = 'scarf'; g.add(m);
+      }
       return root;
     }
     function build() {
@@ -326,6 +395,12 @@ window.Operator = (() => {
       });
       return root;
     }
+    // height and build: the whole body ±4%, and the chest and shoulders ±6% wide (the arms ride along)
+    function shape() {
+      if (!built) return;
+      built.scale.setScalar(1 + 0.04 * P.body.height);
+      if (B.Spine2) B.Spine2.scale.set(1 + 0.06 * P.body.build, 1, 1 + 0.04 * P.body.build);
+    }
     function showAcc() {
       for (const [a] of ACCESSORIES) if (accs[a]) accs[a].visible = !!P.acc[a];
       if (accs.mask && P.acc.mask && accs.scarf) accs.scarf.visible = false;   // the scarf pulled up is the mask
@@ -370,6 +445,7 @@ window.Operator = (() => {
       group.add(built);
       paint(); showAcc();
       rest = {}; for (const n in B) rest[n] = B[n].position.clone();
+      shape();
       // each limb's direction at rest, and the turn that straightens a rest bend in elbows and knees,
       // so 0 means a straight limb hanging down on both the stand-in and the model
       dirs = {}; straight = {};
@@ -534,7 +610,7 @@ window.Operator = (() => {
     }
     const ctl = {
       group, get bones() { return B; }, get preset() { return JSON.parse(JSON.stringify(P)); },
-      height: () => 1.8 * BASES[P.base].scale,
+      height: () => 1.8 * BASES[P.base].scale * (1 + 0.04 * P.body.height),
       get model() { return isModel; },
       play(name) { if (!A[name] || ONCE_LEN[name] || name === anim) return; prev = { name: anim, t }; anim = name; t = 0; blend = 0; },
       once(name) { if (ONCE_LEN[name]) once = { name, t: 0 }; },
@@ -554,7 +630,7 @@ window.Operator = (() => {
       set(next) {
         const n = clean(next), rebuildNeeded = n.base !== P.base, kbChanged = n.kb.style !== P.kb.style || n.kb.color !== P.kb.color;
         P = n;
-        if (rebuildNeeded || !isModel !== !model()) rebuild(); else { paint(); showAcc(); if (kbChanged) buildKb(); }
+        if (rebuildNeeded || !isModel !== !model()) rebuild(); else { paint(); showAcc(); shape(); if (kbChanged) buildKb(); }
         if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
         frame();
       },
@@ -563,7 +639,7 @@ window.Operator = (() => {
       // tests: hold an exact pose given in body terms, missing parts filled from a blank pose
       _pose(p) { prev = null; once = null; const b = BLANK(); for (const k in p) b[k] = typeof p[k] === 'object' ? { ...b[k], ...p[k] } : p[k]; apply(b); },
       // the model for this base finished loading: rebuild on it, keeping the animation where it was
-      _upgrade() { if (!isModel && model()) { rebuild(); frame(); } },
+      _upgrade() { if (!isModel && model()) { rebuild(); frame(); if (opts.onModel) opts.onModel(); } },
     };
     frame();
     if (!opts.tiny && MODELS[P.base]) { live.add(ctl); loadModels(THREE); }
