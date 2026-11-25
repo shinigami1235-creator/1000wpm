@@ -12,24 +12,24 @@ Router.register('boss', (() => {
   let R, B, A, NAME, TIPS;
   const BANNER = [
     '',
-    'It puts up a firewall and fires packets at you now.',
-    'It spawns bugs that patch it.',
-    'Block words are two words long now.',
-    'It is enraged and attacks twice as often.',
+    'It now puts up firewalls and throws packets at you.',
+    'It now spawns bugs that heal it.',
+    'Block words are now two words long.',
+    'It attacks twice as often now.',
   ];
   const tipsFor = name => ({
     slam: 'Type the red word before its timer runs out to block the attack.',
-    phrase: 'Type both words with the space between them to block.',
+    phrase: 'Type both words and the space between them to block.',
     volley: 'Type a cyan packet before it reaches you to send it back for triple damage.',
-    shield: 'Hits go into the firewall until the raid breaks it, then the kernel opens.',
-    adds: `Type an amber word to delete that bug since each one patches ${name}.`,
-    weak: 'Hits on the open kernel deal double damage.',
-    weak3: 'Hits on the open kernel deal triple damage.',
-    stagger: `Six quick words in a row stagger ${name} and make your next three hits crits.`,
-    start: 'Type the highlighted word and press Space. Each correct word deals one damage per letter.',
-    combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
-    spell: 'Type a green spell word with no typo to cast it. The offer goes after 15 seconds.',
-    orb: 'Each word charges the orb in front of you. Six words, or a short pause, fire it as one shot.',
+    shield: 'Your hits go into the firewall until the raid breaks it. The kernel opens when it breaks.',
+    adds: `Type the amber words to delete the bugs before they heal ${name}.`,
+    weak: 'The kernel is open and your hits deal double damage.',
+    weak3: 'The kernel is open and your hits deal triple damage.',
+    stagger: `Type six words fast to stagger ${name}. Your next three hits crit.`,
+    start: 'Type the highlighted word and press Space. Each word deals one damage per letter.',
+    combo: 'Words with no typo raise your combo and make your shots bigger. A typo drops it one tier.',
+    spell: 'Type the green spell word with no typo to cast it. It goes away after 15 seconds.',
+    orb: 'Every word charges your orb. It fires after six words or when you stop typing.',
   });
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
@@ -90,11 +90,11 @@ Router.register('boss', (() => {
     if (scene && window.Operator) scene.crew(squad.members().filter(m => !m.you).map(m => ({ id: opId(m), preset: Operator.random(m.name) })));
     const name = m => (m.you ? 'you' : m.name);
     squadOffs.push(
-      squad.on('lock', e => { if (!el) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} locked on to you. Type the dodge word`, cls: 'alert' }); } }),
+      squad.on('lock', e => { if (!el) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} is aiming at you. Type the dodge word`, cls: 'alert' }); } }),
       squad.on('dodge', () => { if (!el) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
       squad.on('covered', e => { if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
-      squad.on('hit', e => { if (scene) scene.act(opId(e.who), 'hit'); if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Recruit shield kept you up. From CL-02 you can go down', cls: 'you' }); }),
-      squad.on('down', e => { if (scene) scene.act(opId(e.who), 'down'); if (!el) return; pushFeed({ text: e.who.you ? 'You are down. Every clean word gets you back a second sooner' : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
+      squad.on('hit', e => { if (scene) scene.act(opId(e.who), 'hit'); if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Your recruit shield saved you. You can go down from CL-02', cls: 'you' }); }),
+      squad.on('down', e => { if (scene) scene.act(opId(e.who), 'down'); if (!el) return; pushFeed({ text: e.who.you ? "You're down. Each word you type brings you back a second sooner" : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
       squad.on('revive', e => { if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
       squad.on('up', e => { if (scene) scene.act(opId(e.who), 'up'); if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
       squad.on('heal', e => { if (scene) scene.act(opId(e.by), 'cast'); if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
@@ -140,8 +140,8 @@ Router.register('boss', (() => {
         <div class="wb-cover-text">
           <small>${tr ? 'Training raid' : 'World boss'}</small>
           <h1 id="wb-cover-h">${esc(NAME)}</h1>
-          <p>${tr ? `A short fight against a weak ${esc(NAME)} with three squadmates. A tip shows each part of the fight as it comes up, and at the end you get a division suggested from how you typed.`
-            : 'Every word you type hits it for one point per letter. Block its attacks, break its firewall and finish it with the raid.'}</p>
+          <p>${tr ? `A short practice fight against a weaker ${esc(NAME)} with three squadmates. Tips explain each attack as it comes. At the end you get a division suggested from how you typed.`
+            : 'Everyone online fights this boss together. Each word you type deals one damage per letter and the red words block its attacks.'}</p>
           <dl>
             <div><dt>HP</dt><dd>${fmt0(tr ? 3000 : B.maxHp)}</dd></div>
             <div><dt>Phases</dt><dd>${NPH()}</dd></div>
@@ -254,7 +254,7 @@ Router.register('boss', (() => {
           <span class="wb-stat"><b data-k="s-blocks">0</b> blocked</span>
           <button class="wb-boardbtn" type="button" data-k="boardbtn" aria-expanded="false" aria-controls="wb-drawer">Scoreboard <kbd>Tab</kbd></button>
         </div>
-        <p class="wb-demo" data-k="demo">Demo: the other raiders are simulated until the server is live.
+        <p class="wb-demo" data-k="demo">The other raiders are bots until the server is live.
           <span class="wb-skip" data-k="skip">Skip to phase ${[2, 3, 4, 5].map(n => `<button type="button" data-p="${n - 1}">${n}</button>`).join('')}</span></p>
       </div>
       <aside class="wb-drawer" id="wb-drawer" data-k="drawer" aria-label="Scoreboard" inert>
@@ -300,7 +300,7 @@ Router.register('boss', (() => {
     tip('start');
     scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, bossId: 'syntax' });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
-      .catch(() => { const l = q('loading'); if (l) l.textContent = 'The boss needs an internet connection to draw.'; });
+      .catch(() => { const l = q('loading'); if (l) l.textContent = "The boss can't load without an internet connection."; });
 
     offs.push(WorldBossNet.onState(onState));
     offs.push(WorldBossNet.onHit(onHit));
@@ -567,7 +567,7 @@ Router.register('boss', (() => {
       if (!el) return;
       cSfx('tierUp', e.tier);
       levelUp(e.tier);
-      pushFeed({ text: `${e.name} activated at combo ${e.combo}: x${Combat.TIERS[e.tier].mult} damage`, cls: 'mile' });
+      pushFeed({ text: `${e.name} at combo ${e.combo}: x${Combat.TIERS[e.tier].mult} damage`, cls: 'mile' });
       tip('combo');
       const b = q('cbox'); if (b) { b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); }
     });
@@ -590,7 +590,7 @@ Router.register('boss', (() => {
       paintChips(true);
     });
     me.on('ward', () => { cSfx('ward'); if (scene) scene.fxEvent('ward'); });
-    me.on('perk', e => { if (!el) return; pop(e.name.toUpperCase(), 'white'); pushFeed({ text: e.id === 'sentinel' ? 'Unbreakable kept your combo tier' : 'Execution: the target is below 30%', cls: 'you' }); });
+    me.on('perk', e => { if (!el) return; pop(e.name.toUpperCase(), 'white'); pushFeed({ text: e.id === 'sentinel' ? 'Unbreakable kept your combo tier' : 'Execution: it is below 30% HP', cls: 'you' }); });
     me.on('guard', () => { if (!el) return; cSfx('guard'); if (scene) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: 'Quantum split kept your combo', cls: 'you' }); });
     me.on('status', e => { if (!e.on && scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, false); if (el && st) paintMe(now()); });
   }
@@ -933,7 +933,7 @@ Router.register('boss', (() => {
     const me2 = squad.me(), yd = q('youdown');
     if (me2.down) {
       yd.hidden = false;
-      const html = `<b>You're down</b><span>Back in ${Math.max(0, Math.ceil((me2.downUntil - t) / 1000))}s. Each clean word takes a second off, or a squadmate can revive you.</span>`;
+      const html = `<b>You're down</b><span>Back in ${Math.max(0, Math.ceil((me2.downUntil - t) / 1000))}s. Each word you type takes a second off. A squadmate can also revive you.</span>`;
       if (yd.innerHTML !== html) yd.innerHTML = html;
     } else if (!yd.hidden) { yd.hidden = true; yd.innerHTML = ''; }
   }

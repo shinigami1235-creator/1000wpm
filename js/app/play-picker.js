@@ -12,13 +12,13 @@ window.PlayPicker = (() => {
       desc: 'Words come through the firewall. Type them before they reach you, with a boss at the end of each chapter.' },
     { id: 'race', name: 'race', href: '#/play/race', mode: 'Solo', color: Theme.hex('ink'), alias: ['art'],
       sub: 'Against Art, your best run or a friend',
-      desc: 'Your car goes as fast as you type. Race Art at his real speed, or your own best run.' },
+      desc: 'Your car goes as fast as you type. Race Art at his real speed or your own best run.' },
     { id: 'rush', name: 'boss rush', href: '#/play/rush', mode: 'Solo', color: '#ff9f43', alias: ['rush'],
       sub: 'Every boss in a row, each one harder',
-      desc: 'Copies of every boss Art has beaten, one after another. Each has its own move and its own music, and gets faster as it loses HP.' },
+      desc: 'Every boss Art has beaten, one after another. Each has its own move and music and gets faster as it loses HP.' },
     { id: 'superboss', name: 'superboss', href: '#/superboss', mode: 'Live', color: '#b48cff', alias: ['stream'],
       sub: 'Art fights it on his stream',
-      desc: 'Watch Art fight on his stream, chat, and send him support with your coins.' },
+      desc: 'Watch Art fight live, chat and send him support with your coins.' },
     { id: 'duel', name: 'duel', href: '#/duel', mode: 'PvP', color: '#3ee6ff', alias: ['pvp'],
       sub: 'Best of 3 rounds, ranked by MMR',
       desc: 'Type against another player for three rounds. Your MMR goes up when you win and down when you lose.' },
@@ -27,7 +27,7 @@ window.PlayPicker = (() => {
       desc: 'Team up with up to three others. Heal, shield and revive each other by typing their names.' },
     { id: 'commons', name: 'open port', href: '#/commons', mode: 'Chat', color: '#ff8fc8', alias: ['chat', 'port'],
       sub: 'The chat rooms and your friends',
-      desc: 'Talk with other players in the public rooms, or privately with your friends.' },
+      desc: 'Talk with other players in the public rooms or privately with your friends.' },
   ];
   const flat = s => s.replace(/\s+/g, '');
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

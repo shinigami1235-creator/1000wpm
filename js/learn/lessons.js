@@ -151,9 +151,9 @@ window.LEARN = (() => {
       id: 'symbols', title: 'Symbols and brackets', blurb: 'The keys chat, code and passwords use: brackets, = + - * / and quotes.',
       guide: K => [
         'Square and curly brackets sit right of P. Round brackets are Shift with 9 and 0.',
-        'Each pair uses one finger for both halves, so the closing bracket is the key next to the opening one.',
+        'One finger types both halves of each pair since the closing bracket sits next to the opening one.',
         'Hold Shift with the other hand for ( ) { } < > + * and quotes.',
-        'Your right little finger covers most of these keys, so keep the other fingers on the home row while it reaches.',
+        'Your right little finger covers most of these keys so keep the other fingers on the home row while it reaches.',
         'Go slow here. Speed on symbols comes last.',
       ],
       keys: () => '()[]{}<>=+-*/;:\'"_ ',
@@ -163,9 +163,9 @@ window.LEARN = (() => {
     {
       id: 'stamina', title: 'Long passage', blurb: 'A real paragraph from a book, capitals and all. Keep your pace to the end.',
       guide: () => [
-        'This one is a full paragraph, so settle into a pace you can hold for a minute or two.',
+        'This one is a full paragraph so settle into a pace you can hold for a minute or two.',
         'Read a few words ahead of where you are typing.',
-        'A mistake near the end costs as much as one at the start, so stay careful when you get tired.',
+        'A mistake near the end costs as much as one at the start so stay careful when you get tired.',
       ],
       keys: () => null,
       drill: K => {

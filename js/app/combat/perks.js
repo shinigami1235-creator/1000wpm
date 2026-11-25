@@ -17,7 +17,7 @@
     { id: 'striker', name: 'Striker', good: 'Speed', perk: 'Overdrive', vals: [0.15, 0.20, 0.25],
       text: v => `Fast words hit up to ${pct(v)} harder, on top of the usual speed bonus. Full bonus at 180 wpm.` },
     { id: 'precision', name: 'Precision', good: 'Accuracy', perk: 'Zero error', vals: [0.10, 0.13, 0.16],
-      text: v => `Clean words hit ${pct(v)} harder while your accuracy is 95% or more.` },
+      text: v => `Words with no typo hit ${pct(v)} harder while your accuracy is 95% or more.` },
     { id: 'hunter', name: 'Hunter', good: 'Boss damage', perk: 'Execution', vals: [0.20, 0.26, 0.32],
       text: v => `You hit ${pct(v)} harder once the target is below 30% health.` },
     { id: 'sentinel', name: 'Sentinel', good: 'Endurance', perk: 'Unbreakable', vals: [20000, 16000, 12000],
@@ -25,7 +25,7 @@
     { id: 'ghost', name: 'Ghost', good: 'Combos', perk: 'Ghost protocol', vals: [0.15, 0.20, 0.25],
       text: v => `Your combo tiers come ${pct(v)} sooner: Charged bolt at ${Math.round(10 * (1 - v))} instead of 10.` },
     { id: 'architect', name: 'Architect', good: 'Support', perk: 'System override', vals: [0.15, 0.20, 0.25], team: [0.04, 0.05, 0.06],
-      text: (v, t) => `Your spells hit ${pct(v)} harder, and in a party the whole team deals ${pct(t)} more.` },
+      text: (v, t) => `Your spells hit ${pct(v)} harder. In a party the whole team deals ${pct(t)} more.` },
   ];
   const pct = v => `${Math.round(v * 100)}%`;
 

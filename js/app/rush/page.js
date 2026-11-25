@@ -23,10 +23,10 @@ window.RushPage = (() => {
   const ARENA = new Set(['popup', 'sign', 'mute', 'page', 'byte', 'decoy']);
   const TAG_LABEL = { sign: 'Sign', page: 'Page', byte: 'Packet', decoy: 'Fake', mute: 'Speaker' };
   const TIPS = {
-    start: 'Type the highlighted word and press Space. Every word hits the boss.',
+    start: 'Type the highlighted word and press Space to hit the boss.',
     block: 'Type the red words before the bar runs out to block the attack and stun the boss.',
     weak: 'The amber word is the weak point and hits for 5% of the boss\'s HP.',
-    combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
+    combo: 'Words with no typo raise your combo and make your shots bigger. A typo drops it one tier.',
     spell: 'Type a green spell word with no typo to cast it.',
     stun: 'Your words deal double damage while the boss is stunned.',
   };
@@ -62,7 +62,7 @@ window.RushPage = (() => {
           <section class="rush-menu">
             <div class="rush-lead">
               <h1>Boss rush</h1>
-              <p>Copies of every boss Art has beaten come one after another and each one is harder than the last. You get one retry per run and the run ends when a boss beats you.</p>
+              <p>Every boss Art has beaten, one after another, each harder than the last. You get one retry per run. The run ends when a boss beats you.</p>
               <div class="rush-go"><button class="btn" type="button" data-k="start">Start run</button><span>or press Enter</span></div>
               ${best ? `<p class="rush-best">${best}</p>` : ''}
             </div>
@@ -133,7 +133,7 @@ window.RushPage = (() => {
         </div>`;
       scene = RushScene.mount(q('stage'), { onImpact });
       scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
-        .catch(() => { const l = q('loading'); if (l) l.textContent = 'The bosses need an internet connection to draw.'; });
+        .catch(() => { const l = q('loading'); if (l) l.textContent = "The bosses can't load without an internet connection."; });
       q('quit').addEventListener('click', () => endRun('quit'));
       q('over').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) act(b.dataset.act); });
       keys = TT.captureKeys(q('box'), {
@@ -342,7 +342,7 @@ window.RushPage = (() => {
         case 'stun': scene.stun(p.ms); tip('stun'); break;
         case 'overheat': pop('OVERHEATED', 'amber'); A.play('shieldBreak'); break;
         case 'moveDone': scene.moveEnd(); pop('STUNNED', 'green'); A.play('stagger'); if (plan.boss.move === 'fixsign') scene.setSign('NODLES'); break;
-        case 'shield': scene.setShield(1); banner('Half HP', 'Firewall up', 'Hits go into the firewall until it breaks.', 1800); A.play('shieldUp'); break;
+        case 'shield': scene.setShield(1); banner('Half HP', 'Firewall up', 'Your hits go into the firewall until it breaks.', 1800); A.play('shieldUp'); break;
         case 'shieldBreak': scene.setShield(null); pop('FIREWALL DOWN', 'cyan'); A.play('shieldBreak'); break;
         case 'enrage': scene.enrage(true); pop('ENRAGED', 'red'); A.play('roar'); break;
         case 'stage': {

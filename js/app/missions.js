@@ -22,11 +22,11 @@ window.Missions = (() => {
   // lon and lat place the marker; side is where its tag sits (r or l) so tags never meet
   const LIST = [
     { id: 'boss', name: 'World Boss', tag: 'Syntax Error', href: '#/boss', icon: 'boss', color: '#ff4d5e', big: true, side: 'r',
-      desc: 'Syntax Error, the leftovers of the update. Everyone online fights it at once.' },
+      desc: 'Everyone online fights Syntax Error at once.' },
     { id: 'superboss', name: 'Superboss', tag: 'Art\'s stream', href: '#/superboss', icon: 'live', color: '#b48cff', lon: 101, lat: 15, side: 'r',
       desc: 'Art fights these bosses on his stream. Watch, chat and send him support with your coins.' },
     { id: 'rush', name: 'Boss rush', href: '#/play/rush', icon: 'rush', color: '#ff9f43', lon: 16, lat: 50, side: 'r',
-      desc: 'Copies of every boss Art has beaten, one after another, each harder than the last.' },
+      desc: 'Every boss Art has beaten, one after another, each harder than the last.' },
     { id: 'breach', name: 'Breach', href: '#/play/breach', icon: 'breach', color: Theme.hex('accent'), lon: 139, lat: 37, side: 'l',
       desc: 'Five chapters with a boss at the end of each, plus endless and a daily run.' },
     { id: 'duel', name: 'Duel', href: '#/duel', icon: 'duel', color: '#3ee6ff', lon: -100, lat: 40, side: 'l',

@@ -427,7 +427,7 @@
       for (const x of foes) x.alive = false;
       for (const p of P.values()) { p.eng.closeOffer('fight'); p.fightStats.push({ fight: f, dmg: p.stats.dmg }); if (p.down) up(p, cfg.rebootHp, null); else p.hp = Math.min(cfg.hp, p.hp + cfg.clearHeal); }
       emit({ type: 'fight', phase: 'clear', fight: f, at: clock });
-      if (art) emit({ type: 'callout', text: f >= R.fights.length - 1 ? 'That was all of them. Good run.' : 'Nice. On to the next one.', at: clock });
+      if (art) emit({ type: 'callout', text: f >= R.fights.length - 1 ? 'You got all of them. Good run.' : 'Nice. On to the next one.', at: clock });
       if (f >= R.fights.length - 1) over(true);
       else nextAt = clock + cfg.clearMs;
     }

@@ -58,7 +58,7 @@ window.Ops = (() => {
   // ordinary typist (40 wpm, 92% accuracy, a 20 combo); whichever stands out most wins.
   function suggest() {
     const runs = window.WPM && WPM.sessions ? WPM.sessions().slice(-60) : [];
-    if (runs.length < 3) return { id: 'precision', why: 'A good first pick until you have a few runs. The site suggests one from your runs after that.' };
+    if (runs.length < 3) return { id: 'precision', why: 'A good first pick. After a few runs you get one suggested from how you play.' };
     const avg = (a, f) => (a.length ? a.reduce((s, r) => s + (f(r) || 0), 0) / a.length : 0);
     const wpm = Math.max(...runs.map(r => r.wpm || 0));
     const acc = avg(runs, r => r.acc);

@@ -57,7 +57,7 @@
     let dpsWin = [];
     const scene = SuperScene.mount(root, { boss, onPop: pop, onFrame: frame, reduceShake: opts().reduceShake });
     scene.ready.then(ok => { const l = root.querySelector('.sb-loading'); if (ok && l) l.remove(); if (onReady) onReady(); })
-      .catch(() => { const l = root.querySelector('.sb-loading'); if (l) l.textContent = 'The arena needs an internet connection to draw.'; });
+      .catch(() => { const l = root.querySelector('.sb-loading'); if (l) l.textContent = "The arena can't load without an internet connection."; });
     a('name').textContent = B.name;
 
     const left = x => (x.left == null ? null : Math.max(0, x.left - (performance.now() - rx)));
@@ -458,7 +458,7 @@
           <a class="btn out" data-k="watch" href="#/superboss/watch">Watch the stream</a>
           </div>
         </div>
-        <p class="sb-lede">Art fights these bosses live on his stream. Viewers watch on this site, chat and spend coins to help him or to make the fight harder.</p>
+        <p class="sb-lede">Art fights these bosses live on stream. Viewers watch here and spend coins to help him or make the fight harder.</p>
         <div class="sb-pick">
           <ol class="sb-bosses" aria-label="Bosses">
             ${SuperData.BOSSES.map(b => `<li><button type="button" class="sb-bossbtn" data-b="${b.id}"><span class="sb-bn">0${b.n}</span><span class="sb-bt"><b>${esc(b.name)}</b><span>${esc(b.core)}</span><small>3 phases, enrages at ${clock(b.enrageS * 1000)}</small></span></button></li>`).join('')}
@@ -472,7 +472,7 @@
           </div>
           <p class="sb-dialnote" data-k="dialnote"></p>
         </section>
-        <p class="sb-note">Art opens the stream view on the computer he streams from and captures it in OBS as a 1920x1080 window. Viewers open the watch page.</p>
+        <p class="sb-note">Art opens Stream this fight on his streaming PC and captures the window in OBS at 1920x1080. Viewers open Watch the stream.</p>
       </div>`;
     const q = k => el.querySelector(`[data-k="${k}"]`);
     let preview = null;
@@ -481,7 +481,7 @@
       el.querySelectorAll('[data-b]').forEach(b => b.setAttribute('aria-pressed', b.dataset.b === o.boss));
       el.querySelectorAll('[data-d]').forEach(b => b.setAttribute('aria-checked', b.dataset.d === o.dial));
       const d = SuperData.dial(o.dial), B = SuperData.boss(o.boss);
-      q('dialnote').textContent = `${d.name} sets every window to the time a ${d.wpm} wpm typist needs to read and type the word, and gives the boss ${fmt(Math.round(d.wpm * 26 * B.hpK))} HP.`;
+      q('dialnote').textContent = `Timers give a ${d.wpm} wpm typist just enough time. The boss has ${fmt(Math.round(d.wpm * 26 * B.hpK))} HP.`;
       q('look').textContent = B.look;
       q('stream').href = `#/superboss/stream/${o.boss}/${o.dial}`;
       q('watch').href = `#/superboss/watch/${o.boss}/${o.dial}`;
@@ -719,7 +719,7 @@
           <h1 data-k="title">Art vs ${esc(B.name)}</h1>
           <span class="sb-party"><b data-k="party">0</b> in the watch party</span>
         </div>
-        <p class="sb-simnote" data-k="simnote" hidden>Art isn't live, so a bot types for him. The chat and the other buyers are simulated.</p>
+        <p class="sb-simnote" data-k="simnote" hidden>Art isn't live yet. A bot types for him and the chat and other buyers are bots too.</p>
         <div class="sb-wgrid">
           <div class="sb-warena" data-k="arena"></div>
           <aside class="sb-wside">

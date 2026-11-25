@@ -64,7 +64,7 @@ Router.register('party', (() => {
           <section class="panel" aria-label="Roles">
             <div class="ph">// ROLES</div>
             <dl class="pa-roles">${Object.entries(R().ROLES).map(([k, r]) => `<dt>${UI.icon(ROLE_ICON[k], 'green')}${e(r.name)}</dt><dd>${e(r.text)}</dd>`).join('')}</dl>
-            <p class="dim pa-note">Clean words from anyone raise the team combo, which multiplies everyone's damage. A typo from anyone drops it a tier.</p>
+            <p class="dim pa-note">Every word with no typo raises the team combo and the team combo multiplies everyone's damage. One typo from anyone drops it a tier.</p>
           </section>
           <section class="panel" aria-label="Your party runs"><div class="ph">// YOUR RUNS<span class="meta">THIS DEVICE</span></div><div data-rec></div></section>
         </div>
@@ -211,13 +211,13 @@ Router.register('party', (() => {
   const COLORS = ['#3ee6ff', '#f2b330', '#ff7ad9'];
   const colorOf = id => { if (id === 'me') return Theme.hex('accent'); const others = run.players.filter(p => p.id !== 'me'); return COLORS[Math.max(0, others.findIndex(p => p.id === id)) % COLORS.length]; };
   const HOW = {
-    hydra: 'Type a head\'s name to aim at it. A head grows back unless the others fall soon after.',
+    hydra: 'Type a head\'s name to aim at it. A head grows back unless you drop the others soon after.',
     swarm: 'Type a mite\'s word before it reaches the player it flies at.',
     snake: 'Type the last two cars\' words to cut them off. A shorter train hits softer.',
     golem: 'When the core opens, everything does double damage.',
     twins: 'Type a name to aim. Drop both within 12 s of each other or the first one comes back.',
   };
-  HOW.mites = 'Mites carry words too: type one before it lands.';
+  HOW.mites = 'Mites carry words too. Type one before it lands.';
   const MUSIC = ['stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage4', 'stage5', 'stage3'];
   const ROLE_HOW = {
     striker: 'Your words hit 1.3 times harder.',
@@ -261,7 +261,7 @@ Router.register('party', (() => {
           <span><b class="num" data-s="acc">100%</b> accuracy</span><span><b class="num" data-tc>0</b> team combo <em data-tm>x1.00</em></span>
           <button class="btn out sm" type="button" data-leave>Leave run</button>
         </div>
-        <p class="du-note">Teammates marked Bot are simulated until the server is live.</p>
+        <p class="du-note">Teammates marked Bot are bots until the server is live.</p>
         <div class="du-end" data-end hidden></div>
       </div>`;
     const stage = el.querySelector('[data-stage]');
@@ -478,7 +478,7 @@ Router.register('party', (() => {
         if (ev.id === 'me') { const b = el.querySelector('[data-stage]'); b.classList.remove('ouch'); void b.offsetWidth; b.classList.add('ouch'); }
         lanePop(ev.id, `-${ev.dmg}`, ev.shielded ? 'block' : 'in');
         break;
-      case 'down': scene.down(ev.id); pop(ev.id === 'me' ? 'You are down. Keep typing to reboot faster.' : `${who(ev.id).name} is down. Type ${who(ev.id).handle || handleOf(ev.id)} to bring them back.`, 'in'); sfx('blockFail'); break;
+      case 'down': scene.down(ev.id); pop(ev.id === 'me' ? "You're down. Keep typing to come back sooner." : `${who(ev.id).name} is down. Type ${who(ev.id).handle || handleOf(ev.id)} to bring them back.`, 'in'); sfx('blockFail'); break;
       case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.heal(ev.id); sfx('milestone'); break;
       case 'heal': scene.heal(ev.id); lanePop(ev.id, `+${ev.amount}`, 'heal'); if (ev.by === 'me' || ev.id === 'me') sfx('weakOpen'); break;
       case 'shield': scene.shield(ev.id); lanePop(ev.id, 'Shield', 'block'); if (ev.by === 'me' || ev.id === 'me') sfx('shieldUp'); break;
@@ -594,7 +594,7 @@ Router.register('party', (() => {
         ? `<span class="mu-chip block${typed && st.attack.word.startsWith(typed) ? ' on' : ''}"><small>Block, hits ${e(at)}</small><b>${e(st.attack.word)}</b><em class="num">${left.toFixed(1)}s</em></span>`
         : `<span class="mu-chip wait"><small>Hit on ${e(at)} in</small><b class="num">${left.toFixed(1)}s</b><em>Your guard blocks it</em></span>`);
     }
-    if (p.down) chips.push(`<span class="mu-chip down"><small>You are down</small><b class="num">${Math.ceil(p.downLeft / 1000)}s</b><em>Each clean word takes a second off</em></span>`);
+    if (p.down) chips.push(`<span class="mu-chip down"><small>You are down</small><b class="num">${Math.ceil(p.downLeft / 1000)}s</b><em>Each word takes a second off</em></span>`);
     if (st.buffOffer && p.role === 'support') for (const b of st.buffOffer) chips.push(`<span class="mu-chip buff${typed && R().BUFFS[b].word.startsWith(typed) ? ' on' : ''}"><small>Buff</small><b>${e(R().BUFFS[b].word)}</b><em>${e(R().BUFFS[b].text)}</em></span>`);
     else if (p.role === 'support') chips.push(`<span class="mu-chip meter"><small>Team meter</small><b class="num">${Math.round(st.meter)}%</b></span>`);
     for (const id of p.offer || []) { const sp = Combat.spell(id); chips.push(`<span class="mu-chip r${sp.rarity}${typed && sp.word.startsWith(typed) ? ' on' : ''}" style="--sc:${sp.color}"><small>${e(Combat.RARITY[sp.rarity].name)}</small><b>${e(sp.word)}</b></span>`); }

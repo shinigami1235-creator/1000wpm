@@ -37,10 +37,10 @@ window.SuperData = (() => {
   const BOSSES = [
     {
       id: 'hydra', name: 'Kernel Hydra', n: 1, hpK: 1, enrageS: 270,
-      look: 'Three heads on one body of blocks, in a flooded server pit.',
-      core: 'Each of its three heads has its own words. Type a head\'s word to hit it. A head you leave alone heals, and a cut head grows back.',
+      look: 'Three heads on one body, in a flooded server pit.',
+      core: 'Each head has its own word. Type it to hit that head. Heads you leave alone heal and cut heads grow back.',
       phases: [
-        'Each head has its own words. A head you leave alone heals, and a cut head grows back.',
+        'Each head has its own word. Heads you leave alone heal and cut heads grow back.',
         'Cut Patch first since it puts cut heads back on now.',
         'The heads grow back in 6 seconds and Root\'s breath needs two words to block.',
       ],
@@ -59,7 +59,7 @@ window.SuperData = (() => {
     },
     {
       id: 'compiler', name: 'The Compiler', n: 2, hpK: 0.9, enrageS: 285,
-      look: 'A tower of screens that writes a program at you, in a hall of build pillars.',
+      look: 'A tower of screens that writes code at you.',
       core: 'Type the fixed word for each red bug before its line compiles. Fix the oldest line first or lose HP.',
       phases: [
         'Type the fixed word for each red bug before its line compiles. Fix the oldest line first.',
@@ -82,10 +82,10 @@ window.SuperData = (() => {
     },
     {
       id: 'leviathan', name: 'Packet Leviathan', n: 3, hpK: 1, enrageS: 270,
-      look: 'A serpent of packet segments circling an open network sea.',
-      core: 'Its weak point word shows only on the segment facing you. Type it before the segment passes for triple damage.',
+      look: 'A serpent made of packets that circles the arena.',
+      core: 'The weak point word shows on the segment facing you. Type it before it passes for triple damage.',
       phases: [
-        'Its weak point word shows only on the segment facing you. Type it before the segment passes.',
+        'The weak point word shows on the segment facing you. Type it before it passes.',
         'A red decoy word shows on a second segment. Typing it costs HP.',
         'The weak point windows get shorter and the tail sweep needs two words to block.',
       ],

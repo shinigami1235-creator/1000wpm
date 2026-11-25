@@ -70,7 +70,7 @@ window.OpsUI = (() => {
               ${d && d.id === x.id ? '<span class="op-cur">Current</span>' : `<button class="btn out sm" type="button" data-pick="${x.id}" ${d && !sw.ok ? 'disabled' : ''}>${d ? 'Switch' : 'Join'}</button>`}
             </li>`).join('')}
         </ul>
-        <p class="op-note dim">Rank ${['I', 'II', 'III'][r - 1]} perk. It gets stronger at CL-04 and CL-07.</p>`;
+        <p class="op-note dim">Rank ${['I', 'II', 'III'][r - 1]} perk, stronger at CL-04 and CL-07.</p>`;
       host.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => {
         const res = Ops.pick(b.dataset.pick);
         if (!res.ok) { const n = host.querySelector('.op-note'); if (n) n.textContent = res.why; }

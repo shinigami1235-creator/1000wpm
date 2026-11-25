@@ -215,14 +215,14 @@ window.RushData = (() => {
     sign: { kind: 'sign', name: 'Falling signs', gap: 3, text: 'Type each falling sign before it lands.' },
     announcer: { kind: 'mute', name: 'Volume', gap: 2.6, cap: 3, rise: [0.045, 0.06, 0.08], drop: 0.24, text: 'Type the speakers to turn the volume down. At full volume it shouts.' },
     press: { kind: 'page', name: 'Pages', gap: 2.4, heat: 5, text: 'Type pages before they reach you. Five in a row overheats the press.' },
-    correction: { kind: 'pen', name: 'Red pen', gap: 3.4, text: 'It writes a wrong word over yours. Type the crossed-out word, not the red one.' },
+    correction: { kind: 'pen', name: 'Red pen', gap: 3.4, text: 'It writes a wrong word over yours. Type the crossed-out word and ignore the red one.' },
     siege: { kind: 'sign', name: 'Falling rubble', gap: 3, text: 'Type each falling block before it lands.' },
-    warden: { kind: 'pen', name: 'Firewall rules', gap: 3.4, text: 'It writes a blocked word over yours. Type the crossed-out word, not the red one.' },
-    colossus: { kind: 'byte', name: 'Data blocks', gap: 2.8, text: 'Type data blocks to throw them back. From phase 3 the red ones are fakes: let them land.' },
+    warden: { kind: 'pen', name: 'Firewall rules', gap: 3.4, text: 'It writes a blocked word over yours. Type the crossed-out word and ignore the red one.' },
+    colossus: { kind: 'byte', name: 'Data blocks', gap: 2.8, text: 'Type data blocks to throw them back. From phase 3 the red ones are fakes so let them land.' },
     king: { kind: 'popup', name: 'Decrees', gap: 3.2, cap: 3, text: 'Type decrees to tear them up. If three are open, the next one bites.' },
-    half: { kind: 'pen', name: 'Bad compile', gap: 3.2, text: 'It rewrites a word in your line. Type the crossed-out word, not the red one.' },
+    half: { kind: 'pen', name: 'Bad compile', gap: 3.2, text: 'It rewrites a word in your line. Type the crossed-out word and ignore the red one.' },
     brute: { kind: 'page', name: 'Pistons', gap: 2.5, heat: 5, text: 'Type pistons before they reach you. Five in a row overheats it.' },
-    syntax: { kind: 'byte', name: 'Packets', gap: 2.6, text: 'Type packets to send them back. From phase 3 the red ones are fakes: let them land.' },
+    syntax: { kind: 'byte', name: 'Packets', gap: 2.6, text: 'Type packets to send them back. From phase 3 the red ones are fakes so let them land.' },
   };
   const SIG_HIT = 4;          // integrity a landed signature attack costs at mark I, +2 a mark, at most 14
   // each boss's music, one track at three speeds, one per phase (audio/rush-<id>-<phase>.mp3)
