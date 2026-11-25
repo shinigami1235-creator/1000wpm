@@ -35,7 +35,10 @@ Router.register('shop', (() => {
       : Object.entries(c || {}).flatMap(([k, v]) => Array.isArray(v) ? v.map(i => ({ category: k, ...i })) : [{ id: k, ...v }]);
     // operator gear (REWARDS.shop.gear) replaced the old avatar creator's items
     // the operator's keyboards (its weapon) sit with the room keyboards in Keyboards (Gid, 25 Nov)
-    const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).map(g => ({ ...g, category: g.kb ? 'Keyboards' : 'Operator' }));
+    // a seasonal item (from/until in REWARDS.shop.gear) shows only in its window, unless you own it
+    const day = WPM.day(), inSeason = g => (!g.from || day >= g.from) && (!g.until || day <= g.until);
+    const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).filter(g => inSeason(g) || WPM.owns(g.id))
+      .map(g => ({ ...g, category: g.kb ? 'Keyboards' : 'Operator' }));
     return [...gear, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
@@ -187,6 +190,10 @@ Router.register('shop', (() => {
     const premium = !!(item.premium || (S && (item.price || 0) >= S.premiumFrom));
     card.classList.toggle('premium', premium);
     if (premium && !card.querySelector('.prem')) card.querySelector('.body').insertAdjacentHTML('afterbegin', '<span class="prem">Premium</span>');
+    if (item.until && !WPM.owns(item.id) && !card.querySelector('.ltd')) {
+      const left = Math.max(0, Math.round((new Date(item.until + 'T23:59:59') - Date.now()) / 86400000));
+      card.querySelector('.body').insertAdjacentHTML('afterbegin', `<span class="ltd">Limited: ${left ? `${left} ${left === 1 ? 'day' : 'days'} left` : 'last day'}</span>`);
+    }
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
       row.innerHTML = item.kb || item.acc ? `<span class="owned">Owned</span><a class="btn out sm" href="#/lab">Operator</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;

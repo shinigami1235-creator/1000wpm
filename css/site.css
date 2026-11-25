@@ -1371,3 +1371,5 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .coins .coin-boost { margin-left: 6px; padding: 1px 5px; font: 600 11px/1.3 var(--f-mono); color: var(--bg); background: var(--gold); }
 .gift-item .gift-boost { font: 700 44px/1 var(--f-mono); color: var(--gold); text-shadow: 0 0 14px rgba(242,194,48,.5); }
 .gift-dlg .label.gold { color: var(--gold); }
+/* a seasonal item's days left (REWARDS.shop.gear from/until) */
+.item .ltd { display: inline-block; margin: 0 6px 6px 0; padding: 2px 6px; font: 600 11px/1.2 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--bg); background: var(--red, #ff4d5e); }

@@ -50,7 +50,9 @@ window.Progress = (() => {
     p.fxColor ||= {};     // bonus id -> colour
     p.gift ||= { month: null, runDay: null, runCount: 0 };
     p.reveal ||= [];
-    p.drop ||= { day: null, n: 0, miss: 0 };      // surprise drops today and misses in a row (REWARDS.drops)      // gifts given and not opened yet: { id, source } or { coins, source }
+    p.drop ||= { day: null, n: 0 };               // surprise drops today (REWARDS.drops)
+    p.drop.mins ||= 0;                              // minutes played since the last drop
+    p.drop.last ||= 0;                              // the length in minutes of the last run, for a win's chance      // gifts given and not opened yet: { id, source } or { coins, source }
     p.said ||= null;      // the day Tilde last announced the streak
     WPM.events.register(p.known);
   }
@@ -233,7 +235,12 @@ window.Progress = (() => {
     ensureTasks();
     advance(p.daily, e, false);
     advance(p.weekly, e, true);
-    if (e.name === 'run') maybeRunGift();
+    if (e.name === 'run') {
+      // play time fills the bad-luck protection, whatever the mode; one run counts 30 minutes at most
+      const m = Math.min(30, Math.max(0, (+e.ms || 0) / 60000));
+      p.drop.mins += m; p.drop.last = m;
+      maybeRunGift();
+    }
     // a win can bring a surprise drop
     if (e.name === 'boss_win' || e.name === 'pvp_win' || e.name === 'superboss_win' || (e.name === 'party_run' && e.won)) maybeDrop('win');
   }
@@ -326,15 +333,18 @@ window.Progress = (() => {
     return { only, shop };
   }
   // ---------- surprise drops (REWARDS.drops) ----------
-  // Finishing a task, an achievement or a win rolls a chance of a bonus. After `pity` misses in
-  // a row the next finish always drops, and no more than maxPerDay come in a day.
+  // Finishing a task, an achievement or a win rolls a chance of a bonus. A win's chance grows
+  // with the game's length. After pityMins of play without a drop the next finish always drops,
+  // and each day has its own cap between perDay[0] and perDay[1], seeded on the date.
+  function dropCap(t) { const [lo, hi] = R.drops.perDay; return lo + Math.floor(rng('drops:' + t)() * (hi - lo + 1)); }
   function maybeDrop(kind) {
     const D = R.drops; if (!D || !p) return null;
     const t = today();
     if (p.drop.day !== t) { p.drop.day = t; p.drop.n = 0; }
-    if (p.drop.n >= D.maxPerDay) return null;
-    if (p.drop.miss + 1 < D.pity && Math.random() >= (D.chance[kind] || 0)) { p.drop.miss++; return null; }
-    p.drop.miss = 0; p.drop.n++;
+    if (p.drop.n >= dropCap(t)) return null;
+    const chance = kind === 'win' ? Math.min(D.winMax, D.winPerMin * (p.drop.last || 0)) : (D.chance[kind] || 0);
+    if (p.drop.mins < D.pityMins && Math.random() >= chance) return null;
+    p.drop.mins = 0; p.drop.n++;
     const sum = D.table.reduce((a, x) => a + x.w, 0);
     let roll = Math.random() * sum, pick = D.table[0];
     for (const x of D.table) { if ((roll -= x.w) < 0) { pick = x; break; } }
@@ -442,7 +452,7 @@ window.Progress = (() => {
     on, streak, tasks, achievements: achList, bonuses, bonus, setBonus,
     nextGift, openGift, resolveGifts: resolve, checkIn, ready: () => !!p,
     said: () => p.said, setSaid: d => { p.said = d; save(); },
-    dayReward, give, drop: maybeDrop,
+    dayReward, give, drop: maybeDrop, dropCap: d => dropCap(d || today()), dropState: () => ({ ...p.drop }),
     // a lifetime counter by name (bossDmg, bossWins, combo...), for the Operator ID
     counter: k => (p && p.c[k]) || 0,
     // the daily task ids a date would draw, for tests and for planning the pool

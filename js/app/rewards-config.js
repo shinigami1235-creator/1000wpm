@@ -22,6 +22,11 @@ window.REWARDS = {
     // operators' weapons, the way other games sell gun skins; they change the look, never the damage. Each one names
     // the operator slot it unlocks (acc: an accessory, kb: a keyboard style); premium models
     // generated later join this list with the same slots.
+    // Seasonal and limited items (Gid, 25 Nov 2026): add from and until (dates, 'YYYY-MM-DD') and
+    // the item is in the shop only between them, with the days left on its card. Whoever bought
+    // it keeps it after it leaves. It's still bought with coins, so anyone can earn it in time;
+    // money only buys coins or the pass, never an item.
+    //   { id: 'kb-frost', name: 'Frost keyboard', price: 6000, kb: 'frost', from: '2026-12-15', until: '2027-01-05' }
     gear: [
       { id: 'op-mask', name: 'Face mask', price: 1200, acc: 'mask', icon: 'mask' },
       { id: 'kb-compact', name: 'Compact keyboard', price: 1800, kb: 'compact', icon: 'kb-compact', desc: 'Needles: your shots fly as three thin bolts at once.' },
@@ -79,13 +84,20 @@ window.REWARDS = {
 
   // Random room items.
   // Surprise drops (Gid, 25 Nov 2026): finishing something may bring a bonus, never on a
-  // schedule a player can count on. Each finish rolls its chance; after `pity` misses in a row
-  // the next one always drops. Drops are earned only and are never sold, so no paid random boxes.
-  // A drop waits in the gift crate and opens on the next page that isn't a game.
+  // schedule a player can count on. Drops are earned only and are never sold, so no paid random
+  // boxes. A drop waits in the gift crate and opens on the next page that isn't a game.
+  //   chance       a task, all of a day's or week's tasks, or an achievement
+  //   winPerMin    a win's chance grows with the game's length: 5% a minute, up to winMax,
+  //                so a 2-minute duel is 10% and a 10-minute raid 50%
+  //   pityMins     bad-luck protection counts minutes played, not finishes, so many short
+  //                games and one long one count the same: after this many minutes of play
+  //                without a drop, the next finish always drops
+  //   perDay       the day's cap, a number from lo to hi picked fresh each day
   //   coins: [lo, hi]   boost: x mult on coins earned by playing, for mins after it opens
   //   gift: a room item, as the gift crate picks it   jackpot: shown as a jackpot
   drops: {
-    chance: { task: 0.35, weekly: 0.6, alldone: 0.5, achievement: 0.4, win: 0.15 },
+    chance: { task: 0.35, weekly: 0.6, alldone: 0.5, achievement: 0.4 },
+    winPerMin: 0.05, winMax: 0.6,
     table: [
       { w: 55, coins: [40, 120] },
       { w: 25, coins: [150, 400] },
@@ -93,8 +105,8 @@ window.REWARDS = {
       { w: 5, gift: true },
       { w: 3, coins: [1000, 1000], jackpot: true },
     ],
-    pity: 5,
-    maxPerDay: 6,
+    pityMins: 20,
+    perDay: [5, 10],
   },
 
   gifts: {
