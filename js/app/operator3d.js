@@ -516,6 +516,20 @@ window.Operator = (() => {
       const a = B.LeftHand.getWorldPosition(new V()), b = B.RightHand.getWorldPosition(new V());
       group.worldToLocal(a); group.worldToLocal(b);
       kbAt.copy(a).add(b).multiplyScalar(0.5).add(new V(0, -0.04, 0.07));
+      // on a generated body, sit the keys just under the lowest fingertip of either hand at the bottom
+      // of a stroke, so no finger goes through the board (the two hands don't hang at the same height)
+      let mesh = null;
+      if (isModel && built) built.traverse(o => { if (o.isSkinnedMesh && !mesh) mesh = o; });
+      if (mesh) {
+        // all in the operator's own space (it faces +z there), whatever way the scene turned it
+        const pos = mesh.geometry.attributes.position, v = new V();
+        let low = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld); group.worldToLocal(v);
+          for (const h of [a, b]) if (v.z > h.z + 0.01 && v.distanceTo(h) < 0.14 && v.y < low) low = v.y;
+        }
+        if (isFinite(low)) kbAt.y = low - 0.012;
+      }
     }
     const kc = new THREE.Color(), white = new THREE.Color(0xffffff);
     // The keyboard is the operator's weapon (Gid, 25 Nov), so it's always out: holstered upright at
