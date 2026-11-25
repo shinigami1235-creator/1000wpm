@@ -12,8 +12,9 @@
 //   fx.aura(name, on, { caster, target })                    'ward' | 'hyper' | 'split' | 'root' while a status lasts
 //   fx.event('ward' | 'guard', { caster })                   safe mode used up, a quantum split copy lost
 //   fx.charge(at, level, tier)                               the charge orb: words feed it, level 0..1; level 0 hides it
-//   fx.feed(from, at)                                        a typed word's spark flying into the orb
-//   fx.release(tier, power, from, to(out), onLand)           the orb winds up and fires one attack sized by power 0..1
+//   fx.feed(from, at, kb)                                    a typed word's spark flying into the orb
+//   fx.release(tier, power, from, to(out), onLand, kb)       the orb winds up and fires one attack sized by power 0..1
+//   kb (also opt.kb on shot): the shooter's keyboard, 'slab' | 'compact' | 'split' | 'arc'; see "keyboard signatures"
 //   fx.update(dt)  fx.clear()  fx.dispose()  fx.info()
 //
 // caster and target are small adapters, so the same effect can hit a boss or another player:
@@ -243,6 +244,7 @@ Combat.FX = (() => {
     function shot(tier, from, to, onLand, opt = {}) {
       onLand = zeroLand(tier, onLand, 0.7);
       const col = opt.color ? C(opt.color) : tier >= 1 && TIER_COL[Math.min(tier, TOP)] !== GREEN ? TIER_COL[Math.min(tier, TOP)] : null;
+      const kb = KB_SIG[opt.kb] ? opt.kb : null;
       const e = add({ from: from.clone(), to, onLand, tier: Math.min(tier, 4), landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
       const dur = tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15;
       const life = tier >= 3 ? 0.3 : dur + 0.14;
@@ -261,6 +263,12 @@ Combat.FX = (() => {
           if (onLand) onLand(t0.clone());
         }
         const ku = clamp(1 - (e.t - dur) / (life - dur), 0, 1);
+        if (kb && tier <= 1) {
+          // a bought keyboard fires its own basic shot
+          if (u < 1) sigBolt(kb, e.from, t0, u, 1, col || GREEN);
+          else sigLand(kb, t0, e.from, col || GREEN, ku);
+          return e.t < life;
+        }
         if (tier === 1) {
           // one thick bolt on a low arc, so it reads even though it flies away from the camera
           t3.copy(e.from); t5.lerpVectors(t3, t0, 0.5).add(t4.set(e.side * 1.6, 3.2, 0));
@@ -317,9 +325,90 @@ Combat.FX = (() => {
             if (e.t < 0.02) circle(t0, t3, tier >= 5 ? 6 : 4, 0.2, WHITE, 1, 28);
           }
         }
+        if (kb) sigTrail(kb, e.from, t0, e.t, clamp(1 - e.t / life, 0, 1), col || GREEN, 1 + 0.25 * tier);
         return e.t < life;
       };
       return e;
+    }
+
+    // ---------- keyboard signatures (Gid, 25 Nov 2026) ----------
+    // The keyboard is the operator's weapon, so each shape in the shop leaves its own mark on your
+    // shots. Looks only: damage, timing and where a shot lands are the same for every board.
+    //   slab     the free board: the plain shots above
+    //   compact  Needles: thin bolts that fly three at a time
+    //   split    Twin: shots leave from both halves and cross on the target
+    //   arc      Storm: shots fly as forked lightning
+    const KB_SIG = { compact: 1, split: 1, arc: 1 };
+    const sigPts = [], sigPts2 = [], _sa = new V(), _sb = new V(), _sc = new V(), _sd = new V(), _sv = new V(), _c2 = new THREE.Color();
+    const halfOf = (from, side, w, out) => out.copy(from).add(_sd.set(side * 0.32 * w, 0, 0));
+    // a bolt from a to b with its head at u (0..1), fading by k
+    function sigBolt(kb, a, b, u, k, col, w = 1) {
+      if (kb === 'compact') {
+        for (let i = 0; i < 3; i++) {
+          const ui = (u - i * 0.16) / 0.68;
+          if (ui <= 0) continue;
+          const h = Math.min(1, ui), tl = Math.max(0, Math.min(1, ui) - 0.3);
+          _sc.set((i - 1) * 0.9 * w, (i === 1 ? 0.6 : -0.2) * w, 0);   // spread wide at the board, meeting on the target
+          _sa.lerpVectors(a, b, ease(h)).addScaledVector(_sc, 1 - ease(h));
+          _sb.lerpVectors(a, b, ease(tl)).addScaledVector(_sc, 1 - ease(tl));
+          seg(_sb, _sa, 0.3 * w, col, 0.6 * k); seg(_sb, _sa, 0.09 * w, WHITE, 1.7 * k);
+        }
+      } else if (kb === 'split') {
+        const hd = ease(clamp(u, 0, 1)), tl = ease(clamp(u - 0.4, 0, 1));
+        for (const sd of [-1, 1]) {
+          halfOf(a, sd, w, t3);
+          t5.lerpVectors(t3, b, 0.5).add(_sv.set(sd * 1.5 * w, 1.1 * w, 0));
+          _c2.copy(col).lerp(WHITE, sd > 0 ? 0.35 : 0);
+          for (let i = 0; i <= 8; i++) {
+            const s2 = tl + (hd - tl) * i / 8;
+            t7.set(0, 0, 0).addScaledVector(t3, (1 - s2) * (1 - s2)).addScaledVector(t5, 2 * s2 * (1 - s2)).addScaledVector(b, s2 * s2);
+            if (i) { seg(t6, t7, 0.5 * w, _c2, 0.55 * k); seg(t6, t7, 0.15 * w, WHITE, 1.4 * k); }
+            t6.copy(t7);
+          }
+        }
+      } else {
+        // forked lightning, redrawn every frame so it crackles; held still under reduced motion
+        _sa.lerpVectors(a, b, ease(clamp(u, 0, 1)));
+        const pts = jag(a, _sa, 10, reduce ? 0 : 0.09, sigPts);
+        line(pts, 0.3 * w, col, 0.8 * k); line(pts, 0.09 * w, WHITE, 1.7 * k);
+        if (!reduce && pts.length > 5) {
+          const j = 3 + Math.floor(Math.random() * (pts.length - 5));
+          _sb.copy(pts[j]).add(_sv.set(rnd(-1, 1), rnd(-0.4, 1), rnd(-0.6, 0.6)).multiplyScalar(1.3 * w));
+          line(jag(pts[j], _sb, 4, 0.25, sigPts2), 0.07 * w, WHITE, 1.2 * k);
+        }
+      }
+    }
+    // the mark a board's shot leaves where it lands, fading by k
+    function sigLand(kb, at, from, col, k, w = 1) {
+      _sv.subVectors(from, at).normalize();
+      if (kb === 'compact') for (let i = 0; i < 3; i++) circle(_sa.copy(at).add(_sd.set((i - 1) * 0.5 * w, (i === 1 ? 0.4 : -0.2) * w, 0)), _sv, (0.3 + (1 - k) * 1.2) * w, 0.07, i === 1 ? WHITE : col, 1.3 * k, 6, i);
+      else if (kb === 'split') for (const sd of [-1, 1]) { _sb.copy(_sv).add(_sd.set(sd * 0.5, 0, 0)).normalize(); circle(at, _sb, (0.8 + (1 - k) * 2.4) * w, 0.1, sd > 0 ? WHITE : col, 1.2 * k, 22); }
+      else {
+        circle(at, _sv, (0.7 + (1 - k) * 1.8) * w, 0.08, col, k, 20);
+        if (!reduce && k > 0.35) for (let i = 0; i < 4; i++) {
+          _sb.copy(at).add(_sd.set(rnd(-1, 1), rnd(-1, 1), rnd(-0.5, 0.5)).normalize().multiplyScalar(rnd(1.2, 2.2) * w));
+          line(jag(at, _sb, 4, 0.3, sigPts2), 0.07 * w, i % 2 ? WHITE : col, 1.3 * k);
+        }
+      }
+    }
+    // laid over a big shot (twin beam, rail, overload) while it lasts
+    function sigTrail(kb, a, b, t, k, col, w = 1) {
+      if (k <= 0) return;
+      if (kb === 'compact') {
+        // needles racing down the beam
+        for (let i = 0; i < 4; i++) {
+          const u = (t * 5 + i / 4) % 1;
+          _sc.set(Math.cos(i * 1.7), Math.sin(i * 1.7), 0).multiplyScalar(0.45 * w);
+          _sa.lerpVectors(a, b, Math.min(1, u + 0.12)).add(_sc); _sb.lerpVectors(a, b, u).add(_sc);
+          seg(_sb, _sa, 0.08 * w, i % 2 ? WHITE : col, 1.5 * k);
+        }
+      } else if (kb === 'split') {
+        // a thin beam from each half beside the main one
+        for (const sd of [-1, 1]) { halfOf(a, sd, w * 1.4, _sa); seg(_sa, b, 0.14 * w, sd > 0 ? WHITE : col, 0.9 * k); }
+      } else {
+        // lightning crawling along the beam
+        line(jag(a, b, 14, reduce ? 0 : 0.05, sigPts), 0.08 * w, WHITE, 1.3 * k);
+      }
     }
 
     // ---------- the charge orb and its release (Gid, 24 Nov 2026) ----------
@@ -336,13 +425,19 @@ Combat.FX = (() => {
       chg.at.copy(at); chg.L = clamp(level, 0, 1); chg.tier = clamp(tier | 0, 0, TOP);
       if (chg.L > 0 && !chg.on) { chg.on = true; chg.show = 0; }
     }
-    function feed(from, at) {
+    function feed(from, at, kb) {
       const col = TIER_COL[chg.tier];
+      kb = KB_SIG[kb] ? kb : null;
+      if (kb) {
+        const a = from.clone(), b = at.clone(), f = add({});
+        f.update = () => { const u = f.t / 0.16; if (u < 1) sigBolt(kb, a, b, u, 1, col, 0.45); else sigLand(kb, b, a, col, 1 - (u - 1) / 0.6, 0.35); return u < 1.6; };
+      }
       if (chg.pull < 0) { chg.pull = pulls.length; pulls.push({ at: chg.at, k: 0, swirl: 0 }); }
       const a = pulls[chg.pull]; a.k = 60; a.swirl = 6;
       for (let k = 0; k < (reduce ? 4 : 10); k++) {
         _pv.set(rnd(-1, 1), rnd(0.2, 1.2), rnd(-0.6, 0.6)).multiplyScalar(4);
-        spawn(t0.copy(from).add(t1.set(rnd(-0.6, 0.6), rnd(-0.2, 0.4), 0)), _pv, k % 3 ? col : WHITE, 0.32, 0.9, k % 2 ? G.one : G.zero, { pull: chg.pull });
+        const o = kb === 'split' ? halfOf(from, k % 2 ? 1 : -1, 1.6, t0) : t0.copy(from);
+        spawn(o.add(t1.set(rnd(-0.6, 0.6), rnd(-0.2, 0.4), 0)), _pv, k % 3 ? col : WHITE, 0.32, 0.9, k % 2 ? G.one : G.zero, { pull: chg.pull });
       }
     }
     function drawCharge(dt) {
@@ -405,7 +500,8 @@ Combat.FX = (() => {
       }
     }
     const tmpPts = [];
-    function release(tier, power, from, to, onLand) {
+    function release(tier, power, from, to, onLand, kb) {
+      kb = KB_SIG[kb] ? kb : null;
       tier = clamp(tier | 0, 0, TOP); power = clamp(power, 0, 1);
       onLand = zeroLand(tier, onLand, 0.6 + 0.6 * power);
       const col = TIER_COL[tier], WIND = reduce ? 0.08 : 0.22, FLY = 0.12 + 0.06 * (1 - power);
@@ -439,6 +535,7 @@ Combat.FX = (() => {
               t6.copy(t7);
             }
           }
+          if (kb) sigBolt(kb, t2, t1, 1, 1, col, 0.8 + 1.4 * power);
           flare(t1, col, 1.5 + 3 * power, 0.06, 1.3, 0.2);
           return true;
         }
@@ -458,6 +555,7 @@ Combat.FX = (() => {
         const k = e.t - e.lt, life = 0.45 + 0.25 * power;
         if (k > life) return false;
         const f = 1 - k / life;
+        if (kb) sigLand(kb, e.at, camera.position, col, f, 1.5 + 2 * power);
         t3.subVectors(camera.position, e.at).normalize();
         for (let i = 0; i < 1 + Math.round(power * 2); i++) circle(e.at, t3, (0.6 + i * 0.5) + ease(k / life) * (2 + 5 * power), 0.12 * f + 0.04, i ? WHITE : col, 1.2 * f, 32, i);
         if (!reduce && k < 0.2) {

@@ -25,6 +25,13 @@ window.Operator = (() => {
   ];
   // the virtual keyboard each operator types on: their weapon, so its shape and colour are theirs to pick
   const KB_STYLES = [['slab', 'Slab'], ['split', 'Split'], ['arc', 'Arc'], ['compact', 'Compact']];
+  // what each board does to your shots (js/app/combat/fx3d.js, keyboard signatures); looks only
+  const KB_SIGS = {
+    slab: 'Standard bolt. Every board deals the same damage.',
+    compact: 'Needles: your shots fly as three thin bolts at once.',
+    split: 'Twin: your shots leave from both halves and cross on the target.',
+    arc: 'Storm: your shots fly as forked lightning.',
+  };
   const ANIMS = [['idle', 'Idle'], ['walk', 'Walk'], ['type', 'Typing'], ['victory', 'Victory'], ['defeat', 'Defeat']];
   const ONCE = [['cast', 'Cast'], ['hit', 'Hit']];
 
@@ -459,11 +466,13 @@ window.Operator = (() => {
       for (const s of ['Left', 'Right']) legs[s] = { a: rest[s + 'Leg'].length(), c: rest[s + 'Foot'].length(), drop: -(rest[s + 'Leg'].y + rest[s + 'Foot'].y) };
       placeKb(); buildKb();
     }
-    // ---------- the virtual keyboard ----------
-    // keys are one instanced mesh, so a board costs three draw calls; it hangs off the body, not the
-    // hands, sits under the fingertips of the typing pose and fades in while the operator types
+    // ---------- the keyboard: the operator's weapon ----------
+    // A real board in the player's chosen shape: a dark metal case per half, solid keycaps, a lit
+    // legend on each key and a glowing edge and underglow in the board's colour. Keys are instanced,
+    // so a board costs about six draw calls. It sits under the fingertips of the typing pose.
     let kb = null, kbV = 0, kbAt = new V(), lastStroke = [0, 0];
     const KEY = 0.032;   // key pitch, well over a real 19 mm key so the board reads from the arena camera
+    const CAP_H = 0.009, CASE_H = 0.016, CASE_TOP = -0.006;   // key tops sit at the board's origin
     function kbLayout(style) {
       const keys = [];   // [x, z, w, side, rotY]
       const rows = style === 'compact' ? [10, 10, 9] : [12, 12, 11, 10];
@@ -471,43 +480,61 @@ window.Operator = (() => {
       keys.push([0, (rows.length / 2) * KEY, style === 'compact' ? 4 : 6]);   // space
       if (style === 'split') for (const k of keys) { const s = k[0] >= 0 ? 1 : -1; k[0] += s * KEY * 1.6; k[4] = -s * 0.22; }
       if (style === 'arc') for (const k of keys) { const a = k[0] / 0.26; k[4] = -a; k[0] = Math.sin(a) * 0.26; k[1] = k[1] - (1 - Math.cos(a)) * 0.26; }
-      for (const k of keys) k[3] = k[0] >= 0 ? 0 : 1;   // 0: under the left hand (+x), 1: the right
+      for (const k of keys) { k[3] = k[0] >= 0 ? 0 : 1; k[4] = k[4] || 0; }   // 0: under the left hand (+x), 1: the right
       return keys;
     }
     function kbColor() { const v = P.kb.color; return v === 'theme' ? (window.Theme ? Theme.hex('accent') : '#39ff88') : v; }
     function buildKb() {
       if (kb) { group.remove(kb.group); kb.parts.forEach(x => x.dispose()); kb = null; }
       if (opts.tiny) return;
-      const layout = kbLayout(P.kb.style), g = new THREE.Group(), parts = [];
-      const c = new THREE.Color(kbColor());
-      const glow = (o) => { const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }); parts.push(m); return m; };
-      // the plate under the keys and its glowing rim
-      const xs = layout.map(k => k[0]), zs = layout.map(k => k[1]);
-      const w = Math.max(...xs) - Math.min(...xs) + KEY * 2.6, d = Math.max(...zs) - Math.min(...zs) + KEY * 2.2;
-      const plateGeo = new THREE.PlaneGeometry(w, d); plateGeo.rotateX(-Math.PI / 2); parts.push(plateGeo);
-      const plate = new THREE.Mesh(plateGeo, glow(0.16)); plate.position.y = -0.004;
-      const rimGeo = new THREE.EdgesGeometry(plateGeo); parts.push(rimGeo);
-      const rim = new THREE.LineSegments(rimGeo, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-      parts.push(rim.material); rim.position.y = -0.004;
-      if (P.kb.style !== 'arc' && P.kb.style !== 'split') g.add(plate, rim);
-      else for (const s of [1, -1]) {   // one plate per half for the split and the curve
-        const half = layout.filter(k => (k[0] >= 0 ? 1 : -1) === s);
-        const hx = half.reduce((a, k) => a + k[0], 0) / half.length, hz = half.reduce((a, k) => a + k[1], 0) / half.length;
-        const pg = new THREE.PlaneGeometry(w / 2 - KEY * 0.4, d); pg.rotateX(-Math.PI / 2); parts.push(pg);
-        const eg = new THREE.EdgesGeometry(pg); parts.push(eg);
-        const pm = new THREE.Mesh(pg, plate.material), rm = new THREE.LineSegments(eg, rim.material);
-        for (const o of [pm, rm]) { o.position.set(hx, -0.004, hz); o.rotation.y = half[0][4] || 0; g.add(o); }
+      const style = P.kb.style, layout = kbLayout(style), g = new THREE.Group(), parts = [];
+      const own2 = x => (parts.push(x), x);
+      const c = new THREE.Color(kbColor()), fade = !!opts.unarmed;
+      const add = o => own2(new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const caseMat = own2(new THREE.MeshStandardMaterial({ color: '#14171c', metalness: 0.6, roughness: 0.4, transparent: fade }));
+      const capMat = own2(new THREE.MeshStandardMaterial({ color: '#2a2f37', metalness: 0.15, roughness: 0.55, transparent: fade }));
+      const rimMat = own2(new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const underMat = add(0.22);
+      const RB = THREE.RoundedBoxGeometry;
+      // one case per half for the split and the curve, each turned to its keys and sized to them
+      const halves = style === 'split' || style === 'arc' ? [0, 1] : [-1];
+      for (const h of halves) {
+        const ks = h < 0 ? layout : layout.filter(k => k[3] === h);
+        const n = ks.length, cx = ks.reduce((a, k) => a + k[0], 0) / n, cz = ks.reduce((a, k) => a + k[1], 0) / n, rot = ks.reduce((a, k) => a + k[4], 0) / n;
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const k of ks) {
+          const dx = k[0] - cx, dz = k[1] - cz, lx = dx * Math.cos(rot) - dz * Math.sin(rot), lz = dx * Math.sin(rot) + dz * Math.cos(rot), hw = (k[2] + (k[2] > 1 ? (k[2] - 1) * 0.25 : 0)) * KEY / 2;
+          x0 = Math.min(x0, lx - hw); x1 = Math.max(x1, lx + hw); z0 = Math.min(z0, lz - KEY / 2); z1 = Math.max(z1, lz + KEY / 2);
+        }
+        const cw = x1 - x0 + KEY * 0.7, cd = z1 - z0 + KEY * 0.7, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+        const at = new V(cx + mx * Math.cos(rot) + mz * Math.sin(rot), 0, cz - mx * Math.sin(rot) + mz * Math.cos(rot));
+        const cg = own2(RB ? new RB(cw, CASE_H, cd, 2, 0.005) : new THREE.BoxGeometry(cw, CASE_H, cd));
+        const body = new THREE.Mesh(cg, caseMat); body.position.set(at.x, CASE_TOP - CASE_H / 2, at.z);
+        const pg = own2(new THREE.PlaneGeometry(cw, cd)); pg.rotateX(-Math.PI / 2);
+        const rim = new THREE.LineSegments(own2(new THREE.EdgesGeometry(pg)), rimMat); rim.position.set(at.x, CASE_TOP + 0.0006, at.z);
+        const under = new THREE.Mesh(pg, underMat); under.position.set(at.x, CASE_TOP - CASE_H - 0.003, at.z); under.scale.set(1.12, 1, 1.18);
+        for (const o of [body, rim, under]) { o.rotation.y = rot; g.add(o); }
       }
-      const capGeo = new THREE.BoxGeometry(KEY * 0.8, 0.004, KEY * 0.8); parts.push(capGeo);
-      const capMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }); parts.push(capMat);
-      const caps = new THREE.InstancedMesh(capGeo, capMat, layout.length);
+      // solid caps, and a lit legend on top of each
+      const capGeo = own2(new THREE.BoxGeometry(KEY * 0.84, CAP_H, KEY * 0.84));
+      const legGeo = own2(new THREE.PlaneGeometry(KEY * 0.5, KEY * 0.5)); legGeo.rotateX(-Math.PI / 2);
+      const legMat = own2(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const caps = new THREE.InstancedMesh(capGeo, capMat, layout.length), legs = new THREE.InstancedMesh(legGeo, legMat, layout.length);
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new V(), pos = new V(), up = new V(0, 1, 0);
-      layout.forEach((k, i) => { caps.setMatrixAt(i, m4.compose(pos.set(k[0], 0, k[1]), q.setFromAxisAngle(up, k[4] || 0), sc.set(k[2] + (k[2] > 1 ? (k[2] - 1) * 0.25 : 0), 1, 1))); caps.setColorAt(i, c); });
-      caps.frustumCulled = false; g.add(caps);
+      layout.forEach((k, i) => {
+        const w = k[2] + (k[2] > 1 ? (k[2] - 1) * 0.25 : 0);
+        q.setFromAxisAngle(up, k[4]);
+        caps.setMatrixAt(i, m4.compose(pos.set(k[0], -CAP_H / 2, k[1]), q, sc.set(w, 1, 1)));
+        legs.setMatrixAt(i, m4.compose(pos.set(k[0], 0.0006, k[1]), q, sc.set(k[2] > 1 ? w * 0.9 : 1, 1, k[2] > 1 ? 0.35 : 1)));
+        legs.setColorAt(i, c);
+      });
+      caps.frustumCulled = legs.frustumCulled = false; g.add(caps, legs);
       g.rotation.x = -0.22;   // far edge up, like a real keyboard
       g.position.copy(kbAt); g.visible = false;
       group.add(g);
-      kb = { group: g, caps, layout, base: c.clone(), flash: new Float32Array(layout.length), parts, mats: [plate.material, rim.material, capMat], op: [0.16, 0.9, 0.85] };
+      // signature: how the board lights up (the shots' look is in js/app/combat/fx3d.js)
+      kb = { group: g, legs, layout, style, base: c.clone(), flash: new Float32Array(layout.length), half: [0, 0], parts,
+        mats: [rimMat, underMat, legMat], op: [0.95, 0.22, 0.95], solid: fade ? [caseMat, capMat] : [], t: 0 };
     }
     // where the board sits: under the fingertips at the bottom of a stroke
     function placeKb() {
@@ -528,14 +555,14 @@ window.Operator = (() => {
           mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld); group.worldToLocal(v);
           for (const h of [a, b]) if (v.z > h.z + 0.01 && v.distanceTo(h) < 0.14 && v.y < low) low = v.y;
         }
-        if (isFinite(low)) kbAt.y = low - 0.012;
+        if (isFinite(low)) kbAt.y = low - 0.010;   // with the board's tilt, about 3 mm under the lowest tip
       }
     }
     const kc = new THREE.Color(), white = new THREE.Color(0xffffff);
     // The keyboard is the operator's weapon (Gid, 25 Nov), so it's always out: holstered upright at
     // the right hip between words, swung up in front of the hands to type. opts.unarmed hides it
     // between words as before.
-    const HOLSTER = new V(-0.27, 0.93, 0.02), hq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15, 0.25, 1.35)), kq = new THREE.Quaternion();
+    const HOLSTER = new V(-0.27, 0.93, -0.09), hq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15, 0.25, 1.35)), kq = new THREE.Quaternion();
     let holsterT = 0;
     function kbTick(dt, typing, tt) {
       if (!kb) return;
@@ -544,31 +571,49 @@ window.Operator = (() => {
       kb.group.visible = armed || kbV > 0.02;
       if (!kb.group.visible) return;
       const k = smooth(kbV);
-      holsterT += dt;
+      holsterT += dt; kb.t += dt;
       const bob = Math.sin(holsterT * 2.2) * 0.012 * (1 - k);
       kb.group.position.copy(HOLSTER).setY(HOLSTER.y + bob).multiplyScalar(BASES[P.base].scale).lerp(kbAt, k);
       kb.group.quaternion.copy(kq.identity()).slerp(hq, armed ? 1 - k : 0);
       const sz = armed ? 0.55 + 0.45 * k : 1;
-      kb.group.scale.set(sz * (0.7 + 0.3 * kbV), sz, sz * (0.85 + 0.15 * kbV));
+      kb.group.scale.set(sz, sz, sz);
+      // the case stays solid at the hip; only the lights dim there
       const vis = armed ? 0.55 + 0.45 * kbV : kbV;
-      kb.mats.forEach((m, i) => { m.opacity = kb.op[i] * vis; });
+      let rimK = 1;
+      if (kb.style === 'arc') rimK = 0.7 + 0.5 * Math.abs(Math.sin(kb.t * 23) * Math.sin(kb.t * 7.3));   // Storm: the edge crackles
+      kb.mats.forEach((m, i) => { m.opacity = kb.op[i] * vis * (i === 0 ? rimK : 1); });
+      kb.solid.forEach(m => { m.opacity = kbV; });
+      const L = kb.layout, F = kb.flash;
       // a key lights under each stroke, on that hand's half of the board
       if (typing) {
         const st = strokes(tt);
         for (const h of [0, 1]) {
           if (st[h] > 0.85 && lastStroke[h] <= 0.85) {
-            const pick = kb.layout.map((k, i) => (k[3] === h ? i : -1)).filter(i => i >= 0);
-            kb.flash[pick[Math.floor(Math.random() * pick.length)]] = 1;
+            const pick = L.map((x, i) => (x[3] === h ? i : -1)).filter(i => i >= 0);
+            const i = pick[Math.floor(Math.random() * pick.length)];
+            F[i] = 1;
+            if (kb.style === 'compact') { if (L[i + 1]) F[i + 1] = Math.max(F[i + 1], 0.7); if (L[i + 2]) F[i + 2] = Math.max(F[i + 2], 0.45); }   // Needles: a run of three
+            if (kb.style === 'split') kb.half[h] = 1;                                                                         // Twin: the half lights up
+            if (kb.style === 'arc') for (let j = 0; j < 2; j++) { const r = Math.floor(Math.random() * L.length); F[r] = Math.max(F[r], 0.5); }   // Storm: sparks jump
           }
           lastStroke[h] = st[h];
         }
+      } else if (kb.style === 'compact') {
+        // at the hip: a light runs along the rows
+        const i = Math.floor(kb.t * 14) % (L.length + 12);
+        if (L[i]) F[i] = Math.max(F[i], 0.6);
+      } else if (kb.style === 'split') {
+        // at the hip: the halves breathe in turn
+        kb.half[0] = Math.max(kb.half[0], 0.5 + 0.5 * Math.sin(kb.t * 2.4)); kb.half[1] = Math.max(kb.half[1], 0.5 - 0.5 * Math.sin(kb.t * 2.4));
+      } else if (kb.style === 'arc' && Math.random() < dt * 6) F[Math.floor(Math.random() * L.length)] = 0.8;
+      const fall = Math.exp(-dt * 9);
+      kb.half[0] *= Math.exp(-dt * 5); kb.half[1] *= Math.exp(-dt * 5);
+      for (let i = 0; i < F.length; i++) {
+        F[i] *= fall;
+        kc.copy(kb.base).multiplyScalar(0.55 + 0.45 * kb.half[L[i][3]]).lerp(white, F[i] * 0.75);
+        kb.legs.setColorAt(i, kc);
       }
-      for (let i = 0; i < kb.flash.length; i++) {
-        kb.flash[i] *= Math.exp(-dt * 9);
-        kc.copy(kb.base).multiplyScalar(0.55).lerp(white, kb.flash[i] * 0.7);
-        kb.caps.setColorAt(i, kc);
-      }
-      kb.caps.instanceColor.needsUpdate = true;
+      kb.legs.instanceColor.needsUpdate = true;
     }
 
     const CHILD = { LeftArm: 'LeftForeArm', RightArm: 'RightForeArm', LeftForeArm: 'LeftHand', RightForeArm: 'RightHand',
@@ -752,5 +797,5 @@ window.Operator = (() => {
     return { meshes, dispose() { parts.forEach(g => g.dispose()); mat.dispose(); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, defaults, clean, random, mine, locked, crowd, loadModels, MODELS, KB_STYLES, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
+  return { create, defaults, clean, random, mine, locked, crowd, loadModels, MODELS, KB_STYLES, KB_SIGS, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
 })();

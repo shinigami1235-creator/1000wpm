@@ -511,7 +511,7 @@ window.BossScene = (() => {
       const op = Operator.create(TH, preset, { lite: id !== 'you' });   // full detail for you only
       op.group.scale.setScalar(OPS); op.group.rotation.y = Math.PI;
       scene.add(op.group);
-      const c = { id, op, slot, typeAt: -9, down: false, beat: Math.random() * 3 };
+      const c = { id, op, slot, typeAt: -9, down: false, beat: Math.random() * 3, kb: (preset && preset.kb && preset.kb.style) || 'slab' };
       crew.push(c); return c;
     }
     if (OPS) {
@@ -761,6 +761,8 @@ window.BossScene = (() => {
     }
     // your shots leave from your keyboard, the operator's weapon (js/app/operator3d.js kbWorld)
     const gun = out => { const c = crew.find(x => x.id === 'you'); return (c && c.op.kbWorld(out)) || null; };
+    // ...and carry that keyboard's signature (js/app/combat/fx3d.js, keyboard signatures)
+    const youKb = () => { const c = crew.find(x => x.id === 'you'); return c ? c.kb : 'slab'; };
     const caster = { pos: out => gun(out) || out.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.9) };
     const bossTarget = {
       size: 6,
@@ -998,7 +1000,7 @@ window.BossScene = (() => {
         const ti = h.weak && !shieldF ? -2 : pickBlock(true);
         const sh = !!h.shield && shieldF !== null;
         const from = gun(new V()) || new V().copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.6);
-        fx.shot(Math.min(4, h.tier), from, out => aimAt(ti, sh, from, out), at => land(h, at, ti), { color: h.color });
+        fx.shot(Math.min(4, h.tier), from, out => aimAt(ti, sh, from, out), at => land(h, at, ti), { color: h.color, kb: youKb() });
         markGlow[RAID] = 1;
         return;
       }
@@ -1848,7 +1850,7 @@ window.BossScene = (() => {
     // the orb hangs in front of the camera, low in the middle of the frame, between you and the boss
     const orbPos = out => { camera.getWorldDirection(v1); out.copy(camera.position).addScaledVector(v1, 11); out.y -= 1.7; return out; };
     function chargeOrb(level, tier) { if (fx && !dead) fx.charge(orbPos(orbAt), level, tier); }
-    function feed() { if (fx && !dead) fx.feed(gun(v2) || v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt)); }
+    function feed() { if (fx && !dead) fx.feed(gun(v2) || v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt), youKb()); }
     // onLand(x, y): the impact's place on screen, for the damage number
     function release(tier, power, onLand) {
       if (!fx || dead) { if (onLand) onLand(null, null); return; }
@@ -1862,7 +1864,7 @@ window.BossScene = (() => {
         if (power > 0.6 && canFlash()) hitGlow = calm ? 0.5 : 1;
         markGlow[RAID] = 1;
         if (onLand) { v3.copy(at).project(camera); onLand((v3.x * 0.5 + 0.5) * host.clientWidth, (-v3.y * 0.5 + 0.5) * host.clientHeight); }
-      });
+      }, youKb());
     }
     // tests only: hold every animation still so a capture shows one exact moment
     let paused = false;

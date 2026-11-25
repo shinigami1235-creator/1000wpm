@@ -43,6 +43,7 @@ Router.register('lab', (() => {
             <div class="seg" role="group" aria-label="Keyboard shape" data-kb>
               ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
             </div>
+            <p class="lab-sig" data-kbsig></p>
             <div class="lab-colors" data-kbc></div>
             <div data-kblock></div>
           </div>
@@ -162,6 +163,7 @@ Router.register('lab', (() => {
       b.classList.toggle('locked', !!g);
       b.title = g ? `${g.name}: ${UI.fmt(g.price)} coins in the shop` : '';
     });
+    el.querySelector('[data-kbsig]').textContent = (Operator.KB_SIGS || {})[P.kb.style] || '';
     const kl = lockedItem('kb', P.kb.style);
     el.querySelector('[data-kblock]').innerHTML = kl ? `<p class="lab-try">Trying on the ${esc(kl.name.toLowerCase())}. ${tag(kl)}</p>` : '';
     const kt = P.kb.color === 'theme', kh = kt ? Theme.hex('accent') : P.kb.color;

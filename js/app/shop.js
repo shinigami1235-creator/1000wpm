@@ -159,7 +159,7 @@ Router.register('shop', (() => {
     for (const { item } of list) {
       const card = UI.el(`<article class="panel item${item.slot ? ' av-item' : ''}" data-id="${UI.esc(item.id)}"${item.desc ? ` title="${UI.esc(item.desc)}"` : ''}>
         <div class="thumb"><span class="ph-text">LOADING</span></div>
-        <div class="body"><h3>${UI.esc(item.name || item.id)}</h3><div class="row" data-row></div><p class="msg" data-msg></p></div>
+        <div class="body"><h3>${UI.esc(item.name || item.id)}</h3>${item.kb && item.desc ? `<p class="item-desc">${UI.esc(item.desc)}</p>` : ''}<div class="row" data-row></div><p class="msg" data-msg></p></div>
       </article>`);
       card._item = item;
       paintCard(card);

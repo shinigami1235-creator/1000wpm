@@ -39,3 +39,4 @@
 .lab-slider { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; font: 400 13px/1.2 var(--f-mono); color: var(--ink); }
 .lab-slider input { width: 100%; accent-color: var(--accent); }
 .lab-sliders { display: grid; gap: 8px; }
+.lab-sig { margin: 6px 0 2px; font-size: 12px; color: var(--ink-2); }

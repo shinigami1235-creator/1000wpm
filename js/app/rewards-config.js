@@ -24,9 +24,9 @@ window.REWARDS = {
     // generated later join this list with the same slots.
     gear: [
       { id: 'op-mask', name: 'Face mask', price: 1200, acc: 'mask', icon: 'mask' },
-      { id: 'kb-compact', name: 'Compact keyboard', price: 1800, kb: 'compact', icon: 'kb-compact' },
-      { id: 'kb-split', name: 'Split keyboard', price: 2500, kb: 'split', icon: 'kb-split' },
-      { id: 'kb-arc', name: 'Arc keyboard', price: 3500, kb: 'arc', icon: 'kb-arc' },
+      { id: 'kb-compact', name: 'Compact keyboard', price: 1800, kb: 'compact', icon: 'kb-compact', desc: 'Needles: your shots fly as three thin bolts at once.' },
+      { id: 'kb-split', name: 'Split keyboard', price: 2500, kb: 'split', icon: 'kb-split', desc: 'Twin: your shots leave from both halves and cross on the target.' },
+      { id: 'kb-arc', name: 'Arc keyboard', price: 3500, kb: 'arc', icon: 'kb-arc', desc: 'Storm: your shots fly as forked lightning.' },
     ],
     // the reasons WPM.addCoins doubles while the pass runs: coins earned by playing,
     // never refunds, bought packs or the shop

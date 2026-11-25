@@ -45,9 +45,20 @@ Each piece is a solid mesh parented to one bone, so it needs no rigging. Its ori
 | Belt pouches | `op-pouches` | Hips | two pouches | `gear/pouches-<id>.glb` |
 | Harness | `op-harness` | Spine2 | chest straps | `gear/harness-<id>.glb` |
 
-### Virtual keyboards (the operator's weapon)
+### Keyboards (the operator's weapon)
 
-Code-built glowing keyboards: Slab (free), Split, Arc and Compact (shop ids `kb-split`, `kb-arc`, `kb-compact`). The keyboard is the operator's weapon, like a gun skin in other games: it stays out in every fight, holstered upright at the right hip between words and swung up in front of the hands to type, and your shots leave from it. It changes the look, never the damage. Premium keyboards later: `assets/operators/keyboards/<id>.glb`, about 0.45 m wide, keys as separate meshes named `key_<n>` so they can light up when pressed.
+Code-built keyboards: Slab (free), Split, Arc and Compact (shop ids `kb-split`, `kb-arc`, `kb-compact`). Each is a solid board, a dark metal case with keycaps, a lit legend on each key and an edge and underglow in the board's colour. The keyboard is the operator's weapon, like a gun skin in other games: it stays out in every fight, holstered upright at the right hip between words and swung up in front of the hands to type, and your shots leave from it.
+
+Each bought board has a signature on your shots in the World Boss and Open Port (js/app/combat/fx3d.js, "keyboard signatures") and its own light pattern on the board. It changes the look, never the damage.
+
+| Board | Shots | On the board |
+|---|---|---|
+| Slab | the standard bolt | one key lights per stroke |
+| Compact | Needles: three thin bolts at once | a run of three keys per stroke; a light runs along the rows at the hip |
+| Split | Twin: leave from both halves and cross on the target | the typing half lights up; the halves breathe in turn at the hip |
+| Arc | Storm: forked lightning | the edge crackles; sparks jump between keys |
+
+Premium keyboards later: `assets/operators/keyboards/<id>.glb`, about 0.45 m wide, keys as separate meshes named `key_<n>` so they can light up when pressed.
 
 ## Bosses (js/app/bosskit.js)
 

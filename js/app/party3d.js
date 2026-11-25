@@ -272,6 +272,8 @@ window.PartyScene = (() => {
     const team = new Map();   // id -> { op, typeAt }
     let teamWon = false, teamLit = false;
     const TH = window.Operator ? { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry } : null;
+    // your keyboard's look on your shots (js/app/combat/fx3d.js, keyboard signatures)
+    const myKb = window.Operator ? Operator.mine().kb.style : null;
     function teamSync(players) {
       if (!TH || !players) return;
       if (!teamLit) {
@@ -822,7 +824,7 @@ window.PartyScene = (() => {
         if (opts.onImpact) opts.onImpact(h, p ? p.x : null, p ? p.y : null);
       };
       // teammates' shots stay small so four streams don't wash the boss out
-      if (fx) fx.shot(h.you ? Math.min(3, h.tier || 0) : Math.min(1, h.tier || 0), from, to, land, { color: col });
+      if (fx) fx.shot(h.you ? Math.min(3, h.tier || 0) : Math.min(1, h.tier || 0), from, to, land, { color: col, kb: h.you ? myKb : null });
       else land();
     }
     function cast(id, c = {}) {
