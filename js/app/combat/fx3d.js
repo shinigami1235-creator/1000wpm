@@ -5,7 +5,7 @@
 //     glowTex,                 optional soft round texture for flares
 //     pixelHeight: () => px,   the canvas height in pixels, for particle sizes
 //     calm, reduce,            fewer flashes, less movement
-//     juice: { shake(k), stop(ms), glitch(k, secs), dim(k, secs), tint(hex, k), canFlash() },
+//     juice: { shake(k), stop(ms), glitch(k, secs), dim(k, secs), tint(hex, k), wave(worldPos, k), canFlash() },
 //   });
 //   fx.shot(tier, from, to(out), onLand, { color })        a basic attack; to() is read every frame so it follows a moving target
 //   fx.cast(spellId, { caster, target, hits, effect })      hits come from engine.cast() so the effect lands with the damage
@@ -238,7 +238,10 @@ Combat.FX = (() => {
     const sizeOf = tg => (tg && tg.size) || 6;
 
     // ---------- basic attacks by combo tier ----------
+    // ZERO LIMIT (tier 5) lands with a distortion wave across the screen (juice.wave)
+    const zeroLand = (tier, onLand, k) => (tier >= 5 ? at => { juice('wave', at, k); if (onLand) onLand(at); } : onLand);
     function shot(tier, from, to, onLand, opt = {}) {
+      onLand = zeroLand(tier, onLand, 0.7);
       const col = opt.color ? C(opt.color) : tier >= 1 && TIER_COL[Math.min(tier, TOP)] !== GREEN ? TIER_COL[Math.min(tier, TOP)] : null;
       const e = add({ from: from.clone(), to, onLand, tier: Math.min(tier, 4), landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
       const dur = tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15;
@@ -304,7 +307,14 @@ Combat.FX = (() => {
               if (i) seg(t6, t7, 0.2, col || CYAN, 1.3 * k);
               t6.copy(t7);
             }
-            if (e.t < 0.02) circle(t0, t3, 4, 0.2, WHITE, 1, 28);
+            if (tier >= 5) for (let i = 0; i <= 36; i++) {
+              // ZERO LIMIT: a second, wider helix turning the other way
+              const s = i / 36, a = -s * Math.PI * 10 - e.t * 36 + Math.PI;
+              t7.copy(e.from).addScaledVector(t3, len * s).addScaledVector(_u, Math.cos(a) * 1.6).addScaledVector(_v, Math.sin(a) * 1.6);
+              if (i) seg(t6, t7, 0.14, WHITE, 1.1 * k);
+              t6.copy(t7);
+            }
+            if (e.t < 0.02) circle(t0, t3, tier >= 5 ? 6 : 4, 0.2, WHITE, 1, 28);
           }
         }
         return e.t < life;
@@ -397,6 +407,7 @@ Combat.FX = (() => {
     const tmpPts = [];
     function release(tier, power, from, to, onLand) {
       tier = clamp(tier | 0, 0, TOP); power = clamp(power, 0, 1);
+      onLand = zeroLand(tier, onLand, 0.6 + 0.6 * power);
       const col = TIER_COL[tier], WIND = reduce ? 0.08 : 0.22, FLY = 0.12 + 0.06 * (1 - power);
       const e = add({ from: from.clone(), to, onLand, landed: false, fired: false, tier, power });
       e.update = dt => {

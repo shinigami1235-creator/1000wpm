@@ -58,6 +58,7 @@ window.BossScene = (() => {
       hurt: k => impl && impl.hurt(k),
       cast: (id, c) => impl && impl.cast(id, c),
       aura: (name, on) => impl && impl.aura(name, on),
+      wave: k => impl && impl.wave(null, k),
       fxEvent: k => impl && impl.fxEvent(k),
       react: (k, p, x) => impl && impl.react(k, p, x),
       freezeAttack: id => impl && impl.freezeAttack(id),
@@ -689,12 +690,20 @@ window.BossScene = (() => {
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     const post = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0 }, uDim: { value: 0 } },
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uTint: { value: C('#ff4d5e') }, uTintAmt: { value: 0 }, uGlitch: { value: 0 }, uAb: { value: 0 }, uDim: { value: 0 },
+        uWave: { value: new THREE.Vector3(0.5, 0.5, 9) }, uWaveK: { value: 0 }, uAsp: { value: 1 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec3 uTint; uniform float uTintAmt; uniform float uGlitch; uniform float uAb; uniform float uDim; varying vec2 vUv;
+        uniform vec3 uWave; uniform float uWaveK; uniform float uAsp;
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
         void main(){
           vec2 uv = vUv;
+          // ZERO LIMIT: a ring of bent space running out from the hit (uWave: centre, age in s)
+          if (uWaveK > 0.0) {
+            vec2 d = (uv - uWave.xy) * vec2(uAsp, 1.0); float r = length(d), front = uWave.z * 1.35;
+            float band = exp(-pow((r - front) * 9.0, 2.0)) * uWaveK;
+            uv -= normalize(d + 1e-5) / vec2(uAsp, 1.0) * band * 0.045 * sin((r - front) * 40.0 + 1.57);
+          }
           float row = floor(uv.y * 30.0);
           if (h(vec2(row, floor(uTime * 9.0))) < uGlitch * 0.3) uv.x += (h(vec2(row, uTime)) - 0.5) * 0.025 * uGlitch;
           vec3 c = vec3(texture2D(tDiffuse, uv + vec2(uAb, 0.0)).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - vec2(uAb, 0.0)).b);
@@ -720,9 +729,19 @@ window.BossScene = (() => {
         glitch: (k, secs) => { glitchK = Math.max(glitchK, k); glitchUntil = Math.max(glitchUntil, nowS() + secs); },
         dim: (k, secs) => { dimK = k; dimUntil = nowS() + secs; },
         tint: (hex, k) => { post.uniforms.uTint.value.set(hex); tintAmt = Math.max(tintAmt, (calm ? 0.6 : 1) * k); },
+        wave: (pos, k) => wave(pos, k),
         canFlash,
       },
     }) : null;
+    // ZERO LIMIT's distortion wave: one at a time, from a world point (or the screen centre)
+    let waveAt = -9, waveK = 0;
+    function wave(pos, k = 1) {
+      if (reduce) return;
+      const v = pos ? pos.clone().project(camera) : new V(0, 0, 0);
+      post.uniforms.uWave.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5, 0);
+      post.uniforms.uAsp.value = (host.clientWidth || 1) / (host.clientHeight || 1);
+      waveAt = nowS(); waveK = Math.min(1.6, k) * (calm ? 0.5 : 1);
+    }
     const caster = { pos: out => out.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.9) };
     const bossTarget = {
       size: 6,
@@ -1763,6 +1782,7 @@ window.BossScene = (() => {
       post.uniforms.uDim.value = dimCur * (reduce ? 0.6 : 1);
       post.uniforms.uGlitch.value = glitch;
       post.uniforms.uTime.value = t;
+      { const age = t - waveAt; post.uniforms.uWave.value.z = age; post.uniforms.uWaveK.value = age < 0.9 ? waveK * (1 - age / 0.9) : 0; }
       post.uniforms.uAb.value = calm ? 0 : sh * 0.002;
       if (fx) fx.update(adt);
       composer.render();
@@ -1826,7 +1846,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    return { wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };

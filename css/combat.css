@@ -94,6 +94,14 @@
 .page-boss .wb-level b { font: 700 clamp(20px, 3vw, 34px)/1 var(--f-head); color: var(--tc); text-shadow: 0 0 18px var(--tc); letter-spacing: .02em; }
 .page-boss .wb-level span { font: 600 var(--t-s)/1 var(--f-mono); color: var(--ink-hi); }
 .page-boss .wb-level.go { animation: wb-level 1.9s var(--ease-out) forwards; }
+/* ZERO LIMIT: the title tears sideways in red and cyan for its first half second */
+.page-boss .wb-level[data-t="5"].go b { animation: wb-zero-tear 520ms steps(2) 2; }
+@keyframes wb-zero-tear {
+  0% { text-shadow: -4px 0 #ff2a3a, 4px 0 #3ee6ff, 0 0 18px var(--tc); transform: translateX(-3px) skewX(-8deg); }
+  50% { text-shadow: 4px 0 #ff2a3a, -4px 0 #3ee6ff, 0 0 18px var(--tc); transform: translateX(3px) skewX(6deg); }
+  100% { text-shadow: 0 0 18px var(--tc); transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-level[data-t="5"].go b { animation: none; } }
 @keyframes wb-level { 0% { opacity: 0; transform: translateX(-50%) scale(1.25); } 12% { opacity: 1; transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* the five levels under the words: done, current, locked */

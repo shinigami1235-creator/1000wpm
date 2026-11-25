@@ -574,8 +574,10 @@ Router.register('boss', (() => {
     const T = Combat.TIERS[t];
     L.style.setProperty('--tc', T.color);
     L.innerHTML = `<small>Combo ${T.at}</small><b>${esc(T.name.toUpperCase())} PROTOCOL ACTIVATED</b><span>x${T.mult} damage</span>`;
+    L.dataset.t = t;
     L.hidden = false; L.classList.remove('go'); void L.offsetWidth; L.classList.add('go');
     clearTimeout(levelUp.t); levelUp.t = setTimeout(() => { L.hidden = true; }, 1900);
+    if (t >= Combat.TIERS.length - 1 && scene && scene.wave) scene.wave(1.5);   // ZERO LIMIT bends the whole screen
   }
   function paintTrack(c) {
     const tr = q('track'); if (!tr) return;
