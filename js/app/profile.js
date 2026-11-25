@@ -50,7 +50,7 @@ Router.register('profile', (() => {
           </section>
           <section class="panel">
             <div class="ph">// AVATAR</div>
-            ${window.AvatarCreator ? `<a class="btn out" href="#/profile/avatar" style="width:100%">Edit avatar</a>` : `<div class="avatars" role="group" aria-label="Avatar">
+            ${window.AvatarCreator ? `<a class="btn out" href="#/lab" style="width:100%">Edit operator</a>` : `<div class="avatars" role="group" aria-label="Avatar">
               ${UI.AVATARS.map((a, i) => `<button type="button" data-av="${i}" aria-pressed="${i === p.avatar}" aria-label="${e(a.name)} avatar"><img src="${UI.avatar(i, 120)}" alt="" width="60" height="60"></button>`).join('')}
             </div>`}
           </section>

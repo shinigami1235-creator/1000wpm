@@ -1,4 +1,5 @@
-// #/shop: room items from window.RoomItems, bought with coins through WPM.buy, plus the
+// #/shop: operator gear (REWARDS.shop.gear) and room items from window.RoomItems, bought with
+// coins through WPM.buy, plus the
 // CTRL Pass and coin packs from REWARDS.shop (js/app/rewards-config.js).
 Router.register('shop', (() => {
   const thumbs = new Map();       // id -> dataURL, kept between visits
@@ -23,8 +24,9 @@ Router.register('shop', (() => {
     const c = window.RoomItems.catalog;
     const list = Array.isArray(c) ? c : Array.isArray(c && c.items) ? c.items
       : Object.entries(c || {}).flatMap(([k, v]) => Array.isArray(v) ? v.map(i => ({ category: k, ...i })) : [{ id: k, ...v }]);
-    const av = window.AvatarData ? AvatarData.items() : [];
-    return [...list, ...av].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
+    // operator gear (REWARDS.shop.gear) replaced the old avatar creator's items
+    const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).map(g => ({ ...g, category: 'Operator' }));
+    return [...gear, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
     const named = window.RoomItems.categories;
@@ -39,6 +41,7 @@ Router.register('shop', (() => {
     if (Array.isArray(named)) {
       const order = named.map(x => x.id || x);
       ids = [...order.filter(id => ids.includes(id)), ...ids.filter(id => !order.includes(id))];
+      if (ids.includes('Operator')) ids = ['Operator', ...ids.filter(id => id !== 'Operator')];
     }
     return ids.map(id => ({ id, name: name(id), n: list.filter(x => x.cat === id).length }));
   }
@@ -113,9 +116,22 @@ Router.register('shop', (() => {
     const card = queue.shift(), id = card.dataset.id;
     if (thumbs.has(id)) { setThumb(card, thumbs.get(id)); return pump(); }
     busy = true;
-    Promise.resolve().then(() => card._item.slot && window.Avatar ? Avatar.itemThumb(card._item) : window.RoomItems.thumbnail(id)).then(url => {
+    Promise.resolve().then(() => card._item.icon ? gearIcon(card._item.icon) : window.RoomItems.thumbnail(id)).then(url => {
       if (url) { thumbs.set(id, url); setThumb(card, url); }
     }).catch(e => console.warn('thumbnail', id, e)).finally(() => { busy = false; pump(); });
+  }
+  // Stand-in pictures for operator gear until the generated models have their own renders
+  function gearIcon(kind) {
+    const c = (window.Theme && Theme.hex('accent')) || '#39ff88';
+    const keys = (x, y, w, n, rows, gap = 4) => { let k = ''; for (let r = 0; r < rows; r++) for (let i = 0; i < n; i++) k += `<rect x="${x + i * (w + gap)}" y="${y + r * (w + gap)}" width="${w}" height="${w}" rx="2"/>`; return k; };
+    const art = {
+      mask: `<path d="M44 92c8-20 104-20 112 0v22c-10 22-102 22-112 0z" fill="none" stroke="${c}" stroke-width="5"/><path d="M60 104h80M60 116h80" stroke="${c}" stroke-width="3" opacity=".6"/>`,
+      'kb-compact': `<rect x="40" y="70" width="120" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(50, 80, 10, 8, 3)}</g>`,
+      'kb-split': `<g transform="rotate(-10 60 100)"><rect x="18" y="70" width="80" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(27, 80, 10, 5, 3)}</g></g><g transform="rotate(10 140 100)"><rect x="102" y="70" width="80" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(111, 80, 10, 5, 3)}</g></g>`,
+      'kb-arc': `<path d="M24 120c40-50 112-50 152 0l-14 14c-34-38-90-38-124 0z" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => { const a = Math.PI * (0.84 - i * 0.097), x = 100 + Math.cos(a) * 62, y = 140 - Math.sin(a) * 50; return `<rect x="${(x - 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" width="12" height="12" rx="2" transform="rotate(${(90 - a * 180 / Math.PI).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`; }).join('')}</g>`,
+    }[kind] || '';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#050a07"/>${art}</svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
   function setThumb(card, url) {
     const t = card.querySelector('.thumb');
@@ -163,7 +179,7 @@ Router.register('shop', (() => {
     if (premium && !card.querySelector('.prem')) card.querySelector('.body').insertAdjacentHTML('afterbegin', '<span class="prem">Premium</span>');
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
-      row.innerHTML = item.slot ? `<span class="owned">Owned</span><a class="btn out sm" href="#/profile/avatar">Avatar</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
+      row.innerHTML = item.category === 'Operator' ? `<span class="owned">Owned</span><a class="btn out sm" href="#/lab">Operator</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
       card.querySelector('[data-msg]').textContent = '';
       return;
     }

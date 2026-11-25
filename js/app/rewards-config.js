@@ -16,6 +16,16 @@ window.REWARDS = {
       { id: 'pack-80000', coins: 80000, price: 'US$49.99' },
     ],
     premiumFrom: 25000,   // an item at this price or more shows as Premium
+    // Operator gear (MODELS.md). The outfit from the Gemini sheets is free: beanie, visor, scarf,
+    // wrist device, belt pouches, harness and the Slab keyboard. These are sold. Each one names
+    // the operator slot it unlocks (acc: an accessory, kb: a keyboard style); premium models
+    // generated later join this list with the same slots.
+    gear: [
+      { id: 'op-mask', name: 'Face mask', price: 1200, acc: 'mask', icon: 'mask' },
+      { id: 'kb-compact', name: 'Compact keyboard', price: 1800, kb: 'compact', icon: 'kb-compact' },
+      { id: 'kb-split', name: 'Split keyboard', price: 2500, kb: 'split', icon: 'kb-split' },
+      { id: 'kb-arc', name: 'Arc keyboard', price: 3500, kb: 'arc', icon: 'kb-arc' },
+    ],
     // the reasons WPM.addCoins doubles while the pass runs: coins earned by playing,
     // never refunds, bought packs or the shop
     earned: ['typing', 'boss rush', 'world boss', 'achievement', 'task', 'weekly', 'streak', 'academy', 'free typing', 'level up', 'gift', 'party', 'duel', 'superboss'],

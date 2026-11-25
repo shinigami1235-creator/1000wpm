@@ -1,6 +1,6 @@
-// #/lab: the Character Lab. Pick a base, colours and accessories for an operator, play its
-// animations and copy the preset (js/app/operator3d.js). Not in the nav yet; it becomes the
-// player's character editor when the operators replace the avatar creator.
+// #/lab: the Operator page. Pick a base, colours, keyboard and gear for your operator, play its
+// animations and save it as the operator you fight as (js/app/operator3d.js). Gear sold in the
+// shop (REWARDS.shop.gear) can be tried on here and shows in fights once it's bought.
 Router.register('lab', (() => {
   const KEY = 'wpm-operator';
   let el = null, stop = null, op = null, P = null, offTheme = null;
@@ -23,7 +23,7 @@ Router.register('lab', (() => {
           </div>
         </section>
         <section class="panel lab-panel" aria-labelledby="lab-h">
-          <div class="ph" id="lab-h">// CHARACTER LAB</div>
+          <div class="ph" id="lab-h">// YOUR OPERATOR</div>
           <div class="lab-group">
             <span class="label">Base</span>
             <div class="seg" role="group" aria-label="Base" data-base>
@@ -40,9 +40,10 @@ Router.register('lab', (() => {
               ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
             </div>
             <div class="lab-colors" data-kbc></div>
+            <div data-kblock></div>
           </div>
           <div class="lab-group">
-            <span class="label">Accessories</span>
+            <span class="label">Gear</span>
             <div class="lab-acc" data-acc></div>
           </div>
           <div class="lab-group">
@@ -93,16 +94,32 @@ Router.register('lab', (() => {
       op.play(b.dataset.v); markAnim(b.dataset.v);
     });
     el.querySelectorAll('[data-once]').forEach(b => b.addEventListener('click', () => op && op.once(b.dataset.once)));
-    el.querySelector('[data-save]').addEventListener('click', () => { TT.store.set(KEY, P); note('Saved as your operator.'); });
+    el.querySelector('[data-save]').addEventListener('click', () => {
+      TT.store.set(KEY, P);
+      const t = trying();
+      note(t.length ? `Saved. ${t.join(' and ')[0].toUpperCase() + t.join(' and ').slice(1)} ${t.length > 1 ? 'show' : 'shows'} in fights once you buy ${t.length > 1 ? 'them' : 'it'} in the shop.` : 'Saved as your operator.');
+    });
     el.querySelector('[data-copy]').addEventListener('click', async () => {
       const text = JSON.stringify(P);
       try { await navigator.clipboard.writeText(text); note('Preset copied.'); } catch (e) { note(text); }
     });
     el.querySelector('[data-reset]').addEventListener('click', () => { P = Operator.defaults(P.base); apply(); paintForm(); note(''); });
     markAnim('idle');
-    offTheme = () => removeEventListener('wpm-theme', onTheme);
+    const offInv = WPM.on('inventory', () => el && paintForm());
+    offTheme = () => { removeEventListener('wpm-theme', onTheme); offInv(); };
     addEventListener('wpm-theme', onTheme);
     start();
+  }
+  // shop gear: the item that unlocks an accessory or keyboard, and whether you own it
+  const GEAR = () => (window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || [];
+  const gearFor = (k, v) => GEAR().find(g => g[k] === v);
+  const lockedItem = (k, v) => { const g = gearFor(k, v); return g && !WPM.owns(g.id) ? g : null; };
+  const tag = g => `<a class="lab-lock" href="#/shop" title="Buy it in the shop">${UI.coin()}${UI.fmt(g.price)}</a>`;
+  function trying() {
+    const out = [];
+    for (const [a, name] of Operator.ACCESSORIES) if (P.acc[a] && lockedItem('acc', a)) out.push(name.toLowerCase());
+    if (lockedItem('kb', P.kb.style)) out.push(`the ${P.kb.style} keyboard`);
+    return out;
   }
   function onTheme() { if (op) op.repaint(); }
   function note(t) { const n = el && el.querySelector('[data-note]'); if (n) n.textContent = t; }
@@ -118,13 +135,22 @@ Router.register('lab', (() => {
         <input type="color" value="${hex}" data-zone="${z}" ${theme ? 'disabled' : ''} aria-label="${esc(name)} colour">
         ${z === 'glow' ? `<span class="lab-theme"><input type="checkbox" data-zone="glow" ${theme ? 'checked' : ''}> Theme</span>` : `<code>${hex}</code>`}</label>`;
     }).join('');
-    el.querySelectorAll('[data-kb] [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === P.kb.style)));
+    el.querySelectorAll('[data-kb] [data-v]').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.v === P.kb.style));
+      const g = lockedItem('kb', b.dataset.v);
+      b.classList.toggle('locked', !!g);
+      b.title = g ? `${g.name}: ${UI.fmt(g.price)} coins in the shop` : '';
+    });
+    const kl = lockedItem('kb', P.kb.style);
+    el.querySelector('[data-kblock]').innerHTML = kl ? `<p class="lab-try">Trying on the ${esc(kl.name.toLowerCase())}. ${tag(kl)}</p>` : '';
     const kt = P.kb.color === 'theme', kh = kt ? Theme.hex('accent') : P.kb.color;
     el.querySelector('[data-kbc]').innerHTML = `<label class="lab-color"><span>Glow</span>
       <input type="color" value="${kh}" ${kt ? 'disabled' : ''} aria-label="Keyboard colour">
       <span class="lab-theme"><input type="checkbox" ${kt ? 'checked' : ''}> Theme</span></label>`;
-    el.querySelector('[data-acc]').innerHTML = Operator.ACCESSORIES.map(([a, name]) =>
-      `<label class="lab-switch"><input type="checkbox" data-acc="${a}" ${P.acc[a] ? 'checked' : ''}><span>${esc(name)}</span></label>`).join('');
+    el.querySelector('[data-acc]').innerHTML = Operator.ACCESSORIES.map(([a, name]) => {
+      const g = lockedItem('acc', a);
+      return `<label class="lab-switch${g ? ' locked' : ''}"><input type="checkbox" data-acc="${a}" ${P.acc[a] ? 'checked' : ''}><span>${esc(name)}</span>${g ? tag(g) : ''}</label>`;
+    }).join('');
   }
 
   // ---------- the 3D view ----------

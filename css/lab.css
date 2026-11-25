@@ -26,3 +26,12 @@
   .lab-view { min-height: 62vh; }
   .lab-panel { max-height: none; }
 }
+
+/* gear sold in the shop: tried on here, shown in fights once bought */
+.lab-lock { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font: 500 12px/1 var(--f-mono); color: var(--gold); text-decoration: none; font-variant-numeric: tabular-nums; }
+.lab-lock svg, .lab-lock img { width: 14px; height: 14px; }
+.lab-lock:hover { text-decoration: underline; }
+.lab-switch.locked span { color: var(--ink-2); }
+.lab-acc .lab-switch { display: flex; align-items: center; gap: 8px; }
+.seg button.locked::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--gold); vertical-align: 1px; }
+.lab-try { margin: 8px 0 0; display: flex; align-items: center; gap: 8px; font: 400 13px/1.3 var(--f-head); color: var(--ink-2); }

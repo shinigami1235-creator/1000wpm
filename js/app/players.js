@@ -56,7 +56,7 @@ Router.register('u', (() => {
               ${p.joined && !art ? `<dt>Joined</dt><dd>${e(UI.date(p.joined + 'T12:00:00', false))}</dd>` : ''}
             </dl>
             <div class="u-actions">
-              ${me ? '<a class="btn" href="#/profile/avatar">Edit avatar</a>' : `<a class="btn" href="#/duel/${art ? 'art' : 'vs/' + encodeURIComponent(p.id)}">${art ? 'Challenge Art' : 'Challenge to a duel'}</a>`}
+              ${me ? '<a class="btn" href="#/lab">Edit operator</a>' : `<a class="btn" href="#/duel/${art ? 'art' : 'vs/' + encodeURIComponent(p.id)}">${art ? 'Challenge Art' : 'Challenge to a duel'}</a>`}
               ${art ? '<a class="btn out" href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">Instagram</a>' : `<a class="btn out" href="#/u/${encodeURIComponent(p.id)}/room">${me ? 'See your room' : 'Visit room'}</a>`}
               ${me || art ? '' : '<button class="btn out" type="button" data-ufriend disabled>Add friend</button>'}
             </div>

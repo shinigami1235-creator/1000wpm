@@ -592,7 +592,17 @@ window.Operator = (() => {
     return p;
   }
   // the player's own look from the Character Lab
-  function mine() { try { return clean(TT.store.get('wpm-operator', null) || defaults('male')); } catch (e) { return defaults('male'); } }
+  // gear sold in the shop (REWARDS.shop.gear) only shows on your operator once you own it
+  function locked(P) {
+    const G = (window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || [];
+    const has = id => !window.WPM || WPM.owns(id);
+    for (const g of G) {
+      if (g.acc && P.acc[g.acc] && !has(g.id)) P.acc[g.acc] = false;
+      if (g.kb && P.kb.style === g.kb && !has(g.id)) P.kb.style = 'slab';
+    }
+    return P;
+  }
+  function mine() { try { return locked(clean(TT.store.get('wpm-operator', null) || defaults('male'))); } catch (e) { return defaults('male'); } }
 
   // A crowd of n operators as one draw call: a light stand-in posed once, merged into one mesh with
   // its zone colours baked in, and instanced. Each copy gets its own tint. For the World Boss raid.
@@ -627,5 +637,5 @@ window.Operator = (() => {
     return { meshes, dispose() { parts.forEach(g => g.dispose()); mat.dispose(); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, defaults, clean, random, mine, crowd, loadModels, MODELS, KB_STYLES, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
+  return { create, defaults, clean, random, mine, locked, crowd, loadModels, MODELS, KB_STYLES, ZONES, ACCESSORIES, ANIMS, ONCE, BASES, ONCE_LEN };
 })();
