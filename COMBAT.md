@@ -11,6 +11,7 @@ The shared combat code for every typing fight: the combo, spells, damage and the
 | `js/app/combat/combo.js` | `Combat.TIERS` and `Combat.Combo()`, the combo tracker |
 | `js/app/combat/damage.js` | `Combat.Damage`, the damage model |
 | `js/app/combat/engine.js` | `Combat.create()`: one fighter's combo, accuracy, offers, statuses and casts |
+| `js/app/combat/bank.js` | `SfxBank`: the recorded lasers, explosions and impacts in `audio/sfx/`, played in place of the synth once loaded |
 | `js/app/combat/sfx.js` | `Combat.Audio`: every tier and spell sound, made in code with Web Audio |
 | `js/app/combat/fx3d.js` | `Combat.FX`: tier shots and spell effects in three.js |
 | `js/wordbank.js`, `js/wordbank-common.js` | `WordBank`: the words every mode types |
@@ -183,7 +184,9 @@ sfx.play('shot1' ... 'shot4' | 'tierUp' (tier) | 'offer' | 'break' | 'fizzle' | 
 Combat.Audio.render(name, arg, secs)   // offline render, for loudness checks
 ```
 
-Strike names (the sound each spell hit makes): crack, tick, pulse, slice, ice, zap, blip, boom, sweep, thrum, crash, lock, ultimate. The world boss passes `BossAudio.out()`, so these go through the boss's effects bus and compressor under the music, and epic and ultimate casts duck the music.
+Strike names (the sound each spell hit makes): crack, tick, pulse, slice, ice, zap, blip, boom, sweep, thrum, crash, lock, ultimate.
+
+The shots, hits, explosions and boss impacts play recorded sounds from `audio/sfx/` (`js/app/combat/bank.js`): lasers and impacts from Kenney's CC0 Sci-Fi Sounds and blasts from Earshot renders, built by `tools/sfx/bank.py`. Each name is a recipe of layers (set, gain, pitch range, delay) and picks a different take each time. Until the files have loaded (the fight pages fetch them on mount, about 230 KB), and for names with no recipe (casts, tier-up, chimes), the synth plays. `SfxBank.render(name)` renders a recipe offline; the gains were set so each recipe matches its synth's loudness, the big blasts 2 dB over. The world boss passes `BossAudio.out()`, so these go through the boss's effects bus and compressor under the music, and epic and ultimate casts duck the music.
 
 ## Word bank
 
@@ -207,7 +210,7 @@ Counts: 8000 common words in five bands (1000, 1500, 2000, 2000, 1500), 900 more
 
 - `boss.js` makes one engine for the player, feeds it every key and word, sends `mult`, `tier`, `pierce` and `color` with each word through `WorldBossNet.sendDamage`, and runs spell hits with `{ kind: 'spell', spell }`.
 - `boss-net.js` multiplies word damage by `mult` (clamped to 0.5 to 8 in the demo), skips the shield on `pierce`, and accepts `grace` on `sendBlock` for cryo lock. A real server must not trust `mult`: it should rebuild it from the player's own key stream, combo and casts, using the same `Combat` files.
-- `boss3d.js` creates `Combat.FX` inside the boss scene, routes tier shots and spells through it and handles the reactions: flinch, stagger, flash, the phase-break pose (thrown back, arms flung out, blocks flying), the kernel panic stun (frozen, blue, flickering eyes), the cryo freeze (icy and slowed) and the void pull (blocks torn toward the black hole, then back into place).
+- `boss3d.js` creates `Combat.FX` inside the boss scene, routes tier shots and spells through it and handles the reactions: flinch (each of your hits jolts it into a short reel and pushes it back), stagger (a blocked attack breaks off its wind-up, drops the telegraph and the blow, and throws it into the reel), flash, the phase-break pose (thrown back, arms flung out, blocks flying), the kernel panic stun (frozen, blue, flickering eyes), the cryo freeze (icy and slowed) and the void pull (blocks torn toward the black hole, then back into place).
 - `boss-rules.js` picks attack words from the word bank (common plus cyber, difficulty rising by phase) with the attack's seeded rng, so each attack's words still start with different letters and match on every client.
 
 ## Using it in a new mode

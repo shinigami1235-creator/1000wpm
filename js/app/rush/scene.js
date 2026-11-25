@@ -262,11 +262,12 @@ window.RushScene = (() => {
           root, P, scale: 7.8 / H, dome: [0, H * 0.55, H * 0.42], coreObj: k.core, coreOff: new V(0, 0, 0),
           anim(t, dt, s) {
             reel += ((s.stun ? 0.55 : 0) - reel) * Math.min(1, dt * 6);
+            const rl = Math.max(reel, s.reel || 0);
             const L = [];
             if (s.wind > 0.01) L.push(['windup', s.wind]);
             if (s.atk > 0.01) L.push([k.POSES.reach ? 'reach' : 'slam', s.atk]);
             if (s.move) L.push(['roar', 0.55 + 0.25 * Math.sin(t * 5)]);
-            if (reel > 0.01) L.push(['reel', reel]);
+            if (rl > 0.01) L.push(['reel', rl]);
             k.mix(L);
             k.update(t, dt);
           },
@@ -609,6 +610,8 @@ window.RushScene = (() => {
     // ---------- the boss on stage ----------
     let fig = null, old = null, slotNow = null, frac = 1, shieldF = null;
     let windAt = 0, windMs = 0, windOn = false, atkT = 0, stunUntil = 0, freezeUntil = 0, flash = 0, recoil = 0, recoilV = 0;
+    // jolt: a short reel from your hits; reelAt: the big reel when you block or stagger it
+    let jolt = 0, reelAt = -9;
     let introT = 1, dying = -1, enraged = false, moveOn = false, paused = false, heat = 0;
     function setBoss(s, instant) {
       slotNow = s;
@@ -648,8 +651,15 @@ window.RushScene = (() => {
     // ---------- reactions ----------
     function react(kind, power = 0, extra) {
       if (!fig || dying >= 0) return;
-      if (kind === 'flinch') { recoilV -= Math.min(0.7, 0.1 + power * 0.006); flash = Math.max(flash, calm ? 0.25 : 0.4); }
-      else if (kind === 'stagger' || kind === 'flash') { recoilV -= 0.35; if (canFlash()) flash = calm ? 0.5 : 1; }
+      if (kind === 'flinch') {
+        recoilV -= Math.min(1.3, 0.3 + power * 0.012); flash = Math.max(flash, calm ? 0.25 : 0.4);
+        jolt = Math.min(0.85, jolt + Math.min(0.45, 0.12 + power * 0.008));
+      } else if (kind === 'stagger') {
+        // a block breaks the attack off: the wind-up drops, it's thrown back and reels
+        windOn = false; atkT = 0; reelAt = nowS(); jolt = 0;
+        recoilV -= 2.4; shake = Math.max(shake, 0.6); stopUntil = Math.max(stopUntil, performance.now() + 110);
+        if (canFlash()) flash = calm ? 0.5 : 1;
+      } else if (kind === 'flash') { recoilV -= 0.35; if (canFlash()) flash = calm ? 0.5 : 1; }
       else if (kind === 'break') { recoilV -= 2.4; shake = Math.max(shake, 0.9); if (canFlash()) flash = 1; }
       else if (kind === 'stun') stunUntil = Math.max(stunUntil, nowS() + power / 1000);
       else if (kind === 'freeze') freezeUntil = nowS() + power / 1000;
@@ -714,9 +724,14 @@ window.RushScene = (() => {
         atkT = Math.max(0, atkT - adt * 1.8);
         pose.atk = Math.sin(Math.min(1, atkT) * Math.PI) * (atkT > 0 ? 1 : 0);
         pose.stun = stunned; pose.move = moveOn; pose.heat = heat;
+        const rk = t - reelAt;
+        jolt = Math.max(0, jolt - adt * 2.6);
+        pose.reel = Math.max(rk < 1.1 ? Math.sin(Math.min(1, rk / 1.1) * Math.PI) * 0.9 : 0, jolt) * (reduce ? 0.4 : 1);
         if (dying < 0) fig.anim(at, adt, pose);
-        recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt; recoil = clamp(recoil, -0.6, 0.4);
+        recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt; recoil = clamp(recoil, -1.1, 0.4);
         fig.root.position.z = (slotNow && slotNow.mark > 1 ? -0.5 : 0) + recoil;
+        // pushed back, it leans back with it (every boss, kit-built or not)
+        fig.root.rotation.x = dying < 0 ? recoil * 0.3 - pose.reel * 0.12 : 0;
         // the boss never stands still: it sways across the arena, faster each phase
         const drift = reduce ? 0 : Math.sin(at * (0.45 + 0.22 * (stageN - 1))) * (1.1 + 0.4 * (stageN - 1)) * (stunned ? 0.2 : 1);
         fig.root.position.x = drift + (enraged && !calm ? Math.sin(t * 31) * 0.04 : 0);

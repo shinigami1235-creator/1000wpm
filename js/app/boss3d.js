@@ -803,6 +803,9 @@ window.BossScene = (() => {
     let frac = 1, stage = 0, phase = 0, dead = false, deadT = 0, deadAt = 0;
     let shake = 0, hitGlow = 0, stopUntil = 0, slowUntil = 0, tintAmt = 0, glitch = 0;
     let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
+    // jolt: a short reel from your hits; reelAt: the big reel after a stagger or a blocked attack
+    let jolt = 0, reelAt = -9;
+    const cutK = (x, t) => x.cut ? 1 - smooth(clamp((t - x.cut) / 0.3, 0, 1)) : 1;
     let roarAt = -9, charge = 0;
     const STAGE_AT = [0.75, 0.5, 0.25, 0.1];
     const coreGreen = C(Theme.hex('accent'), 1.2), coreRed = C('#ff4d5e', 0.95), coreAmber = C('#f29d30', 1.0), coreWeak = C('#ffb347', 1.15);
@@ -934,6 +937,7 @@ window.BossScene = (() => {
     function impact(x) {
       const you = blocked.has(x.id) || frozen.has(x.id);
       const at = raidPos[RAID];
+      if (x.cut) { act('you', 'cast'); return; }   // you broke it off: nothing lands
       shake = Math.max(shake, you ? 0.35 : 0.9);
       act('you', you ? 'cast' : 'hit');
       if (kit) {
@@ -1095,12 +1099,14 @@ window.BossScene = (() => {
           if (you && h.dmg >= 10) for (let k = 0; k < Math.min(5, h.dmg / 8); k++) { const j = pickBlock(true); if (j >= 0) knock(blocks[j], false, 0.9); }
         }
         if (you) {
-          recoilV -= Math.min(0.9, 0.18 + h.dmg * 0.025) * (big ? 1.8 : 1);
+          recoilV -= Math.min(1.4, 0.3 + h.dmg * 0.035) * (big ? 1.8 : 1);
           recoilSide = clamp((at.x - root.position.x) / 6, -1, 1);
+          jolt = Math.min(0.9, jolt + Math.min(0.5, 0.14 + h.dmg * 0.015) * (big ? 1.6 : 1));
+          if (!reduce) mv.z -= Math.min(0.5, 0.08 + h.dmg * 0.012) * (big ? 2 : 1);
           if (big && canFlash()) hitGlow = calm ? 0.5 : 1;
           shake = Math.max(shake, Math.min(0.5, 0.08 + h.dmg * 0.012) * (big ? 1.6 : 1));
           if (big) stopUntil = Math.max(stopUntil, performance.now() + (h.kind === 'block' ? 90 : 60));
-        } else recoilV -= 0.015;
+        } else { recoilV -= 0.04; jolt = Math.min(0.9, jolt + 0.015); }
       }
       if (opts.onImpact) {
         v3.copy(at).project(camera);
@@ -1125,13 +1131,17 @@ window.BossScene = (() => {
     }
     function block(id) {
       blocked.add(id);
+      // your block breaks the attack off: the wind-up drops and the titan reels back
+      const t = nowS(), x = evs.find(e => e.id === id && e.type === 'slam');
+      if (x && !x.cut && t < x.h + 0.05 && !dead) { x.cut = t; stagger(); }
       const at = v1.copy(raidPos[RAID]).setY(2.2);
       burst(at, 26, 8, CYAN, 1.4, 4);
       flare(at, CYAN, 7, 0.32, canFlash() ? 1.3 : 0.6);
       wave(raidPos[RAID], 0.5, 6, 0.6, CYAN, 0.9);
     }
     function stagger() {
-      recoilV -= 2.6; headJerk = 1;
+      recoilV -= 2.6; headJerk = 1; reelAt = nowS(); jolt = 0;
+      if (!reduce) mv.z -= 1.6;
       shake = Math.max(shake, 0.7);
       stopUntil = Math.max(stopUntil, performance.now() + 120);
       scatter(28, 1.2);
@@ -1246,12 +1256,14 @@ window.BossScene = (() => {
         // time and the hit-stop holds the landed pose
         const sAt = sl.h - K[2], w = clamp((t - sl.s) / (sAt - sl.s), 0, 1), after = t - sl.h;
         const rec = after > 0.5 ? smooth((after - 0.5) / 0.9) : 0;
-        if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = w > 0.75 ? (w - 0.75) * 4 : 0; }
-        else { L.push([K[0], 1 - rec]); L.push([K[1], (1 - rec) * easeIn(clamp((t - sAt) / K[2], 0, 1))]); busy = 1 - rec; }
+        const ck = cutK(sl, t);
+        if (sl.cut && sl.cut < sAt) { L.push([K[0], ease(clamp((sl.cut - sl.s) / (sAt - sl.s), 0, 1)) * ck]); busy = ck; }
+        else if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = w > 0.75 ? (w - 0.75) * 4 : 0; }
+        else { L.push([K[0], (1 - rec) * ck]); L.push([K[1], (1 - rec) * ck * easeIn(clamp((t - sAt) / K[2], 0, 1))]); busy = (1 - rec) * ck; }
         // the fists that strike glow red as the wind-up fills, flash on the hit, then cool
-        const g = after < 0 ? w * w : Math.max(0, 1 - after / 0.6);
+        const g = (sl.cut ? (sl.cut < sAt ? w * w : 1) : after < 0 ? w * w : Math.max(0, 1 - after / 0.6)) * ck;
         if (sl.kind !== 'beam') { gr = g; if (sl.kind === 'slam') gl = g; }
-        if (after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
+        if (!sl.cut && after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
       }
       const vo = current(t, 'volley');
       if (vo) { const w = clamp((t - vo.s) / 1.0, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); L.push(['point', ease(w)]); busy = Math.max(busy, w); }
@@ -1264,6 +1276,9 @@ window.BossScene = (() => {
       const bu = t - breakAt;
       if (bu < 1.5) { const w = Math.sin(clamp(bu / 1.5, 0, 1) * Math.PI); L.push(['reel', w]); busy = Math.max(busy, w); }
       if (t < stunUntil) { L.push(['reel', 0.55]); tremble = Math.max(tremble, 0.5); }
+      // knocked back: a blocked attack or a stagger throws it into the reel, your hits jolt it
+      const rk = t - reelAt, rw = Math.max(rk < 1.1 ? Math.sin(clamp(rk / 1.1, 0, 1) * Math.PI) * 0.9 : 0, jolt);
+      if (rw > 0.02 && !dead) { L.push(['reel', rw * still + (1 - still) * Math.min(rw, 0.3)]); busy = Math.max(busy, rw); if (rk < 0.5) tremble = Math.max(tremble, 0.6); }
       if (dead) { L.push(['reel', clamp(deadT / 0.4, 0, 1)]); L.push(['fall', ease((deadT - 0.25) / 0.9)]); tremble = 1; }
       kit.mix(L);
       return { busy, tremble, gl, gr, trail };
@@ -1369,7 +1384,7 @@ window.BossScene = (() => {
       }
       // attack poses on the shared clock
       const sl = current(t, 'slam');
-      if (sl) {
+      if (sl && !sl.cut) {
         const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1), after = t - sl.h;
         const rec = after > 0 ? 1 - smooth(after / 1.2) : 1;
         if (sl.kind === 'slam') {
@@ -1412,7 +1427,7 @@ window.BossScene = (() => {
       }
       // move
       const rate = (0.6 + M.speed * 0.5) * (reduce ? 0.5 : 1);
-      const strike = sl && sl.kind === 'lunge' && t > sl.h && t < sl.h + 0.4;
+      const strike = sl && !sl.cut && sl.kind === 'lunge' && t > sl.h && t < sl.h + 0.4;
       mv.x += (tx - mv.x) * Math.min(1, dt * rate);
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate));
       // phase 2: a full turn now and then
@@ -1459,8 +1474,9 @@ window.BossScene = (() => {
       const k = Math.min(1, bdt * 7);
       for (const key in pose) cur[key] += (pose[key] - cur[key]) * k;
       recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt;
-      recoil = clamp(recoil, -0.5, 0.3);
+      recoil = clamp(recoil, -0.9, 0.3);
       headJerk = Math.max(0, headJerk - adt * 2.5);
+      jolt = Math.max(0, jolt - adt * 2.6);
       root.position.set(mv.x, cur.y, mv.z);
       root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
       hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3 + (stunned && !reduce ? Math.sin(t * 47) * 0.025 : 0));
@@ -1581,7 +1597,7 @@ window.BossScene = (() => {
 
       // telegraph, beam and sweep
       const sl = dead ? null : current(t, 'slam');
-      if (sl && t < sl.h) {
+      if (sl && t < sl.h && !sl.cut) {
         const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1);
         tele.visible = teleFill.visible = true;
         // the ring marks the danger zone, and the fill grows to meet it at the moment of the hit
@@ -1603,7 +1619,7 @@ window.BossScene = (() => {
         const u = (beamUntil - t) / 0.55;
         setBeam(anchorCore, raidPos[RAID], 0.9 * u + 0.2);
         beamMat.opacity = 0.9 * u;
-      } else if (!(sl && sl.kind === 'beam' && t < sl.h)) beam.visible = false;
+      } else if (!(sl && !sl.cut && sl.kind === 'beam' && t < sl.h)) beam.visible = false;
       const su = t - sweepT0;
       if (su < 0.45) {
         sweepBar.visible = true;
@@ -1636,7 +1652,8 @@ window.BossScene = (() => {
           if (u >= 1) {
             s.on = false; s.g.visible = false;
             burst(anchorCore, 24, 9, GREEN); flare(anchorCore, GREEN, 5, 0.25, 1);
-            recoilV -= 0.7;
+            recoilV -= 1.4; jolt = Math.min(0.9, jolt + 0.55); headJerk = 1;
+            shake = Math.max(shake, 0.35); stopUntil = Math.max(stopUntil, performance.now() + 70);
           }
         } else {
           const u = (t - s.launch) / (s.arrive - s.launch);

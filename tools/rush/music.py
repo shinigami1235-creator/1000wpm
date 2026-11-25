@@ -248,7 +248,7 @@ def four_floor(T, p, bars, hats=True, clap_on=(1, 3), open_hat=True, k_tone=48):
         if b % 8 == 0: T.drum('crash', b * 4, 0.6 if p > 1 else 0.35)
 
 def spam(T, p):
-    # bubbly electro-pop: a notification chirp hook, square arps, a bouncy octave bass. F# minor
+    # dark electro: a driven octave bass, low saw arps and a mean square hook. F# minor
     R = 54; S = MINOR
     prog = [0, 5, 2, 6]   # i VI III VII
     four_floor(T, p, 16)
@@ -261,17 +261,12 @@ def spam(T, p):
         chord = [deg(R, S, c), deg(R, S, c + 2), deg(R, S, c + 4)]
         if b % 2 == 0: T.chord(b * 4, chord, 8, cut=1300, v=0.7)
         arp = [chord[0], chord[1], chord[2], chord[1] + 12, chord[2], chord[1], chord[0] + 12, chord[2]]
-        for k in range(8): T.note('music', pluck, b * 4 + k * 0.5, arp[k] + 12, 0.45, pan=0.3 if k % 2 else -0.3, v=0.55, pw=0.25)
-        # the chirp: two quick rising notes, like a message arriving
-        if b % 2 == 1:
-            T.put('fx', b * 4 + 3, chirp(R + 24 + 7), 0.4); T.put('fx', b * 4 + 3.25, chirp(R + 24 + 12), -0.4)
+        for k in range(8): T.note('music', pluck, b * 4 + k * 0.5, arp[k], 0.45, pan=0.3 if k % 2 else -0.3, v=0.5, wave='saw', cut=600, env_amt=3000)
     if p >= 2:
         hook = [(0, 7, 1), (1, 5, 0.5), (1.5, 4, 0.5), (2, 2, 1.5), (4, 0, 0.5), (4.5, 2, 0.5), (5, 4, 1), (6, 5, 2)]
         for rep in range(2):
             for o, d, ln in hook:
-                T.note('music', lead, rep * 32 + 16 + o * 2, deg(R + 12, S, d), ln * 2, v=0.8 if p == 3 else 0.65, wave='sq', voices=3, cut=4200 if p == 3 else 3000)
-    if p == 3:
-        for b in range(0, 16, 2): T.note('music', bell, b * 4, deg(R + 24, S, prog[(b // 2) % 4] + 4), 1, v=0.5)
+                T.note('music', lead, rep * 32 + 16 + o * 2, deg(R, S, d), ln * 2, v=0.8 if p == 3 else 0.65, wave='saw', voices=5, cut=2600 if p == 3 else 2000)
 
 def sign(T, p):
     # neon city-pop / synthwave: gated chords, a funky bass and a bright lead. E minor, 7ths
@@ -311,9 +306,9 @@ def announcer(T, p):
             if e % 4 == 0: continue
             T.note('bass', bass, b * 4 + e * 0.25, r + (12 if e % 8 == 6 else 0), 0.22, v=0.8, wave='saw', cut=220, env_amt=1200 + 300 * p, dec=0.05)
         if b % 4 == 0: T.chord(b * 4, [deg(R, S, d) for d in (0, 2, 4, 6)], 16, cut=900 + 300 * p, v=0.55, att=1.2)
-        # the chime: a falling three-note call every four bars, echoed by the delay
+        # the PA call: a falling three-note saw call every four bars, echoed by the delay
         if b % 4 == 3:
-            for k, d in enumerate((4, 2, 0)): T.note('music', bell, b * 4 + 2 + k * 0.5, deg(R + 24, S, d), 0.5, v=0.7, pan=[-0.4, 0, 0.4][k])
+            for k, d in enumerate((4, 2, 0)): T.note('music', pluck, b * 4 + 2 + k * 0.5, deg(R + 12, S, d), 0.5, v=0.6, wave='saw', cut=900, env_amt=3000, dec=0.15, pan=[-0.4, 0, 0.4][k])
         for e in range(4):   # an off-beat stab
             T.note('music', pluck, b * 4 + e + 0.5, deg(R + 12, S, [0, 4, 2, 4][e]), 0.2, v=0.3 if p == 1 else 0.45, wave='saw', cut=900, env_amt=4000, dec=0.06)
     if p >= 2:

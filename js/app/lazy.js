@@ -11,7 +11,7 @@ window.Lazy = (() => {
   const G = {
     words: { js: ['js/wordbank-common.js', 'js/wordbank.js'] },
     mt: { js: ['js/words-mt.js'] },
-    combat: { css: ['css/combat.css'], js: ['bus', 'spells', 'combo', 'damage', 'engine', 'sfx', 'fx3d'].map(f => `js/app/combat/${f}.js`) },
+    combat: { css: ['css/combat.css'], js: ['bus', 'spells', 'combo', 'damage', 'engine', 'bank', 'sfx', 'fx3d'].map(f => `js/app/combat/${f}.js`) },
     map: { css: ['css/map.css'], js: ['js/app/community.js', 'js/app/missions.js', 'js/app/worldmap.js', 'js/app/activity.js'] },
     kb: { js: ['js/keyboards.js', 'js/kb3d.js'] },
     race: { need: ['mt'], js: ['js/race.js', 'js/games.js'] },

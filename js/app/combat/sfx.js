@@ -181,6 +181,7 @@ Combat.Audio = (() => {
       try {
         const c = o.ctx(), out = o.out();
         if (!c || !out) return;
+        if (window.SfxBank && SfxBank.play(c, out, name, c.currentTime + 0.005, arg)) return;
         if (!k || kc !== c) { k = kit(c); kc = c; }
         if (!k.S[name]) return;
         k.setOut(out, name);

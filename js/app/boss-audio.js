@@ -202,7 +202,7 @@ window.BossAudio = (() => {
         tone(t, 'sawtooth', 73, 146, len, 0.1, Math.min(1, len * 0.8));
         hiss(t, len, 300, 0.7, 0.14, 'lowpass', len * 0.8, 1800);
       },
-      warn(t) { tone(t, 'square', 990, 980, 0.07, 0.14); tone(t + 0.12, 'square', 990, 980, 0.07, 0.14); },
+      warn(t) { tone(t, 'sawtooth', 262, 247, 0.12, 0.2); tone(t + 0.16, 'sawtooth', 262, 247, 0.12, 0.2); hiss(t, 0.3, 500, 0.8, 0.12, 'lowpass'); },
       blockOk(t) {
         tone(t, 'triangle', 700, 1400, 0.1, 0.3);
         tone(t + 0.08, 'triangle', 1400, 2100, 0.18, 0.24);
@@ -260,6 +260,7 @@ window.BossAudio = (() => {
       live ||= kit(ac, sfxBus);
       if (!live[name]) return;
       if (name === 'roar' || name === 'defeat') duck(0.45, name === 'defeat' ? 2.6 : 1.6);
+      if (window.SfxBank && SfxBank.play(ac, sfxBus, name, ac.currentTime + 0.005, arg)) return;
       live.to(sfxBus, name);
       live[name](ac.currentTime + 0.005, arg);
     } catch (e) {}

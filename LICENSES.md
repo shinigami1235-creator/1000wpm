@@ -22,9 +22,13 @@ The time zone to country table in the same file comes from the IANA time zone da
 
 `fonts/` holds Chakra Petch (400, 600, 700), JetBrains Mono (400, 600) and Share Tech Mono (400) from the Fontsource npm packages, served from the site so no visitor's address goes to Google. All three are under the SIL Open Font License 1.1, in `fonts/LICENSE-*.txt`. `css/fonts.css` lists them.
 
-## Boss Rush music
+## Boss music
 
-`audio/rush-*.mp3` is made by `tools/rush/music.py` from numpy oscillators and noise, with no samples, loops or soundfonts from anyone else. It belongs to the site.
+`audio/rush-*.mp3` is made by `tools/rush/music.py` and `audio/wb-p1..p4.mp3` and `audio/wb-enrage.mp3` by `tools/boss/music.py`, from numpy oscillators and noise, with no samples, loops or soundfonts from anyone else. It belongs to the site.
+
+## Combat sound effects
+
+`audio/sfx/pew-*`, `laser-*`, `crunch-*`, `boom-*`, `thud-*` and `field-*` are from Sci-Fi Sounds 1.0 by Kenney (www.kenney.nl), CC0 1.0 (public domain), downloaded 26 Nov 2026 and checked against their published file hashes. Credit is optional; the credits can list "Sound effects: Kenney.nl". `audio/sfx/blast-*`, `clang-1` and `glitch-1` were rendered by us from the sound bank in Earshot 0.4.1 (github.com/Leonxlnx/earshot, MIT): the renders are ours and the MIT licence covers Earshot's code, which the site doesn't ship. `tools/sfx/bank.py` lists which file came from which take.
 
 ## Free typing passages
 

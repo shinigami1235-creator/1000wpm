@@ -306,6 +306,7 @@ window.TT = (() => {
   // With no style given it reads the saved operator; a board that isn't owned sounds like the Slab.
   const KB_SOUND = { slab: 'thock', compact: 'clicky', split: 'creamy', arc: 'spark' };
   function useWeaponSound(style) {
+    if (!style && window.SfxBank) SfxBank.load();   // fight pages: the recorded lasers and explosions
     if (!style) {
       const p = store.get('wpm-operator', null);
       style = p && p.kb && p.kb.style;
