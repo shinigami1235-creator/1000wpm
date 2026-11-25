@@ -8,8 +8,19 @@
   function paintMe() {
     const p = WPM.profile();
     const im = me.querySelector('img');
-    if (window.Avatar) Avatar.apply(im, Avatar.mine(), 68); else im.src = UI.avatar(p.avatar, 68);
+    if (window.Avatar) { Avatar.apply(im, Avatar.mine(), 68); drawMeSoon(im); } else im.src = UI.avatar(p.avatar, 68);
     me.querySelector('span').textContent = p.name;
+  }
+  // the nav picture is the player's operator; on a page that doesn't load 3D it's drawn once,
+  // when the browser is idle and nobody is mid-fight, then kept in localStorage
+  let meTimer = 0;
+  function drawMeSoon(im) {
+    clearTimeout(meTimer);
+    if (Avatar.src(Avatar.mine(), 68, 34)) return;
+    meTimer = setTimeout(function go() {
+      if (UI.playing && UI.playing()) { meTimer = setTimeout(go, 5000); return; }
+      (window.requestIdleCallback || (f => setTimeout(f, 0)))(() => Avatar.thumb(Avatar.mine(), 68, 34).then(u => { if (u) im.src = u; }));
+    }, 2500);
   }
   function paintCoins(bump) {
     coinsNum.textContent = UI.fmt(WPM.coins());

@@ -7,6 +7,7 @@ window.REWARDS = {
   // coin packs sell coins, and premium items (the high-quality props and gear) cost a lot
   // of coins. Prices are proposals until Gid and Art settle them; payments need the server.
   shop: {
+    payments: false,      // the CTRL Pass and coin packs stay hidden until this is true (Gid, 25 Nov)
     pass: { name: 'CTRL Pass', coinMult: 2, days: 30, price: 'US$4.99 a month' },
     packs: [
       { id: 'pack-1200', coins: 1200, price: 'US$0.99' },
@@ -17,7 +18,8 @@ window.REWARDS = {
     ],
     premiumFrom: 25000,   // an item at this price or more shows as Premium
     // Operator gear (MODELS.md). The outfit from the Gemini sheets is free: beanie, visor, scarf,
-    // wrist device, belt pouches, harness and the Slab keyboard. These are sold. Each one names
+    // wrist device, belt pouches, harness and the Slab keyboard. These are sold. Keyboards are the
+    // operators' weapons, the way other games sell gun skins; they change the look, never the damage. Each one names
     // the operator slot it unlocks (acc: an accessory, kb: a keyboard style); premium models
     // generated later join this list with the same slots.
     gear: [

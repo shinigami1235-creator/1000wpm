@@ -96,6 +96,7 @@ window.Operator = (() => {
   }
 
   const R = Math.PI / 180;
+  const PRO_SIGN = 1;   // checked on renders: + turns the palm down on both arms
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const ease = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
   const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
@@ -104,7 +105,7 @@ window.Operator = (() => {
   // lean: spine forward; side: toward the character's left; twist: chest turned to its left
   // arm/leg: { flex: forward, abd: out to its side, twist: + rolls it inward }; elbow and knee: bend; wrist: bend forward
   const BLANK = () => ({ lean: 0, side: 0, twist: 0, nod: 0, turn: 0, tilt: 0,
-    armL: { flex: 0, abd: 0, twist: 0 }, armR: { flex: 0, abd: 0, twist: 0 }, elbowL: 0, elbowR: 0, wristL: 0, wristR: 0,
+    armL: { flex: 0, abd: 0, twist: 0 }, armR: { flex: 0, abd: 0, twist: 0 }, elbowL: 0, elbowR: 0, wristL: 0, wristR: 0, proL: 0, proR: 0,
     legL: { flex: 0, abd: 0 }, legR: { flex: 0, abd: 0 }, kneeL: 0, kneeR: 0 });
   function mixPose(a, b, w) {
     if (w <= 0) return a; if (w >= 1) return b;
@@ -182,8 +183,11 @@ window.Operator = (() => {
     const p = BLANK();
     const wl = Math.sin(t * 12.5 - 0.9), wr = Math.sin(t * 14 + 0.4);
     p.lean = 2; p.nod = 8 + Math.sin(t * 2.1) * 1.5; p.turn = Math.sin(t * 0.8) * 3;
-    p.armL = { flex: 14 + kl * 2, abd: 18, twist: 42 }; p.armR = { flex: 14 + kr * 2, abd: 18, twist: 42 };
-    p.elbowL = 90 - kl * 10; p.elbowR = 90 - kr * 10; p.wristL = 3 + wl * 7; p.wristR = 3 + wr * 7;
+    // palms down on the keys (Gid, 25 Nov); the forearms hold still and typing is a small tap at the wrist
+    p.armL = { flex: 14, abd: 18, twist: 42 }; p.armR = { flex: 14, abd: 18, twist: 42 };
+    p.elbowL = p.elbowR = 88; p.proL = p.proR = 65;
+    const tap = k => Math.max(0, k);   // the stroke presses down and lifts back, never up past rest
+    p.wristL = 4 + tap(kl) * 6 + wl * 1; p.wristR = 4 + tap(kr) * 6 + wr * 1;
     p.legL = { flex: 2, abd: 6 }; p.legR = { flex: -1, abd: 6 }; p.kneeL = p.kneeR = 4;
     return p;
   }
@@ -514,13 +518,26 @@ window.Operator = (() => {
       kbAt.copy(a).add(b).multiplyScalar(0.5).add(new V(0, -0.04, 0.07));
     }
     const kc = new THREE.Color(), white = new THREE.Color(0xffffff);
+    // The keyboard is the operator's weapon (Gid, 25 Nov), so it's always out: holstered upright at
+    // the right hip between words, swung up in front of the hands to type. opts.unarmed hides it
+    // between words as before.
+    const HOLSTER = new V(-0.27, 0.93, 0.02), hq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15, 0.25, 1.35)), kq = new THREE.Quaternion();
+    let holsterT = 0;
     function kbTick(dt, typing, tt) {
       if (!kb) return;
       kbV += ((typing ? 1 : 0) - kbV) * Math.min(1, dt * 7);
-      kb.group.visible = kbV > 0.02;
+      const armed = !opts.unarmed;
+      kb.group.visible = armed || kbV > 0.02;
       if (!kb.group.visible) return;
-      kb.group.scale.set(0.7 + 0.3 * kbV, 1, 0.85 + 0.15 * kbV);
-      kb.mats.forEach((m, i) => { m.opacity = kb.op[i] * kbV; });
+      const k = smooth(kbV);
+      holsterT += dt;
+      const bob = Math.sin(holsterT * 2.2) * 0.012 * (1 - k);
+      kb.group.position.copy(HOLSTER).setY(HOLSTER.y + bob).multiplyScalar(BASES[P.base].scale).lerp(kbAt, k);
+      kb.group.quaternion.copy(kq.identity()).slerp(hq, armed ? 1 - k : 0);
+      const sz = armed ? 0.55 + 0.45 * k : 1;
+      kb.group.scale.set(sz * (0.7 + 0.3 * kbV), sz, sz * (0.85 + 0.15 * kbV));
+      const vis = armed ? 0.55 + 0.45 * kbV : kbV;
+      kb.mats.forEach((m, i) => { m.opacity = kb.op[i] * vis; });
       // a key lights under each stroke, on that hand's half of the board
       if (typing) {
         const st = strokes(tt);
@@ -573,7 +590,13 @@ window.Operator = (() => {
       B.LeftArm.quaternion.premultiply(q0.copy(B.LeftShoulder.quaternion).invert());
       B.RightArm.quaternion.premultiply(q0.copy(B.RightShoulder.quaternion).invert());
       hinge(B.LeftForeArm, -p.elbowL); hinge(B.RightForeArm, -p.elbowR);
-      B.LeftHand.rotation.set(-p.wristL * R, 0, 0); B.RightHand.rotation.set(-p.wristR * R, 0, 0);
+      // pronation (+ turns the palm down) is shared by the forearm and the hand, as the radius rolls
+      // along the whole forearm, so neither the elbow nor the wrist wrings like a towel
+      for (const [s, x, pro, wr] of [['Left', 1, p.proL, p.wristL], ['Right', -1, p.proR, p.wristR]]) {
+        const fa = B[s + 'ForeArm'], h = B[s + 'Hand'], ax = dirs[s + 'ForeArm'];
+        if (pro) fa.quaternion.multiply(qT.setFromAxisAngle(ax, x * PRO_SIGN * pro * 0.6 * R));
+        h.quaternion.setFromAxisAngle(ax, x * PRO_SIGN * (pro || 0) * 0.4 * R).multiply(q0.setFromAxisAngle(X, -wr * R));
+      }
       limb(B.LeftUpLeg, 1, p.legL); limb(B.RightUpLeg, -1, p.legR);
       hinge(B.LeftLeg, p.kneeL); hinge(B.RightLeg, p.kneeR);
       // the lower foot sits on the floor: move the hips by the height the legs lost or gained against rest
@@ -612,6 +635,8 @@ window.Operator = (() => {
       group, get bones() { return B; }, get preset() { return JSON.parse(JSON.stringify(P)); },
       height: () => 1.8 * BASES[P.base].scale * (1 + 0.04 * P.body.height),
       get model() { return isModel; },
+      // where shots leave from: the keyboard, its weapon
+      kbWorld(out) { if (!kb || !kb.group.visible) return null; return kb.group.getWorldPosition(out); },
       play(name) { if (!A[name] || ONCE_LEN[name] || name === anim) return; prev = { name: anim, t }; anim = name; t = 0; blend = 0; },
       once(name) { if (ONCE_LEN[name]) once = { name, t: 0 }; },
       update(dt) {

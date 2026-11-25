@@ -28,6 +28,7 @@ window.Lazy = (() => {
     // these loaders add their own files after themselves, so the group is ready when the globals are
     breach: { js: ['js/breach/load.js'], ready: () => window.Breach && window.Breach.endlessScores },
     room: { js: ['js/room/load.js'], ready: () => window.Room && window.RoomItems },
+    operator: { js: ['js/app/operator3d.js'] },
     avatarParts: { js: ['js/app/avatar-face.js', 'js/app/avatar-makeup.js', 'js/app/avatar-hair.js'] },
     avatarEdit: { need: ['avatarParts'], js: ['js/app/avatar-creator.js'] },
 

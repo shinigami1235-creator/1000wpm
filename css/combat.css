@@ -169,3 +169,13 @@
 .page-boss .wb-chat-say input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .page-boss .wb-chat-why { margin: 6px 0 0; min-height: 1em; font: 400 var(--t-xs)/1.3 var(--f-head); color: #ff7a87; }
 .page-boss .wb-boardbtn[data-unread="1"]::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber-2); vertical-align: 1px; }
+
+/* the countdown after Join the raid */
+.page-boss .wb-count {
+  position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none;
+  font: 700 clamp(72px, 12vw, 160px)/1 var(--f-head); color: var(--ink-hi); text-shadow: 0 0 30px var(--accent);
+  background: rgba(var(--bg-0-rgb), .35);
+}
+.page-boss .wb-count.tick { animation: wb-count 1s var(--ease-out); }
+@keyframes wb-count { 0% { transform: scale(1.5); opacity: 0; } 18% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-count.tick { animation: none; } }

@@ -90,7 +90,7 @@ Router.register('shop', (() => {
   // The CTRL Pass and coin packs (REWARDS.shop). Payments go through the server, so the
   // buttons stay off until it is live.
   function storeHtml() {
-    const S = window.REWARDS && REWARDS.shop; if (!S) return '';
+    const S = window.REWARDS && REWARDS.shop; if (!S || !S.payments) return '';
     const p = WPM.pass(), until = p.active ? new Date(p.until).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
     return `<section class="store" aria-label="CTRL Pass and coin packs">
       <article class="panel store-pass${p.active ? ' on' : ''}">

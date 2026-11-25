@@ -5,7 +5,8 @@ Router.register('profile', (() => {
 
   function mount(root, params) {
     el = root; host = root;
-    if (window.AvatarCreator && params && params[0] === 'avatar') { creator = true; AvatarCreator.mount(el); return; }
+    // the faceted avatar creator was replaced by the Operator page
+    if (params && params[0] === 'avatar') { location.replace('#/lab'); return; }
     jump = !!(params && params[0] === 'progress');
     paint();
     off.push(WPM.on('profile', paint), WPM.on('session', paint), WPM.on('coins', paint));
@@ -23,10 +24,10 @@ Router.register('profile', (() => {
       <div class="prof">
         <div class="col">
           <section class="panel hot">
-            ${window.OpsUI ? OpsUI.card({ name: p.name, img: UI.meImg(280, 140, 'class="av" alt="Your avatar"'), editBtn: `<button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button>` }) : `
+            ${window.OpsUI ? OpsUI.card({ name: p.name, img: UI.meImg(280, 140, 'class="av" alt="Your operator"'), editBtn: `<button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button>` }) : `
             <div class="ph">// PROFILE</div>
             <div class="who-card">
-              ${UI.meImg(280, 140, 'class="av" alt="Your avatar"')}
+              ${UI.meImg(280, 140, 'class="av" alt="Your operator"')}
               <div class="name-row" data-name><h2>${e(p.name)}</h2><button class="icon-btn" type="button" data-edit aria-label="Edit name">${UI.icon('edit')}</button></div>
             </div>`}
             <dl class="kv op-kv">
@@ -49,7 +50,7 @@ Router.register('profile', (() => {
             <div><span class="label">Achievements</span><b class="mid">${got}</b></div>
           </section>
           <section class="panel">
-            <div class="ph">// AVATAR</div>
+            <div class="ph">// OPERATOR</div>
             ${window.AvatarCreator ? `<a class="btn out" href="#/lab" style="width:100%">Edit operator</a>` : `<div class="avatars" role="group" aria-label="Avatar">
               ${UI.AVATARS.map((a, i) => `<button type="button" data-av="${i}" aria-pressed="${i === p.avatar}" aria-label="${e(a.name)} avatar"><img src="${UI.avatar(i, 120)}" alt="" width="60" height="60"></button>`).join('')}
             </div>`}

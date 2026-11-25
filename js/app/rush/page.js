@@ -222,9 +222,14 @@ window.RushPage = (() => {
     }
     const top = () => (f ? f.stack()[0] || '' : '');
     const wordOf = tg => (tg && tg.kind ? tg.word : top());
+    // a special word that leaves while you type it stays the target while your letters match it,
+    // so the rest of it isn't typos; the space clears it as TOO LATE (same as the World Boss)
     function retarget() {
       const list = targets(now());
-      if (target && target.kind && !list.some(x => x.id === target.id)) target = null;
+      if (target && target.kind && (target.gone || !list.some(x => x.id === target.id))) {
+        if (typed && target.word.startsWith(typed)) { if (!target.gone) target = { ...target, gone: true }; return; }
+        target = null;
+      }
       if (target && wordOf(target).startsWith(typed)) return;
       const m = list.find(x => x.word.startsWith(typed));
       if (m) { target = m; return; }
@@ -259,6 +264,12 @@ window.RushPage = (() => {
       if (!typed || !f || f.phase !== 'fight') return;
       const t = now(), list = targets(t);
       const exact = list.find(x => x.word === typed);
+      if (!exact && target && target.gone && typed !== top()) {
+        typed = ''; target = null; clean = true;
+        pop('TOO LATE', 'white');
+        renderQueue(); paintChips(true);
+        return;
+      }
       if (exact && exact.kind === 'spell') { castSpell(exact.spell, clean); return; }
       if (!exact && target && target.kind === 'spell') { castSpell(target.spell, false); return; }
       const word = top(), sent = typed;
@@ -568,7 +579,10 @@ window.RushPage = (() => {
       const t = now();
       f.tick(t);
       if (!f) return;
-      if (target && target.kind && !targets(t).some(x => x.id === target.id)) { target = null; typed = ''; renderQueue(); }
+      if (target && target.kind && !target.gone && !targets(t).some(x => x.id === target.id)) {
+        if (typed && target.word.startsWith(typed)) target = { ...target, gone: true }; else { target = null; typed = ''; }
+        renderQueue();
+      }
       paintChips(false);
       paintFlags(t);
       paintTip(t);
@@ -724,7 +738,13 @@ window.RushPage = (() => {
       me.on('tierUp', e => { if (!q('cbox')) return; cSfx('tierUp', e.tier); pop(e.name.toUpperCase(), 'green'); tip('combo'); const b = q('cbox'); b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); });
       me.on('miss', e => { if (e.from >= 10) cSfx('break'); });
       me.on('spellOffer', () => { cSfx('offer'); tip('spell'); paintChips(true); });
-      me.on('offerEnd', () => { if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
+      me.on('offerEnd', () => {
+        if (target && target.kind === 'spell' && !target.gone) {
+          if (typed && target.word.startsWith(typed)) target = { ...target, gone: true }; else { target = null; typed = ''; }
+          renderQueue();
+        }
+        paintChips(true);
+      });
       me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
       me.on('perk', e => pop(e.name.toUpperCase(), 'white'));
       me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });

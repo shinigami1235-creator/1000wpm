@@ -1,20 +1,21 @@
-// Avatar thumbnails for the whole site. Pages ask for an <img> and get UI.avatar's hooded
-// figure straight away; the 3D module loads after the page has painted, renders each look
-// once on its shared offscreen renderer and swaps the real picture in. Pictures are cached
-// as data URLs keyed by a hash of the look, in memory and (small sizes) in localStorage.
+// Player pictures for the whole site, drawn from operators (js/app/operator3d.js) since the
+// operators replaced the faceted avatars (25 Nov 2026). Pages ask for an <img> and get UI.avatar's
+// hooded figure straight away; three.js and the operator model load after the page has painted,
+// each look is rendered once as a head-and-shoulders picture on one shared offscreen renderer and
+// swapped in. Pictures are cached as data URLs keyed by a hash of the look, in memory and (small
+// sizes) in localStorage.
 //
-// The 3D module (three.js, avatar.glb and the hair, about 3.5 MB) only loads on the pages
-// built around avatars, listed in RENDER_ON, or when a page asks for a picture with
-// thumb() or viewer(). Everywhere else a picture shows if it was rendered before and the
-// hooded figure shows if not, so the typing pages never wait on WebGL.
+// A look is { me: <saved preset or null> } for the player, { bot: name } for anyone else, or
+// any other object, which is seeded into a random operator. Three.js and the model only load on
+// the pages listed in RENDER_ON, or when a page asks for a picture with thumb(). Everywhere else
+// a picture shows if it was rendered before and the hooded figure shows if not.
 window.Avatar = (() => {
-  const RENDER_ON = ['profile', 'u', 'duel', 'party'];
-  const D = window.AvatarData;
+  const RENDER_ON = ['profile', 'u', 'duel', 'party', 'lab', 'boss', 'leaderboard'];
   const mem = new Map();
-  // v4: MakeHuman skins, eyes and brows; older cached pictures are dropped
-  const LS = 'wpm-avatar-thumbs-v4', LS_MAX = 24;
+  // v5: operator portraits; older cached pictures are dropped
+  const LS = 'wpm-avatar-thumbs-v5', LS_MAX = 24;
   let store = {};
-  try { localStorage.removeItem('wpm-avatar-thumbs'); localStorage.removeItem('wpm-avatar-thumbs-v3'); store = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { store = {}; }
+  try { for (const k of ['wpm-avatar-thumbs', 'wpm-avatar-thumbs-v3', 'wpm-avatar-thumbs-v4']) localStorage.removeItem(k); store = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { store = {}; }
   for (const [k, v] of Object.entries(store)) mem.set(k, v);
 
   let mod = null, loading = null, started = false;
@@ -25,32 +26,72 @@ window.Avatar = (() => {
   // pictures are rendered at the screen's pixel density, so they stay sharp on phones
   const DPR = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
   const px = (size, show) => Math.max(size, Math.round(show * DPR));
-  const keyOf = (look, size, show = size) => `${D.hash(look)}-${px(size, show)}-${show <= 64 ? 's' : 'l'}`;
-  const bots = new Map();
+  function hash(o) { const s = JSON.stringify(o || {}); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+  const keyOf = (look, size, show = size) => `${hash(look)}-${px(size, show)}-${show <= 64 ? 's' : 'l'}`;
 
-  // the player's own look, with anything not owned swapped for a free part
+  // the player's own operator as saved on the Operator page, and its owned gear (see render())
   function mine() {
-    const p = WPM.profile();
-    return D.usable(p.look || D.random(`me:${p.joined}:${p.avatar}`, { free: true }));
+    let p = null;
+    try { p = window.TT && TT.store ? TT.store.get('wpm-operator', null) : null; } catch (e) { p = null; }
+    const owned = window.WPM ? ['op-mask', 'kb-compact', 'kb-split', 'kb-arc'].filter(id => WPM.owns(id)) : [];
+    return { me: p, owned };
   }
-  // simulated players get a look from their name, the same one every time
-  function bot(name) {
-    if (!bots.has(name)) bots.set(name, D.random('bot:' + name));
-    return bots.get(name);
-  }
-  const fallback = (look, size) => UI.avatar(parseInt(D.hash(look), 36) % UI.AVATARS.length, size);
+  // simulated players get an operator from their name, the same one every time
+  const bot = name => ({ bot: String(name || 'x') });
+  const fallback = (look, size) => UI.avatar(parseInt(hash(look), 36) % UI.AVATARS.length, size);
 
+  // the portrait renderer: one offscreen WebGL canvas, an operator posed at rest, the camera on
+  // its head and shoulders
+  async function makeMod() {
+    const [T, RB] = await Promise.all([import('three'), import('three/addons/geometries/RoundedBoxGeometry.js'),
+      window.Lazy ? Lazy.need('operator') : Promise.resolve()]);
+    const THREE = { ...T, RoundedBoxGeometry: RB.RoundedBoxGeometry };
+    await Operator.loadModels(THREE);
+    const canvas = document.createElement('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#0c1411');
+    scene.add(new THREE.HemisphereLight('#d8e2ea', '#0a0c0e', 1.1));
+    const key = new THREE.DirectionalLight('#ffffff', 2.2); key.position.set(-1.2, 2.4, 2.2); scene.add(key);
+    const rim = new THREE.DirectionalLight('#ffffff', 1.6); rim.position.set(1.6, 2, -1.8); scene.add(rim);
+    const camera = new THREE.PerspectiveCamera(24, 1, 0.05, 20);
+    const at = new THREE.Vector3();
+    function preset(look) {
+      if (look && 'me' in look) {
+        // only gear the player owns, the same rule as Operator.mine()
+        const P = Operator.clean(look.me || Operator.defaults('male'));
+        return Operator.locked(P);
+      }
+      return Operator.random(look && look.bot ? look.bot : hash(look));
+    }
+    return {
+      async thumb(look, size) {
+        rim.color.set(window.Theme ? Theme.hex('accent') : '#39ff88');
+        renderer.setPixelRatio(1); renderer.setSize(size, size, false);
+        const op = Operator.create(THREE, preset(look), { lite: size <= 128 });
+        scene.add(op.group);
+        op.at('idle', 0.4);
+        op.group.updateMatrixWorld(true);
+        const head = op.bones.Head.getWorldPosition(at);
+        camera.position.set(head.x + 0.16, head.y + 0.05, head.z + 1.05);
+        camera.lookAt(head.x, head.y - 0.04, head.z);
+        renderer.render(scene, camera);
+        let url = canvas.toDataURL('image/webp', 0.88);
+        if (!url.startsWith('data:image/webp')) url = canvas.toDataURL('image/png');
+        scene.remove(op.group); op.dispose();
+        return url;
+      },
+    };
+  }
   function load() {
     if (loading) return loading;
-    const url = new URL('js/app/avatar3d.js', document.baseURI).href;
-    const parts = window.Lazy ? Lazy.need('avatarParts') : Promise.resolve();
-    loading = parts.then(() => import(url)).then(async m => {
-      await m.ready; mod = m;
+    loading = makeMod().then(m => {
+      mod = m;
       for (const [k, q] of later) if (document.querySelector(`img[data-avk="${k}"]`)) queue.push(q);
       later.clear();
       pump(); return m;
-    })
-      .catch(e => { console.warn('Avatar 3D did not load', e); });
+    }).catch(e => { console.warn('Operator pictures did not load', e); });
     return loading;
   }
   // start loading once the page has painted, so avatars never hold up first paint
@@ -136,33 +177,9 @@ window.Avatar = (() => {
     });
   }
 
-  // the shop shows each avatar item worn by a plain model
-  const MODEL = { v: 1, f: { sex: -30, jawW: 10 }, sk: 4, ec: 1, h: 'buzz', hc: 1, fh: 'none', g: [], o: 'crew', oc: 0, gl: 'green' };
-  const FEM_HAIR = ['bob', 'long', 'braids', 'longstraight', 'longlayered', 'ponytail', 'bun', 'curly'];
-  function wearing(item) {
-    let L = { ...MODEL, f: { ...MODEL.f }, g: [] };
-    if (item.slot === 'h') { L.h = item.part; if (FEM_HAIR.includes(item.part)) L.f = { sex: 70 }; }
-    else if (item.slot === 'fh') L.fh = item.part;
-    else if (item.slot === 'bs') L.bs = item.part;
-    else if (item.slot === 'g') L = D.withGear(L, item.part);
-    else if (item.slot === 'o') L.o = item.part;
-    else if (item.slot === 'hc') { L.hc = item.part; L.h = 'undercut'; }
-    else if (item.slot === 'ec') L.ec = item.part;
-    else if (item.slot === 'gl') L.gl = item.part;
-    else if (item.slot === 'mkc') {
-      const [layer, i] = String(item.part).split('-');
-      L.f = { sex: 70 }; L.h = 'bun'; L.mk = { ...D.MK_DEFAULT, liner: 'winged', [layer + 'C']: +i, [layer + 'S']: 75, glossS: layer === 'lip' ? 35 : 0 };
-    }
-    return L;
-  }
-  const itemThumb = item => thumb(wearing(item), 220);
+  // the old faceted avatar's live 3D view is gone; pages show the operator picture instead
+  const viewer = () => Promise.resolve(null);
+  const refresh = () => document.querySelectorAll('#nav-me img, img.me-pic').forEach(i => apply(i, mine(), +i.dataset.size || 68));
 
-  // the 3D view for the creator
-  async function viewer(host, opts) {
-    const m = await load();
-    if (!m) return null;
-    return new window.Avatar3D.Viewer(host, opts);
-  }
-
-  return { mine, bot, src, img, apply, thumb, itemThumb, wearing, viewer, load, fallback, keyOf };
+  return { mine, bot, src, img, apply, thumb, viewer, load, fallback, keyOf, refresh };
 })();

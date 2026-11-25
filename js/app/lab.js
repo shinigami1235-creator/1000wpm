@@ -39,7 +39,7 @@ Router.register('lab', (() => {
             <div class="lab-sliders" data-body></div>
           </div>
           <div class="lab-group">
-            <span class="label">Keyboard</span>
+            <span class="label">Weapon: keyboard</span>
             <div class="seg" role="group" aria-label="Keyboard shape" data-kb>
               ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
             </div>
@@ -109,6 +109,7 @@ Router.register('lab', (() => {
     el.querySelectorAll('[data-once]').forEach(b => b.addEventListener('click', () => op && op.once(b.dataset.once)));
     el.querySelector('[data-save]').addEventListener('click', () => {
       TT.store.set(KEY, P);
+      if (window.Avatar && Avatar.refresh) Avatar.refresh();   // the nav picture follows the saved operator
       const t = trying();
       note(t.length ? `Saved. ${t.join(' and ')[0].toUpperCase() + t.join(' and ').slice(1)} ${t.length > 1 ? 'show' : 'shows'} in fights once you buy ${t.length > 1 ? 'them' : 'it'} in the shop.` : 'Saved as your operator.');
     });

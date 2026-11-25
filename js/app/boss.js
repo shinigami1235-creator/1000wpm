@@ -314,6 +314,7 @@ Router.register('boss', (() => {
       },
     });
     if (matchMedia('(pointer: fine)').matches) keys.focus();
+    countdown();
     const forward = e => {
       A.unlock();
       const a = document.activeElement;
@@ -339,6 +340,28 @@ Router.register('boss', (() => {
     debugHook();
   }
 
+  // ---------- the 3-second countdown after Join ----------
+  // Keys wait until it ends; attacks can't hurt you either, since they only land on an active typist.
+  let readyAt = 0;
+  function countdown() {
+    readyAt = performance.now() + 3000;
+    const stage = q('stage'); if (!stage) return;
+    const c = document.createElement('div');
+    c.className = 'wb-count'; c.setAttribute('aria-live', 'assertive');
+    stage.append(c);
+    let n = 3;
+    const step = () => {
+      if (!el || !c.isConnected) return;
+      c.textContent = n > 0 ? String(n) : 'GO';
+      c.classList.remove('tick'); void c.offsetWidth; c.classList.add('tick');
+      sfx(n > 0 ? 'warn' : 'shieldBreak');
+      if (n-- > 0) timers.push(setTimeout(step, 1000));
+      else timers.push(setTimeout(() => c.remove(), 650));
+    };
+    step();
+  }
+  const counting = () => performance.now() < readyAt;
+
   // ---------- typing ----------
   // A word goes to the first attack slot it matches, otherwise to the stack.
   function wordOf(t) { return t && t.kind ? t.word : stack[0]; }
@@ -348,9 +371,16 @@ Router.register('boss', (() => {
     if (!o) return [];
     return o.spells.map(id => { const sp = Combat.spell(id); return { kind: 'spell', id: 'spell:' + id, word: sp.word, spell: sp, due: o.until, total: o.until - o.at }; });
   }
+  // A special word (attack, packet, bug or spell) that leaves while you're typing it stays your
+  // target as long as your letters still match it, so finishing it isn't counted as typos; the
+  // space then clears it as TOO LATE without spending the stack word or the combo.
   function retarget() {
-    if (target && target.kind === 'spell' && !spellTargets().some(x => x.id === target.id)) target = null;
-    if (target && target.kind && target.kind !== 'spell' && !mech.some(m => m.id === target.id)) target = null;
+    const vanished = target && target.kind && !target.gone && (target.kind === 'spell'
+      ? !spellTargets().some(x => x.id === target.id) : !mech.some(m => m.id === target.id));
+    if (vanished || (target && target.gone)) {
+      if (typed && target.word.startsWith(typed)) { if (!target.gone) target = { ...target, gone: true }; return; }
+      target = null;
+    }
     if (target && wordOf(target).startsWith(typed)) return;
     const m = mech.find(x => x.word.startsWith(typed)) || spellTargets().find(x => x.word.startsWith(typed));
     if (m) { target = m; return; }
@@ -359,7 +389,7 @@ Router.register('boss', (() => {
     if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
   }
   function onChar(ch) {
-    if (!st || st.defeatedAt) return;
+    if (!st || st.defeatedAt || counting()) return;
     const t = performance.now();
     lastKeyAt = now();
     if (now() < lockUntil) return;
@@ -400,7 +430,7 @@ Router.register('boss', (() => {
     if (exact) target = exact;
     else if (spellHit) target = spellHit;
     else if (typed === stack[0]) target = { stack: true };
-    else if (gone.has(typed) && performance.now() - gone.get(typed) < 3000) {
+    else if ((target && target.gone) || (gone.has(typed) && performance.now() - gone.get(typed) < 3000)) {
       // an attack word that just left the row: clear it without spending the stack word
       typed = ''; target = null; clean = true;
       pop('TOO LATE', 'white');
@@ -534,7 +564,14 @@ Router.register('boss', (() => {
       tip('spell');
       renderQueue(); paintChips(true);
     });
-    me.on('offerEnd', () => { if (!el) return; if (target && target.kind === 'spell') { target = null; typed = ''; renderQueue(); } paintChips(true); });
+    me.on('offerEnd', () => {
+      if (!el) return;
+      if (target && target.kind === 'spell' && !target.gone) {
+        if (typed && target.word.startsWith(typed)) target = { ...target, gone: true }; else { target = null; typed = ''; }
+        renderQueue();
+      }
+      paintChips(true);
+    });
     me.on('ward', () => { cSfx('ward'); if (scene) scene.fxEvent('ward'); });
     me.on('perk', e => { if (!el) return; pop(e.name.toUpperCase(), 'white'); pushFeed({ text: e.id === 'sentinel' ? 'Unbreakable kept your combo tier' : 'Execution: the target is below 30%', cls: 'you' }); });
     me.on('guard', () => { if (!el) return; cSfx('guard'); if (scene) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: 'Quantum split kept your combo', cls: 'you' }); });
@@ -748,7 +785,12 @@ Router.register('boss', (() => {
     mech = list;
     // an attack word that left the row takes what was typed with it; a spell isn't in the row and
     // clears itself when its offer ends (offerEnd), so it's left alone here
-    if (target && target.kind && target.kind !== 'spell' && !mech.some(m => m.id === target.id)) { target = null; typed = ''; renderQueue(); }
+    if (target && target.kind && target.kind !== 'spell' && !target.gone && !mech.some(m => m.id === target.id)) {
+      // left while you were typing it: keep it as a ghost so the rest of the word isn't typos (retarget)
+      if (typed && target.word.startsWith(typed)) target = { ...target, gone: true };
+      else { target = null; typed = ''; }
+      renderQueue();
+    }
     // weak point and shield
     const weak = R.weakMult(st, t) > 1 && !st.defeatedAt;
     if (weak !== weakWas) {

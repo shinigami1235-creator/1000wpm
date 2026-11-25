@@ -469,18 +469,35 @@ window.BossScene = (() => {
     youRing.rotation.x = -Math.PI / 2;
     scene.add(youRing);
     let raidZ = 8;
+    // The raid on screen is three squads of four (Gid, 25 Nov): yours in the middle, two more on the
+    // flanks, a little forward, so the arena reads as teams at their posts instead of a line of 41.
+    // Slots: RAID is you, 0-2 your squad mates, 3-10 the two flank squads (instanced crowd), 11 and up
+    // the raiders off screen, whose shots come in from past the edges of the arena.
+    const SQUAD_AT = [[0, 0], [-1.7, -0.7], [1.7, -0.7], [0, 1.5]];   // you or the leader, then three around
+    const squadRings = [];
+    for (let i = 0; i < 3; i++) {
+      const r = new THREE.Mesh(keep(new THREE.RingGeometry(2.55, 2.7, 64)), keep(new THREE.MeshBasicMaterial({ color: i ? raidCol(i * 2 - 1) : C(Theme.hex('accent')), side: THREE.DoubleSide, transparent: true, opacity: i ? 0.35 : 0.25 })));
+      r.rotation.x = -Math.PI / 2; scene.add(r); squadRings.push(r);
+    }
     function placeRaid(halfW) {
       const w = Math.min(15, halfW * 0.86);
-      for (let i = 0; i < RAID; i++) {
-        const side = i % 2 ? 1 : -1, k = Math.floor(i / 2) + 1;
-        const x = side * (1.6 + (k / (RAID / 2)) * (w - 1.6));
-        raidPos[i].set(x, 0.55, raidZ - Math.abs(x) * 0.18 + (k % 2) * 0.6);
+      const centres = [[0, raidZ + 0.6], [-w * 0.62, raidZ - 2.6], [w * 0.62, raidZ - 2.6]];
+      raidPos[RAID].set(centres[0][0], 0.7, centres[0][1]);
+      for (let i = 0; i < 3; i++) raidPos[i].set(centres[0][0] + SQUAD_AT[i + 1][0], 0.55, centres[0][1] + SQUAD_AT[i + 1][1]);
+      for (let s = 1; s <= 2; s++) for (let j = 0; j < 4; j++) {
+        const [cx, cz] = centres[s], [dx, dz] = SQUAD_AT[j];
+        raidPos[3 + (s - 1) * 4 + j].set(cx + dx * (s === 1 ? 1 : -1) * 0.9, 0.55, cz + dz * 0.9);
       }
-      raidPos[RAID].set(0, 0.7, raidZ + 0.6);
-      youRing.position.set(0, 0.04, raidZ + 0.6);
+      for (let i = 11; i < RAID; i++) {
+        const side = i % 2 ? 1 : -1, k = (i - 11) / (RAID - 11);
+        raidPos[i].set(side * (w + 4 + k * 6), 0.55, raidZ + 3 + k * 6);
+      }
+      centres.forEach(([x, z], i) => squadRings[i].position.set(x, 0.05, z + (i ? 0.2 : -0.2)));
+      youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
       // with operators standing there, shots leave from their chests
       if (OPS) for (const p of raidPos) p.y = 1.9;
     }
+    const ONSCREEN = 11;   // slots below this are drawn; the rest of the raid is off screen
 
     // ---------- operators (js/app/operator3d.js) ----------
     // You and your squad stand in the raid as full characters, facing the boss; everyone else is one
@@ -534,9 +551,9 @@ window.BossScene = (() => {
       // the rest of the raid: two instanced crowds, male and female, mixed along both sides
       const used = new Set(crew.map(c => c.slot));
       const n = [0, 0];
-      for (let i = 0; i < RAID; i++) {
-        if (used.has(i) || i >= SHOWN) continue;
-        const k = Math.floor(i / 2) % 2, m = crowd.meshes[k], p = raidPos[i];   // spots alternate sides, so pair them up for the base
+      for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) {
+        if (used.has(i)) continue;
+        const k = i % 2, m = crowd.meshes[k], p = raidPos[i];   // squads mix male and female
         opP.set(p.x, Math.max(0, Math.sin(t * 9 + i) * 0.06 * markGlow[i]), p.z);
         opQ.setFromEuler(opE.set(0, Math.PI + Math.sin(i * 1.7) * 0.25, 0));
         opS.setScalar(OPS * (0.92 + (i % 5) * 0.03));
@@ -742,7 +759,9 @@ window.BossScene = (() => {
       post.uniforms.uAsp.value = (host.clientWidth || 1) / (host.clientHeight || 1);
       waveAt = nowS(); waveK = Math.min(1.6, k) * (calm ? 0.5 : 1);
     }
-    const caster = { pos: out => out.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.9) };
+    // your shots leave from your keyboard, the operator's weapon (js/app/operator3d.js kbWorld)
+    const gun = out => { const c = crew.find(x => x.id === 'you'); return (c && c.op.kbWorld(out)) || null; };
+    const caster = { pos: out => gun(out) || out.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.9) };
     const bossTarget = {
       size: 6,
       pos: out => out.copy(anchorCore),
@@ -978,7 +997,7 @@ window.BossScene = (() => {
         // combo tiers fire their own shot: charged bolt, twin beam, rail shot, overload
         const ti = h.weak && !shieldF ? -2 : pickBlock(true);
         const sh = !!h.shield && shieldF !== null;
-        const from = new V().copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.6);
+        const from = gun(new V()) || new V().copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.6);
         fx.shot(Math.min(4, h.tier), from, out => aimAt(ti, sh, from, out), at => land(h, at, ti), { color: h.color });
         markGlow[RAID] = 1;
         return;
@@ -1196,7 +1215,7 @@ window.BossScene = (() => {
     anchors.set('head', anchorHead); anchors.set('core', anchorCore); anchors.set('you', raidPos[RAID]);
     // 'raider:<id>' is a raider's spot in the crowd, for the name tags on big hits (js/app/boss.js)
     const tagAt = new V();
-    function raiderSpot(id) { const i = raiderIndex(id); return tagAt.copy(raidPos[i]).setY(raidPos[i].y + 2.1); }
+    function raiderSpot(id) { const i = raiderIndex(id); if (i >= ONSCREEN) return null; return tagAt.copy(raidPos[i]).setY(raidPos[i].y + 2.1); }
 
     // ---------- movement: every phase moves differently ----------
     const SPOTS = [[0, 0], [-4, 0], [4, 0], [-7, -2], [7, -2], [-3, 2], [3, 2], [0, -3]];
@@ -1705,7 +1724,7 @@ window.BossScene = (() => {
         markGlow[i] = Math.max(0, markGlow[i] - adt * 4);
         p.copy(raidPos[i]); p.y += Math.sin(at * 2 + i) * 0.12 * still;
         e3.set(0, at * (you ? 1.5 : 0.8) * still + i, 0); q.setFromEuler(e3);
-        sc.setScalar(you ? 1.5 : i >= SHOWN ? 0 : 0.9 + markGlow[i] * 0.3);
+        sc.setScalar(you ? 1.5 : i >= SHOWN || i >= ONSCREEN ? 0 : 0.9 + markGlow[i] * 0.3);
         m4.compose(p, q, sc); marks.setMatrixAt(i, m4);
         if (you) tmpCol.copy(youCol).multiplyScalar(1.8);
         else tmpCol.copy(raidCol(i)).multiplyScalar(0.35 + markGlow[i] * 0.9);
@@ -1829,7 +1848,7 @@ window.BossScene = (() => {
     // the orb hangs in front of the camera, low in the middle of the frame, between you and the boss
     const orbPos = out => { camera.getWorldDirection(v1); out.copy(camera.position).addScaledVector(v1, 11); out.y -= 1.7; return out; };
     function chargeOrb(level, tier) { if (fx && !dead) fx.charge(orbPos(orbAt), level, tier); }
-    function feed() { if (fx && !dead) fx.feed(v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt)); }
+    function feed() { if (fx && !dead) fx.feed(gun(v2) || v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt)); }
     // onLand(x, y): the impact's place on screen, for the damage number
     function release(tier, power, onLand) {
       if (!fx || dead) { if (onLand) onLand(null, null); return; }
