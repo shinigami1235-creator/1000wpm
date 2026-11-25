@@ -174,6 +174,12 @@ Router.register('boss', (() => {
             <i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
             ${R.PHASES.slice(1).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
           </div>
+          <div class="wb-team" data-k="team" title="Blocks, packets sent back and bugs deleted fill it. 50: boss attacks do half damage to operators. 75: every hit x1.2. 100: root access, x1.5 hits through the firewall for 10 s.">
+            <span class="wb-team-l">Team firewall</span>
+            <span class="wb-team-bar" role="meter" aria-label="Team firewall" aria-valuemin="0" aria-valuemax="100" data-k="tmeter"><i data-k="tfill"></i><s style="left:50%"></s><s style="left:75%"></s></span>
+            <span class="wb-team-n" data-k="tnum">0%</span>
+            <span class="wb-team-b" data-k="tbuff"></span>
+          </div>
         </section>
         <section class="boss-stage" data-k="stage" aria-label="The boss">
           <div class="kb-loading" data-k="loading">Loading</div>
@@ -243,9 +249,19 @@ Router.register('boss', (() => {
           <h3>Damage</h3>
           <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody data-k="board"></tbody></table>
         </section>
-        <section>
-          <h3>Live feed</h3>
-          <ol class="boss-feed" data-k="feed"></ol>
+        <section class="wb-chat" data-k="chat">
+          <div class="wb-chat-tabs" role="tablist" aria-label="Chat">
+            <button type="button" role="tab" data-tab="global" aria-selected="true">Global<i data-k="u-global"></i></button>
+            <button type="button" role="tab" data-tab="team" aria-selected="false">Team<i data-k="u-team"></i></button>
+            <button type="button" role="tab" data-tab="system" aria-selected="false">System</button>
+          </div>
+          <ol class="wb-chat-log" data-k="clog" aria-live="polite"></ol>
+          <ol class="boss-feed" data-k="feed" hidden></ol>
+          <form class="wb-chat-say" data-k="say">
+            <input data-k="sayin" maxlength="140" autocomplete="off" spellcheck="false" placeholder="Say something to the raid" aria-label="Chat message">
+            <button class="btn out" type="submit">Send</button>
+          </form>
+          <p class="wb-chat-why" data-k="saywhy" aria-live="polite"></p>
         </section>
       </aside>`;
 
@@ -267,6 +283,7 @@ Router.register('boss', (() => {
     });
     q('again').addEventListener('click', again);
     q('boardbtn').addEventListener('click', () => { drawer(); if (keys) keys.focus(); });
+    wireChat();
     q('close').addEventListener('click', () => { drawer(false); if (keys) keys.focus(); });
     q('drawer').addEventListener('keydown', e => { if (e.key === 'Escape') { drawer(false); if (keys) keys.focus(); } });
 
@@ -660,7 +677,7 @@ Router.register('boss', (() => {
         }
         if (t >= due && !done.has(e.id)) {
           done.add(e.id);
-          if (squad) squad.raidHit(slamDmg(st.phase || 0), t);
+          if (squad) squad.raidHit(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
           if (mine.has(e.id)) sfx('impact', true);
           else if (active() && !isDown) {
             const stunned = me && me.status('stunned-target');
@@ -673,7 +690,7 @@ Router.register('boss', (() => {
               if (!(me && me.status('purge'))) jamUntil = t + JAM_MS;
               if (!me) combo = 0;
               sess.fails++;
-              if (squad) squad.hitMe(slamDmg(st.phase || 0), t);
+              if (squad) squad.hitMe(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
               if (scene) scene.hurt();
               flashTint();
               sfx('blockFail');
@@ -692,7 +709,7 @@ Router.register('boss', (() => {
               const had = combo;
               const r = me ? me.hurt('packet') : { blocked: false };
               if (!r.blocked) {
-                if (squad) squad.hitMe(PACKET_DMG, t);
+                if (squad) squad.hitMe(Math.round(PACKET_DMG * R.teamGuard(st, now())), t);
                 if (had > 0) pushFeed({ text: 'A packet hit you and broke your combo', cls: 'alert' });
                 if (!me) combo = 0;
                 if (scene) scene.hurt();
@@ -901,6 +918,7 @@ Router.register('boss', (() => {
     const f = s.hp / s.maxHp;
     q('hp').innerHTML = `${fmt(Math.ceil(s.hp))}<small> / ${fmt(s.maxHp)} HP</small>`;
     q('fill').style.width = (100 * f) + '%';
+    paintTeam(s);
     q('meter').setAttribute('aria-valuenow', Math.ceil(s.hp));
     q('left').textContent = (f > 0 && f < 0.01 ? (100 * f).toFixed(2) : (100 * f).toFixed(1)) + '%';
     const ph = s.phase || 0;
@@ -975,6 +993,76 @@ Router.register('boss', (() => {
       if (t - lastOther > 900) { lastOther = t; pushFeed(others[Math.floor(Math.random() * others.length)]); others = []; }
     }
   }
+  // ---------- raid chat: Global, Team (your squad) and System (the raid's events) ----------
+  // Lines go through ChatRules (js/net/chat-rules.js), the same check as Open Port. Until the
+  // server is live the other raiders' lines are simulated and labelled as such in the demo note.
+  const chat = { global: [], team: [], tab: 'global', unread: { global: 0, team: 0 }, recent: [], lastAt: null };
+  const SIM_GLOBAL = ['block the crash!!', 'kernel open, go go', 'who broke the firewall?', 'nice meltdown', 'gg so far', 'my combo keeps dying lol',
+    'zero limit on me, watch', 'type the packets back', 'bugs on the left', 'phase 3 already?', 'firewall soon, stack blocks', 'lets get root access',
+    'first raid, this is wild', 'anyone from manila?', 'cebu here', 'bkk here', 'sentinels cover pls', 'heal me architect'];
+  const SIM_TEAM = ['im on blocks', 'ill heal', 'cover me', 'got your back', 'nice one', 'revive pls', 'stay on the core', 'save a spell for the shield'];
+  function chatLine(tab, who, text, you) {
+    const L = chat[tab]; L.push({ who, text, you, at: Date.now() }); if (L.length > 80) L.shift();
+    if (tab !== chat.tab || !q('drawer').classList.contains('open')) { chat.unread[tab]++; paintUnread(); }
+    if (tab === chat.tab) paintChat();
+  }
+  function paintUnread() {
+    for (const k of ['global', 'team']) { const u = q('u-' + k); if (u) u.textContent = chat.unread[k] ? ` ${Math.min(99, chat.unread[k])}` : ''; }
+    const b = q('boardbtn'); if (b) b.dataset.unread = chat.unread.global + chat.unread.team ? '1' : '';
+  }
+  function paintChat() {
+    const log = q('clog'); if (!log) return;
+    log.innerHTML = chat[chat.tab].slice(-40).map(m => `<li class="${m.you ? 'you' : ''}"><b>${esc(m.you ? 'You' : m.who)}</b> ${esc(m.text)}</li>`).join('');
+    log.scrollTop = log.scrollHeight;
+  }
+  function chatTab(tab) {
+    chat.tab = tab;
+    el.querySelectorAll('.wb-chat-tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
+    const sys = tab === 'system';
+    q('clog').hidden = sys; q('feed').hidden = !sys; q('say').hidden = sys; q('saywhy').textContent = '';
+    if (!sys) { chat.unread[tab] = 0; paintUnread(); paintChat(); } else paintFeed(true);
+  }
+  function wireChat() {
+    el.querySelector('.wb-chat-tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) chatTab(b.dataset.tab); });
+    q('say').addEventListener('submit', e => {
+      e.preventDefault();
+      const inp = q('sayin'), why = q('saywhy');
+      const r = window.ChatRules ? ChatRules.check(inp.value, { recent: chat.recent, lastAt: chat.lastAt }) : { ok: !!inp.value.trim(), text: inp.value.trim(), why: '' };
+      if (!r.ok) { why.textContent = r.why || ''; return; }
+      why.textContent = ''; inp.value = '';
+      chat.lastAt = Date.now(); chat.recent.push({ text: r.text, at: chat.lastAt }); if (chat.recent.length > 5) chat.recent.shift();
+      chatLine(chat.tab, 'You', r.text, true);
+      // a simulated raider answers now and then
+      if (Math.random() < 0.45) setTimeout(() => { if (el) simSay(chat.tab, ['lol', 'gg', 'true', 'focus the core', 'hi', 'same', 'nice'][Math.floor(Math.random() * 7)]); }, 1500 + Math.random() * 2500);
+    });
+    q('sayin').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); e.target.blur(); if (keys) keys.focus(); } });
+    timers.push(setInterval(() => { if (el && st && !st.defeatedAt && Math.random() < 0.55) simSay('global'); }, 7000));
+    timers.push(setInterval(() => { if (el && st && !st.defeatedAt && Math.random() < 0.3) simSay('team'); }, 11000));
+  }
+  function simSay(tab, text) {
+    let who;
+    if (tab === 'team') { const ms = squad ? squad.members().filter(m => !m.you) : []; if (!ms.length) return; who = ms[Math.floor(Math.random() * ms.length)].name; }
+    else { const rs = st ? st.raiders.filter(r => !r.you) : []; if (!rs.length) return; who = rs[Math.floor(Math.random() * rs.length)].name; }
+    const pool = tab === 'team' ? SIM_TEAM : SIM_GLOBAL;
+    chatLine(tab, who, text || pool[Math.floor(Math.random() * pool.length)], false);
+  }
+
+  // ---------- the team firewall (WorldBossRules.TEAM) ----------
+  function paintTeam(s) {
+    const T = s.team || { fw: 0, rootUntil: 0 }, t = now(), root = T.rootUntil > t;
+    const fw = root ? 100 : T.fw;
+    q('tfill').style.width = fw.toFixed(1) + '%';
+    q('tmeter').setAttribute('aria-valuenow', Math.round(fw));
+    q('tnum').textContent = root ? Math.ceil((T.rootUntil - t) / 1000) + 's' : Math.floor(T.fw) + '%';
+    const on = root ? 'root' : T.fw >= 75 ? 'overclock' : T.fw >= 50 ? 'hardened' : '';
+    const box = q('team');
+    if (box.dataset.on !== on) {
+      box.dataset.on = on;
+      const tr = R.TEAM.tiers.find(x => x.id === on);
+      q('tbuff').textContent = tr ? (on === 'hardened' ? 'Hardened: half damage to operators' : on === 'overclock' ? 'Hardened + Overclocked x1.2' : 'ROOT ACCESS x1.5') : '';
+    }
+  }
+
   // ---------- the team damage graph ----------
   // Every 5 s the raid's total and yours are noted; the result screen draws them as damage
   // per 15 s, the raid's bars with your part inside each one.
@@ -1111,6 +1199,15 @@ Router.register('boss', (() => {
       pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Kernel open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
       if (e.stun) card({ who: `${e.blocks} of ${e.of}`, what: `blocked the ${R.ATTACK_NAME[e.kind]}`, color: '#3ee6ff' });
     }
+    if (e.type === 'team' && e.up) {
+      const tr = R.TEAM.tiers.find(x => x.id === e.tier);
+      if (tr) {
+        pushFeed({ sys: true, text: `Team firewall ${tr.at}%: ${tr.name}. ${tr.text}` });
+        card({ who: `Team ${tr.at}%`, what: tr.name, color: e.tier === 'root' ? '#ffd23d' : '#3ee6ff' });
+        if (e.tier === 'root') { pop('ROOT ACCESS', 'amber'); sfx('shieldBreak'); simSay('global', 'ROOT ACCESS lets gooo'); }
+        else sfx('shieldUp');
+      }
+    }
     if (e.type === 'defeat') pushFeed({ sys: true, text: `${NAME} is down. Last hit by ${e.you ? 'you' : e.by}` });
   }
 
@@ -1234,7 +1331,7 @@ Router.register('boss', (() => {
     d.classList.toggle('open', on);
     d.inert = !on;
     q('boardbtn').setAttribute('aria-expanded', on);
-    if (on) paintFeed(true);
+    if (on) { if (chat.tab === 'system') paintFeed(true); else { chat.unread[chat.tab] = 0; paintUnread(); paintChat(); } }
   }
 
   function paintYou() {

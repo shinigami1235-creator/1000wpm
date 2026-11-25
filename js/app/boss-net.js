@@ -25,7 +25,8 @@
 //          weak: { until, mult } | null, blocks: { [attackId]: count }, addsDown: { [addId]: name },
 //          raiders: [{ id, name, damage, blocks, you }] }   raiders sorted by damage, highest first
 // hit:   { id, name, letters, dmg, kind: 'word' | 'return' | 'block' | 'add' | 'spell', crit, weak, shield, at, you, tier, spell, color }
-// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'adds' | 'addDown' | 'impact' | 'defeat', ... }
+// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'adds' | 'addDown' | 'impact' | 'team' | 'defeat', ... }
+//   team: { tier: 'hardened' | 'overclock' | 'root', up, by } when the team firewall crosses 50, 75 or 100
 //
 // The phase is WorldBossRules.phaseOf(hp / maxHp) and the attacks come from
 // WorldBossRules.eventsAt(state, now), so the only shared values a server has
@@ -67,7 +68,7 @@ window.WorldBossNet = (() => {
       s.name = R.BOSS.name;
       s.phase = R.phaseOf(s.hp / s.maxHp);
       if (!Array.isArray(s.phaseAt)) { s.phaseAt = [s.startedAt, null, null, null, null]; if (s.phase) s.phaseAt[s.phase] = now(); }
-      s.shield ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {};
+      s.shield ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
       s.raiders.forEach((r, i) => { r.blocks ||= 0; if (/^raider_\d+$/.test(r.name || '')) r.name = name(i); });
       return s;
     }
@@ -84,6 +85,7 @@ window.WorldBossNet = (() => {
         bossId: st.bossId, name: st.name, maxHp: st.maxHp, hp: st.hp, dealt: st.maxHp - st.hp, startedAt: st.startedAt, defeatedAt: st.defeatedAt,
         lastHit: st.lastHit, demo: true, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, weak: st.weak && { ...st.weak },
         blocks: { ...st.blocks }, addsDown: { ...st.addsDown }, raiders,
+        team: { ...(st.team || { fw: 0, rootUntil: 0 }) },
       };
     }
     const fan = (subs, x) => subs.forEach(f => { try { f(x); } catch (e) { console.error(e); } });
@@ -109,6 +111,8 @@ window.WorldBossNet = (() => {
       const t = now();
       const weak = R.weakMult(st, t) > 1;
       const base = kind === 'return' ? letters * R.RETURN_X : kind === 'block' ? letters * R.BLOCK_X : letters;
+      if (kind === 'return') team(R.TEAM.ret, t, nameOf(r));
+      if (R.teamRoot(st, t)) opts = { ...opts, pierce: true };      // root access goes through the boss's firewall
       // the combat layer's multiplier (combo tier, accuracy, speed, buffs) for words; spells arrive already multiplied
       const cm = kind === 'word' ? Math.max(0.5, Math.min(20, +opts.mult || 1)) : 1;
       let dmg = Math.max(1, Math.round(base * cm * R.multiplier(st, t, opts)));
@@ -139,6 +143,17 @@ window.WorldBossNet = (() => {
       return h;
     }
 
+    // ---------- the team firewall (WorldBossRules.TEAM) ----------
+    function team(add, t = now(), who) {
+      st.team ||= { fw: 0, rootUntil: 0 };
+      const T = st.team, was = T.fw;
+      if (T.rootUntil > t && add > 0) return;               // the meter rests during root access
+      T.fw = Math.max(0, Math.min(100, T.fw + add));
+      for (const tr of R.TEAM.tiers) if (was < tr.at && T.fw >= tr.at) emitEvent({ type: 'team', tier: tr.id, up: true, by: who || null, at: t });
+      for (const tr of R.TEAM.tiers) if (was >= tr.at && T.fw < tr.at && tr.id !== 'root') emitEvent({ type: 'team', tier: tr.id, up: false, at: t });
+      if (T.fw >= 100) { T.rootUntil = t + R.TEAM.root; T.fw = R.TEAM.after; }
+    }
+
     // ---------- attacks: the schedule is shared, the outcomes are kept here ----------
     function liveAdd(e, a, t) { return t >= a.spawn && t < a.until && !st.addsDown[a.id]; }
     function runEvents(t, dt) {
@@ -158,6 +173,7 @@ window.WorldBossNet = (() => {
             const n = st.blocks[e.id] || 0, of = st.raiders.length;
             const stun = n / of >= R.STAGGER_SHARE;
             if (stun) st.weak = { until: e.hit + R.WEAK_MS, mult: R.PHASES[st.phase].weakMult };
+            team(stun ? R.TEAM.stun : -R.TEAM.miss, t);
             emitEvent({ type: 'impact', id: e.id, kind: e.kind, blocks: n, of, stun, at: e.hit });
           }
         } else if (e.type === 'volley') {
@@ -194,6 +210,7 @@ window.WorldBossNet = (() => {
       st.blocked[k] = 1;
       st.blocks[e.id] = (st.blocks[e.id] || 0) + 1;
       r.blocks = (r.blocks || 0) + 1;
+      team(R.TEAM.block, now(), nameOf(r));
       damage(id, e.word.replace(/ /g, '').length, 'block');
       return true;
     }
@@ -201,6 +218,7 @@ window.WorldBossNet = (() => {
       const r = st.raiders.find(x => x.id === id);
       st.addsDown[a.id] = nameOf(r);
       emitEvent({ type: 'addDown', id: a.id, by: nameOf(r), you: id === 'you', at: now() });
+      team(R.TEAM.add, now(), nameOf(r));
       damage(id, a.word.length, 'add');
     }
     function findEvent(t, test) { return R.eventsAt(st, t).find(test); }
@@ -241,6 +259,7 @@ window.WorldBossNet = (() => {
         s.next = pn + (s.len + 1) * perChar * rnd(0.7, 1.35) + (Math.random() < 0.04 ? rnd(1500, 5000) : 0);
       }
       runEvents(t, dt);
+      if (st.team && st.team.fw > 0) team(-R.TEAM.drain * dt, t);
       if (st.blocked && Object.keys(st.blocked).length > 600) st.blocked = {};
       if (pn - last > 250) { last = pn; emit(); }
       if (pn - saveT > 2000) { saveT = pn; save(); }

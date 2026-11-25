@@ -188,8 +188,23 @@ window.WorldBossRules = (() => {
 
   // ---------- damage ----------
   function weakMult(s, now) { return s.weak && now < s.weak.until ? s.weak.mult : 1; }
+  // ---------- the team firewall (Gid, 25 Nov 2026: try it first) ----------
+  // The raid's teamwork fills one meter, 0 to 100. Blocks, packets sent back and bugs
+  // deleted fill it, it drains a little every second, and an attack most of the raid
+  // failed to block knocks a chunk off.
+  //   50  Hardened     boss attacks do half damage to operators
+  //   75  Overclocked  every raider's hits deal x1.2
+  //   100 Root access  10 s of x1.5 hits that go through the boss's firewall, then the meter drops to 40
+  const TEAM = { block: 0.5, stun: 8, ret: 1, add: 2, drain: 0.5, miss: 12, root: 10000, after: 40,
+    tiers: [{ at: 50, id: 'hardened', name: 'Hardened', text: 'Boss attacks do half damage to operators' },
+            { at: 75, id: 'overclock', name: 'Overclocked', text: 'Every hit deals x1.2' },
+            { at: 100, id: 'root', name: 'Root access', text: 'x1.5 hits through the firewall for 10 s' }] };
+  const teamOf = s => s.team || { fw: 0, rootUntil: 0 };
+  function teamRoot(s, now) { return teamOf(s).rootUntil > now; }
+  function teamMult(s, now) { const T = teamOf(s); return T.rootUntil > now ? 1.5 : T.fw >= 75 ? 1.2 : 1; }
+  function teamGuard(s, now) { const T = teamOf(s); return T.rootUntil > now || T.fw >= 50 ? 0.5 : 1; }
   function multiplier(s, now, opts = {}) {
-    let m = weakMult(s, now) * (opts.crit ? CRIT_X : 1);
+    let m = weakMult(s, now) * (opts.crit ? CRIT_X : 1) * teamMult(s, now);
     m = Math.min(MAX_X, m);
     return opts.jam ? m * 0.5 : m;
   }
@@ -197,6 +212,7 @@ window.WorldBossRules = (() => {
   return {
     BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
+    TEAM, teamMult, teamGuard, teamRoot,
     TIERS, tierOf, blockWord, pickWords,
   };
 })();
