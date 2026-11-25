@@ -29,8 +29,6 @@ window.Lazy = (() => {
     breach: { js: ['js/breach/load.js'], ready: () => window.Breach && window.Breach.endlessScores },
     room: { js: ['js/room/load.js'], ready: () => window.Room && window.RoomItems },
     operator: { js: ['js/app/operator3d.js'] },
-    avatarParts: { js: ['js/app/avatar-face.js', 'js/app/avatar-makeup.js', 'js/app/avatar-hair.js'] },
-    avatarEdit: { need: ['avatarParts'], js: ['js/app/avatar-creator.js'] },
 
     // pages
     'page:home': { need: ['map', 'kb', 'net'], js: ['js/hero.js', 'js/app/home.js'] },
@@ -47,11 +45,11 @@ window.Lazy = (() => {
     'page:shop': { js: ['js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
     'page:lab': { css: ['css/lab.css'], js: ['js/app/operator3d.js', 'js/app/lab.js'] },
-    'page:profile': { need: ['net', 'avatarEdit'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
+    'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
   // the group that defines each global other pages wait on
   const PROVIDES = { Breach: 'breach', Room: 'room', RoomItems: 'room', RushPage: 'rush', RushBoard: 'rushBoard',
-    MultiUI: 'net', Net: 'net', AvatarCreator: 'avatarEdit', WordBank: 'words', LEARN: 'learn', Combat: 'combat' };
+    MultiUI: 'net', Net: 'net', WordBank: 'words', LEARN: 'learn', Combat: 'combat' };
 
   const files = new Map(), groups = new Map();
   const url = f => new URL(f, document.baseURI).href;

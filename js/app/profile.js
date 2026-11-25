@@ -51,9 +51,7 @@ Router.register('profile', (() => {
           </section>
           <section class="panel">
             <div class="ph">// OPERATOR</div>
-            ${window.AvatarCreator ? `<a class="btn out" href="#/lab" style="width:100%">Edit operator</a>` : `<div class="avatars" role="group" aria-label="Avatar">
-              ${UI.AVATARS.map((a, i) => `<button type="button" data-av="${i}" aria-pressed="${i === p.avatar}" aria-label="${e(a.name)} avatar"><img src="${UI.avatar(i, 120)}" alt="" width="60" height="60"></button>`).join('')}
-            </div>`}
+            <a class="btn out" href="#/lab" style="width:100%">Edit operator</a>
           </section>
         </div>
 
@@ -93,7 +91,6 @@ Router.register('profile', (() => {
       </dialog>`;
 
     el.querySelector('[data-edit]').addEventListener('click', editName);
-    el.querySelectorAll('[data-av]').forEach(b => b.addEventListener('click', () => WPM.setProfile({ avatar: +b.dataset.av })));
     const dlg = el.querySelector('[data-dialog]');
     el.querySelector('[data-reset]').addEventListener('click', () => dlg.showModal());
     const bt = el.querySelector('[data-buddy-toggle]');
@@ -134,7 +131,6 @@ Router.register('profile', (() => {
   }
 
   function unmount() {
-    if (creator) { AvatarCreator.unmount(); creator = false; }
     off.forEach(f => f()); off = [];
     if (stats) { stats.destroy(); stats = null; }
     if (pickOff) { pickOff(); pickOff = null; }

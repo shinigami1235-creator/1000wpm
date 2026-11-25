@@ -22,7 +22,7 @@ One skeleton for both bodies, with Mixamo-style bone names: Hips, Spine, Spine1,
 
 ### Editors that work on any generated body
 
-These change the model without bending or stretching it, so a new body gets them for free once its mask is painted (`tools/avatar/operator-masks.py`, run with Blender's bpy: R skin, G eyes, B outfit, saved as `assets/operators/<base>-mask.png`).
+These change the model without bending or stretching it, so a new body gets them for free once its mask is painted (`tools/operators/operator-masks.py`, run with Blender's bpy: R skin, G eyes, B outfit, saved as `assets/operators/<base>-mask.png`).
 
 - **Outfit tint:** a colour and a strength up to 60%, laid over the outfit while keeping the texture's light and shade. Skin is left alone.
 - **Glow:** the cyan glowing details (shirt print, wrist screen, visor) take the Glow colour, the theme colour by default.

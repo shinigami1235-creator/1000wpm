@@ -13,7 +13,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const D = window.AvatarData;
-const ROOT = new URL('../../assets/avatar/', import.meta.url).href;
+const ROOT = new URL('../assets/avatar/', import.meta.url).href;   // archive layout: js/ beside assets/
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 // hairstyles live in avatar-hair.js (cards, scalp layer, hair shader)
 if (!window.AvatarHair) await import('./avatar-hair.js');
