@@ -13,7 +13,7 @@ Combat.TIERS = [
   { at: 10, name: 'Pulse', mult: 1.5, color: '#2fe07a' },
   { at: 25, name: 'Surge', mult: 2, color: '#38b6ff' },
   { at: 50, name: 'Overdrive', mult: 3, color: '#a35bff' },
-  { at: 100, name: 'Critical', mult: 5, color: '#ffb020' },
+  { at: 100, name: 'Meltdown', mult: 5, color: '#ffb020' },
   { at: 200, name: 'Zero Limit', mult: 8, color: '#ff4d5e' },
 ];
 // Boss HP in each mode is multiplied by these, since Art's tiers deal more than the old ones (x1.25

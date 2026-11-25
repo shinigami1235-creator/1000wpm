@@ -1,7 +1,8 @@
 // Boss Rush data: the roster, the twists each mark adds, the hard floors and the
 // scoring constants. It has no DOM or three.js, which lets node load it for the director tests.
-// The five Breach bosses come from js/breach/data.js (names, colours, counter words)
-// and Syntax Error from js/app/boss-rules.js. They are copied here so the rush works
+// The five Breach bosses come from js/breach/data.js (names, colours, counter words).
+// The six titans and Syntax Error are BossKit bodies (js/app/bosskit.js, art: 'kit'),
+// placed between them; a titan borrows a Breach boss's music (music) and can rename its move (mv). They are copied here so the rush works
 // before the Breach scripts finish loading. RUSH.md explains every rule.
 window.RushData = (() => {
   // One lap of the roster. hpK, intervalK and windK shape each boss on top of the
@@ -13,28 +14,64 @@ window.RushData = (() => {
       theme: ['common', 'gaming'],
       hpK: 1, intervalK: 1, windK: 1,
       counters: ['block', 'mute', 'report', 'ban user', 'clear chat', 'slow mode'] },
+    { id: 'siege', name: 'Siege Titan', art: 'kit', kit: 'siege', chapter: 0, move: 'press', music: 'press',
+      mv: { name: 'Double slam', how: 'Block both slams.', text: 'Slams twice in a row. Three blocks in a row knock it off balance.' },
+      color: '#ffb020', color2: '#ff6a3d', fog: '#0b0702', base: '#090602',
+      theme: ['common', 'city'],
+      hpK: 1.04, intervalK: 1, windK: 0.92,
+      counters: ['brace', 'hold the gate', 'raise shields', 'dig in', 'stand firm'] },
     { id: 'sign', name: 'The Signboard', art: 'sign', chapter: 2, move: 'fixsign',
       color: '#ffb347', color2: '#ff5f9e', fog: '#0c0603', base: '#0a0503',
       theme: ['common', 'food', 'city'],
       hpK: 1.08, intervalK: 1, windK: 1,
       counters: ['unplug', 'lights off', 'take down', 'close shop', 'pull the plug'] },
+    { id: 'warden', name: 'Firewall Warden', art: 'kit', kit: 'warden', chapter: 0, move: 'spell', music: 'correction',
+      mv: { name: 'Access check', how: 'Type the password spelled right.', text: 'Asks for the password. Type the one spelled right to stun it.' },
+      color: '#3ee6ff', color2: '#4d7cff', fog: '#020809', base: '#020607',
+      theme: ['common', 'cyber'],
+      hpK: 1.1, intervalK: 0.98, windK: 1,
+      counters: ['bypass', 'override', 'tunnel', 'spoof', 'open port'] },
     { id: 'announcer', name: 'The Announcer', art: 'announcer', chapter: 3, move: 'speakers',
       color: '#5fd0ff', color2: '#4d7cff', fog: '#02060f', base: '#02050c',
       theme: ['common', 'city', 'music'],
       hpK: 1.14, intervalK: 0.96, windK: 1,
       counters: ['mute', 'end call', 'cut the feed', 'turn it down', 'stop'] },
+    { id: 'colossus', name: 'Data Colossus', art: 'kit', kit: 'colossus', chapter: 0, move: 'volley', music: 'syntax',
+      mv: { name: 'Data burst', how: 'Type each block to throw it back.', text: 'Throws data blocks. Type them to throw them back for triple damage.' },
+      color: '#a35bff', color2: '#3ee6ff', fog: '#06030b', base: '#050209',
+      theme: ['common', 'science'],
+      hpK: 1.17, intervalK: 0.97, windK: 1,
+      counters: ['compress', 'delete', 'wipe', 'defrag', 'clear cache'] },
     { id: 'press', name: 'The Press', art: 'press', chapter: 4, move: 'press',
       color: '#ff3dbb', color2: '#c8ff3d', fog: '#0a0309', base: '#080207',
       theme: ['common', 'keyboards'],
       hpK: 1.2, intervalK: 1, windK: 0.82,
       counters: ['brake', 'jam', 'halt', 'stop the line', 'reverse'] },
+    { id: 'king', name: 'Kernel King', art: 'kit', kit: 'king', chapter: 0, move: 'gifts', music: 'announcer',
+      mv: { name: 'Royal decrees', how: 'Type each decree before it lands.', text: 'Throws three decrees. Type them all to stun it.' },
+      color: '#ffd23d', color2: '#a35bff', fog: '#0a0802', base: '#080602',
+      theme: ['common', 'music'],
+      hpK: 1.24, intervalK: 0.96, windK: 0.96,
+      counters: ['revoke', 'dethrone', 'veto', 'sudo kill', 'abdicate'] },
     { id: 'correction', name: 'The Correction', art: 'correction', chapter: 5, move: 'spell',
       color: '#ff3a4a', color2: '#ff7a2a', fog: '#0b0102', base: '#090102',
       theme: ['common', 'science'],
       hpK: 1.28, intervalK: 0.95, windK: 1,
       counters: ['undo', 'revert', 'cancel', 'nobody checks what they send anymore', 'every wrong word goes back to whoever typed it'] },
-    { id: 'syntax', name: 'Syntax Error', art: 'syntax', chapter: 0, move: 'volley',
-      color: '#39ff88', color2: '#3ee6ff', fog: '#010503', base: '#010302',
+    { id: 'half', name: 'Half-Compiled', art: 'kit', kit: 'half', chapter: 0, move: 'spell', music: 'correction',
+      mv: { name: 'Compile check', how: 'Type the line that compiles.', text: 'Shows three spellings. Type the one that compiles to stun it.' },
+      color: '#39ff88', color2: '#ff3dbb', fog: '#020805', base: '#020604',
+      theme: ['common', 'cyber'],
+      hpK: 1.3, intervalK: 0.94, windK: 1,
+      counters: ['compile', 'build', 'link', 'run tests', 'ship it'] },
+    { id: 'brute', name: 'Overclocked Brute', art: 'kit', kit: 'brute', chapter: 0, move: 'gifts', music: 'press',
+      mv: { name: 'Steam vents', how: 'Type each vent before it blows.', text: 'Opens three steam vents. Type them all to stun it.' },
+      color: '#ff7a2a', color2: '#ffd23d', fog: '#0b0502', base: '#090402',
+      theme: ['common', 'keyboards'],
+      hpK: 1.32, intervalK: 0.94, windK: 0.9,
+      counters: ['cool down', 'vent', 'throttle', 'cut power', 'underclock'] },
+    { id: 'syntax', name: 'Syntax Error', art: 'kit', kit: 'syntax', chapter: 0, move: 'volley',
+      color: '#ff2a3a', color2: '#ff7a4d', fog: '#080102', base: '#060102',
       theme: ['common', 'cyber'],
       hpK: 1.36, intervalK: 0.92, windK: 0.95,
       counters: ['firewall', 'patch', 'reboot', 'rollback', 'kill process', 'debug'] },
@@ -123,6 +160,13 @@ window.RushData = (() => {
       { wpm: 84, hp: 3810, diff: 3, minLen: 3, interval: 6569, react: 1080, perChar: 185, counters: 3, typo: 4 },
     ],
   };
+  // the titans sit between the Breach bosses in the lap, so their floors are halfway between
+  const mid = (a, b) => a.map((r, i) => r && Object.fromEntries(Object.keys(r).map(k => [k, Math.round((r[k] + b[i][k]) / 2 * 10) / 10])));
+  Object.assign(FLOORS, {
+    siege: mid(FLOORS.spam, FLOORS.sign), warden: mid(FLOORS.sign, FLOORS.announcer),
+    colossus: mid(FLOORS.announcer, FLOORS.press), king: mid(FLOORS.press, FLOORS.correction),
+    half: mid(FLOORS.correction, FLOORS.syntax), brute: mid(FLOORS.correction, FLOORS.syntax),
+  });
   const FLOOR_STEP = 16;     // wpm added to the floor for each mark past V
 
   // ---------- the Breach moves' own words ----------
@@ -172,11 +216,17 @@ window.RushData = (() => {
     announcer: { kind: 'mute', name: 'Volume', gap: 2.6, cap: 3, rise: [0.045, 0.06, 0.08], drop: 0.24, text: 'Type the speakers to turn the volume down. At full volume it shouts.' },
     press: { kind: 'page', name: 'Pages', gap: 2.4, heat: 5, text: 'Type pages before they reach you. Five in a row overheats the press.' },
     correction: { kind: 'pen', name: 'Red pen', gap: 3.4, text: 'It writes a wrong word over yours. Type the crossed-out word, not the red one.' },
+    siege: { kind: 'sign', name: 'Falling rubble', gap: 3, text: 'Type each falling block before it lands.' },
+    warden: { kind: 'pen', name: 'Firewall rules', gap: 3.4, text: 'It writes a blocked word over yours. Type the crossed-out word, not the red one.' },
+    colossus: { kind: 'byte', name: 'Data blocks', gap: 2.8, text: 'Type data blocks to throw them back. From phase 3 the red ones are fakes: let them land.' },
+    king: { kind: 'popup', name: 'Decrees', gap: 3.2, cap: 3, text: 'Type decrees to tear them up. If three are open, the next one bites.' },
+    half: { kind: 'pen', name: 'Bad compile', gap: 3.2, text: 'It rewrites a word in your line. Type the crossed-out word, not the red one.' },
+    brute: { kind: 'page', name: 'Pistons', gap: 2.5, heat: 5, text: 'Type pistons before they reach you. Five in a row overheats it.' },
     syntax: { kind: 'byte', name: 'Packets', gap: 2.6, text: 'Type packets to send them back. From phase 3 the red ones are fakes: let them land.' },
   };
   const SIG_HIT = 4;          // integrity a landed signature attack costs at mark I, +2 a mark, at most 14
   // each boss's music, one track at three speeds, one per phase (audio/rush-<id>-<phase>.mp3)
-  const musicFor = (id, stage) => `rush-${id}-${stage}`;
+  const musicFor = (id, stage) => `rush-${(ROSTER.find(b => b.id === id) || {}).music || id}-${stage}`;
 
   // ---------- fight constants ----------
   const UNIT = 10;            // boss damage per letter before multipliers, which makes the numbers read as damage

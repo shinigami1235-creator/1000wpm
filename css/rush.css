@@ -191,12 +191,18 @@
 .rush .rush-vol[data-l="1"] > i > i { background: var(--amber); }
 .rush .rush-vol[data-l="2"] > i > i { background: var(--red); animation: vol-pulse 300ms steps(2) infinite; }
 @keyframes vol-pulse { 50% { opacity: .55; } }
-.rush .boss-words.loud .bq-line { animation: loud-shake 180ms linear infinite; }
-.rush .boss-words.louder .bq-line { animation: loud-shake 90ms linear infinite; }
-.rush .boss-words.loud .bq-next { animation: loud-shake 240ms linear infinite reverse; }
+.rush .boss-words.loud .fw-lines { animation: loud-shake 180ms linear infinite; }
+.rush .boss-words.louder .fw-lines { animation: loud-shake 90ms linear infinite; }
 @keyframes loud-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-2px, 1px); } 50% { transform: translate(2px, -1px); } 75% { transform: translate(-1px, -1px); } }
 
 /* The Correction's red pen over your words */
+.rush .fw-lines { padding-top: .45em; height: calc(var(--fw-lines, 3) * 1.6em + .45em); }
+.rush .fw-pen {
+  position: absolute; left: 50%; bottom: 70%; transform: translateX(-50%) rotate(-4deg); font: italic 600 .55em/1 var(--f-head);
+  color: var(--red); white-space: nowrap; pointer-events: none; text-shadow: 0 0 8px rgba(255,77,94,.5);
+}
+.rush .fw.pen s { color: var(--ink-2); text-decoration-color: var(--red); text-decoration-thickness: 2px; }
+.rush .fw.cur.pen i:not(.ok):not(.bad) { text-decoration: line-through; text-decoration-color: rgba(255,77,94,.8); text-decoration-thickness: 3px; }
 .rush .bw.pen { position: relative; }
 .rush .bw.next.pen { opacity: 1 !important; }
 .rush .bw.next.pen s { color: var(--ink-2); text-decoration-color: var(--red); text-decoration-thickness: 2px; }
@@ -208,5 +214,5 @@
 .rush .bw.cur.pen .c:not(.ok):not(.bad) { text-decoration: line-through; text-decoration-color: rgba(255,77,94,.8); text-decoration-thickness: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rush .boss-words.loud .bq-line, .rush .boss-words.louder .bq-line, .rush .boss-words.loud .bq-next, .rush .rush-vol[data-l="2"] > i > i { animation: none; }
+  .rush .boss-words.loud .fw-lines, .rush .boss-words.louder .fw-lines, .rush .rush-vol[data-l="2"] > i > i { animation: none; }
 }

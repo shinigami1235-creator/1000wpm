@@ -9,7 +9,7 @@ Boss rush is a near-endless run of boss fights at `#/play/rush`, the third game 
 | `js/app/rush/data.js` | The roster, the twists each mark adds, the floors table, the Breach move words and the scoring formula |
 | `js/app/rush/director.js` | `RushDirector`, the internal monitor that plans each fight |
 | `js/app/rush/fight.js` | `RushFight`, one fight's rules with no DOM, which lets node run it |
-| `js/app/rush/scene.js` | `RushScene`, the arena and the six boss figures in three.js, with the combat effects |
+| `js/app/rush/scene.js` | `RushScene`, the arena and the boss figures in three.js (the five Breach bosses drawn here, the titans and Syntax Error from `js/app/bosskit.js`), with the combat effects |
 | `js/app/rush/audio.js` | `RushAudio`, the music, the stinger between bosses and the effects |
 | `tools/rush/music.py` | Makes each boss's music, `audio/rush-<boss>-<phase>.mp3`, in code |
 | `js/app/rush/board.js` | `RushBoard`, the scoreboard, the saved director model and the server payload |
@@ -204,3 +204,19 @@ POST /api/rush/run
 
 - `node tools/rush/sim.js` runs a strong, a weak and a near-miss player through whole rushes with the real fight rules and prints the director's decisions. `node tools/rush/sim.js strong` (or `weak`, `near`) runs one.
 - In the page, `window._rush` has `start()`, `jump(n)`, `win()`, `lose(left)`, `attack()`, `move()`, `sig()` (the next signature attack now), `cast(id)`, `setCombo(n)`, `setHp(f)` (also moves the phase), `boost()`, `act('next' | 'retry' | 'end')`, `end()`, `state()`, `plan()`, `chips()`, `tags()`, `marks()`, `log()` and `board()`.
+
+## The titans (25 Nov 2026)
+
+One lap is now 12 bosses: the five Breach bosses with a BossKit titan after each, and Syntax Error last. Mark II starts at boss 13.
+
+| # | Boss | Its move | Its signature | Music |
+|---|---|---|---|---|
+| 2 | Siege Titan | Double slam (the Press's double wind-up) | Falling rubble (falling signs) | The Press |
+| 4 | Firewall Warden | Access check (spell it right) | Firewall rules (red pen) | The Correction |
+| 6 | Data Colossus | Data burst (packets) | Data blocks (packets with fakes) | Syntax Error |
+| 8 | Kernel King | Royal decrees (gifts) | Decrees (pop-ups) | The Announcer |
+| 10 | Half-Compiled | Compile check (spell it right) | Bad compile (red pen) | The Correction |
+| 11 | Overclocked Brute | Steam vents (gifts) | Pistons (pages) | The Press |
+| 12 | Syntax Error | Packets | Packets with fakes | Syntax Error |
+
+A titan's floors sit halfway between the Breach bosses on either side of it. The titans borrow the Breach music until they get their own tracks, and the gifts, signs and pages still look like the Breach ones.

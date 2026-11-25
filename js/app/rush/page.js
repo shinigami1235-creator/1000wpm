@@ -42,6 +42,7 @@ window.RushPage = (() => {
     let tipQ = [], tipUntil = 0, seen = new Set(), lastBlocks = 0, tagRaf = 0, tagKey = '';
     const tags = new Map();   // signature id -> its word tag or pop-up window
     const ghostAt = new Map();
+    let flow = null;
     try { seen = new Set(JSON.parse(localStorage.getItem('wpm-rush-tips') || '[]')); } catch (e) {}
     const q = k => host.querySelector(`[data-k="${k}"]`);
     const A = window.RushAudio;
@@ -163,6 +164,7 @@ window.RushPage = (() => {
     function nextFight(retry) {
       hideOver();
       typed = ''; target = null; clean = true; hist = [];
+      if (flow) flow.clear();
       plan = dir.plan(run.n, { retry });
       if (me) me.closeOffer('next');
       f = RushFight.create({ plan, me, now, emit: onFight });
@@ -259,9 +261,13 @@ window.RushPage = (() => {
       const exact = list.find(x => x.word === typed);
       if (exact && exact.kind === 'spell') { castSpell(exact.spell, clean); return; }
       if (!exact && target && target.kind === 'spell') { castSpell(target.spell, false); return; }
-      const word = top();
+      const word = top(), sent = typed;
       const aim = !exact && typed !== word && target && target.kind ? target.id : null;
       const r = f.submit(typed, { clean, ms: t - wordT0, target: aim, t });
+      if (flow && r && !aim) {
+        if (r.kind === 'word') flow.push(word, sent, true);
+        else if (r.kind === 'miss' || r.kind === 'pen') flow.push(word, sent, false);
+      }
       if (r && r.kind === 'word') {
         scene.hit({ amount: r.amount, tier: r.tier, crit: r.crit, kind: 'word', color: me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null });
         if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
@@ -309,7 +315,7 @@ window.RushPage = (() => {
           tip('block');
           break;
         case 'move': {
-          const m = MOVE[p.move];
+          const m = plan.boss.mv || MOVE[p.move];
           if (p.move !== 'press') { banner('Its own move', m.name, m.how, 1800); scene.windupEnd(); }
           A.play('warn');
           const chips = f.chips(now());
@@ -690,31 +696,15 @@ window.RushPage = (() => {
       const ns = row.querySelector('[data-k="nexts"]');
       if (ns && live) ns.textContent = Math.ceil(f.state(t).nextAttack / 1000) + 's';
     }
+    // the words as a block of lines, the same as the World Boss (js/app/wordflow.js)
     function renderQueue() {
       const box = q('queue'); if (!box) return;
+      if (!flow) flow = WordFlow.create(box, { lines: 3 });
       const st = f ? f.stack() : [];
-      const w = st[0] || '';
       const mine = !target || target.stack;
-      const t = mine ? typed : '';
-      let cur = '';
-      for (let i = 0; i < Math.max(w.length, t.length); i++) {
-        const a = t[i], c = w[i];
-        if (a === undefined) cur += `<span class="c${i === t.length && mine ? ' at' : ''}">${esc(c)}</span>`;
-        else if (c === undefined) cur += `<span class="c bad extra">${esc(a)}</span>`;
-        else cur += `<span class="c ${a === c ? 'ok' : 'bad'}">${esc(c)}</span>`;
-      }
-      if (mine && t.length >= w.length) cur += '<span class="c at">&nbsp;</span>';
-      const mk = f ? f.marks() : [], fakeOf = i => { const m = mk.find(x => x.i === i); return m ? m.fake : null; };
-      if (fakeOf(0)) cur = `<em class="bq-pen">${esc(fakeOf(0))}</em>` + cur;
-      const last = hist[hist.length - 1];
-      let ghost = '';
-      if (last) {
-        if (!ghostAt.has(last)) { ghostAt.clear(); ghostAt.set(last, now()); }
-        const age = now() - ghostAt.get(last);
-        if (age < 700) ghost = `<span class="bw done ${last.ok ? 'hit' : 'miss'}" style="animation-delay:-${Math.round(age)}ms">${esc(last.word)}</span>`;
-      }
-      box.innerHTML = `<div class="bq-line"><span class="bq-at">${ghost}<span class="bw cur${mine ? '' : ' wait'}${fakeOf(0) ? ' pen' : ''}" aria-current="${mine}">${cur}</span></span></div>`
-        + `<div class="bq-next">${st.slice(1, 13).map((x, i) => { const fk = fakeOf(i + 1); return fk ? `<span class="bw next pen"><em class="bq-pen">${esc(fk)}</em><s>${esc(x)}</s></span>` : `<span class="bw next" style="opacity:${Math.max(0.35, 1 - i * 0.09).toFixed(2)}">${esc(x)}</span>`; }).join('')}</div>`;
+      const pens = {};
+      if (f) for (const m of f.marks()) if (m.i >= 0 && m.i < 50) pens[m.i] = m.fake;
+      flow.render({ cur: st[0] || '', typed: mine ? typed : '', mine, next: st.slice(1, 50), pens });
       paintTags();
     }
     function paintCombo(drop) {

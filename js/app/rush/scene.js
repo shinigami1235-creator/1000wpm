@@ -26,6 +26,7 @@ window.RushScene = (() => {
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
       import('three/addons/postprocessing/ShaderPass.js'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
@@ -35,9 +36,9 @@ window.RushScene = (() => {
     const pend = { slot: null, frac: 1, shield: null, sign: null };
     const call = (name, ...a) => (impl && impl[name] ? impl[name](...a) : undefined);
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP, SP]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, SP, RB]) => {
         if (gone) return false;
-        impl = build(host, opts, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass, SP.ShaderPass);
+        impl = build(host, { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry }, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass, SP.ShaderPass);
         if (pend.slot) impl.setBoss(pend.slot, true);
         impl.setFrac(pend.frac);
         impl.setShield(pend.shield);
@@ -240,6 +241,34 @@ window.RushScene = (() => {
             P.board.position.y = 4.4 + Math.sin(t * 5.2) * 0.12 + s.wind * 0.6 - s.atk * 2.2;
             P.board.rotation.x = -s.wind * 0.35 + s.atk * 0.6;
             P.eye.scale.setScalar(1 + s.wind * 1.5);
+          },
+        };
+      },
+      // the titans and Syntax Error: a BossKit body (js/app/bosskit.js) scaled to the arena,
+      // with its own lights since the rest of the arena is lines and glow
+      kit(b) {
+        const root = new THREE.Group(), P = {};
+        const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color });
+        root.add(k.group);
+        const hemi = new THREE.HemisphereLight('#c8d2da', '#06080a', 0.55);
+        const key = new THREE.DirectionalLight('#ffffff', 1.5); key.position.set(-6, 10, 9);
+        const rim = new THREE.DirectionalLight(b.color, 2.2); rim.position.set(5, 7, -8);
+        root.add(hemi, key, rim);
+        if (bucket) bucket.push({ dispose: () => k.dispose && k.dispose() });
+        const H = BossKit.BOSSES[b.kit].height;
+        P.kit = k;
+        let reel = 0;
+        return {
+          root, P, scale: 7.8 / H, dome: [0, H * 0.55, H * 0.42], coreObj: k.core, coreOff: new V(0, 0, 0),
+          anim(t, dt, s) {
+            reel += ((s.stun ? 0.55 : 0) - reel) * Math.min(1, dt * 6);
+            const L = [];
+            if (s.wind > 0.01) L.push(['windup', s.wind]);
+            if (s.atk > 0.01) L.push([k.POSES.reach ? 'reach' : 'slam', s.atk]);
+            if (s.move) L.push(['roar', 0.55 + 0.25 * Math.sin(t * 5)]);
+            if (reel > 0.01) L.push(['reel', reel]);
+            k.mix(L);
+            k.update(t, dt);
           },
         };
       },

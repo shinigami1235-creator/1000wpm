@@ -33,7 +33,7 @@ Art's combo levels (25 Nov 2026). Each has its own colour, which runs through th
 | 1 | 10 | Pulse | green `#2fe07a` | Charged bolt | x1.5 |
 | 2 | 25 | Surge | blue `#38b6ff` | Twin beam | x2 |
 | 3 | 50 | Overdrive | purple `#a35bff` | Rail shot, with screen shake | x3 |
-| 4 | 100 | Critical | gold `#ffb020` | Overload: a rail shot wrapped in a spiral, with a shock ring | x5 |
+| 4 | 100 | Meltdown | gold `#ffb020` | Overload: a rail shot wrapped in a spiral, with a shock ring | x5 |
 | 5 | 200 | Zero Limit | red `#ff4d5e` | Overload for now; its own distortion wave is still to come | x8 |
 
 Damage multiplier for a word = tier x accuracy x speed x buffs, capped at 20 (x6 over the old top tier of x2.5, kept in proportion for x8).

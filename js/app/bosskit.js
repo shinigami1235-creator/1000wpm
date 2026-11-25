@@ -29,7 +29,7 @@ window.BossKit = (() => {
     let seed = 1;
     for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483647;
     const rnd = (a = 0, b = 1) => { seed = (seed * 16807) % 2147483647; return a + (seed / 2147483647) * (b - a); };
-    const S = BOSSES[id] || BOSSES.siege;
+    const S = { ...(BOSSES[id] || BOSSES.siege), ...(opts.glow ? { glow: opts.glow } : {}) };
     const G = new THREE.Color(S.glow || LIME), RED = new THREE.Color('#ff3a2e');
 
     // ---------- materials ----------
