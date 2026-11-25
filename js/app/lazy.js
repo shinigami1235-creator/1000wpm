@@ -37,7 +37,7 @@ window.Lazy = (() => {
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
       js: ['js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
-    'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/duel3d.js', 'js/app/duel.js'] },
+    'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/duel3d.js', 'js/app/duel.js'] },
     'page:party': { need: ['net'], js: ['js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/party3d.js', 'js/app/party.js'] },
     'page:u': { need: ['net'], js: ['js/app/players.js'] },
     'page:commons': { need: ['net'], css: ['css/commons.css'], js: ['js/app/player-card.js', 'js/app/commons.js'] },

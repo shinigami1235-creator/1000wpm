@@ -19,6 +19,7 @@
 //            crits: n                                               the caster's next n hits crit
 //            vsShield: x                                            damage times x against a shield
 //            clearAdds, returnShots, cleanse, echo: n, break: true  mode utilities (see COMBAT.md)
+//            heal: f                                                restores f of the caster's max HP
 // Combat.registerSpell(spell) adds one at run time, for a mode with its own spells.
 window.Combat = window.Combat || {};
 (() => {
@@ -37,8 +38,10 @@ window.Combat = window.Combat || {};
     { id: 'safe-mode', word: 'safe mode', rarity: 1, label: 'Blocks next hit', color: '#7dffc4', strike: null,
       text: 'A shield goes up around you and stops the next attack that would hit you.', hits: [],
       effect: { status: 'ward', charges: 1, ms: 30000 } },
-    { id: 'binary-rain', word: 'binary rain', rarity: 1, label: 'Rain', color: '#5dff9e', strike: 'tick',
-      text: 'Zeros and ones pour down on the target for three seconds.', hits: seq(12, 450, 230, 8) },
+    // a self heal since its green rain read as healing (Gid, 25 Nov 2026)
+    { id: 'binary-rain', word: 'binary rain', rarity: 1, label: 'Heals you', color: '#5dff9e', strike: null,
+      text: 'Zeros and ones rain down on you and restore a fifth of your HP.', hits: [],
+      effect: { heal: 0.2 } },
     { id: 'echo-pulse', word: 'echo pulse', rarity: 1, label: 'Repeats 8 words', color: '#9ff3ff', strike: 'pulse',
       text: 'Rings carry the damage of your last eight words to the target again.', hits: [],
       plan: c => (c.recent || []).slice(-8).map((p, i) => ({ at: 500 + i * 120, power: Math.max(1, p) })),

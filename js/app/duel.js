@@ -322,6 +322,7 @@ Router.register('duel', (() => {
     if (ev.name === 'corrupt') { scene.react(ev.side, 'poison', ev.ms); num(ev.side, 'Corrupted', 'debuff'); }
     if (ev.name === 'dispel') num(ev.side, 'Buffs removed', 'debuff');
     if (ev.name === 'cleanse') { if (ev.side === me) fog = 0; scene.react(ev.side, 'cleanse'); num(ev.side, 'Cleansed', 'buff'); }
+    if (ev.name === 'heal') { scene.react(ev.side, 'cleanse'); num(ev.side, `+${ev.amount} HP`, 'buff'); }
     if (ev.name === 'reflect') num(ev.side, 'Reflecting', 'buff');
     if (ev.name === 'shieldBroken') num(ev.side, 'Shield broken', 'debuff');
   }
@@ -432,9 +433,13 @@ Router.register('duel', (() => {
     paintChips();
   }
 
+  // the words as a block of lines, Monkeytype style (js/app/wordflow.js), as in the World Boss:
+  // typed words stay on their line and the next ones wait after the current word
+  let flow = null, flowIdx = -1, flowRound = -1, flowLine = null;
   function paintWords() {
     const st = lastState, line = el && el.querySelector('[data-line]');
     if (!st || !line) return;
+    if (window.WordFlow) { paintFlow(st, line); return; }
     const k = info.you >= 0 ? info.you : 0;
     const s = st.sides[k];
     const list = info.words[Math.max(1, st.round)] || info.words[1];
@@ -452,6 +457,24 @@ Router.register('duel', (() => {
     const next = [];
     for (let n = 0; n < 4; n++) next.push(list[(s.idx + n) % list.length] || '');   // the word you are on and three to read ahead
     put(line, `<div class="du-cur">${onSpell ? `<span class="du-w cur spell">${letters(target.word, typed)}</span>` : word(curW, 0)}</div><div class="du-next">${next.slice(1).map((w, n) => word(w, n + 1)).join('')}</div>`);
+    line.classList.toggle('locked', s.locked > 0);
+  }
+  function paintFlow(st, line) {
+    const k = info.you >= 0 ? info.you : 0;
+    const s = st.sides[k];
+    const list = info.words[Math.max(1, st.round)] || info.words[1];
+    const typed = info.you >= 0 && ty ? ty.state().typed : s.typed || '';
+    const target = info.you >= 0 && ty ? ty.state().target : s.target;
+    const fogN = info.you >= 0 ? Math.max(fog, s.fog || 0) : s.fog || 0;
+    const onSpell = target && target.kind === 'spell';
+    if (!flow || flowLine !== line) { flow = WordFlow.create(line, { lines: 3 }); flowLine = line; flowIdx = -1; }
+    // a new round brings new words; joining late starts the block at the word you're on
+    if (flowRound !== st.round || flowIdx < 0 || s.idx < flowIdx) { flow.clear(); flowRound = st.round; flowIdx = s.idx; }
+    while (flowIdx < s.idx) { const w = list[flowIdx % list.length] || ''; flow.push(w, w, true); flowIdx++; }
+    const next = [];
+    for (let n = 1; n < 50; n++) next.push(list[(s.idx + n) % list.length] || '');
+    // while a spell word is being typed, the stack waits dimmed and the spell's chip shows the letters
+    flow.render({ cur: list[s.idx % list.length] || '', typed: onSpell ? '' : typed, mine: !onSpell, next, fog: fogN });
     line.classList.toggle('locked', s.locked > 0);
   }
   function letters(w, typed) {
@@ -485,10 +508,10 @@ Router.register('duel', (() => {
     box.dataset.k = key;
     box.innerHTML = (s.offer || []).map(id => {
       const sp = Combat.spell(id), on = typed && sp.word.startsWith(typed);
-      return `<span class="mu-chip r${sp.rarity}${on ? ' on' : ''}" style="--sc:${sp.color}"><small>${e(Combat.RARITY[sp.rarity].name)}</small><b>${e(sp.word)}</b><em>${e(DuelRules.PVP[id] ? shortFx(id) : sp.label)}</em></span>`;
+      return `<span class="mu-chip r${sp.rarity}${on ? ' on' : ''}" style="--sc:${sp.color}"><small>${e(Combat.RARITY[sp.rarity].name)}</small><b>${on ? letters(sp.word, typed) : e(sp.word)}</b><em>${e(DuelRules.PVP[id] ? shortFx(id) : sp.label)}</em></span>`;
     }).join('') + (s.offer && s.offer.length ? `<span class="mu-chip-t num">${Math.ceil(left)}s</span>` : '');
   }
-  const SHORT = { 'data-spike': '27 dmg', 'safe-mode': 'Blocks 1', 'binary-rain': 'Blurs 4 words', 'echo-pulse': 'Repeats 8', 'glitch-blade': 'Breaks shields', 'cryo-lock': 'Half damage 4s',
+  const SHORT = { 'data-spike': '27 dmg', 'safe-mode': 'Blocks 1', 'binary-rain': 'Heals 30', 'echo-pulse': 'Repeats 8', 'glitch-blade': 'Breaks shields', 'cryo-lock': 'Half damage 4s',
     'electro-storm': '35 dmg', 'hyper-thread': 'x1.5 for 6s', 'packet-storm': 'Reflects', 'neon-nova': 'Removes buffs', 'system-purge': 'Cleanse', 'void-sphere': '88 dmg',
     'kernel-panic': 'Locks keys', 'root-access': 'Pierce x1.5', 'quantum-split': 'Saves combo', 'zero-day': '250 dmg' };
   const shortFx = id => SHORT[id] || '';

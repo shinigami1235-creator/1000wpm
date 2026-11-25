@@ -35,7 +35,7 @@
   const PVP = {
     'data-spike': { hits: [[320, 9], [470, 9], [620, 9]], text: '3 hits of 9.' },
     'safe-mode': { hits: [], ward: true, text: 'Blocks the next shot or spell aimed at you.' },
-    'binary-rain': { hits: [[450, 4], [750, 4], [1050, 4], [1350, 4], [1650, 4], [1950, 4]], fog: 4, text: '6 hits of 4 and blurs the next 4 words on their screen.' },
+    'binary-rain': { hits: [], heal: 30, text: 'Restores 30 of your HP.' },
     'echo-pulse': { hits: [], echo: 0.5, text: 'Sends half the damage of your last 8 words again.' },
     'glitch-blade': { hits: [[230, 30]], wardBreak: true, corrupt: { ms: 6000, tick: 2 }, text: '30, goes through a shield and deals double when it breaks one. Then corrupts them: 2 a second for 6 seconds.' },
     'cryo-lock': { hits: [[600, 12]], freeze: 4000, text: '12 and halves their word damage for 4 seconds.' },
@@ -234,6 +234,10 @@
       if (P.freeze) schedule(when, () => debuff(b.i, 'frozen', P.freeze));
       if (P.lock) schedule(when, () => debuff(b.i, 'locked', P.lock));
       if (P.corrupt) schedule(when, () => debuff(b.i, 'corrupt', P.corrupt.ms, { tick: P.corrupt.tick }));
+      if (P.heal) schedule(t + 600, () => {
+        const add = Math.min(P.heal, cfg.hp - s.hp);
+        if (add > 0 && phase === 'fight') { s.hp += add; emit({ type: 'effect', side: s.i, name: 'heal', amount: add, hp: s.hp, at: clock }); }
+      });
       if (P.reflect) { s.reflect = t + P.reflect.ms; emit({ type: 'effect', side: s.i, name: 'reflect', until: s.reflect, at: t }); }
       if (P.cleanse) { s.fog = 0; s.frozen = 0; s.locked = 0; s.corrupt = 0; s.immune = t + P.cleanse; emit({ type: 'effect', side: s.i, name: 'cleanse', until: s.immune, at: t }); }
       if (P.dispel) schedule(when, () => {

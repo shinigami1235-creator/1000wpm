@@ -378,6 +378,7 @@ window.RushPage = (() => {
           if (p.blocked) { pop(me.status('stunned-target') ? 'MISSED' : 'BLOCKED', 'cyan'); A.play('impact', true); break; }
           if (p.kind !== 'typo') { scene.hurt(); flashTint(); A.play(p.kind === 'packet' ? 'projHit' : 'impact', false); }
           break;
+        case 'heal': paintYou(); pop(`+${p.amount} HP`, 'cyan'); break;
         case 'typo': TT.click(true); break;
         case 'packet': scene.packet(p.id, p.due); A.play('launch'); break;
         case 'packetHit': scene.packetHit(p.id); break;
@@ -692,7 +693,7 @@ window.RushPage = (() => {
             ? `<span class="w sign">${esc(c.shown)}</span>${on(c.id) ? `<span class="w typed">${lettersHtml(c.word, typed, true)}</span>` : ''}`
             : `<span class="w">${lettersHtml(c.word, on(c.id) ? typed : '', on(c.id))}</span>`;
           const timed = c.due && c.kind !== 'weak';
-          return `<span class="wb-chip ${CLS[c.kind]}${on(c.id) ? ' on' : ''}${c.kind === 'block' && list[0] === c ? ' first' : ''}${c.kind === 'speaker' && !c.next ? ' wait' : ''}${c.frozen ? ' frozen' : ''}" data-id="${esc(c.id)}">
+          return `<span class="wb-chip ${CLS[c.kind]} k-${c.kind}${on(c.id) ? ' on' : ''}${c.kind === 'block' && list[0] === c ? ' first' : ''}${c.kind === 'speaker' && !c.next ? ' wait' : ''}${c.frozen ? ' frozen' : ''}" data-id="${esc(c.id)}">
             ${label ? `<small>${label}</small>` : ''}${word}${timed ? '<i class="bar"><i></i></i><em class="secs"></em>' : ''}</span>`;
         }).join('');
         if (spells.length) html += `<span class="wb-spells" aria-label="Spells">${spells.map(x => `<span class="wb-chip spell r${x.spell.rarity}${on(x.id) ? ' on' : ''}" data-id="${esc(x.id)}" style="--sc:${x.spell.color}"><small>${esc(x.spell.label)}</small><span class="w">${lettersHtml(x.word, on(x.id) ? typed : '', on(x.id))}</span><i class="bar"><i></i></i><em class="secs"></em></span>`).join('')}</span>`;
@@ -705,7 +706,7 @@ window.RushPage = (() => {
         const n = row.querySelector(`[data-id="${CSS.escape(c.id)}"]`); if (!n) continue;
         const left = Math.max(0, c.due - (c.kind === 'spell' ? pn : t));
         const bar = n.querySelector('.bar i'); if (bar) bar.style.width = (100 * left / c.total).toFixed(1) + '%';
-        const s = n.querySelector('.secs'); if (s) s.textContent = c.kind === 'spell' ? Math.ceil(left / 1000) + 's' : (left / 1000).toFixed(1) + 's';
+        const s = n.querySelector('.secs'); if (s) s.textContent = Math.ceil(left / 1000) + 's';   // whole seconds: tenths ticking pulled the eye off the words
         n.classList.toggle('late', c.kind !== 'boost' && left < (c.kind === 'spell' ? 4000 : 1500));
       }
       const ns = row.querySelector('[data-k="nexts"]');

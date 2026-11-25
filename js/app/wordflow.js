@@ -6,6 +6,7 @@
 //   flow.render({ cur, typed, mine, next, pens })   cur: the word to type, typed: what's typed into it,
 //                                             mine: false while typing an attack word or a spell,
 //                                             pens: { index: fakeWord } for Boss Rush's red pen (0 = cur)
+//                                             fog: how many words from the current one are blurred (a duel debuff)
 //   flow.push(word, typed, ok)                after a word is submitted
 //   flow.clear()
 window.WordFlow = (() => {
@@ -27,12 +28,13 @@ window.WordFlow = (() => {
     let done = [];
     let last = null;
     function paint(st) {
-      const { cur, typed = '', mine = true, next = [], pens = null } = st;
+      const { cur, typed = '', mine = true, next = [], pens = null, fog = 0 } = st;
+      const fg = i => (i < fog ? ' fog' : '');
       const pen = i => (pens && pens[i] ? `<em class="fw-pen">${esc(pens[i])}</em>` : '');
       box.innerHTML = `<div class="fw-lines" style="--fw-lines:${lines}">` +
         done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}">${letters(d.word, d.typed, false)}</span>`).join('') +
-        `<span class="fw cur${mine ? '' : ' wait'}${pen(0) ? ' pen' : ''}" aria-current="${mine}">${pen(0)}${letters(cur, mine ? typed : '', mine)}</span>` +
-        next.map((w, i) => pen(i + 1) ? `<span class="fw pen">${pen(i + 1)}<s>${esc(w)}</s></span>` : `<span class="fw">${esc(w)}</span>`).join('') + '</div>';
+        `<span class="fw cur${mine ? '' : ' wait'}${pen(0) ? ' pen' : ''}${fg(0)}" aria-current="${mine}">${pen(0)}${letters(cur, mine ? typed : '', mine)}</span>` +
+        next.map((w, i) => pen(i + 1) ? `<span class="fw pen">${pen(i + 1)}<s>${esc(w)}</s></span>` : `<span class="fw${fg(i + 1)}">${esc(w)}</span>`).join('') + '</div>';
     }
     function render(st) {
       last = st;

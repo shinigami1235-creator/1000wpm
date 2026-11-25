@@ -206,6 +206,8 @@ window.BossSquad = (() => {
 
     return {
       tick, targets, act, hitMe, raidHit, cleanWord, stats, destroy, on,
+      // a spell's self heal (Binary rain): f of your max integrity
+      healMe: f => heal(youM, Math.round(youM.max * f), 'spell'),
       members: () => M, me: () => youM, down: () => youM.down,
       HP, DOWN_MS, LOCK_WIND,
     };

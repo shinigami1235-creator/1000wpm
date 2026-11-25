@@ -533,6 +533,11 @@
         const tg = streamTarget(p);
         emit({ type: 'cast', id: p.id, spell: res.spell.id, foe: tg ? tg.id : null, hits: res.hits.map(h => ({ at: t + h.at, dmg: Math.round(h.amount * m) })), effect: res.effect, at: t });
         for (const h of res.hits) schedule(t + h.at, () => damage(p, streamTarget(p), h.amount * m, 'spell', { spell: res.spell.id }));
+        // binary rain heals the caster
+        if (res.effect && res.effect.heal && !p.down) {
+          const add = Math.min(Math.round(cfg.hp * res.effect.heal), cfg.hp - p.hp);
+          if (add > 0) { p.hp += add; emit({ type: 'heal', id: p.id, by: p.id, amount: add, hp: p.hp, ready: p.healAt, at: t }); }
+        }
         return;
       }
       p.idx++;

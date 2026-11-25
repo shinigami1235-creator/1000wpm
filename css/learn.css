@@ -221,3 +221,10 @@ ol.lx-guide li::before { content: counter(g); font: 600 var(--t-m)/1.5 var(--f-m
   .lx-weak { grid-template-columns: 1fr; }
   .lx-wk kbd { min-width: 34px; padding: 6px 8px; }
 }
+/* the see-through hands on the keyboard (js/learn/keyboard.js): fingertips on the home row */
+.fk.with-hands .fk-board { position: relative; padding-bottom: calc(var(--kh) * 2); }
+.fk-ov { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.fk-palm2 { fill: rgba(150, 190, 170, .10); stroke: rgba(150, 190, 170, .10); stroke-linejoin: round; }
+.fk-dig { stroke: color-mix(in srgb, var(--fc) 45%, #9fb4a8); stroke-opacity: .42; stroke-linecap: round; }
+.fk-dig.on { stroke: var(--fc); stroke-opacity: .85; filter: drop-shadow(0 0 6px var(--fc)); }
+.fk-hands { display: block; margin-top: 6px; }

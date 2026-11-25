@@ -516,7 +516,9 @@ window.DuelScene = (() => {
     function cast(from, id, hits, effect) {
       if (!fx) return;
       const now = performance.now();
-      fx.cast(id, { caster: casterOf(from), target: adapters[1 - from], hits: hits.map(h => ({ at: Math.max(0, h.at - now), amount: h.dmg })), effect: effect || {} });
+      // a self spell (Binary rain's heal) centres on the caster, not in front of them
+      const self = id === 'binary-rain' ? { pos: out => centre(from, out) } : casterOf(from);
+      fx.cast(id, { caster: self, target: adapters[1 - from], hits: hits.map(h => ({ at: Math.max(0, h.at - now), amount: h.dmg })), effect: effect || {} });
     }
 
     function react(i, kind, power = 0.4) {

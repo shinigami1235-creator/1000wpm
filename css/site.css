@@ -1373,3 +1373,10 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .gift-dlg .label.gold { color: var(--gold); }
 /* a seasonal item's days left (REWARDS.shop.gear from/until) */
 .item .ltd { display: inline-block; margin: 0 6px 6px 0; padding: 2px 6px; font: 600 11px/1.2 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--bg); background: var(--red, #ff4d5e); }
+/* Calm chips (Gid, 25 Nov 2026): the word block is where the eyes stay. A chip's word sits dim
+   until its timer runs low or you start typing it, and bonus chips (gifts, weak points) stay quieter */
+.page-boss .wb-chip .w { color: var(--ink-2); }
+.page-boss .wb-chip.late .w, .page-boss .wb-chip.on .w, .page-boss .wb-chip.first .w { color: var(--ink); }
+.page-boss .wb-chip .bar i { transition: none; }
+.page-boss .wb-chip.k-gift, .page-boss .wb-chip.k-weak { opacity: .7; }
+.page-boss .wb-chip.k-gift.on, .page-boss .wb-chip.k-weak.on { opacity: 1; }

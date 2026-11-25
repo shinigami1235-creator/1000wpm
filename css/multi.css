@@ -452,3 +452,10 @@
   .pa-tag-w { font-size: 16px; }
   .pa-status { top: 6px; }
 }
+/* duel words as a Monkeytype block (js/app/wordflow.js), with the blur debuff on the first words */
+.du-line:has(.fw-lines) { display: block; }
+.du-line .fw-lines { font-size: 28px; }
+.fw.fog { filter: blur(5px); color: var(--ink-3); }
+.mu-chip.on b i.ok { color: var(--accent); }
+.mu-chip.on b i.bad { color: var(--red); }
+@media (max-width: 760px) { .du-line .fw-lines { font-size: 20px; } }

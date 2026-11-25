@@ -1,5 +1,6 @@
-// The flat keyboard the academy draws: three layouts, the finger for every key and the
-// hands under it. FingerKeys.mount(host, { layout }) returns
+// The flat keyboard the academy draws: three layouts, the finger for every key and two
+// see-through hands lying on it (Gid, 25 Nov 2026): fingertips rest on the home row, thumbs on
+// Space, and the finger for the next key reaches to it, then goes back home. FingerKeys.mount(host, { layout }) returns
 // { light(char), focus(chars), setLayout(id), destroy() }.
 // Keys are placed by their physical spot, so the finger zones are the same on every layout.
 window.FingerKeys = (() => {
@@ -102,17 +103,6 @@ window.FingerKeys = (() => {
     };
   }
 
-  // two hands as rounded bars, little finger to thumb, so the lit finger is easy to see
-  function handSVG(side) {
-    const ids = side === 'l' ? ['lp', 'lr', 'lm', 'li'] : ['ri', 'rm', 'rr', 'rp'];
-    const tall = side === 'l' ? [30, 40, 44, 40] : [40, 44, 40, 30];
-    const bars = ids.map((f, i) => `<rect data-f="${f}" class="fk-finger f-${f}" x="${6 + i * 17}" y="${56 - tall[i]}" width="13" height="${tall[i] + 10}" rx="6.5"/>`).join('');
-    const thumb = side === 'l'
-      ? `<rect data-f="th" class="fk-finger f-th" x="62" y="52" width="13" height="30" rx="6.5" transform="rotate(-38 68 66)"/>`
-      : `<rect data-f="th" class="fk-finger f-th" x="-2" y="52" width="13" height="30" rx="6.5" transform="rotate(38 5 66)"/>`;
-    return `<svg class="fk-hand" viewBox="-6 6 88 84" aria-hidden="true">${bars}${thumb}<rect class="fk-palm" x="4" y="58" width="70" height="30" rx="10"/></svg>`;
-  }
-
   const LEGEND = [['p', 'Little'], ['r', 'Ring'], ['m', 'Middle'], ['i', 'Index'], ['th', 'Thumbs']];
 
   function mount(host, { layout = 'qwerty', hands = true } = {}) {
@@ -127,22 +117,103 @@ window.FingerKeys = (() => {
         const home = k.row === 2 && (k.col === 3 || k.col === 6) ? ' bump' : '';
         return `<span class="fk-k${k.side != null ? ' side' : ''}${k.finger ? ' f-' + k.finger : ''}${home}" style="--w:${k.w}">${label}</span>`;
       }).join('')}</div>`).join('')}</div>
-      ${hands ? `<div class="fk-hands">${handSVG('l')}<p class="fk-next" aria-live="polite"></p>${handSVG('r')}</div>` : ''}
+      ${hands ? `<div class="fk-hands"><p class="fk-next" aria-live="polite"></p></div>` : ''}
       <ul class="fk-legend">${LEGEND.map(([f, n]) => `<li><i class="f-${f === 'th' ? 'th' : 'l' + f}"></i>${n}</li>`).join('')}</ul>`;
       const spans = root.querySelectorAll('.fk-k');
       let i = 0;
       K.rows.forEach(r => r.forEach(k => { k.el = spans[i++]; }));
       if (focusSet) focus(focusSet);
+      if (hands) { root.classList.add('with-hands'); layoutHands(); }
     }
+
+    // ---------- the hands on the keyboard ----------
+    // Measured from the drawn keys, so they fit any width and layout. Each finger is a thick
+    // rounded line from its knuckle to its tip; the palm joins the knuckles to the wrist.
+    const NS = 'http://www.w3.org/2000/svg', HOME = { lp: 0, lr: 1, lm: 2, li: 3, ri: 6, rm: 7, rr: 8, rp: 9 };
+    const IDS = Object.keys(HOME);
+    let geo = null, tips = {}, goal = {}, raf = 0, active = null;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+    function keyAt(k, br) { const r = k.el.getBoundingClientRect(); return { x: r.left - br.left + r.width / 2, y: r.top - br.top + r.height / 2, w: r.width, h: r.height }; }
+    function layoutHands() {
+      const board = root.querySelector('.fk-board'); if (!board) return;
+      const br = board.getBoundingClientRect(); if (!br.width) return;
+      const home = K.rows[2].filter(k => k.side === undefined), space = K.rows[4].find(k => k.space);
+      if (home.length < 10 || !space) return;
+      const kw = keyAt(home[0], br).w, kh = keyAt(home[0], br).h, sp = keyAt(space, br);
+      geo = { kw, kh, rest: {}, knuck: {}, thumb: {} };
+      for (const f of IDS) {
+        const c = keyAt(home[HOME[f]], br), left = f[0] === 'l', pinky = f[1] === 'p';
+        geo.rest[f] = { x: c.x, y: c.y + kh * 0.12 };
+        geo.knuck[f] = { x: c.x + (left ? 1 : -1) * kw * (pinky ? 0.35 : 0.15), y: c.y + kh * (pinky ? 2.0 : 1.75) };
+      }
+      for (const s of ['l', 'r']) {
+        const li = geo.knuck[s + 'i'], sg = s === 'l' ? 1 : -1;
+        geo.thumb[s] = { from: { x: li.x + sg * kw * 0.55, y: li.y + kh * 0.9 }, to: { x: sp.x - sg * kw * 1.3, y: sp.y } };
+      }
+      for (const f of IDS) { goal[f] = goal[f] || { ...geo.rest[f] }; if (!tips[f]) tips[f] = { ...geo.rest[f] }; }
+      if (!active) for (const f of IDS) { tips[f] = { ...geo.rest[f] }; goal[f] = { ...geo.rest[f] }; }
+      let svg = board.querySelector('.fk-ov');
+      if (!svg) { svg = document.createElementNS(NS, 'svg'); svg.setAttribute('class', 'fk-ov'); svg.setAttribute('aria-hidden', 'true'); board.append(svg); }
+      svg.setAttribute('viewBox', `0 0 ${br.width} ${br.height + kh * 2}`);
+      drawHands();
+    }
+    function drawHands() {
+      const svg = root.querySelector('.fk-ov'); if (!svg || !geo) return;
+      const { kw, kh } = geo, P = p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      let out = '';
+      for (const s of ['l', 'r']) {
+        const ids = s === 'l' ? ['lp', 'lr', 'lm', 'li'] : ['ri', 'rm', 'rr', 'rp'];
+        const kn = ids.map(f => geo.knuck[f]), sg = s === 'l' ? 1 : -1;
+        const inner = kn[s === 'l' ? 3 : 0], outer = kn[s === 'l' ? 0 : 3];
+        const wrist = [{ x: outer.x + sg * kw * 0.2, y: outer.y + kh * 1.9 }, { x: inner.x + sg * kw * 0.3, y: inner.y + kh * 2.1 }];
+        const palm = [...kn.map(p => ({ x: p.x, y: p.y + kh * 0.15 })), geo.thumb[s].from, wrist[1], wrist[0]];
+        if (s === 'r') palm.splice(0, 4, ...kn.slice().reverse().map(p => ({ x: p.x, y: p.y + kh * 0.15 })));
+        out += `<polygon class="fk-palm2" points="${palm.map(P).join(' ')}" stroke-width="${(kw * 0.5).toFixed(1)}"/>`;
+        const th = geo.thumb[s];
+        out += `<line class="fk-dig f-th${active === 'th' ? ' on' : ''}" x1="${th.from.x}" y1="${th.from.y}" x2="${th.to.x}" y2="${th.to.y}" stroke-width="${(kw * 0.5).toFixed(1)}"/>`;
+        for (const f of ids) {
+          const k = geo.knuck[f], t = tips[f];
+          out += `<line class="fk-dig f-${f}${active === f ? ' on' : ''}" x1="${k.x.toFixed(1)}" y1="${k.y.toFixed(1)}" x2="${t.x.toFixed(1)}" y2="${t.y.toFixed(1)}" stroke-width="${(kw * (f[1] === 'p' ? 0.42 : 0.5)).toFixed(1)}"/>`;
+        }
+      }
+      svg.innerHTML = out;
+    }
+    // move the tips toward their goals: the reaching finger and any finger going back home
+    function animate() {
+      cancelAnimationFrame(raf);
+      const step = () => {
+        let moving = false;
+        for (const f of IDS) {
+          const t = tips[f], g = goal[f]; if (!t || !g) continue;
+          const dx = g.x - t.x, dy = g.y - t.y;
+          if (reduce.matches || Math.hypot(dx, dy) < 0.5) { t.x = g.x; t.y = g.y; continue; }
+          t.x += dx * 0.35; t.y += dy * 0.35; moving = true;
+        }
+        drawHands();
+        if (moving) raf = requestAnimationFrame(step);
+      };
+      step();
+    }
+    function reach(m, shiftSide) {
+      if (!geo) return;
+      const br = root.querySelector('.fk-board').getBoundingClientRect();
+      active = m ? m.key.finger : null;
+      for (const f of IDS) goal[f] = { ...geo.rest[f] };
+      if (m && HOME[m.key.finger] !== undefined) { const c = keyAt(m.key, br); goal[m.key.finger] = { x: c.x, y: c.y + geo.kh * 0.12 }; }
+      if (shiftSide) { const sk = K.rows[3].find(k => k.shiftKey === shiftSide); if (sk) { const c = keyAt(sk, br); goal[shiftSide + 'p'] = { x: c.x, y: c.y }; } }
+      animate();
+    }
+    const ro = hands && window.ResizeObserver ? new ResizeObserver(() => layoutHands()) : null;
+    if (ro) ro.observe(root);
 
     function clear() { lit.forEach(e => e.classList.remove('next')); lit = []; }
     // light the key for ch, the Shift on the other hand when it needs one, and the finger
     function light(ch) {
       clear();
       const next = root.querySelector('.fk-next');
-      if (ch == null) { if (next) next.textContent = ''; return; }
+      if (ch == null) { if (next) next.textContent = ''; if (hands) reach(null); return; }
       const m = K.map.get(ch);
-      if (!m) { if (next) next.textContent = ''; return; }
+      if (!m) { if (next) next.textContent = ''; if (hands) reach(null); return; }
       const els = [m.key.el];
       let shiftSide = '';
       if (m.shift) {
@@ -152,7 +223,7 @@ window.FingerKeys = (() => {
       }
       els.forEach(e => e && e.classList.add('next'));
       lit = els.filter(Boolean);
-      root.querySelectorAll('.fk-finger').forEach(f => f.classList.toggle('on', f.dataset.f === m.key.finger || (shiftSide && f.dataset.f === shiftSide + 'p')));
+      if (hands) reach(m, shiftSide);
       if (next) {
         const name = ch === ' ' ? 'Space' : /\p{L}/u.test(ch) ? ch.toUpperCase() : ch;
         next.innerHTML = `<b>${UI.esc(name)}</b><span>${FINGER[m.key.finger]}${shiftSide ? `, ${shiftSide === 'l' ? 'left' : 'right'} Shift` : ''}</span>`;
@@ -172,7 +243,7 @@ window.FingerKeys = (() => {
     return {
       light, focus,
       setLayout(id) { K = info(id); paint(); },
-      destroy() { root.remove(); },
+      destroy() { if (ro) ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
       info: () => K,
     };
   }

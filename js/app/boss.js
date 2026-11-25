@@ -616,6 +616,7 @@ Router.register('boss', (() => {
     pop(sp.word, 'spell');
     if (sp.rarity >= 3) document.dispatchEvent(new CustomEvent('buddy', { detail: 'fast' }));
     if (e.cleanse) jamUntil = 0;
+    if (e.heal && squad) later(600, () => { if (squad) squad.healMe(e.heal); });
     if (e.debuff === 'freeze') freezeNext(e.ms);
     if (e.returnShots) returnAll();
     castDmg[sp.id] = 0;
@@ -882,7 +883,7 @@ Router.register('boss', (() => {
       if (!c) continue;
       const left = Math.max(0, m.due - t);
       c.querySelector('.bar i').style.width = (100 * left / m.total).toFixed(1) + '%';
-      c.querySelector('.secs').textContent = (left / 1000).toFixed(left < 10000 ? 1 : 0) + 's';
+      c.querySelector('.secs').textContent = Math.ceil(left / 1000) + 's';   // whole seconds: tenths ticking pulled the eye off the words
       c.classList.toggle('late', m.kind !== 'add' && left < 1500);
     }
   }

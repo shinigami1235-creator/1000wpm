@@ -581,6 +581,7 @@ window.RushFight = (() => {
         for (const p of a.packets) if (p.live && !p.done) { p.done = true; a.returned++; mech = mech.filter(c => c.id !== p.id); emit('returned', { id: p.id }); hitBoss(p.word.length * D.UNIT * 3, t, { kind: 'return' }); }
       }
       if (e.clearAdds && a && a.type === 'gifts') moveDone(t, 0);
+      if (e.heal) { const add = Math.min(Math.round(player.max * e.heal), player.max - player.hp); if (add > 0) { player.hp += add; emit('heal', { amount: add, hp: player.hp }); } }
       return { total: hits.reduce((s, h) => s + h.amount, 0), hits: hits.map(h => ({ at: h.at - t, amount: h.amount })) };
     }
 

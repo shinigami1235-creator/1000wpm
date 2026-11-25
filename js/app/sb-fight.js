@@ -29,7 +29,8 @@ window.SuperFight = (() => {
     const R = S.R();
     const bus = Combat.Bus();
     const emit = (n, p = {}) => bus.emit(n, p);
-    const me = Combat.create({ now, rng });
+    // the streamer has no HP to heal here, so Binary rain stays out of the offers
+    const me = Combat.create({ now, rng, spells: Combat.SPELLS().map(s => s.id).filter(id => id !== 'binary-rain') });
     const maxHp = Math.round(T.wpm * 26 * B.hpK * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('superboss') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
     const ART_MAX = 100;
 

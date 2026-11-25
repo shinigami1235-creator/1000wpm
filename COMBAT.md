@@ -56,7 +56,7 @@ At combo 10, 25, 50 and then every 25, two or three spell words are offered (two
 |---|---|---|
 | data spike | Common (10) | Three crystal spikes burst up under the target. 3 x 22 |
 | safe mode | Common | A hex shield around you stops the next attack that would hit you |
-| binary rain | Common | Zeros and ones pour onto the target for 3 seconds. 12 x 8 |
+| binary rain | Common | Heals you: zeros and ones rain down on you and restore a fifth of your HP (30 HP in a duel). Not offered in Superboss, where the streamer has no HP. |
 | echo pulse | Common | Rings carry the damage of your last 8 words to the target again |
 | glitch blade | Common | One huge glitching slash, 70, triple against a firewall |
 | cryo lock | Common | An ice cage holds the target. The attack winding up gets 5 more seconds for you to block it. 30 |

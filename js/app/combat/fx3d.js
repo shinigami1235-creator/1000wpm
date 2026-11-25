@@ -626,32 +626,29 @@ Combat.FX = (() => {
       aura('ward', true, { caster: cs });
     };
 
-    SP['binary-rain'] = (e, cs, tg) => {
-      const S = sizeOf(tg) / 6, col = C('#5dff9e'), hi = C('#d9ffe9');
-      e.cols = Array.from({ length: 14 }, () => ({ x: rnd(-7, 7) * S, z: rnd(-3, 3) * S, next: 0 }));
-      const end = (e.hits.length ? e.hits[e.hits.length - 1].at / 1000 : 3) + 0.3;
-      e.strike = (i, h) => {
-        const c = e.cols[Math.floor(Math.random() * e.cols.length)];
-        P(tg, 'base', t1); P(tg, 'top', t2);
-        t3.set(t1.x + c.x, t2.y + 5 * S, t1.z + c.z); P(tg, 'pos', t4); t4.x += c.x * 0.4; t4.z += 1;
-        c.flash = 0.22; c.to = t4.clone(); c.from = t3.clone();
-        burst(t4, 12, 7, hi, 1.1 * S, 0.5, Math.random() < 0.5 ? G.zero : G.one, { drag: 2 });
-        react(tg, 'flinch', h.power);
-      };
-      e.update = dt => {
-        strikes(e);
-        P(tg, 'base', t1); P(tg, 'top', t2);
-        const on = e.t > 0.15 && e.t < end;
+    // Binary rain heals its caster (Gid, 25 Nov 2026): the zeros and ones fall on you, green
+    // rings rise up you and a flare marks the heal. The caster adapter only gives pos(), so the
+    // rain is sized around that point.
+    SP['binary-rain'] = (e, cs) => {
+      const col = C('#5dff9e'), hi = C('#d9ffe9'), end = 2.4;
+      e.cols = Array.from({ length: 10 }, () => ({ x: rnd(-1.6, 1.6), z: rnd(-1, 1), next: 0 }));
+      e.update = () => {
+        P(cs, 'pos', t1);
+        const on = e.t > 0.1 && e.t < end;
         for (const c of e.cols) {
           if (on && e.t >= c.next) {
-            c.next = e.t + rnd(0.03, 0.09);
-            t3.set(t1.x + c.x + rnd(-0.2, 0.2), t2.y + rnd(1, 5) * S, t1.z + c.z);
-            spawn(t3, _pv.set(0, -rnd(13, 19) * S, 0), Math.random() < 0.2 ? hi : col, rnd(1.4, 2.1) * S, rnd(0.9, 1.2), Math.random() < 0.5 ? G.zero : G.one);
+            c.next = e.t + rnd(0.04, 0.1);
+            t3.set(t1.x + c.x + rnd(-0.1, 0.1), t1.y + rnd(2.5, 4.5), t1.z + c.z);
+            spawn(t3, _pv.set(0, -rnd(7, 10), 0), Math.random() < 0.25 ? hi : col, rnd(1.1, 1.6), rnd(0.45, 0.6), Math.random() < 0.5 ? G.zero : G.one);
           }
-          if (on) seg(t3.set(t1.x + c.x, t2.y + 5 * S, t1.z + c.z), t4.set(t1.x + c.x, 0.2, t1.z + c.z), 0.12 * S, col, 0.25 + 0.15 * Math.sin(e.t * 13 + c.x));
-          if (c.flash > 0) { c.flash -= dt; seg(c.from, c.to, 0.7 * S, col, 4 * c.flash); seg(c.from, c.to, 0.2 * S, WHITE, 7 * c.flash); }
+          if (on) seg(t3.set(t1.x + c.x, t1.y + 4.5, t1.z + c.z), t4.set(t1.x + c.x, t1.y - 1.2, t1.z + c.z), 0.06, col, 0.25 + 0.15 * Math.sin(e.t * 13 + c.x));
         }
-        return e.t < end + 0.9;
+        if (on) for (let i = 0; i < 3; i++) {
+          const u = (e.t * 0.9 + i / 3) % 1;
+          circle(t3.set(t1.x, t1.y - 1.2 + u * 4, t1.z), UP, 1.3 * (1 - u * 0.4), 0.06, i % 2 ? hi : col, (1 - u) * 1.4, 24, e.t);
+        }
+        if (e.t > 0.6 && !e.healed) { e.healed = true; flare(t1, col, 3, 0.4, 1.2); burst(t1, 18, 4, hi, 0.4, 0.8, G.dot, { drag: 2, up: 0.6 }); }
+        return e.t < end + 0.6;
       };
     };
 
