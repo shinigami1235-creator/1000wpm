@@ -102,7 +102,7 @@ Router.register('boss', (() => {
 
   function resetFight() {
     newSession();
-    feed = []; hist = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
+    feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     flow = null;
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
@@ -179,6 +179,8 @@ Router.register('boss', (() => {
           <div class="kb-loading" data-k="loading">Loading</div>
           <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
           <div class="wb-labels" data-k="labels" aria-hidden="true"></div>
+          <div class="wb-ntags" data-k="ntags" aria-hidden="true"></div>
+          <ol class="wb-cards" data-k="cards" aria-label="Raid feed"></ol>
           <div class="dmg-layer" data-k="nums" aria-hidden="true"></div>
           <div class="wb-status">
             <span class="wb-flag shield" data-k="shield" hidden></span>
@@ -869,6 +871,7 @@ Router.register('boss', (() => {
   const pt = { x: 0, y: 0 }, placed = [];
   function placeLabels() {
     if (!scene) return;
+    placeTags();
     placed.length = 0;
     if (!labels.size) return;
     const W = q('stage').clientWidth;
@@ -894,6 +897,7 @@ Router.register('boss', (() => {
     if (!el) return;
     const wasDown = st && st.defeatedAt;
     st = s;
+    traceState(s);
     const f = s.hp / s.maxHp;
     q('hp').innerHTML = `${fmt(Math.ceil(s.hp))}<small> / ${fmt(s.maxHp)} HP</small>`;
     q('fill').style.width = (100 * f) + '%';
@@ -966,10 +970,91 @@ Router.register('boss', (() => {
       milestone('dmg', meDamage());
     } else {
       if (scene) scene.hit(h);
+      if ((h.tier >= 3 || h.crit) && h.kind === 'word') bigHit(h);
       others.push(h); if (others.length > 60) others.shift();
       if (t - lastOther > 900) { lastOther = t; pushFeed(others[Math.floor(Math.random() * others.length)]); others = []; }
     }
   }
+  // ---------- the team damage graph ----------
+  // Every 5 s the raid's total and yours are noted; the result screen draws them as damage
+  // per 15 s, the raid's bars with your part inside each one.
+  let trace = [];
+  function traceState(s) {
+    const t = performance.now(), last = trace[trace.length - 1];
+    if (last && t - last.t < 5000 && !s.defeatedAt) return;
+    const mine = s.raiders.find(r => r.you);
+    trace.push({ t, raid: s.raiders.reduce((a, r) => a + r.damage, 0), you: mine ? mine.damage : 0 });
+    if (trace.length > 2000) trace = trace.slice(-2000);
+  }
+  function damageGraph() {
+    if (trace.length < 3) return '';
+    const W = 15000, t0 = trace[0].t, n = Math.max(1, Math.ceil((trace[trace.length - 1].t - t0) / W));
+    const at = (t, k) => { let v = trace[0][k]; for (const p of trace) { if (p.t > t) break; v = p[k]; } return v; };
+    const bins = Array.from({ length: n }, (_, i) => {
+      const a = t0 + i * W, b = a + W;
+      return { raid: Math.max(0, at(b, 'raid') - at(a, 'raid')), you: Math.max(0, at(b, 'you') - at(a, 'you')) };
+    });
+    const top = Math.max(1, ...bins.map(b => b.raid));
+    const bw = 600 / n, H = 120;
+    const bars = bins.map((b, i) => {
+      const x = (i * bw + bw * 0.12).toFixed(1), w = (bw * 0.76).toFixed(1);
+      const hr = (H * b.raid / top).toFixed(1), hy = (H * b.you / top).toFixed(1);
+      return `<rect class="r" x="${x}" y="${(H - hr).toFixed(1)}" width="${w}" height="${hr}"><title>${fmt(b.raid)} raid damage, ${fmt(b.you)} yours</title></rect>` +
+        `<rect class="y" x="${x}" y="${(H - hy).toFixed(1)}" width="${w}" height="${hy}"/>`;
+    }).join('');
+    const mins = Math.ceil(n * W / 60000);
+    return `<figure class="wb-graph">
+      <figcaption><span>Team damage every 15 s</span><span class="k"><i class="r"></i>Raid <i class="y"></i>You</span></figcaption>
+      <svg viewBox="0 0 600 ${H}" preserveAspectRatio="none" role="img" aria-label="Raid damage per 15 seconds, peak ${fmt(top)}">${bars}</svg>
+      <div class="ax"><span>0:00</span><span>${mins}:00</span></div>
+    </figure>`;
+  }
+
+  // ---------- the raid around you ----------
+  // A raider's big hit (combo tier 3 or more, or a crit) puts their name over them in the crowd
+  // in their tier's colour, and the biggest ones get a card in the feed over the arena.
+  const ntags = new Map();
+  let lastTag = 0, lastCard = 0;
+  function tierOf(t) { return Combat.TIERS[Math.max(0, Math.min(t | 0, Combat.TIERS.length - 1))]; }
+  function bigHit(h) {
+    const t = performance.now(), T = tierOf(h.tier);
+    if (t - lastTag > 450 && ntags.size < 4 && !ntags.has(h.id)) {
+      lastTag = t;
+      const n = document.createElement('span');
+      n.className = 'wb-ntag'; n.style.setProperty('--tc', T.color || 'var(--accent)');
+      n.innerHTML = `${esc(h.name)} <b>${fmt(h.dmg)}</b>`;
+      q('ntags').append(n);
+      ntags.set(h.id, { n, until: t + 1400 });
+    }
+    if (h.tier >= 4 && t - lastCard > 1600) {
+      lastCard = t;
+      card({ who: h.name, what: `${T.name.toUpperCase()} hit`, dmg: h.dmg, color: T.color });
+    }
+  }
+  // the feed cards over the arena: the four latest raid moments, each for 4 s
+  function card(c) {
+    const box = q('cards'); if (!box) return;
+    const li = document.createElement('li');
+    li.style.setProperty('--tc', c.color || 'var(--accent)');
+    li.innerHTML = `<b>${esc(c.who)}</b><span>${esc(c.what)}</span>${c.dmg ? `<em>${fmt(c.dmg)}</em>` : ''}`;
+    box.prepend(li);
+    while (box.children.length > 4) box.lastChild.remove();
+    setTimeout(() => li.classList.add('out'), 3600);
+    setTimeout(() => li.remove(), 4000);
+  }
+  function placeTags() {
+    if (!ntags.size || !scene) return;
+    const t = performance.now(), W = q('stage').clientWidth;
+    for (const [id, x] of ntags) {
+      if (t > x.until) { x.n.remove(); ntags.delete(id); continue; }
+      const p = scene.screen('raider:' + id, pt);
+      if (!p) { x.n.style.visibility = 'hidden'; continue; }
+      const w = x.n.offsetWidth;
+      x.n.style.visibility = '';
+      x.n.style.transform = `translate(${Math.max(4, Math.min(W - w - 4, p.x - w / 2)).toFixed(1)}px, ${(p.y - 24).toFixed(1)}px)`;
+    }
+  }
+
   // ---------- the charge ----------
   // Your words power up an orb that fires as one attack. Each word is still sent on its own, so the
   // scores stay exact; only the picture waits. The orb grows with every word and fires after CHARGE_N
@@ -1018,11 +1103,13 @@ Router.register('boss', (() => {
     if (e.type === 'shieldBreak') {
       sfx('shieldBreak'); pop('FIREWALL DOWN', 'cyan');
       pushFeed({ text: `${e.you ? 'You' : e.by} broke the firewall`, cls: e.you ? 'you' : 'shield' });
+      card({ who: e.you ? 'You' : e.by, what: 'broke the firewall', color: '#3ee6ff' });
     }
     if (e.type === 'adds') { sfx('addSpawn'); pushFeed({ sys: true, text: `${NAME} spawned ${e.n} bugs` }); }
     if (e.type === 'addDown') pushFeed({ text: `${e.you ? 'You' : e.by} deleted a bug`, cls: e.you ? 'you' : 'add' });
     if (e.type === 'impact') {
       pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Kernel open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
+      if (e.stun) card({ who: `${e.blocks} of ${e.of}`, what: `blocked the ${R.ATTACK_NAME[e.kind]}`, color: '#3ee6ff' });
     }
     if (e.type === 'defeat') pushFeed({ sys: true, text: `${NAME} is down. Last hit by ${e.you ? 'you' : e.by}` });
   }
@@ -1233,6 +1320,7 @@ Router.register('boss', (() => {
           r.killCoins ? `${r.killCoins} for being there at the end` : '',
           r.squadCoins ? `${r.squadCoins} for saves and heals` : '',
         ].filter(Boolean).join(' and ')}.</p>` : ''}
+        ${damageGraph()}
         <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
         ${squadTable()}
       </div>`;

@@ -956,7 +956,7 @@ window.BossScene = (() => {
       }
       return -1;
     }
-    function raiderIndex(id) { const n = /^sim(\d+)$/.exec(id || ''); return n ? +n[1] % RAID : Math.floor(Math.random() * RAID); }
+    function raiderIndex(id) { const n = /^sim(\d+)$/.exec(id || ''); if (n) return +n[1] % RAID; let h = 7; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % RAID; }
     function hit(h) {
       if (dead) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const you = h.you;
@@ -991,9 +991,11 @@ window.BossScene = (() => {
       b.shield = !!h.shield && shieldF !== null;
       b.dur = you ? 0.17 : rnd(0.16, 0.24);
       const big = h.crit || h.weak || h.kind === 'block';
-      b.w = you ? (big ? 0.34 : 0.22) : 0.055;
-      b.tail = you ? 0.4 : 0.16;
-      b.col.copy(you ? (big ? WHITE : youCol) : raidCol(ri)).multiplyScalar(you ? 2.2 : 1.05);
+      const ot = !you && h.tier >= 1 && window.Combat ? Combat.TIERS[Math.min(h.tier, Combat.TIERS.length - 1)] : null;
+      b.w = you ? (big ? 0.34 : 0.22) : 0.055 + (ot ? 0.03 * h.tier : 0);
+      b.tail = you ? 0.4 : 0.16 + (ot ? 0.05 * h.tier : 0);
+      if (ot && ot.color) b.col.set(ot.color).multiplyScalar(1.6 + 0.15 * h.tier);
+      else b.col.copy(you ? (big ? WHITE : youCol) : raidCol(ri)).multiplyScalar(you ? 2.2 : 1.05);
       markGlow[ri] = 1;
     }
     // where a tier shot lands: its block, the core, or the shield's shell in front of them
@@ -1182,6 +1184,7 @@ window.BossScene = (() => {
       if (!w) {
         if (key.startsWith('shot:')) { const s = shots.find(x => x.on && x.id === key.slice(5)); if (s) w = s.pos; }
         else if (key.startsWith('add:')) { const a = adds.find(x => x.on && x.id === key.slice(4)); if (a && a.dying < 0) w = a.pos; }
+        else if (key.startsWith('raider:')) w = raiderSpot(key.slice(7));
       }
       if (!w) return null;
       v3.copy(w).project(camera);
@@ -1191,6 +1194,9 @@ window.BossScene = (() => {
     }
     const anchorHead = new V(), anchorCore = new V();
     anchors.set('head', anchorHead); anchors.set('core', anchorCore); anchors.set('you', raidPos[RAID]);
+    // 'raider:<id>' is a raider's spot in the crowd, for the name tags on big hits (js/app/boss.js)
+    const tagAt = new V();
+    function raiderSpot(id) { const i = raiderIndex(id); return tagAt.copy(raidPos[i]).setY(raidPos[i].y + 2.1); }
 
     // ---------- movement: every phase moves differently ----------
     const SPOTS = [[0, 0], [-4, 0], [4, 0], [-7, -2], [7, -2], [-3, 2], [3, 2], [0, -3]];

@@ -222,6 +222,7 @@ window.WorldBossNet = (() => {
         s.r.damage += d; left -= d;
       });
     }
+    const simTier = c => { const T = window.Combat && Combat.TIERS; if (!T) return 0; let i = 0; T.forEach((x, k) => { if (c >= x.at) i = k; }); return i; };
     function wordLen() { const x = Math.random(); return x < 0.18 ? Math.round(rnd(8, 12)) : Math.round(rnd(2, 7)); }
     function tick() {
       const pn = performance.now(), t = now();
@@ -230,7 +231,10 @@ window.WorldBossNet = (() => {
       if (st.defeatedAt) return;
       for (const s of sims) {
         if (pn < s.next || s.r.down) continue;
-        if (s.len && Math.random() < s.r.acc) damage(s.r.id, s.len * simScale);
+        // each simulated raider keeps a combo so its shots show in its tier's colour; the
+        // tier only changes the picture, never the damage, so the raid's numbers stay as tuned
+        if (s.len && Math.random() < s.r.acc) { s.combo = (s.combo || 0) + 1; damage(s.r.id, s.len * simScale, 'word', { tier: simTier(s.combo) }); }
+        else if (s.len) s.combo = Math.floor((s.combo || 0) * 0.4);
         if (st.defeatedAt) return;
         s.len = wordLen();
         const perChar = 60000 / ((s.r.wpm || 80) * 5);
