@@ -78,7 +78,7 @@ The five Breach bosses in Boss Rush (The Spam, The Signboard, The Announcer, The
 
 ## Shop items
 
-- **Operator gear** is the first shop category (`REWARDS.shop.gear`): the face mask and the Compact, Split and Arc keyboards for now. Everything else on the Gemini sheets is free. The Operator page (#/lab) lets you try gear on before buying, and `Operator.mine()` leaves off gear you don't own.
+- **Operator gear** (`REWARDS.shop.gear`): the face mask is in the shop's Operator category, and the Compact, Split and Arc keyboards sit with the room keyboards in Keyboards. Everything else on the Gemini sheets is free. The Operator page (#/lab) lets you try gear on before buying, and `Operator.mine()` leaves off gear you don't own.
 - **Room items** (51 in `js/room/items.js`, plus the gifts in `gift-items.js`) are code-built and stay that way.
 - **Premium items** are the generated props, outfits and gear, priced at 25,000 coins or more so the shop marks them Premium (`REWARDS.shop.premiumFrom`). A premium room prop goes in `assets/room/<id>.glb` with a shop entry that has `model: 'assets/room/<id>.glb'`; premium gear uses the gear paths above.
 

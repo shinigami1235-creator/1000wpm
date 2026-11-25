@@ -34,7 +34,8 @@ Router.register('shop', (() => {
     const list = Array.isArray(c) ? c : Array.isArray(c && c.items) ? c.items
       : Object.entries(c || {}).flatMap(([k, v]) => Array.isArray(v) ? v.map(i => ({ category: k, ...i })) : [{ id: k, ...v }]);
     // operator gear (REWARDS.shop.gear) replaced the old avatar creator's items
-    const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).map(g => ({ ...g, category: 'Operator' }));
+    // the operator's keyboards (its weapon) sit with the room keyboards in Keyboards (Gid, 25 Nov)
+    const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).map(g => ({ ...g, category: g.kb ? 'Keyboards' : 'Operator' }));
     return [...gear, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
@@ -188,7 +189,7 @@ Router.register('shop', (() => {
     if (premium && !card.querySelector('.prem')) card.querySelector('.body').insertAdjacentHTML('afterbegin', '<span class="prem">Premium</span>');
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
-      row.innerHTML = item.category === 'Operator' ? `<span class="owned">Owned</span><a class="btn out sm" href="#/lab">Operator</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
+      row.innerHTML = item.kb || item.acc ? `<span class="owned">Owned</span><a class="btn out sm" href="#/lab">Operator</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
       card.querySelector('[data-msg]').textContent = '';
       return;
     }
