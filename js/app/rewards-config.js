@@ -78,6 +78,25 @@ window.REWARDS = {
   },
 
   // Random room items.
+  // Surprise drops (Gid, 25 Nov 2026): finishing something may bring a bonus, never on a
+  // schedule a player can count on. Each finish rolls its chance; after `pity` misses in a row
+  // the next one always drops. Drops are earned only and are never sold, so no paid random boxes.
+  // A drop waits in the gift crate and opens on the next page that isn't a game.
+  //   coins: [lo, hi]   boost: x mult on coins earned by playing, for mins after it opens
+  //   gift: a room item, as the gift crate picks it   jackpot: shown as a jackpot
+  drops: {
+    chance: { task: 0.35, weekly: 0.6, alldone: 0.5, achievement: 0.4, win: 0.15 },
+    table: [
+      { w: 55, coins: [40, 120] },
+      { w: 25, coins: [150, 400] },
+      { w: 12, boost: { mult: 1.5, mins: 15 } },
+      { w: 5, gift: true },
+      { w: 3, coins: [1000, 1000], jackpot: true },
+    ],
+    pity: 5,
+    maxPerDay: 6,
+  },
+
   gifts: {
     streakDays: [3, 7],       // days of the 7-day cycle that bring a gift
     sessionChance: 1 / 6,     // chance after any finished run

@@ -60,5 +60,6 @@ Each day draws one easy, one medium and one hard task, seeded by the date so eve
 - Coins and XP for the streak, tasks, achievements and gifts are all in `js/app/rewards-config.js`.
 - `Progress.bonus(id)` returns a visual bonus when it is unlocked and switched on, with its `color`. The room reads `roomlight` this way.
 - `Progress.give(source)` hands out a random room gift. The crate opens on the next page that is not a game.
+- Surprise drops (`REWARDS.drops`): finishing a daily or weekly task, all of a day's or week's tasks, an achievement or a win (World Boss, duel, party clear, Superboss) rolls a chance of a bonus: coins, a 15-minute x1.5 coin boost, a room gift or a 1,000-coin jackpot. After 5 misses in a row the next finish always drops, and at most 6 come a day. They wait in the gift crate like gifts. `Progress.drop(kind)` rolls one, for tests. Drops are earned only and never sold.
 - Items with `gift: true` in `RoomItems` stay out of the shop. `js/room/gift-items.js` adds four of them with `RoomItems.add`.
 - Tests can step through days by setting `window.__wpmNow` to a function that returns a timestamp before the page scripts run.

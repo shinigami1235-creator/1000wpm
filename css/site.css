@@ -1367,3 +1367,7 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .wb-trained h3 { margin: 0 0 4px; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .wb-trained p { margin: 0 0 10px; color: var(--ink); }
 .wb-over .btn.out { margin-left: 10px; }
+/* surprise drops: the boost on the nav coins and in the gift crate (REWARDS.drops) */
+.coins .coin-boost { margin-left: 6px; padding: 1px 5px; font: 600 11px/1.3 var(--f-mono); color: var(--bg); background: var(--gold); }
+.gift-item .gift-boost { font: 700 44px/1 var(--f-mono); color: var(--gold); text-shadow: 0 0 14px rgba(242,194,48,.5); }
+.gift-dlg .label.gold { color: var(--gold); }

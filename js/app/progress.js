@@ -49,7 +49,8 @@ window.Progress = (() => {
     p.fxOff ||= {};       // bonus id -> true when switched off
     p.fxColor ||= {};     // bonus id -> colour
     p.gift ||= { month: null, runDay: null, runCount: 0 };
-    p.reveal ||= [];      // gifts given and not opened yet: { id, source } or { coins, source }
+    p.reveal ||= [];
+    p.drop ||= { day: null, n: 0, miss: 0 };      // surprise drops today and misses in a row (REWARDS.drops)      // gifts given and not opened yet: { id, source } or { coins, source }
     p.said ||= null;      // the day Tilde last announced the streak
     WPM.events.register(p.known);
   }
@@ -192,6 +193,7 @@ window.Progress = (() => {
         WPM.addXP(pay.xp);
         if (weekly) p.c.weekly++; else p.c.tasks++;
         emit('task', { ...taskView(row, weekly) });
+        maybeDrop(weekly ? 'weekly' : 'task');
         later.push(['task_done', { id: t.id, weekly }]);
       }
     }
@@ -201,6 +203,7 @@ window.Progress = (() => {
       WPM.addCoins(pay.coins, weekly ? 'weekly' : 'task');
       WPM.addXP(pay.xp);
       if (weekly) p.c.allWeekly++; else p.c.allDaily++;
+      maybeDrop('alldone');
       emit('alldone', { weekly, coins: pay.coins, xp: pay.xp });
     }
   }
@@ -231,6 +234,8 @@ window.Progress = (() => {
     advance(p.daily, e, false);
     advance(p.weekly, e, true);
     if (e.name === 'run') maybeRunGift();
+    // a win can bring a surprise drop
+    if (e.name === 'boss_win' || e.name === 'pvp_win' || e.name === 'superboss_win' || (e.name === 'party_run' && e.won)) maybeDrop('win');
   }
   // lifetime counters for the achievements
   function count(e) {
@@ -307,6 +312,7 @@ window.Progress = (() => {
     for (const a of got) { const pay = a.hidden ? R.achievements.hidden : R.achievements[a.tier]; coins += pay.coins; xp += pay.xp; }
     WPM.addCoins(coins, 'achievement');
     WPM.addXP(xp);
+    if (!quiet) maybeDrop('achievement');
     emit('achievements', got);
     return got;
   }
@@ -319,6 +325,28 @@ window.Progress = (() => {
     const shop = cat.filter(i => !i.gift && !i.roomSize && i.price > 0 && i.price <= R.gifts.maxPrice && !WPM.owns(i.id));
     return { only, shop };
   }
+  // ---------- surprise drops (REWARDS.drops) ----------
+  // Finishing a task, an achievement or a win rolls a chance of a bonus. After `pity` misses in
+  // a row the next finish always drops, and no more than maxPerDay come in a day.
+  function maybeDrop(kind) {
+    const D = R.drops; if (!D || !p) return null;
+    const t = today();
+    if (p.drop.day !== t) { p.drop.day = t; p.drop.n = 0; }
+    if (p.drop.n >= D.maxPerDay) return null;
+    if (p.drop.miss + 1 < D.pity && Math.random() >= (D.chance[kind] || 0)) { p.drop.miss++; return null; }
+    p.drop.miss = 0; p.drop.n++;
+    const sum = D.table.reduce((a, x) => a + x.w, 0);
+    let roll = Math.random() * sum, pick = D.table[0];
+    for (const x of D.table) { if ((roll -= x.w) < 0) { pick = x; break; } }
+    if (pick.gift) { give('drop'); return pick; }
+    const g = { source: 'drop', jackpot: !!pick.jackpot };
+    if (pick.boost) g.boost = { ...pick.boost };
+    else g.coins = Math.round(pick.coins[0] + Math.random() * (pick.coins[1] - pick.coins[0]));
+    p.reveal.push(g);
+    save(); emit('gift', nextGift());
+    return pick;
+  }
+
   // A gift is given straight away and opened when the player next sees a page that is not a game.
   function give(source) {
     p.reveal.push({ source });
@@ -328,12 +356,12 @@ window.Progress = (() => {
     const pool = giftPool();
     if (!pool) {
       // the room catalogue loads with the room; fetch it when a gift is waiting to be picked
-      if (p.reveal.some(g => !g.id && !g.coins) && window.Lazy) Lazy.need('room').then(resolve, () => {});
+      if (p.reveal.some(g => !g.id && !g.coins && !g.boost) && window.Lazy) Lazy.need('room').then(resolve, () => {});
       return;
     }
     let changed = false;
     for (const g of p.reveal) {
-      if (g.id || g.coins) continue;
+      if (g.id || g.coins || g.boost) continue;
       const r = rng(today() + ':' + source(g) + ':' + p.c.signins + ':' + p.reveal.length + ':' + WPM.owned().length);
       const from = pool.only.length && (r() < R.gifts.giftOnlyShare || !pool.shop.length) ? pool.only : pool.shop;
       if (from.length) {
@@ -359,13 +387,14 @@ window.Progress = (() => {
     p.gift.runCount++;
     give('run');
   }
-  const nextGift = () => p.reveal.find(g => g.id || g.coins) || null;
+  const nextGift = () => p.reveal.find(g => g.id || g.coins || g.boost) || null;
   // the reveal finished: count it and pay coins when the gift was coins
   function openGift() {
-    const i = p.reveal.findIndex(g => g.id || g.coins);
+    const i = p.reveal.findIndex(g => g.id || g.coins || g.boost);
     if (i < 0) return null;
     const [g] = p.reveal.splice(i, 1);
     if (g.coins) WPM.addCoins(g.coins, 'gift');
+    if (g.boost) WPM.boost(g.boost.mins, g.boost.mult);
     save();
     WPM.track('gift_open', { id: g.id || null, source: g.source });
     return g;
@@ -413,7 +442,7 @@ window.Progress = (() => {
     on, streak, tasks, achievements: achList, bonuses, bonus, setBonus,
     nextGift, openGift, resolveGifts: resolve, checkIn, ready: () => !!p,
     said: () => p.said, setSaid: d => { p.said = d; save(); },
-    dayReward, give,
+    dayReward, give, drop: maybeDrop,
     // a lifetime counter by name (bossDmg, bossWins, combo...), for the Operator ID
     counter: k => (p && p.c[k]) || 0,
     // the daily task ids a date would draw, for tests and for planning the pool

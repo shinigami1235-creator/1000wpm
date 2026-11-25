@@ -205,7 +205,7 @@ window.ProgressUI = (() => {
   // ---------- gift crate ----------
   let dlg = null, lastKey = 0, revealing = false;
   addEventListener('keydown', () => { lastKey = Date.now(); }, true);
-  const SOURCE = { streak: n => `Gift for day ${n} of your streak`, month: () => 'Gift for the new month', run: () => 'Gift after your run' };
+  const SOURCE = { streak: n => `Gift for day ${n} of your streak`, month: () => 'Gift for the new month', run: () => 'Gift after your run', drop: () => 'Surprise drop' };
   function canReveal() {
     const r = window.Router && Router.current();
     if (revealing || (window.UI && UI.playing && UI.playing()) || ['play', 'boss', 'type', 'superboss', 'duel', 'party'].includes(r)) return false;  // typing pages: the gift waits for the next page
@@ -225,15 +225,19 @@ window.ProgressUI = (() => {
       document.body.append(dlg);
       dlg.addEventListener('close', () => { revealing = false; setTimeout(tryReveal, 600); });
     }
-    const from = (SOURCE[g.source] || SOURCE.run)(P.streak().n);
+    const from = g.jackpot ? 'Jackpot drop' : (SOURCE[g.source] || SOURCE.run)(P.streak().n);
+    const bo = g.boost, title = it ? e(it.name) : bo ? `Coin boost x${bo.mult}` : `${fmt(g.coins)} coins`;
+    const sub = it ? e(it.desc || '') + (it.gift ? ' It only comes as a gift.' : '')
+      : bo ? `Coins you earn by playing are x${bo.mult} for the next ${bo.mins} minutes.`
+      : g.source === 'drop' ? '' : 'You own every item a gift can bring.';
     dlg.innerHTML = `
       <div class="gift-stage">
         <div class="crate" aria-hidden="true"><i class="lid"></i><i class="body"></i></div>
-        <div class="gift-item">${it ? '<span class="ph-text">LOADING</span>' : `${UI.coin()}`}</div>
+        <div class="gift-item">${it ? '<span class="ph-text">LOADING</span>' : bo ? `<b class="gift-boost">x${bo.mult}</b>` : `${UI.coin()}`}</div>
       </div>
-      <p class="label">${e(from)}</p>
-      <h2 id="gift-title">${it ? e(it.name) : `${fmt(g.coins)} coins`}</h2>
-      <p class="dim">${it ? e(it.desc || '') + (it.gift ? ' It only comes as a gift.' : '') : 'You own every item a gift can bring.'}</p>
+      <p class="label${g.jackpot ? ' gold' : ''}">${e(from)}</p>
+      <h2 id="gift-title">${title}</h2>
+      ${sub ? `<p class="dim">${sub}</p>` : ''}
       <form method="dialog" class="row">
         ${it ? `<a class="btn" href="#/room" data-go-room>Place it in your room</a>` : ''}
         <button class="btn out" value="close">Close</button>

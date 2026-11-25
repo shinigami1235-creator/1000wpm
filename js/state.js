@@ -95,10 +95,21 @@ window.WPM = (() => {
     emit('pass', pass());
     return pass();
   }
+  // A coin boost from a surprise drop (REWARDS.drops): x mult on earned coins for a while
+  function boostOn() { return data.boost && data.boost.until > now().getTime() ? data.boost : null; }
+  function boost(mins, mult) {
+    if (mins === undefined) return boostOn();
+    const from = Math.max(now().getTime(), (boostOn() || { until: 0 }).until);
+    data.boost = { until: from + mins * 60000, mult }; save();
+    emit('boost', data.boost);
+    return data.boost;
+  }
   function addCoins(n, reason) {
     n = Math.round(n);
     const S = window.REWARDS && REWARDS.shop;
     if (n > 0 && S && passOn() && S.earned.includes(reason)) n = Math.round(n * S.pass.coinMult);
+    const bo = boostOn();
+    if (n > 0 && S && bo && S.earned.includes(reason) && reason !== 'gift') n = Math.round(n * bo.mult);
     if (!n) return data.coins;
     data.coins = Math.max(0, data.coins + n); save();
     emit('coins', { coins: data.coins, delta: n, reason });
@@ -257,7 +268,7 @@ window.WPM = (() => {
   return {
     ART_BEST, on, record, track, events, now, day, progress, saveProgress: save,
     useAchievements, unlock, unlockedOn, grant, stats, streak, levelInfo, achievements,
-    coins: () => data.coins, testing, testCoins, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
+    coins: () => data.coins, testing, testCoins, boost, addCoins, spend, addXP, xp: () => data.xp, pass, grantPass,
     owns, buy, owned: () => [...data.owned], getRoom, setRoom,
     profile, setProfile, sessions: () => [...data.sessions], best: () => ({ ...data.best }),
     reset, exportData, learn, setLearn,

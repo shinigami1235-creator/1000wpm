@@ -26,7 +26,21 @@
     coinsNum.textContent = UI.fmt(WPM.coins());
     if (bump) { coinsEl.classList.remove('bump'); void coinsEl.offsetWidth; coinsEl.classList.add('bump'); }
   }
-  paintMe(); paintCoins();
+  // a coin boost from a surprise drop shows on the coins until it runs out
+  const boostTag = document.createElement('b'); boostTag.className = 'coin-boost'; boostTag.hidden = true; coinsEl.append(boostTag);
+  let boostT = 0;
+  function paintBoost() {
+    clearTimeout(boostT);
+    const bo = WPM.boost && WPM.boost();
+    boostTag.hidden = !bo;
+    if (!bo) { coinsEl.removeAttribute('title'); return; }
+    const mins = Math.ceil((bo.until - Date.now()) / 60000);
+    boostTag.textContent = `x${bo.mult}`;
+    coinsEl.title = `Coin boost x${bo.mult}: ${mins} min left`;
+    boostT = setTimeout(paintBoost, 30000);
+  }
+  paintMe(); paintCoins(); paintBoost();
+  WPM.on('boost', paintBoost);
   WPM.on('profile', paintMe);
   WPM.on('coins', () => paintCoins(true));
   WPM.on('reset', () => { paintMe(); paintCoins(); Router.reload(); });
