@@ -18,7 +18,7 @@ Router.register('boss', (() => {
     'It attacks twice as often now.',
   ];
   const tipsFor = name => ({
-    slam: 'Type the red word before its timer runs out to block the attack.',
+    slam: 'The red word in your line blocks the attack. Type it before its timer runs out.',
     phrase: 'Type both words and the space between them to block.',
     volley: 'Type a cyan packet before it reaches you to send it back for triple damage.',
     shield: 'Your hits go into the firewall until the raid breaks it. The kernel opens when it breaks.',
@@ -34,8 +34,12 @@ Router.register('boss', (() => {
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
   const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, return: 3, heal: 4, add: 5 };
-  // integrity a raid attack takes when it reaches you: 22 in phase 1 to 34 in phase 5; a packet takes 8
-  const slamDmg = p => 22 + 3 * p, PACKET_DMG = 8;
+  // attacks on you show as a red phrase in your own word line, late enough to be a scare and early
+  // enough for your speed (The Typing of the Dead, Gid 26 Nov 2026); the rest stay as corner chips
+  const THREAT = new Set(['block', 'dodge']);
+  // integrity shows as four pips of 25: an attack that reaches you takes one (half with the team
+  // firewall at 50), a packet takes 8
+  const slamDmg = () => 25, PACKET_DMG = 8;
   const STREAK_N = 6, STREAK_MS = 4500, STAGGER_CD = 8000, CRITS = 3, JAM_MS = 5000, ACTIVE_MS = 20000, LOCK_MS = 1200;
   const DMG_MILESTONES = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05];
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
@@ -50,6 +54,8 @@ Router.register('boss', (() => {
   let labels = new Map(), misses = [], gone = new Map();
   // the combat layer: this player's combo and spells, the sounds, the word stack's source
   let squad = null, squadOffs = [], tier = 3;
+  // cps: your letters a second, for the counter phrase's window; setN words make one set, about 4 s of typing
+  let cps = 3, setN = 6, setCount = 0, threatOn = false, threatId = null, threatAt = 0, boomWant = false, livesKey = '', livesHp = -1;
   let me = null, cSnd = null, words = null, spellT = [], wordT0 = 0, grace = {}, frostMs = 0, castDmg = {}, avoid = new Set(), comboShown = false;
   const STACK_DIFF = [[1, 4], [2, 4], [2, 5], [3, 5], [3, 6]];
   const cSfx = (n, a) => { if (cSnd) cSnd.play(n, a); };
@@ -78,6 +84,8 @@ Router.register('boss', (() => {
     if (!window.BossSquad) return;
     const d = WorldBossNet.demo();
     tier = R.tierOf(myWpm());
+    cps = Math.max(1.5, myWpm() * 5 / 60);
+    setN = Math.max(4, Math.min(14, Math.round(myWpm() / 60 * 4)));
     const div = window.Ops && Ops.division();
     squad = BossSquad.create({
       now, demo: d, raiders: d && d.raiders ? d.raiders() : [],
@@ -90,10 +98,15 @@ Router.register('boss', (() => {
     if (scene && window.Operator) scene.crew(squad.members().filter(m => !m.you).map(m => ({ id: opId(m), preset: Operator.random(m.name) })));
     const name = m => (m.you ? 'you' : m.name);
     squadOffs.push(
-      squad.on('lock', e => { if (!el) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} is aiming at you. Type the dodge word`, cls: 'alert' }); } }),
+      squad.on('lock', e => { if (!el || (st && st.defeatedAt)) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} is aiming at you. Type the dodge word`, cls: 'alert' }); } }),
       squad.on('dodge', () => { if (!el) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
       squad.on('covered', e => { if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
-      squad.on('hit', e => { if (scene) scene.act(opId(e.who), 'hit'); if (!el || !e.who.you) return; if (e.shielded) pushFeed({ text: 'Your recruit shield saved you. You can go down from CL-02', cls: 'you' }); }),
+      squad.on('hit', e => {
+        if (scene) scene.act(opId(e.who), 'hit');
+        if (!el || !e.who.you) return;
+        if (e.dmg >= 12) smear();
+        if (e.shielded) pushFeed({ text: 'Your recruit shield saved you. You can go down from CL-02', cls: 'you' });
+      }),
       squad.on('down', e => { if (scene) scene.act(opId(e.who), 'down'); if (!el) return; pushFeed({ text: e.who.you ? "You're down. Each word you type brings you back a second sooner" : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
       squad.on('revive', e => { if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
       squad.on('up', e => { if (scene) scene.act(opId(e.who), 'up'); if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
@@ -106,6 +119,7 @@ Router.register('boss', (() => {
     feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     flow = null;
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
+    setCount = 0; threatOn = false; threatId = null; boomWant = false; livesKey = ''; livesHp = -1;
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
     spellT.forEach(clearTimeout); spellT = []; grace = {}; frostMs = 0; castDmg = {}; avoid = new Set(); comboShown = false;
     if (me) me.reset();
@@ -202,7 +216,7 @@ Router.register('boss', (() => {
             <span class="wb-hpnum"><b data-k="hp">0</b><span class="wb-left"><span data-k="left">0%</span> left</span></span>
           </div>
           <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" aria-valuemax="${B.maxHp}" data-k="meter">
-            <i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
+            <i class="lag" data-k="lag"></i><i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
             ${R.PHASES.slice(1, NPH()).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
           </div>
           <div class="wb-team" data-k="team" title="Blocks, packets sent back and bugs deleted fill it. 50: boss attacks do half damage to operators. 75: every hit x1.2. 100: root access, x1.5 hits through the firewall for 10 s.">
@@ -215,6 +229,9 @@ Router.register('boss', (() => {
         <section class="boss-stage" data-k="stage" aria-label="The boss">
           <div class="kb-loading" data-k="loading">Loading</div>
           <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
+          <div class="wb-smear" data-k="smear" aria-hidden="true"></div>
+          <div class="wb-lbox" data-k="lbox" aria-hidden="true"></div>
+          <div class="wb-lives" data-k="lives" role="img" aria-label="Integrity"></div>
           <div class="wb-labels" data-k="labels" aria-hidden="true"></div>
           <div class="wb-ntags" data-k="ntags" aria-hidden="true"></div>
           <ol class="wb-cards" data-k="cards" aria-label="Raid feed"></ol>
@@ -298,7 +315,7 @@ Router.register('boss', (() => {
 
     renderQueue();
     tip('start');
-    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, bossId: 'syntax' });
+    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, onBoom: boom, bossId: 'syntax' });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = "The boss can't load without an internet connection."; });
 
@@ -360,8 +377,9 @@ Router.register('boss', (() => {
   // ---------- the 3-second countdown after Join ----------
   // Keys wait until it ends; attacks can't hurt you either, since they only land on an active typist.
   let readyAt = 0;
-  function countdown() {
-    readyAt = performance.now() + 3000;
+  function countdown(onGo) {
+    readyAt = Math.max(readyAt, performance.now() + 3000);
+    if (onGo) timers.push(setTimeout(() => { if (el) onGo(); }, 2550));
     const stage = q('stage'); if (!stage) return;
     const c = document.createElement('div');
     c.className = 'wb-count'; c.setAttribute('aria-live', 'assertive');
@@ -460,6 +478,7 @@ Router.register('boss', (() => {
     if (target && target.kind) {
       const m = target, ok = typed === m.word && t < m.due;
       if (!ok) misses.push({ typed, word: m.word, late: t >= m.due });
+      if (THREAT.has(m.kind) && flow) flow.push(m.word, typed, ok, true);
       typed = ''; target = null;
       if (ok) {
         sess.good++;
@@ -473,6 +492,7 @@ Router.register('boss', (() => {
           sess.blocks++;
           WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0, tier });
           if (scene) scene.block(m.id);
+          A.uncut();
           sfx('blockOk');
           pop('BLOCKED', 'cyan');
           pushFeed({ text: `You blocked the ${R.ATTACK_NAME[m.ev.kind]}`, cls: 'you' });
@@ -526,6 +546,8 @@ Router.register('boss', (() => {
       }
       TT.click(true);
       streak(t);
+      // every set of words (about 4 s of your typing) knocks the boss back and moves it
+      if (++setCount >= setN) { setCount = 0; if (scene) scene.setHit(clean ? 1 : 0.7); sfx('crit'); }
       milestone('combo', combo);
       if (combo && combo % 5 === 0) WPM.track('combo', { n: combo, mode: 'boss' });
     } else {
@@ -702,7 +724,14 @@ Router.register('boss', (() => {
     const box = q('queue'); if (!box) return;
     if (!flow) flow = WordFlow.create(box, { lines: 3 });
     const mineNow = !target || target.stack;
-    flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: stack.slice(1, 50) });
+    // an attack on you is the next phrase in your line, in red, with its own timer
+    const th = st && !st.defeatedAt ? mech.find(m => THREAT.has(m.kind)) : null;
+    if (th) {
+      const onTh = target && target.kind && target.id === th.id;
+      const tw = { ms: th.total, el: Math.max(0, th.total - (th.due - now())) };
+      if (onTh || !typed) flow.render({ cur: th.word, typed: onTh ? typed : '', mine: true, next: stack.slice(0, 50), threat: { i: 0, ...tw } });
+      else flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: [th.word, ...stack.slice(1, 50)], threat: { i: 1, ...tw } });
+    } else flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: stack.slice(1, 50) });
     if (me && q('track') && !q('track').dataset.key) paintTrack(me.state());
     q('combo').textContent = combo;
     q('box').classList.toggle('locked', now() < lockUntil);
@@ -725,7 +754,7 @@ Router.register('boss', (() => {
     if (chg && performance.now() - chg.last > CHARGE_IDLE) releaseCharge();
     const t = now();
     if (me) me.tick();
-    if (squad) squad.tick(t, st.phase || 0);
+    if (squad && !st.defeatedAt) squad.tick(t, st.phase || 0);
     const isDown = !!(squad && squad.down());
     const evs = R.eventsAt(st, t, 800 + Math.max(0, ...Object.values(grace)));
     const list = squad ? squad.targets(t) : [];
@@ -734,17 +763,23 @@ Router.register('boss', (() => {
         sent.add(e.id);
         if (e.type === 'slam' && frostMs) { grace[e.id] = frostMs; frostMs = 0; if (scene) scene.freezeAttack(e.id); }
         if (scene) scene.event(e, t);
-        if (e.type === 'slam') { sfx('windup', Math.min(2.5, (e.hit - t) / 1000)); tip(R.PHASES[st.phase].phrase ? 'phrase' : 'slam'); }
+        if (e.type === 'slam') {
+          sfx('windup', Math.min(2.5, (e.hit - t) / 1000)); tip(R.PHASES[st.phase].phrase ? 'phrase' : 'slam');
+          // the music drops out for the last 0.9 s before the hit and slams back on it
+          const toHit = (e.hit + (grace[e.id] || 0) - t) / 1000;
+          if (toHit > 0.2 && !isDown) A.cut(Math.max(0, toHit - 0.9), Math.min(0.9, toHit));
+        }
         if (e.type === 'volley') tip('volley');
         if (e.type === 'adds') tip('adds');
       }
       if (e.type === 'slam') {
         // cryo lock gives you extra time on one attack
         const due = e.hit + (grace[e.id] || 0);
-        if (t < due && !mine.has(e.id) && !isDown) {
-          list.push({ kind: 'block', id: e.id, word: R.blockWord(e, tier), due, total: due - e.start, ev: e });
+        const bw = R.blockWord(e, tier), win = winMs(bw);
+        if (t < due && !mine.has(e.id) && !isDown && t >= due - win) {
+          list.push({ kind: 'block', id: e.id, word: bw, due, total: Math.min(win, due - e.start), ev: e });
           const left = Math.ceil((due - t) / 1000);
-          if (left <= 3 && warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
+          if (warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
         }
         if (t >= due && !done.has(e.id)) {
           done.add(e.id);
@@ -797,10 +832,18 @@ Router.register('boss', (() => {
         }
       }
     }
+    // a dodge shows in your line once its window opens, the same as a block
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (m.kind === 'dodge') { const w = winMs(m.word); if (t < m.due - w) list.splice(i, 1); else m.total = Math.min(m.total, w); }
+    }
     list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
     for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
+    const th = mech.find(m => THREAT.has(m.kind));
+    if (!!th !== threatOn) { threatOn = !!th; A.threat(threatOn); }
+    if ((th ? th.id : null) !== threatId) { threatId = th ? th.id : null; threatAt = t; renderQueue(); }
     // an attack word that left the row takes what was typed with it; a spell isn't in the row and
     // clears itself when its offer ends (offerEnd), so it's left alone here
     if (target && target.kind && target.kind !== 'spell' && !target.gone && !mech.some(m => m.id === target.id)) {
@@ -834,13 +877,13 @@ Router.register('boss', (() => {
     const t = now();
     const spells = st.defeatedAt ? [] : spellTargets();
     const max = spells.length ? 3 : 5;
-    const show = mech.slice(0, max);
-    const key = show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
+    const rest = mech.filter(m => !THREAT.has(m.kind)), show = rest.slice(0, max);
+    const key = mech.length + ':' + show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
     if (force || key !== mechKey) {
       mechKey = key;
       let html = '';
       if (!show.length) {
-        const nx = st.defeatedAt ? null : R.nextEventAt(st, t);
+        const nx = st.defeatedAt || mech.length ? null : R.nextEventAt(st, t);
         html = nx ? `<span class="wb-next">Next attack in <b data-k="nexts">${Math.max(0, Math.ceil((nx - t) / 1000))}s</b></span>` : '';
       } else {
         html = show.map((m, i) => {
@@ -848,7 +891,7 @@ Router.register('boss', (() => {
           return `<span class="wb-chip ${m.kind}${i === 0 ? ' first' : ''}${on ? ' on' : ''}${grace[m.id] ? ' frozen' : ''}" data-id="${esc(m.id)}">
             <small>${grace[m.id] ? `Block +${Math.round(grace[m.id] / 1000)}s` : KIND[m.kind]}</small><span class="w">${lettersHtml(m.word, on ? typed : '', on)}</span>
             <i class="bar"><i></i></i><em class="secs"></em></span>`;
-        }).join('') + (mech.length > max ? `<span class="wb-more">+${mech.length - max}</span>` : '');
+        }).join('') + (rest.length > max ? `<span class="wb-more">+${rest.length - max}</span>` : '');
       }
       // the spells on offer sit after the attacks, in their own group
       if (spells.length) {
@@ -875,7 +918,7 @@ Router.register('boss', (() => {
     }
     if (!show.length) {
       const n = row.querySelector('[data-k="nexts"]');
-      const nx = st.defeatedAt ? null : R.nextEventAt(st, t);
+      const nx = st.defeatedAt || mech.length ? null : R.nextEventAt(st, t);
       if (n && nx) n.textContent = Math.max(0, Math.ceil((nx - t) / 1000)) + 's';
     }
     for (const m of show) {
@@ -930,6 +973,7 @@ Router.register('boss', (() => {
         </div>`;
       }).join('');
     }
+    paintLives();
     const me2 = squad.me(), yd = q('youdown');
     if (me2.down) {
       yd.hidden = false;
@@ -942,11 +986,7 @@ Router.register('boss', (() => {
   function paintLabels() {
     const layer = q('labels'); if (!layer) return;
     const want = new Map();
-    const firstBlock = mech.find(m => m.kind === 'block');
-    for (const m of mech) {
-      if (m.kind === 'block' && m !== firstBlock) continue;
-      want.set(m.id, m);
-    }
+    for (const m of mech) if (!THREAT.has(m.kind)) want.set(m.id, m);
     for (const [id, n] of labels) if (!want.has(id)) { n.remove(); labels.delete(id); }
     for (const [id, m] of want) {
       let n = labels.get(id);
@@ -994,6 +1034,10 @@ Router.register('boss', (() => {
     const f = s.hp / s.maxHp;
     q('hp').innerHTML = `${fmt(Math.ceil(s.hp))}<small> / ${fmt(s.maxHp)} HP</small>`;
     q('fill').style.width = (100 * f) + '%';
+    // the HP just lost shows amber for half a second, then drains (the bar in The Typing of the Dead)
+    const lag = q('lag');
+    if (first || parseFloat(lag.style.width || '100') < 100 * f) { lag.style.transition = 'none'; lag.style.width = (100 * f) + '%'; void lag.offsetWidth; lag.style.transition = ''; }
+    else lag.style.width = (100 * f) + '%';
     paintTeam(s);
     q('meter').setAttribute('aria-valuenow', Math.ceil(s.hp));
     q('left').textContent = (f > 0 && f < 0.01 ? (100 * f).toFixed(2) : (100 * f).toFixed(1)) + '%';
@@ -1034,8 +1078,8 @@ Router.register('boss', (() => {
   function transition(ph) {
     lockUntil = now() + LOCK_MS;
     if (target && target.kind) { typed = ''; target = null; }
-    if (scene) scene.setPhase(ph, false);
-    sfx('roar');
+    if (ph === R.AWAY_PHASE) leaveAndReturn();
+    else { if (scene) scene.setPhase(ph, false); sfx('roar'); }
     document.dispatchEvent(new CustomEvent('buddy', { detail: 'phase' }));
     const b = q('banner');
     b.hidden = false;
@@ -1045,6 +1089,19 @@ Router.register('boss', (() => {
     pushFeed({ sys: true, text: `Phase ${ph + 1}: ${R.PHASES[ph].name}` });
     renderQueue();
     setTimeout(renderQueue, LOCK_MS + 30);
+  }
+
+  // Half HP: the boss leaps out of the arena. 2.5 s of empty screen with no music, a 3-2-1 in
+  // the silence, then it drops back in on GO (Hierophant and Judgment in The Typing of the Dead).
+  // WorldBossRules.away() keeps damage off it while it's gone.
+  function leaveAndReturn() {
+    const gap = R.AWAY_MS - 3000;
+    readyAt = performance.now() + R.AWAY_MS;
+    typed = ''; target = null;
+    if (scene) { scene.leave(); scene.setPhase(R.AWAY_PHASE, false); }
+    sfx('roar');
+    A.cut(0.5, (R.AWAY_MS - 500) / 1000);
+    timers.push(setTimeout(() => { if (el) countdown(() => { if (scene) scene.arrive(); }); }, gap));
   }
 
   function onHit(h) {
@@ -1320,6 +1377,31 @@ Router.register('boss', (() => {
     p.textContent = text;
     void p.offsetWidth; p.classList.add('go');
   }
+  // the counter phrase's window: its letters at your speed, x1.3, plus 0.6 s to see it
+  function winMs(word) { return Math.round((word.length / cps) * 1300 + 600); }
+  // an attack that reached you: an orange smear across the arena for under half a second
+  let smearT = 0;
+  function smear() {
+    const n = q('smear'); if (!n) return;
+    const t = performance.now();
+    if (t - smearT < 500) return;
+    smearT = t;
+    n.classList.remove('go'); void n.offsetWidth; n.classList.add('go');
+  }
+  // your integrity as four pips, bottom left of the arena; a pip you lose cracks and falls
+  function paintLives() {
+    const box = q('lives'); if (!box || !squad) return;
+    const m = squad.me(), per = m.max / 4;
+    const key = m.hp + (m.down ? 'd' : '');
+    if (key === livesKey) return;
+    const before = livesHp; livesKey = key; livesHp = m.hp;
+    const lostPip = before > m.hp ? Math.floor((before - 0.01) / per) : -1;
+    box.innerHTML = [0, 1, 2, 3].map(i => {
+      const f = Math.max(0, Math.min(1, (m.hp - i * per) / per));
+      return `<i class="${f <= 0 ? 'out' : ''}${i === lostPip && f < 1 ? ' lost' : ''}" style="--f:${f.toFixed(2)}"></i>`;
+    }).join('');
+    box.setAttribute('aria-label', `Integrity ${Math.ceil(m.hp / per)} of 4`);
+  }
   let tintT = 0;
   function flashTint() {
     const n = q('tint'); if (!n) return;
@@ -1437,6 +1519,7 @@ Router.register('boss', (() => {
   // ---------- defeat ----------
   function down(instant) {
     mech = []; target = null; typed = '';
+    { const b = q('banner'); clearTimeout(b._t); b.hidden = true; }
     spellT.forEach(clearTimeout); spellT = [];
     if (me) me.closeOffer('down');
     el.querySelector('.boss-type').classList.add('is-done');
@@ -1444,11 +1527,18 @@ Router.register('boss', (() => {
     for (const n of labels.values()) n.remove();
     labels.clear();
     if (scene) { scene.setWeak(false); scene.defeat(instant); }
-    if (!instant) { sfx('defeat'); A.victory(); }
+    // the last word: the music stops dead, the picture goes letterbox and slow, and the sound
+    // comes back as the boss blows apart (Magician and Emperor in The Typing of the Dead)
+    if (!instant) { A.silence(); boomWant = true; q('lbox').classList.add('on'); timers.push(setTimeout(boom, 1800)); }
     else A.stop();
     if (!instant) document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-kill' }));
     clearTimeout(downTimer);
-    downTimer = setTimeout(() => showResult(instant), instant ? 0 : 3200);
+    downTimer = setTimeout(() => showResult(instant), instant ? 0 : 4200);
+  }
+  function boom() {
+    if (!boomWant || !el) return;
+    boomWant = false;
+    sfx('defeat'); A.victory();
   }
   // The rewards are recorded when the result opens rather than at the kill, and
   // the block bonus follows a little later, so the site toasts don't all land at once.
@@ -1551,6 +1641,7 @@ Router.register('boss', (() => {
     const box = q('down');
     box.hidden = true; box.innerHTML = '';
     q('stage').classList.remove('is-down');
+    q('lbox').classList.remove('on');
     el.querySelector('.boss-type').classList.remove('is-done');
     resetFight();
     if (scene) scene.revive();

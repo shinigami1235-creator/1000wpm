@@ -10,6 +10,9 @@
 //   cast(spellId, { hits, effect })   a spell from the combat layer, aimed from your marker at the boss
 //   aura(name, on), fxEvent(kind)     statuses that stay on screen, safe mode used up, a split copy lost
 //   react(kind, power, extra)          flinch, stagger, flash, break (the phase-break pose), stun, freeze, pull
+//   setHit(power)                      a finished set of words: the boss reels and moves to a new spot
+//   leave() / arrive()                 at half HP it leaps out of the arena, then drops back in
+//   opts.onBoom()                      the moment the dead boss blows apart, for the sound
 //   freezeAttack(id)                   cryo lock: that attack's hit shows as held off for you
 //   defeat(instant) / revive()
 //   screen(key, out)      host pixels of 'head', 'core', 'you', 'shot:<id>' or 'add:<id>'
@@ -55,6 +58,9 @@ window.BossScene = (() => {
       killAdd: (id, you) => impl && impl.killAdd(id, you),
       block: id => impl && impl.block(id),
       stagger: () => impl && impl.stagger(),
+      setHit: p => impl && impl.setHit(p),
+      leave: () => impl && impl.leave(),
+      arrive: () => impl && impl.arrive(),
       hurt: k => impl && impl.hurt(k),
       cast: (id, c) => impl && impl.cast(id, c),
       aura: (name, on) => impl && impl.aura(name, on),
@@ -812,7 +818,11 @@ window.BossScene = (() => {
     const evs = [];            // attacks on the scene clock
     const blocked = new Set();
     const anchors = new Map();
-    const mv = { x: 0, z: 0, tx: 0, tz: 0, y: 0, face: 0, spin: 0, spinV: 0, next: 0, lungeAt: -9, blinkAt: -9 };
+    const mv = { x: 0, z: 0, tx: 0, tz: 0, y: 0, face: 0, spin: 0, spinV: 0, next: 0, lungeAt: -9, blinkAt: -9, dashUntil: 0 };
+    // threatK: 0 to 1 as an attack comes at the camera (the zoom and the step forward)
+    // away: the half-HP exit, { leaveAt, arriveAt } on the scene clock
+    let threatK = 0, offY = 0;
+    const away = { leaveAt: -9, arriveAt: -9, gone: false };
 
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
     const v1 = new V(), v2 = new V(), v3 = new V();
@@ -866,7 +876,7 @@ window.BossScene = (() => {
       for (const s of shots) if (s.on && s.ret < 0) { s.on = false; s.g.visible = false; burst(s.pos, 10, 4, CYAN); }
       for (const a of adds) if (a.on && a.dying < 0) a.dying = nowS();
       tele.visible = teleFill.visible = false; beam.visible = false; sweepBar.visible = false; charge = 0;
-      if (!instant && up) {
+      if (!instant && up && !away.gone) {
         roarAt = nowS();
         shake = Math.max(shake, 0.9);
         wave(root.position, 2, 30, 1.6, pal.a, 0.8);
@@ -1149,6 +1159,54 @@ window.BossScene = (() => {
       burst(v1, 40, 10, WHITE);
       wave(root.position, 1, 14, 0.9, WHITE, 0.7);
     }
+    // a finished set of words (boss.js): reel back for about a second, then dash to a new spot
+    // 4 to 8 units across, which is 0.2 to 0.4 of the screen
+    function setHit(power = 1) {
+      if (dead || away.gone) return;
+      const t = nowS();
+      recoilV -= 1.6 * power; headJerk = 1; reelAt = t; jolt = 0;
+      if (!reduce) mv.z -= 0.9 * power;
+      shake = Math.max(shake, 0.4 * power);
+      stopUntil = Math.max(stopUntil, performance.now() + 70);
+      scatter(Math.round(16 * power), 1.1);
+      burst(anchorCore, 30, 9, WHITE);
+      if (canFlash()) hitGlow = Math.max(hitGlow, calm ? 0.4 : 0.8);
+      let s = SPOTS[0];
+      for (let k = 0; k < 8; k++) { s = SPOTS[Math.floor(Math.random() * SPOTS.length)]; if (Math.abs(s[0] - mv.tx) >= 4) break; }
+      mv.tx = s[0]; mv.tz = s[1]; mv.next = t + 3 + Math.random() * 2; mv.dashUntil = t + 1.1;
+    }
+    function leave() {
+      if (dead) return;
+      away.leaveAt = nowS(); away.arriveAt = -9; away.gone = true;
+      evs.length = 0;
+    }
+    function arrive() {
+      if (dead) return;
+      away.arriveAt = nowS(); root.visible = true;
+    }
+    function awayTick(t) {
+      const ul = t - away.leaveAt, ua = t - away.arriveAt;
+      if (away.arriveAt > away.leaveAt) {
+        // drops in from above the frame and lands in the middle
+        if (ua < 0.45) offY = 60 * (1 - easeIn(ua / 0.45));
+        else {
+          offY = 0;
+          if (away.gone) {
+            away.gone = false; roarAt = t;
+            mv.x = mv.tx = 0; mv.z = mv.tz = 0;
+            shake = Math.max(shake, reduce ? 0.4 : 1.3);
+            stopUntil = Math.max(stopUntil, performance.now() + 140);
+            wave(root.position, 1, 34, 1.4, pal.a, 0.9); wave(root.position, 0.5, 14, 0.6, WHITE, 0.8);
+            burst(v1.copy(root.position).setY(0.3), 90, 16, WHITE, 1.4, 12);
+            scatter(40, 1.4);
+          }
+        }
+      } else if (away.gone) {
+        // crouches, then leaps up out of the frame
+        offY = ul < 0.35 ? -1.2 * ease(ul / 0.35) : 70 * easeIn(Math.min(1, (ul - 0.35) / 0.6));
+        if (ul > 1.05) root.visible = false;
+      } else offY = 0;
+    }
     function hurt() {
       if (!canFlash()) return;
       post.uniforms.uTint.value.set('#ff4d5e');
@@ -1177,6 +1235,8 @@ window.BossScene = (() => {
       if (dead) return;
       if (fx) fx.clear();
       dead = true; deadAt = nowS(); deadT = instant ? 9 : 0; won = true;
+      if (!instant && !reduce) slowUntil = performance.now() + 450;
+      threatK = 0; away.gone = false; root.visible = true; offY = 0;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
       for (const s of shots) { s.on = false; s.g.visible = false; }
       for (const a of adds) if (a.on) a.dying = nowS();
@@ -1205,6 +1265,7 @@ window.BossScene = (() => {
       for (const s of shots) { s.on = false; s.g.visible = false; }
       for (const a of adds) { a.on = false; a.m.visible = false; a.boomed = false; }
       mv.x = mv.z = mv.tx = mv.tz = 0; roarAt = -9; shieldF = null; weakOn = false;
+      away.gone = false; away.leaveAt = away.arriveAt = -9; offY = 0; root.visible = true;
       palFrom = palTo = phase = 0; applyPal(1); pilHT = 0.35;
       setFrac(1, true);
     }
@@ -1428,8 +1489,10 @@ window.BossScene = (() => {
       // move
       const rate = (0.6 + M.speed * 0.5) * (reduce ? 0.5 : 1);
       const strike = sl && !sl.cut && sl.kind === 'lunge' && t > sl.h && t < sl.h + 0.4;
-      mv.x += (tx - mv.x) * Math.min(1, dt * rate);
-      mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate));
+      tz += 3.5 * threatK * still;                       // every attack steps toward the camera
+      const dash = t < mv.dashUntil ? 6 : 0;            // after a finished set it dashes to its new spot
+      mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
+      mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
       // phase 2: a full turn now and then
       const su = t - mv.spin;
       mv.face = su < 1.3 && M.spin ? smooth(su / 1.3) * Math.PI * 2 : 0;
@@ -1469,6 +1532,20 @@ window.BossScene = (() => {
       tethMat.uniforms.uTime.value = reduce ? 0 : at;
       shieldMat.uniforms.uTime.value = at;
 
+      // an attack comes at the camera: the zoom builds over the last 0.7 s before the hit, holds
+      // 0.15 s and lets go over 0.7 s; a blocked attack lets go at once (The Typing of the Dead:
+      // the boss goes from 40% to 85% of the screen in half a second)
+      {
+        let k = 0;
+        const sl = current(t, 'slam');
+        if (sl && !dead && !away.gone) {
+          if (sl.cut) k = Math.max(0, 1 - (t - sl.cut) / 0.25) * clamp(1 - (sl.h - sl.cut) / 0.7, 0, 1);
+          else if (t < sl.h) k = easeIn(clamp(1 - (sl.h - t) / 0.7, 0, 1));
+          else k = 1 - smooth(clamp((t - sl.h - 0.15) / 0.7, 0, 1));
+        }
+        threatK = k * (reduce ? 0.35 : 1);
+      }
+      awayTick(t);
       // pose and movement
       if (!dead) motion(t, at, bdt);
       const k = Math.min(1, bdt * 7);
@@ -1477,7 +1554,7 @@ window.BossScene = (() => {
       recoil = clamp(recoil, -0.9, 0.3);
       headJerk = Math.max(0, headJerk - adt * 2.5);
       jolt = Math.max(0, jolt - adt * 2.6);
-      root.position.set(mv.x, cur.y, mv.z);
+      root.position.set(mv.x, cur.y + offY, mv.z);
       root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
       hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3 + (stunned && !reduce ? Math.sin(t * 47) * 0.025 : 0));
       tintMix += ((iced ? 0.6 : stunned ? 0.5 : 0) - tintMix) * Math.min(1, dt * 6);
@@ -1554,6 +1631,7 @@ window.BossScene = (() => {
         glowMat.opacity = 0.6 * kk;
         if (deadT > 1.35 && !deadBoom) {
           deadBoom = true;
+          if (opts.onBoom) opts.onBoom();
           v1.copy(anchorCore);
           burst(v1, 260, 18, pal.a, 1.2, 4);
           burst(v1, 120, 10, WHITE, 1, 2);
@@ -1814,7 +1892,10 @@ window.BossScene = (() => {
         camBase.z - roarK * 3);
       v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5, root.position.z * 0.3);
       lookCur.lerp(v1, Math.min(1, dt * 2));
-      camera.lookAt(lookCur);
+      if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.55); camera.lookAt(vG); }
+      else camera.lookAt(lookCur);
+      const fov = baseFov * (1 - 0.36 * threatK);
+      if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 
       // post
       tintAmt = Math.max(0, tintAmt - dt * 1.4);
@@ -1890,7 +1971,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    return { setHit, leave, arrive, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };

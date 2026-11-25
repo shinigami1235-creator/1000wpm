@@ -10,6 +10,10 @@
 //   BossAudio.stop()          stops everything, for unmount
 //   BossAudio.renderFx(name)  renders a sound effect offline (for loudness checks)
 //   BossAudio.out()           { ac, bus }: the context and effects bus, for the combat sounds
+//   BossAudio.cut(in, len)    the music drops out in `in` s for `len` s and slams back, before a hit
+//   BossAudio.uncut()         brings it back now (the attack was blocked)
+//   BossAudio.threat(on)      the top end of the music goes up 8 dB while an attack word is up
+//   BossAudio.silence()       stops the music dead, for the kill
 window.BossAudio = (() => {
   const TRACKS = ['wb-p1', 'wb-p2', 'wb-p3', 'wb-p4', 'wb-enrage'];
   const LOOP = 32 * 4 * 60 / 140, LOOP_AT = 0.5;
@@ -21,7 +25,7 @@ window.BossAudio = (() => {
     blockOk: 1.6, blockFail: 1.5, impact: 0.5, launch: 2.8, returned: 1.1, projHit: 2.6, addSpawn: 1.9, addKill: 1.1,
     roar: 0.85, stagger: 1.1, weakOpen: 1.1, milestone: 1.6, defeat: 0.5,
   };
-  let ac = null, master = null, musicBus = null, sfxBus = null;
+  let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
   const buffers = {}, loading = {};
   const base = () => window.BREACH_BASE || '';
@@ -31,7 +35,10 @@ window.BossAudio = (() => {
     if (!ac) {
       ac = new (window.AudioContext || window.webkitAudioContext)();
       master = ac.createGain(); master.connect(ac.destination);
-      musicBus = ac.createGain(); musicBus.gain.value = MUSIC_VOL; musicBus.connect(master);
+      musicBus = ac.createGain(); musicBus.gain.value = MUSIC_VOL;
+      shelf = ac.createBiquadFilter(); shelf.type = 'highshelf'; shelf.frequency.value = 3000; shelf.gain.value = 0;
+      cutG = ac.createGain();
+      musicBus.connect(shelf).connect(cutG).connect(master);
       sfxBus = ac.createGain(); sfxBus.gain.value = SFX_VOL;
       const comp = ac.createDynamicsCompressor();
       comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
@@ -108,6 +115,29 @@ window.BossAudio = (() => {
     musicBus.gain.linearRampToValueAtTime(MUSIC_VOL * level, t + 0.08);
     musicBus.gain.linearRampToValueAtTime(MUSIC_VOL, t + s);
   }
+  // The Typing of the Dead cuts its music for 0.5 to 1.8 s before a threat and brings it back
+  // 16 to 22 dB louder on the hit, and brightens the top end while a word is up
+  function cut(inS, lenS) {
+    if (!ac || !cutG) return;
+    const t = ac.currentTime + Math.max(0, inS), g = cutG.gain;
+    g.cancelScheduledValues(ac.currentTime);
+    g.setValueAtTime(g.value, ac.currentTime);
+    g.setValueAtTime(1, t);
+    g.linearRampToValueAtTime(0.03, t + 0.06);
+    g.setValueAtTime(0.03, t + Math.max(0.1, lenS));
+    g.linearRampToValueAtTime(1, t + Math.max(0.1, lenS) + 0.03);
+  }
+  function uncut() {
+    if (!ac || !cutG) return;
+    const t = ac.currentTime, g = cutG.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(1, t + 0.03);
+  }
+  function threat(v) {
+    if (!ac || !shelf) return;
+    const t = ac.currentTime, g = shelf.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v ? 8 : 0, t + (v ? 0.15 : 0.6));
+  }
+  function silence() { uncut(); threat(false); stopMusic(0.06); }
   async function victory() {
     want = -1;
     stopMusic(0.8);
@@ -289,5 +319,5 @@ window.BossAudio = (() => {
   try { on = TT.soundOn(); } catch (e) {}
   const state = () => ({ ctx: ac ? ac.state : 'none', track: cur ? cur.name : fallback ? 'element' : '', on, want });
   function out() { ctx(); return { ac, bus: sfxBus }; }
-  return { phase, victory, play, setOn, stop, unlock, renderFx, duck, state, out, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
+  return { phase, victory, play, setOn, stop, unlock, renderFx, duck, state, out, cut, uncut, threat, silence, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
 })();

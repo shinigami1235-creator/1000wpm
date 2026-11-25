@@ -112,6 +112,7 @@ window.WorldBossNet = (() => {
     // Damage to the boss goes into the shield first.
     function damage(id, letters, kind = 'word', opts = {}) {
       if (st.defeatedAt || letters <= 0) return null;
+      if (R.away(st, now())) return null;            // the boss has left the arena
       const r = st.raiders.find(x => x.id === id);
       if (!r) return null;
       const t = now();

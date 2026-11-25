@@ -7,7 +7,9 @@
 //                                             mine: false while typing an attack word or a spell,
 //                                             pens: { index: fakeWord } for Boss Rush's red pen (0 = cur)
 //                                             fog: how many words from the current one are blurred (a duel debuff)
-//   flow.push(word, typed, ok)                after a word is submitted
+//                                             threat: { i, ms, el } an attack's counter phrase at index i (0 = cur),
+//                                             red with red slashes and a timer that runs ms (el already gone)
+//   flow.push(word, typed, ok, threat)        after a word is submitted
 //   flow.clear()
 window.WordFlow = (() => {
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,13 +30,18 @@ window.WordFlow = (() => {
     let done = [];
     let last = null;
     function paint(st) {
-      const { cur, typed = '', mine = true, next = [], pens = null, fog = 0 } = st;
+      const { cur, typed = '', mine = true, next = [], pens = null, fog = 0, threat = null } = st;
       const fg = i => (i < fog ? ' fog' : '');
+      // the timer and the slashes run as CSS animations started in the past (a negative delay),
+      // so a repaint on every key carries on from where they were
+      const th = i => (threat && threat.i === i ? ' threat' : '');
+      const thAttr = i => (threat && threat.i === i ? ` style="--tw:${Math.round(threat.ms)}ms;--te:-${Math.round(threat.el)}ms"` : '');
+      const thFx = i => (threat && threat.i === i ? '<b class="fw-slash" aria-hidden="true"></b><b class="fw-tbar" aria-hidden="true"></b>' : '');
       const pen = i => (pens && pens[i] ? `<em class="fw-pen">${esc(pens[i])}</em>` : '');
       box.innerHTML = `<div class="fw-lines" style="--fw-lines:${lines}">` +
-        done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}">${letters(d.word, d.typed, false)}</span>`).join('') +
-        `<span class="fw cur${mine ? '' : ' wait'}${pen(0) ? ' pen' : ''}${fg(0)}" aria-current="${mine}">${pen(0)}${letters(cur, mine ? typed : '', mine)}</span>` +
-        next.map((w, i) => pen(i + 1) ? `<span class="fw pen">${pen(i + 1)}<s>${esc(w)}</s></span>` : `<span class="fw${fg(i + 1)}">${esc(w)}</span>`).join('') + '</div>';
+        done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}${d.threat ? ' was-threat' : ''}">${letters(d.word, d.typed, false)}</span>`).join('') +
+        `<span class="fw cur${mine ? '' : ' wait'}${pen(0) ? ' pen' : ''}${fg(0)}${th(0)}" aria-current="${mine}"${thAttr(0)}>${pen(0)}${thFx(0)}${letters(cur, mine ? typed : '', mine)}</span>` +
+        next.map((w, i) => pen(i + 1) ? `<span class="fw pen">${pen(i + 1)}<s>${esc(w)}</s></span>` : `<span class="fw${fg(i + 1)}${th(i + 1)}"${thAttr(i + 1)}>${thFx(i + 1)}${esc(w)}</span>`).join('') + '</div>';
     }
     function render(st) {
       last = st;
@@ -53,7 +60,7 @@ window.WordFlow = (() => {
     }
     return {
       render,
-      push(word, typed, ok) { done.push({ word, typed, ok }); if (done.length > 120) done = done.slice(-120); },
+      push(word, typed, ok, threat) { done.push({ word, typed, ok, threat: !!threat }); if (done.length > 120) done = done.slice(-120); },
       clear() { done = []; if (last) render(last); },
     };
   }

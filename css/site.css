@@ -815,6 +815,8 @@ body:has(.page-boss) #rain { opacity: 0; }
 .page-boss .wb-left span { font-family: var(--f-mono); }
 .page-boss .boss-bar { position: relative; height: 6px; margin-top: 8px; background: rgba(255,77,94,.14); overflow: hidden; }
 .page-boss .boss-bar i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--red); box-shadow: 0 0 10px rgba(255,77,94,.55); transition: width 250ms linear; }
+/* the HP just lost stays amber for half a second, then drains */
+.page-boss .boss-bar i.lag { background: var(--amber-2); box-shadow: none; transition: width 700ms ease-in 450ms; }
 .page-boss .wb-shieldbar {
   position: absolute; inset: 0 auto 0 0; display: block; z-index: 1; background: var(--cyan);
   clip-path: inset(0 calc((1 - var(--s, 1)) * 100%) 0 0); transition: width 250ms linear;
@@ -922,6 +924,24 @@ body:has(.page-boss) #rain { opacity: 0; }
 .fw i.at::before { content: ""; position: absolute; left: -1px; top: 18%; bottom: 14%; width: 2px; background: var(--accent); }
 .fw i.at.end { display: inline-block; width: .1em; }
 .typebox.focused .fw i.at::before { animation: blink 1s steps(1) infinite; }
+/* an attack's counter phrase: red, red slashes either side when it shows, a timer under it, and
+   it flickers for the last 40% of its window (the word boxes in The Typing of the Dead) */
+.fw.threat { color: #ff6b78; animation: fw-late var(--tw, 3s) linear var(--te, 0s) both; }
+.fw.cur.threat { color: #ff8a94; }
+.fw.cur.threat::after { background: rgba(255,77,94,.12); }
+.fw.threat i.ok { color: var(--ink-hi); }
+.fw-slash { position: absolute; inset: -.1em -1.05em; pointer-events: none; filter: drop-shadow(0 0 6px rgba(255,77,94,.8));
+  animation: fw-slash 650ms var(--ease-out) var(--te, 0s) both; }
+.fw-slash::before, .fw-slash::after { content: ""; position: absolute; top: 12%; bottom: 12%; width: .7em; background: #ff4d5e; }
+.fw-slash::before { left: 0; clip-path: polygon(0 0, 100% 50%, 0 100%, 42% 50%); }
+.fw-slash::after { right: 0; clip-path: polygon(100% 0, 0 50%, 100% 100%, 58% 50%); }
+.fw-tbar { position: absolute; left: 0; right: 0; bottom: .12em; height: 3px; background: #ff4d5e; transform-origin: left; pointer-events: none;
+  animation: fw-tbar var(--tw, 3s) linear var(--te, 0s) both; }
+.fw.done.was-threat i.ok { color: var(--cyan); }
+@keyframes fw-slash { 0% { opacity: 0; transform: scale(.4); } 15% { opacity: 1; transform: scale(1.2); } 45% { opacity: 1; transform: scale(1); } 100% { opacity: .5; transform: scale(.8); } }
+@keyframes fw-tbar { from { transform: scaleX(1); } to { transform: scaleX(0); background: var(--amber-2); } }
+@keyframes fw-late { 0%, 59% { background: transparent; } 60%, 70%, 80%, 90% { background: rgba(255,77,94,.3); } 65%, 75%, 85%, 95%, 100% { background: rgba(255,77,94,.05); } }
+@media (prefers-reduced-motion: reduce) { .fw.threat { animation: none; } .fw-slash { animation: none; opacity: .7; } }
 @media (max-width: 760px) { .fw-lines { font-size: 21px; } }
 @media (prefers-reduced-motion: reduce) { .typebox.focused .fw i.at::before { animation: none; } }
 .page-boss .boss-words { padding: 2px 0 0; outline: none; transition: opacity 150ms; }
@@ -1077,6 +1097,25 @@ body:has(.page-boss) #rain { opacity: 0; }
 @keyframes wb-banner { 0% { opacity: 0; transform: scaleY(.6); } 10% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
 .page-boss .wb-tint { position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0; box-shadow: inset 0 0 70px 10px rgba(255,77,94,.55); }
 .page-boss .wb-tint.go { animation: wb-tint 650ms ease-out forwards; }
+/* an attack that reached you: an orange smear across the arena */
+.page-boss .wb-smear { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+  background: linear-gradient(104deg, transparent 18%, rgba(255,120,50,.42) 42%, rgba(255,72,48,.6) 54%, rgba(255,140,60,.3) 66%, transparent 84%),
+    radial-gradient(ellipse at 50% 55%, transparent 35%, rgba(255,96,48,.45) 90%); }
+.page-boss .wb-smear.go { animation: wb-smear 450ms ease-out; }
+@keyframes wb-smear { 0% { opacity: 0; transform: translateX(-10%) skewX(-8deg); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateX(8%) skewX(-8deg); } }
+/* the kill: the picture goes letterbox */
+.page-boss .wb-lbox { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.page-boss .wb-lbox::before, .page-boss .wb-lbox::after { content: ""; position: absolute; left: 0; right: 0; height: 11%; background: #000; transform: scaleY(0); transition: transform 380ms var(--ease-out); }
+.page-boss .wb-lbox::before { top: 0; transform-origin: top; } .page-boss .wb-lbox::after { bottom: 0; transform-origin: bottom; }
+.page-boss .wb-lbox.on::before, .page-boss .wb-lbox.on::after { transform: scaleY(1); }
+/* your integrity: four pips, bottom left of the arena */
+.page-boss .wb-lives { position: absolute; left: 12px; bottom: 12px; z-index: 2; display: flex; gap: 5px; padding: 7px 9px; background: var(--scrim); pointer-events: none; }
+.page-boss .wb-lives:empty { display: none; }
+.page-boss .wb-lives i { position: relative; width: 22px; height: 14px; clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%); background: rgba(255,255,255,.12); }
+.page-boss .wb-lives i::after { content: ""; position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(var(--f, 1)); box-shadow: 0 0 8px rgba(var(--accent-rgb),.6); }
+.page-boss .wb-lives i.lost { animation: wb-pip 700ms var(--ease-out); }
+@keyframes wb-pip { 0% { background: #ff4d5e; transform: scale(1.5); } 40% { background: #ff4d5e; transform: scale(1.2) rotate(-8deg); } 100% { background: rgba(255,255,255,.12); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page-boss .wb-smear.go { animation-name: wb-tint; } .page-boss .wb-lives i.lost { animation: none; } }
 @keyframes wb-tint { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes wb-fade { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {

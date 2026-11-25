@@ -1,5 +1,6 @@
 """Record gameplay at a slowed clock (headless WebGL is slow), then speed the video back up.
-python3 rec.py <mode> <game_seconds> <out.mp4>    mode: raid | rush | sb-hydra | sb-compiler | sb-leviathan"""
+python3 rec.py <mode> <game_seconds> <out.mp4>    mode: raid | raid-feel | rush | sb-hydra | sb-compiler | sb-leviathan
+raid-feel plays the first phase for <game_seconds>, then the half-HP exit, 14 s of phase 3 and the kill."""
 import sys, random, time, os, glob, subprocess, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from play import serve, sync_playwright
@@ -37,6 +38,35 @@ with sync_playwright() as p:
                 if blocks == 2: time.sleep(real(3.2)); marks['let one land'] = round((time.time() - t0) * S, 1); continue
                 typew(blk[0]['word'], 140); continue
             typew(page.evaluate('_wb.stack()'))
+    elif mode == 'raid-feel':
+        page.goto(base + 'index.html#/boss'); time.sleep(real(3)); page.evaluate(hide)
+        page.keyboard.press('Enter'); time.sleep(real(5)); page.evaluate(hide)
+        seen = {'threat in line': 0, 'chip for a block': 0}
+        def play(gsecs, let_land=None):
+            t0 = time.time(); n = 0
+            while time.time() - t0 < real(gsecs):
+                if page.evaluate("!!(_wb.state() || {}).defeatedAt"): return
+                ms = page.evaluate("_wb.mech()")
+                blk = [m for m in ms if m['kind'] in ('block', 'dodge')]
+                if blk:
+                    seen['threat in line'] += page.evaluate("document.querySelectorAll('.fw.threat').length > 0 ? 1 : 0")
+                    seen['chip for a block'] += page.evaluate("document.querySelectorAll('.wb-chip.block, .wb-chip.dodge').length > 0 ? 1 : 0")
+                    n += 1
+                    if n == let_land:
+                        marks['let one land'] = round(page.evaluate('performance.now()') / 1000, 1)
+                        time.sleep(real(max(0.3, blk[0]['due'] / 1000 + 0.6))); continue
+                    time.sleep(real(0.35)); typew(blk[0]['word'], 120); continue
+                typew(page.evaluate('_wb.stack()'))
+        play(secs, let_land=2)
+        page.evaluate("_wb.jump(1)"); play(6)
+        marks['half HP'] = 1; page.evaluate("_wb.jump(2)")
+        for _ in range(int(real(6) / 0.4)):
+            page.keyboard.type('x'); time.sleep(0.4)
+        page.keyboard.press('Backspace')
+        play(14)
+        page.evaluate("_wb.setFrac(0.00002)"); play(5)
+        time.sleep(real(6))
+        marks.update(seen); marks['scene'] = page.evaluate("_wb.scene()") and 'ok'
     elif mode == 'rush':
         page.goto(base + 'index.html#/play/rush'); time.sleep(real(2.5)); page.evaluate(hide)
         page.keyboard.press('Enter'); time.sleep(real(4)); page.evaluate(hide)

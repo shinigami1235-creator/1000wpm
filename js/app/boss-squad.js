@@ -26,7 +26,7 @@ window.BossSquad = (() => {
   const DOWN_MS = 10000, WORD_OFF = 1000, REBOOT_HP = 50, REVIVE_HP = 40;
   const LOCK_WIND = 4500;                       // ms from a lock-on to its hit
   const LOCK_EVERY = [9000, 14000];             // ms between lock-ons, shortened by the phase
-  const lockDmg = p => 30 + 5 * p;              // 30 in phase 1 to 50 in phase 5
+  const lockDmg = () => 25;                     // one of your four integrity pips (boss.js)
   const HEAL = 25, HEAL_CD = 4000;              // an Architect's heal
   const HEAL_HALF = 12, HEAL_HALF_CD = 6000;    // anyone's heal when the squad has no Architect
   const HEAL_BELOW = 0.75;                      // heal targets show under this much integrity
