@@ -29,6 +29,7 @@ Router.register('boss', (() => {
     start: 'Type the highlighted word and press Space. Each correct word deals one damage per letter.',
     combo: 'Clean words in a row raise your combo and your shot. A typo drops it one tier.',
     spell: 'Type a green spell word with no typo to cast it. The offer goes after 15 seconds.',
+    orb: 'Each word charges the orb in front of you. Six words, or a short pause, fire it as one shot.',
   });
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
@@ -113,11 +114,22 @@ Router.register('boss', (() => {
 
   // The cover Art designed: the boss and your operator before the fight starts.
   // Join (or Enter) builds the fight in the same root.
-  let started = false, coverOff = null;
-  function mount(root) {
+  // #/boss/training is the training raid for new operators (Gid, 25 Nov 2026): a weak Syntax Error
+  // with three slow squadmates and the first three phases, every tip shown as its part of the
+  // fight comes up, and a division suggestion at the end (WorldBossNet.Training).
+  let started = false, coverOff = null, training = false;
+  const NPH = () => (training ? 3 : R.PHASES.length);
+  function mount(root, params) {
     TT.useWeaponSound();
     el = root; started = false;
+    training = !!(params && params[0] === 'training');
+    WorldBossNet.use(training ? WorldBossNet.Training : WorldBossNet.LocalDemo);
     R = window.WorldBossRules; B = R.BOSS; A = window.BossAudio; NAME = B.name;
+    const fmt0 = n => n.toLocaleString('en-US');
+    if (training) { cover(true); return; }
+    cover(false);
+  }
+  function cover(tr) {
     const fmt0 = n => n.toLocaleString('en-US');
     el.innerHTML = `
       <section class="wb-cover" aria-labelledby="wb-cover-h">
@@ -126,21 +138,23 @@ Router.register('boss', (() => {
           <img class="wb-cover-op" src="assets/boss/operator-back.webp" alt="" width="486" height="900" decoding="async">
         </div>
         <div class="wb-cover-text">
-          <small>World boss</small>
+          <small>${tr ? 'Training raid' : 'World boss'}</small>
           <h1 id="wb-cover-h">${esc(NAME)}</h1>
-          <p>Every word you type hits it for one point per letter. Block its attacks, break its firewall and finish it with the raid.</p>
+          <p>${tr ? `A short fight against a weak ${esc(NAME)} with three squadmates. A tip shows each part of the fight as it comes up, and at the end you get a division suggested from how you typed.`
+            : 'Every word you type hits it for one point per letter. Block its attacks, break its firewall and finish it with the raid.'}</p>
           <dl>
-            <div><dt>HP</dt><dd>${fmt0(B.maxHp)}</dd></div>
-            <div><dt>Phases</dt><dd>${R.PHASES.length}</dd></div>
+            <div><dt>HP</dt><dd>${fmt0(tr ? 3000 : B.maxHp)}</dd></div>
+            <div><dt>Phases</dt><dd>${NPH()}</dd></div>
           </dl>
-          <ol class="wb-cover-phases">${R.PHASES.map(ph => `<li>${esc(ph.name)}</li>`).join('')}</ol>
+          <ol class="wb-cover-phases">${R.PHASES.slice(0, NPH()).map(ph => `<li>${esc(ph.name)}</li>`).join('')}</ol>
           <div class="wb-cover-live" data-k="clive" hidden>
             <span class="wb-cover-tag">Raid in progress</span>
             <span class="wb-cover-ph" data-k="cph"></span>
             <i class="wb-cover-hp"><i data-k="chp"></i></i>
             <span class="wb-cover-n" data-k="cn"></span>
           </div>
-          <button class="btn" type="button" data-k="join">Join the raid <kbd>Enter</kbd></button>
+          <button class="btn" type="button" data-k="join">${tr ? 'Start training' : 'Join the raid'} <kbd>Enter</kbd></button>
+          ${tr ? '<a class="wb-cover-alt" href="#/boss">Skip to the real raid</a>' : '<a class="wb-cover-alt" href="#/boss/training">First time? Try the training raid</a>'}
         </div>
       </section>`;
     const go = () => { if (started || !el) return; coverOff(); A.unlock(); begin(); };
@@ -151,7 +165,7 @@ Router.register('boss', (() => {
     coverOff = () => document.removeEventListener('keydown', key);
     if (matchMedia('(pointer: fine)').matches) btn.focus({ preventScroll: true });
     // Art's attack state: when a fight is already running, the cover shows it live
-    WorldBossNet.peek().then(p => {
+    if (!tr) WorldBossNet.peek().then(p => {
       if (!el || started || !p || p.defeatedAt || p.hp >= p.maxHp) return;
       const cov = el.querySelector('.wb-cover'); if (!cov) return;
       cov.classList.add('live');
@@ -173,7 +187,7 @@ Router.register('boss', (() => {
     }
     words = window.WordBank ? WordBank.stream({ theme: 'mix', difficulty: STACK_DIFF[0] }) : null;
     resetFight();
-    try { seenTips = new Set(JSON.parse(localStorage.getItem('wpm-boss-tips') || '[]')); } catch (e) { seenTips = new Set(); }
+    try { seenTips = new Set(training ? [] : JSON.parse(localStorage.getItem('wpm-boss-tips') || '[]')); } catch (e) { seenTips = new Set(); }
     stack = moreWords(80);
     // One centred column: HP, the arena, the attack slots, the word stack and a slim
     // strip with your numbers. The scoreboard, the live feed and the rest of your
@@ -189,7 +203,7 @@ Router.register('boss', (() => {
           </div>
           <div class="boss-bar" role="meter" aria-label="Boss HP" aria-valuemin="0" aria-valuemax="${B.maxHp}" data-k="meter">
             <i data-k="fill"></i><em class="wb-shieldbar" data-k="sbar" hidden></em>
-            ${R.PHASES.slice(1).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
+            ${R.PHASES.slice(1, NPH()).map(ph => `<s style="left:${ph.at * 100}%"></s>`).join('')}
           </div>
           <div class="wb-team" data-k="team" title="Blocks, packets sent back and bugs deleted fill it. 50: boss attacks do half damage to operators. 75: every hit x1.2. 100: root access, x1.5 hits through the firewall for 10 s.">
             <span class="wb-team-l">Team firewall</span>
@@ -230,7 +244,7 @@ Router.register('boss', (() => {
             <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
           </div>
           <ol class="wb-track" data-k="track" aria-label="Combo levels"></ol>
-          <div class="wb-over" data-k="over"><button class="btn" type="button" data-k="again">New demo boss</button></div>
+          <div class="wb-over" data-k="over"><button class="btn" type="button" data-k="again">${training ? 'Train again' : 'New demo boss'}</button>${training ? '<a class="btn out" href="#/boss">Join the real raid</a>' : ''}</div>
         </section>
         <section class="wb-squad" data-k="squad" aria-label="Your squad"></section>
         <div class="wb-strip">
@@ -323,6 +337,8 @@ Router.register('boss', (() => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
       e.preventDefault();
       keys.focus();
+      // the stack can't take focus (hidden at the end of a fight): sending the key on would come back here
+      if (document.activeElement !== keys.el) return;
       keys.el.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: true }));
     };
     document.addEventListener('keydown', forward);
@@ -983,9 +999,9 @@ Router.register('boss', (() => {
     const ph = s.phase || 0;
     q('state').textContent = s.defeatedAt ? 'Down' : R.PHASES[ph].name;
     q('state').dataset.s = s.defeatedAt ? 5 : ph + 1;
-    q('phase').textContent = `Phase ${ph + 1} of ${R.PHASES.length}`;
+    q('phase').textContent = `Phase ${ph + 1} of ${NPH()}`;
     q('phase').dataset.p = ph;
-    q('demo').hidden = !s.demo;
+    q('demo').hidden = !s.demo || training;
     el.querySelectorAll('[data-p]').forEach(b => { if (b.tagName === 'BUTTON') b.disabled = +b.dataset.p <= ph || !!s.defeatedAt; });
     // shield over the HP bar
     const sb = q('sbar'), sf = q('shield');
@@ -1022,7 +1038,7 @@ Router.register('boss', (() => {
     document.dispatchEvent(new CustomEvent('buddy', { detail: 'phase' }));
     const b = q('banner');
     b.hidden = false;
-    b.innerHTML = `<div class="in"><small>Phase ${ph + 1} of ${R.PHASES.length}</small><b>${esc(R.PHASES[ph].name)}</b>${BANNER[ph] ? `<span>${esc(BANNER[ph])}</span>` : ''}</div>`;
+    b.innerHTML = `<div class="in"><small>Phase ${ph + 1} of ${NPH()}</small><b>${esc(R.PHASES[ph].name)}</b>${BANNER[ph] ? `<span>${esc(BANNER[ph])}</span>` : ''}</div>`;
     b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
     clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 2800);
     pushFeed({ sys: true, text: `Phase ${ph + 1}: ${R.PHASES[ph].name}` });
@@ -1035,7 +1051,7 @@ Router.register('boss', (() => {
     const t = performance.now();
     if (h.you) {
       sess.dmg += h.dmg;
-      WPM.track('boss_hit', { dmg: h.dmg, kind: h.kind || 'word', crit: !!h.crit });
+      if (!training) WPM.track('boss_hit', { dmg: h.dmg, kind: h.kind || 'word', crit: !!h.crit });   // training counts toward nothing
       if (h.kind === 'spell') castDmg[h.spell] = (castDmg[h.spell] || 0) + h.dmg;
       if (h.kind === 'spell') { if (scene) scene.hit(h); else onImpact(h, null, null); milestone('dmg', meDamage()); return; }
       if (h.kind === 'return') pushFeed({ text: `You sent back a packet for ${h.dmg}`, cls: 'you' });
@@ -1213,6 +1229,7 @@ Router.register('boss', (() => {
     chg.n++; chg.dmg += h.dmg; chg.letters += h.letters || 0; chg.tier = Math.max(chg.tier, h.tier || 0);
     chg.crit ||= !!h.crit; chg.weak ||= !!h.weak; chg.shield ||= !!h.shield; chg.color = h.color || chg.color;
     chg.last = performance.now();
+    if (chg.n === 1) tip('orb');
     if (scene) { scene.feed(); scene.charge(Math.min(1, chg.n / CHARGE_N), chg.tier); }
     if (chg.n >= CHARGE_N) releaseCharge();
   }
@@ -1320,7 +1337,7 @@ Router.register('boss', (() => {
     const id = tipQ.shift();
     if (!id) { if (n.textContent) { n.textContent = ''; n.classList.remove('on'); } return; }
     seenTips.add(id);
-    try { localStorage.setItem('wpm-boss-tips', JSON.stringify([...seenTips])); } catch (e) {}
+    if (!training) try { localStorage.setItem('wpm-boss-tips', JSON.stringify([...seenTips])); } catch (e) {}
     n.textContent = TIPS[id];
     n.classList.add('on');
     tipUntil = t + 6500;
@@ -1476,12 +1493,25 @@ Router.register('boss', (() => {
           r.killCoins ? `${r.killCoins} for being there at the end` : '',
           r.squadCoins ? `${r.squadCoins} for saves and heals` : '',
         ].filter(Boolean).join(' and ')}.</p>` : ''}
+        ${training ? trainedHtml() : ''}
         ${damageGraph()}
         <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
         ${squadTable()}
       </div>`;
     if (instant) q('again').focus({ preventScroll: true });
     requestAnimationFrame(showWhole);
+  }
+  // After the training raid: the division the site suggests from how you typed, and where to pick it
+  function trainedHtml() {
+    try { localStorage.setItem('wpm-boss-trained', '1'); } catch (e) {}
+    const sug = window.Ops && Ops.suggest(), d = sug && window.Ops && Ops.division();
+    const P = window.Combat && Combat.Perks, name = sug && P && P.byId(sug.id) ? P.byId(sug.id).name : sug && sug.id;
+    if (!sug) return '';
+    return `<div class="wb-trained">
+      <h3>Training done</h3>
+      <p>${d ? `You're in the ${esc(d.name)} division.` : `Suggested division: <b>${esc(name || sug.id)}</b>.`} ${esc(sug.why || '')}</p>
+      <a class="btn out sm" href="#/profile">${d ? 'Divisions' : 'Pick a division'}</a>
+    </div>`;
   }
   // the squad's damage, saves and heals, with the top guard and top medic called out
   function squadTable() {
@@ -1537,7 +1567,7 @@ Router.register('boss', (() => {
     recorded = true;
     const min = Math.max(sess.active, 1000) / 60000;
     const r = WPM.record({
-      mode: 'world-boss',
+      mode: training ? 'boss-training' : 'world-boss',
       wpm: Math.round(((sess.letters + sess.words) / 5) / min),
       acc: Math.round(100 * sess.good / sess.keys),
       correct: sess.letters + sess.words,
@@ -1545,9 +1575,9 @@ Router.register('boss', (() => {
       ms: Math.round(Math.max(sess.active, 1000)),
       score: Math.round(sess.dmg || sess.letters),
     });
-    if (atKill && sess.words > 0) WPM.track('boss_win', { dmg: Math.round(sess.dmg || 0) });
+    if (atKill && sess.words > 0 && !training) WPM.track('boss_win', { dmg: Math.round(sess.dmg || 0) });
     r.blockCoins = Math.min(60, sess.blocks * 3);
-    r.killCoins = atKill && sess.words > 0 ? 20 : 0;
+    r.killCoins = atKill && sess.words > 0 && !training ? 20 : 0;
     // saving squadmates pays like blocking: 3 a save and 1 for every 10 integrity healed, up to 60
     const sq = squad ? squad.stats() : null;
     r.squadCoins = sq ? Math.min(60, sq.saves * 3 + Math.floor(sq.heals / 10)) : 0;
@@ -1604,7 +1634,7 @@ Router.register('boss', (() => {
 
   function unmount() {
     if (coverOff) { coverOff(); coverOff = null; }
-    if (!started) { el = null; return; }
+    if (!started) { el = null; WorldBossNet.use(WorldBossNet.LocalDemo); return; }
     started = false;
     record(!!(st && st.defeatedAt));
     payOwed();
@@ -1617,6 +1647,7 @@ Router.register('boss', (() => {
     timers.forEach(clearInterval); timers = [];
     clearTimeout(downTimer);
     WorldBossNet.disconnect();
+    WorldBossNet.use(WorldBossNet.LocalDemo);
     A.stop();
     if (scene) scene.dispose();
     labels.clear();
@@ -1624,5 +1655,8 @@ Router.register('boss', (() => {
     scene = null; keys = null; el = null; st = null;
   }
 
-  return { title: 'World boss', mount, unmount };
+  // #/boss and #/boss/training are the same page, so moving between them mounts it again
+  function update(params) { const root = el; if (!root) return; unmount(); root.innerHTML = ''; mount(root, params); }
+
+  return { title: 'World boss', mount, unmount, update };
 })());

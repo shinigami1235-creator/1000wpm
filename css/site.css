@@ -1361,3 +1361,10 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 /* testing only, removed before launch (js/state.js, test coins) */
 .shop-wallet { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .test-coins[aria-pressed="true"] { color: var(--gold); border-color: var(--gold); }
+/* the training raid (js/app/boss.js #/boss/training) */
+.wb-cover-alt { display: inline-block; margin-left: 14px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+.wb-cover-alt:hover { color: var(--accent); }
+.wb-trained { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--accent-dim); }
+.wb-trained h3 { margin: 0 0 4px; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.wb-trained p { margin: 0 0 10px; color: var(--ink); }
+.wb-over .btn.out { margin-left: 10px; }

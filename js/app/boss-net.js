@@ -42,9 +42,13 @@ window.WorldBossNet = (() => {
   let R = null;
   const rules = () => (R ||= window.WorldBossRules);
 
-  const LocalDemo = (() => {
-    const KEY = 'wpm-boss-v1';
-    const RAIDERS = 40;
+  // cfg (the training raid, js/app/boss.js #/boss/training): { key, raiders, maxHp, wpm: [lo, hi],
+  // maxPhase, fresh }. fresh starts a new fight on every connect instead of loading the saved one.
+  function makeDemo(cfg = {}) {
+    const KEY = cfg.key || 'wpm-boss-v1';
+    const RAIDERS = cfg.raiders || 40;
+    const WPM_LO = (cfg.wpm || [40, 150])[0], WPM_HI = (cfg.wpm || [40, 150])[1];
+    const phaseOf = f => Math.min(cfg.maxPhase == null ? 9 : cfg.maxPhase, R.phaseOf(f));
     let st = null, me = null, timer = 0, saveT = 0, last = 0, lastTick = 0, simScale = 1, healAcc = 0;
     let sims = [], plans = {};
     const stateSubs = new Set(), hitSubs = new Set(), eventSubs = new Set();
@@ -60,31 +64,32 @@ window.WorldBossNet = (() => {
     const nameOf = r => (r.id === 'you' && me ? me.name : r.name);
 
     function fresh() {
-      const raiders = Array.from({ length: RAIDERS }, (_, i) => ({ id: 'sim' + i, name: name(i), damage: 0, blocks: 0, wpm: Math.round(rnd(40, 150)), acc: rnd(0.9, 0.99) }));
-      const t = now();
-      return blank({ bossId: t.toString(36), name: R.BOSS.name, maxHp: R.BOSS.maxHp, hp: R.BOSS.maxHp, startedAt: t, defeatedAt: null, lastHit: null, raiders });
+      const raiders = Array.from({ length: RAIDERS }, (_, i) => ({ id: 'sim' + i, name: name(i), damage: 0, blocks: 0, wpm: Math.round(rnd(WPM_LO, WPM_HI)), acc: rnd(0.9, 0.99) }));
+      const t = now(), hp = cfg.maxHp || R.BOSS.maxHp;
+      return blank({ bossId: t.toString(36), name: R.BOSS.name, maxHp: hp, hp, startedAt: t, defeatedAt: null, lastHit: null, raiders, training: !!cfg.fresh });
     }
     // fills in the fields an older save does not have
     function blank(s) {
       s.name = R.BOSS.name;
-      s.phase = R.phaseOf(s.hp / s.maxHp);
+      s.phase = phaseOf(s.hp / s.maxHp);
       if (!Array.isArray(s.phaseAt)) { s.phaseAt = [s.startedAt, null, null, null, null]; if (s.phase) s.phaseAt[s.phase] = now(); }
       s.shield ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
       s.raiders.forEach((r, i) => { r.blocks ||= 0; if (/^raider_\d+$/.test(r.name || '')) r.name = name(i); });
       return s;
     }
     function load() {
+      if (cfg.fresh) return null;
       try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.maxHp && s.raiders) return blank(s); } catch (e) {}
       return null;
     }
-    function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+    function save() { if (cfg.fresh) return; try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
 
     function snapshot() {
       const raiders = st.raiders.map(r => ({ id: r.id, name: nameOf(r), damage: r.damage, blocks: r.blocks || 0, you: r.id === 'you' }))
         .sort((a, b) => b.damage - a.damage);
       return {
         bossId: st.bossId, name: st.name, maxHp: st.maxHp, hp: st.hp, dealt: st.maxHp - st.hp, startedAt: st.startedAt, defeatedAt: st.defeatedAt,
-        lastHit: st.lastHit, demo: true, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, weak: st.weak && { ...st.weak },
+        lastHit: st.lastHit, demo: true, training: !!st.training, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, weak: st.weak && { ...st.weak },
         blocks: { ...st.blocks }, addsDown: { ...st.addsDown }, raiders,
         team: { ...(st.team || { fw: 0, rootUntil: 0 }) },
       };
@@ -95,7 +100,7 @@ window.WorldBossNet = (() => {
     const emitEvent = e => fan(eventSubs, e);
 
     function setPhase(t) {
-      const p = R.phaseOf(st.hp / st.maxHp);
+      const p = phaseOf(st.hp / st.maxHp);
       if (p <= st.phase || st.defeatedAt) return;
       st.phase = p; st.phaseAt[p] = t;
       // a phase change ends the shield, the weak point and the attacks in flight
@@ -311,7 +316,7 @@ window.WorldBossNet = (() => {
       peek() {
         const s = st || load();
         if (!s) return Promise.resolve(null);
-        return Promise.resolve({ hp: s.hp, maxHp: s.maxHp, phase: R.phaseOf(s.hp / s.maxHp), raiders: s.raiders.filter(r => r.id !== 'you').length + 1, defeatedAt: s.defeatedAt, startedAt: s.startedAt });
+        return Promise.resolve({ hp: s.hp, maxHp: s.maxHp, phase: phaseOf(s.hp / s.maxHp), raiders: s.raiders.filter(r => r.id !== 'you').length + 1, defeatedAt: s.defeatedAt, startedAt: s.startedAt });
       },
       onHit(fn) { hitSubs.add(fn); return () => hitSubs.delete(fn); },
       onEvent(fn) { eventSubs.add(fn); return () => eventSubs.delete(fn); },
@@ -322,7 +327,7 @@ window.WorldBossNet = (() => {
         simInit(); plans = {}; save(); emit();
         return snapshot();
       },
-      disconnect() { clearInterval(timer); timer = 0; if (st) save(); stateSubs.clear(); hitSubs.clear(); eventSubs.clear(); },
+      disconnect() { clearInterval(timer); timer = 0; if (st && !cfg.fresh) save(); stateSubs.clear(); hitSubs.clear(); eventSubs.clear(); },
       // demo only: move the fight forward so every phase can be seen without an hour of typing
       demo: {
         jumpTo(p) {
@@ -337,7 +342,7 @@ window.WorldBossNet = (() => {
           const hp = Math.max(1, Math.round(st.maxHp * f));
           spread(st.hp - hp);
           st.hp = hp;
-          if (st.phase > R.phaseOf(f)) { st.phase = R.phaseOf(f); }
+          if (st.phase > phaseOf(f)) { st.phase = phaseOf(f); }
           setPhase(now()); save(); emit();
         },
         simScale(x) { simScale = x; },
@@ -347,12 +352,16 @@ window.WorldBossNet = (() => {
         raiders: () => (st ? st.raiders.filter(r => r.id !== 'you').map(r => ({ id: r.id, name: nameOf(r), wpm: r.wpm, acc: r.acc })) : []),
       },
     };
-  })();
+  }
+  const LocalDemo = makeDemo();
+  // The training raid for new operators (Gid, 25 Nov 2026): a weak Syntax Error, three slow
+  // squadmates, the first three phases only, a new fight every time and nothing saved.
+  const Training = makeDemo({ key: 'wpm-boss-training', raiders: 3, maxHp: 3000, wpm: [25, 40], maxPhase: 2, fresh: true });
 
   let impl = LocalDemo;
   return {
     get MAX_HP() { return rules().BOSS.maxHp; },
-    LocalDemo,
+    LocalDemo, Training,
     use(next) { impl = next; },
     connect: who => impl.connect(who),
     peek: () => (impl.peek ? impl.peek() : Promise.resolve(null)),
