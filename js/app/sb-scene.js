@@ -237,7 +237,10 @@ window.SuperScene = (() => {
       canFlash,
     };
     // the shake cap keeps the camera from moving more than about 1% of the frame
-    const SHAKE_MAX = 0.55;
+    const SHAKE_MAX = 0.9;
+    // kb: the boss knocked back by hits, a spring so it snaps back; slowUntil: the slow-motion beat on a block
+    let kb = 0, kbV = 0, slowUntil = 0;
+    const knock = imp => { kbV += imp; };
 
     // ---------- Art: the caster, at the front of the arena ----------
     const artPos = new V(0, 0.9, 15);
@@ -263,14 +266,14 @@ window.SuperScene = (() => {
       { id: 'root', base: new V(0, 12.5, -3.5), c: C('#3ee6ff'), dir: 0 },
       { id: 'patch', base: new V(8.5, 9, -2), c: C('#f2c230'), dir: 1 },
     ];
-    const hstate = Object.fromEntries(HEADS.map(h => [h.id, { up: true, grow: 1, lunge: -9, charge: 0, chargeUntil: 0, flash: 0, pos: h.base.clone(), hpk: 1 }]));
+    const hstate = Object.fromEntries(HEADS.map(h => [h.id, { up: true, grow: 1, lunge: -9, charge: 0, chargeUntil: 0, flash: 0, pos: h.base.clone(), hpk: 1, kb: 0, kbV: 0 }]));
     const DOME = [];
     for (let r = 0; r < 4; r++) { const n = 14 - r * 3, rad = 6.2 - r * 1.3; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + r * 0.4; DOME.push({ x: Math.cos(a) * rad, y: 1 + r * 1.7, z: Math.sin(a) * rad * 0.7 - 6, s: 2.2 - r * 0.3, a }); } }
     let neckOpen = 0;
     function hydra(t, dt) {
       const body = pal.b;
       const breathe = Math.sin(t * 1.4) * 0.15;
-      const rec = recoil * 0.6;
+      const rec = recoil * 0.6 + kb * 1.8;
       for (const d of DOME) put(v1.set(d.x, d.y + breathe - (dead ? deadT * 2 : 0), d.z - rec), d.s, d.s * 0.8, d.s, 0, d.a + t * 0.05, 0, neckOpen ? pal.a : body, neckOpen ? 1.4 + Math.sin(t * 12) * 0.3 : 0.9);
       // core glow, visible when the neck is open
       anchors.core.set(0, 6.5 + breathe, -6);
@@ -278,14 +281,15 @@ window.SuperScene = (() => {
       for (const h of HEADS) {
         const s = hstate[h.id];
         s.flash = Math.max(0, s.flash - dt * 4);
+        s.kbV += (-s.kb * 60 - s.kbV * 9) * dt; s.kb = clamp(s.kb + s.kbV * dt, -0.4, 2.5);
         const growT = s.up ? s.grow : 0;
         s.grow = s.up ? Math.min(1, s.grow + dt * 1.6) : 0;
         const lungeU = clamp((t - s.lunge) / 0.45, 0, 1), lunge = Math.sin(lungeU * Math.PI);
         const ch = s.chargeUntil > t ? 1 - (s.chargeUntil - t) / Math.max(0.1, s.chargeLen) : 0;
         const sway = Math.sin(t * (1.1 + h.dir * 0.2) + h.dir) * 1.1;
-        v2.copy(h.base).add(v3.set(sway * 0.8, Math.sin(t * 1.7 + h.dir) * 0.6 + ch * 2.2, lunge * 9 - rec));
+        v2.copy(h.base).add(v3.set(sway * 0.8 + h.dir * s.kb * 1.2, Math.sin(t * 1.7 + h.dir) * 0.6 + ch * 2.2 + s.kb * 2.2, lunge * 9 - rec - s.kb * 5));
         if (dead) v2.y -= deadT * 6;
-        s.pos.lerp(v2, Math.min(1, dt * 8));
+        s.pos.lerp(v2, Math.min(1, dt * (s.kb > 0.05 ? 20 : 8)));
         // neck: a curve from the body to the head
         const start = v3.set(h.dir * 2.4, 6, -6);
         const segs = 11, shown = Math.max(2, Math.round(segs * (s.up ? 0.2 + 0.8 * growT : 0.18)));
@@ -304,7 +308,7 @@ window.SuperScene = (() => {
         const fw = v4.set(Math.sin(yaw), 0, Math.cos(yaw));
         put(s.pos, 2.6, 2.1, 2.6, 0, yaw, 0, h.c, k);
         put(v1.copy(s.pos).addScaledVector(fw, 2.1).setY(s.pos.y - 0.3), 1.8, 1.1, 2.0, 0, yaw, 0, h.c, k);
-        const jaw = 0.3 + lunge * 0.9 + ch * 0.6;
+        const jaw = Math.max(0, 0.3 + lunge * 0.9 + ch * 0.6 - s.kb * 0.4);
         put(v1.copy(s.pos).addScaledVector(fw, 1.9).setY(s.pos.y - 1.1 - jaw * 0.5), 1.6, 0.4, 1.9, jaw * 0.4, yaw, 0, h.c, k * 0.8);
         for (const sd of [-1, 1]) {
           v1.copy(s.pos).addScaledVector(fw, 1.3).add(v3.set(Math.cos(yaw) * sd * 0.8, 0.55, -Math.sin(yaw) * sd * 0.8));
@@ -324,7 +328,7 @@ window.SuperScene = (() => {
     let towerCharge = 0, towerChargeUntil = 0, screenPulse = 0;
     function compiler(t, dt) {
       const { x, y, z, w, h } = TOWER;
-      const rec = recoil * 0.5;
+      const rec = recoil * 0.5 + kb * 1.6;
       const k0 = 0.9 + hitGlow * 0.8;
       const ch = towerChargeUntil > t ? 1 - (towerChargeUntil - t) / Math.max(0.1, towerCharge) : 0;
       let id = 0;
@@ -367,7 +371,7 @@ window.SuperScene = (() => {
 
     // Packet Leviathan
     const SEG = 22, GAPU = 0.24;
-    let serpS = 0, frontI = 0, weakI = -1, decoyI = -1, segFlash = new Float32Array(SEG), diveK = 0, diveUntil = 0, diveLen = 1, lungeAt = -9;
+    let serpS = 0, frontI = 0, weakI = -1, decoyI = -1, segFlash = new Float32Array(SEG), segKick = new Float32Array(SEG), diveK = 0, diveUntil = 0, diveLen = 1, lungeAt = -9;
     const segPos = Array.from({ length: SEG }, () => new V());
     const pathAt = (u, out) => out.set(Math.cos(u) * 18, 6 + Math.sin(u * 3) * 3, -9 + Math.sin(u) * 14);
     const packets = new Map();
@@ -382,6 +386,8 @@ window.SuperScene = (() => {
         const u = serpS - i * GAPU;
         pathAt(u, v1);
         v1.y -= diveK * 6 * (i / SEG);
+        segKick[i] = Math.max(0, segKick[i] - dt * 2.2);
+        v1.z -= segKick[i] * 3 + kb * 1.2; v1.y += segKick[i] * 1.5;
         if (dead) v1.y -= deadT * deadT * 5;
         segPos[i].copy(v1);
         if (i > 1 && v1.z > best) { best = v1.z; frontI = i; }
@@ -406,7 +412,7 @@ window.SuperScene = (() => {
       // the head leads the body, rising toward the camera when it lunges
       const hp = segPos[0];
       pathAt(serpS, hp);
-      hp.y += diving * 5 + lunge * 2; hp.z += lunge * 12 + diving * 4;
+      hp.y += diving * 5 + lunge * 2 + kb * 1.4; hp.z += lunge * 12 + diving * 4 - kb * 3.5;
       if (dead) hp.y -= deadT * deadT * 5;
       anchors.head.copy(hp);
       const yaw = Math.atan2(artPos.x - hp.x, artPos.z - hp.z);
@@ -506,6 +512,12 @@ window.SuperScene = (() => {
 
     // ---------- events ----------
     const hitCol = tier => tier >= 3 ? C('#ffffff') : tier === 2 ? C('#3ee6ff') : C(Theme.hex('accent'));
+    // where an attack comes from, for the shots and bursts on a block, a miss or an interrupt
+    function attackerPos(attack, owner, out) {
+      if (bossId === 'hydra') { const s = hstate[owner] || (attack === 'breath' ? hstate.root : attack === 'mend' ? hstate.patch : hstate.fork); return out.copy(s.pos); }
+      if (bossId === 'leviathan') return out.copy(anchors.head);
+      return out.copy(anchors.core);
+    }
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (n === 'hit') {
@@ -516,7 +528,14 @@ window.SuperScene = (() => {
           if (d.at && d.at.startsWith('head:') && hstate[d.at.slice(5)]) hstate[d.at.slice(5)].flash = 1;
           if (bossId === 'leviathan' && weakI >= 0 && d.src === 'weak') segFlash[weakI] = 1;
           flare(v1, crit ? C('#ffffff') : hitCol(d.tier || 0), crit ? 5 : 2.6, 0.22);
-          if (crit || big) { juice.shake(big ? 0.45 : 0.22); juice.stop(big ? 85 : 50); recoil = Math.max(recoil, big ? 1 : 0.5); }
+          if (crit || big) { juice.shake(big ? 0.6 : 0.3); juice.stop(big ? 95 : 55); recoil = Math.max(recoil, big ? 1 : 0.5); }
+          else juice.shake(0.07);
+          // every hit knocks it back: the body on a spring, the head that was hit thrown up and back
+          const imp = Math.min(2.4, 0.35 + (d.amount || 0) * 0.012) * (crit ? 1.5 : 1) * (big ? 1.7 : 1);
+          knock(imp);
+          if (d.at && d.at.startsWith('head:') && hstate[d.at.slice(5)]) hstate[d.at.slice(5)].kbV += imp * 2.2;
+          else if (bossId === 'hydra') for (const h of HEADS) hstate[h.id].kbV += imp * 0.5;
+          if (bossId === 'leviathan') { const i = d.src === 'weak' && weakI >= 0 ? weakI : frontI; for (let k = -2; k <= 2; k++) { const j = i + k; if (j > 0 && j < SEG) segKick[j] = Math.max(segKick[j], imp * (1 - Math.abs(k) * 0.3)); } }
           if (big && canFlash()) flashAmt = 0.5;
           if (opts.onPop) { const p = proj(v1, {}); opts.onPop(d.amount, p.x, p.y, { crit, src: d.src, big }); }
         };
@@ -530,9 +549,14 @@ window.SuperScene = (() => {
         if (d.rarity >= 3) juice.glitch(0.4, 0.6);
       }
       if (n === 'hurt') {
-        juice.shake(d.amount >= 12 ? 0.5 : 0.2); juice.tint('#ff4d5e', d.amount >= 12 ? 0.7 : 0.35); kick = 1;
-        if (d.amount >= 12) juice.glitch(0.5, 0.35);
-        flare(v1.copy(artPos).setY(1.5), C('#ff4d5e'), 4, 0.3);
+        // an attack that lands on Art hurts: a hard shake, a held frame, red in the picture, sparks off him
+        const heavy = d.amount >= 12;
+        juice.shake(heavy ? 0.9 : 0.4); juice.stop(heavy ? 120 : 60); juice.tint('#ff4d5e', heavy ? 0.9 : 0.5); kick = heavy ? 2.4 : 1.2;
+        juice.glitch(heavy ? 0.6 : 0.25, heavy ? 0.4 : 0.2);
+        if (heavy && canFlash()) flashAmt = 0.35;
+        flare(v1.copy(artPos).setY(1.5), C('#ff4d5e'), heavy ? 8 : 4, 0.35);
+        wave(v1.copy(artPos).setY(0.15), C('#ff4d5e'), 1, heavy ? 13 : 7, 0.55);
+        shed(v1.copy(artPos).setY(1.2), heavy ? 22 : 8, C('#ff4d5e'), heavy ? 1.6 : 1, 0.5);
       }
       if (n === 'block' || n === 'shielded' || n === 'warded') { wave(v1.copy(artPos).setY(0.15), C(n === 'shielded' ? '#f2c230' : '#3ee6ff'), 1, 7, 0.45); flare(v1.copy(artPos).setY(1.6), C('#bfefff'), 4, 0.25); }
       if (n === 'sever') {
@@ -548,6 +572,33 @@ window.SuperScene = (() => {
         if (d.kind === 'lunge' || d.kind === 'sweep') { diveUntil = t + d.ms / 1000; diveLen = d.ms / 1000; }
       }
       if (n === 'attack' && d.kind === 'bite') { const s = hstate.fork; if (s) s.lunge = t; }
+      if (n === 'attack' && d.kind === 'mend') { const s = hstate.patch; if (s) { flare(s.pos, C('#f2c230'), 5, 0.4); wave(v1.copy(anchors.core), C('#f2c230'), 1, 10, 0.6, false); } }
+      // a missed block: the attack flies from the boss and lands on Art
+      if (n === 'blockFail' && fx) {
+        attackerPos(d.attack, d.owner, v4);
+        fx.shot(4, new V().copy(v4), out => out.copy(artPos).setY(artPos.y + 0.8), () => {}, { color: '#ff4d5e', dur: 0.16 });
+      }
+      // a block is a parry: a beat of slow motion, a cyan burst on Art and a counter shot that throws the boss back
+      if (n === 'block') {
+        slowUntil = performance.now() + 320;
+        juice.shake(0.35); juice.stop(70);
+        if (canFlash()) flashAmt = Math.max(flashAmt, 0.3);
+        wave(v1.copy(artPos).setY(0.15), C('#3ee6ff'), 1, 14, 0.6);
+        wave(v1.copy(artPos).setY(1.4), C('#bfefff'), 0.5, 6, 0.4, false);
+        shed(v1.copy(artPos).setY(1.4), 16, C('#3ee6ff'), 1.4, 0.45);
+        attackerPos(d.attack, d.owner, v4);
+        const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (hstate[d.owner]) hstate[d.owner].kbV += 6; if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
+        if (fx) fx.shot(4, new V().copy(artPos).setY(artPos.y + 0.8), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
+      }
+      // an interrupt: the charge shatters in the boss's face and it reels
+      if (n === 'cancel') {
+        attackerPos(d.attack, d.owner, v4);
+        shed(v4, 30, C('#ffffff'), 1.8, 0.6);
+        wave(v1.copy(v4), C('#ffffff'), 1, 12, 0.55, false);
+        flare(v4, C('#bfefff'), 9, 0.35);
+        knock(2.2); hitGlow = 1; juice.shake(0.5); juice.stop(100);
+        if (hstate[d.owner]) hstate[d.owner].kbV += 5;
+      }
       if (n === 'blockFail' || n === 'cancel') {
         if (d.attack === 'breath' || d.owner === 'root') hstate.root.chargeUntil = 0;
         if (d.attack === 'overflow') towerChargeUntil = 0;
@@ -586,7 +637,7 @@ window.SuperScene = (() => {
       let dt = Math.min(0.05, rdt); lastT = nowMs;
       if (!visible || document.hidden) return;
       if (paused) dt = 0;
-      dt *= slowK;
+      dt *= slowK * (nowMs < slowUntil ? 0.3 : 1);
       const stopped = nowMs < stopUntil;
       const adt = stopped ? 0 : dt * (finishing ? 0.55 : 1);
       clock.t += adt;
@@ -601,6 +652,7 @@ window.SuperScene = (() => {
       hitGlow = Math.max(0, hitGlow - rdt * 4);
       blockMat.uniforms.uHit.value = hitGlow;
       recoil = Math.max(0, recoil - dt * 3);
+      kbV += (-kb * 55 - kbV * 9) * adt; kb = clamp(kb + kbV * adt, -0.5, 3);
       if (dead) deadT = Math.min(3, deadT + dt);
       nB = 0;
       if (bossId === 'hydra') hydra(t, adt);

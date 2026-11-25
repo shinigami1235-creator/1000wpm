@@ -33,7 +33,7 @@
 .sb-dials button[aria-checked="true"] { border-color: var(--accent); background: #0a1a11; }
 .sb-dials button[aria-checked="true"] b { color: var(--accent); }
 .sb-dialnote { margin-top: 10px; color: var(--ink-2); font-size: 14px; max-width: 80ch; }
-.sb-go { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0 12px; }
+.sb-go { display: flex; flex-wrap: wrap; gap: 12px; }  /* in the title row, so starting never needs a scroll */
 .sb-note { color: var(--ink-3); font-size: 14px; max-width: 80ch; }
 
 /* ---------- the stage: 16:9, the arena plus a side column for the camera and chat ---------- */
@@ -380,3 +380,20 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
   .sb-arena .at::before { animation: none; }
   .sb-pop { animation-duration: 1ms; animation-delay: 700ms; }
 }
+
+/* callouts on a block, an interrupt and a hit on Art, and the whole frame jolting when Art is hit */
+.sb-call { position: absolute; transform: translate(-50%, -50%); font: 700 calc(var(--k) * 5cqh)/1 var(--f-head); letter-spacing: .06em; white-space: nowrap; pointer-events: none; animation: sb-call 1000ms cubic-bezier(.2, 1.3, .4, 1) forwards; text-shadow: 0 .3cqh 0 #000; }
+.sb-call.block { color: #bff6ff; text-shadow: 0 0 2cqh rgba(62,230,255,.9), 0 .3cqh 0 #000; }
+.sb-call.cut { color: #fff; font-size: calc(var(--k) * 5.6cqh); text-shadow: 0 0 2.4cqh rgba(255,255,255,.9), 0 .3cqh 0 #000; }
+.sb-call.hurt { color: #ff6b78; font-family: var(--f-mono); }
+.sb-call.hurt.big { font-size: calc(var(--k) * 7cqh); }
+@keyframes sb-call { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.8); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -110%) scale(1); } }
+.sb-arena.jolt { animation: sb-jolt 260ms ease-out; }
+.sb-arena.jolt-big { animation: sb-jolt-big 380ms ease-out; }
+.sb-arena.jolt .sb-artbox, .sb-arena.jolt-big .sb-artbox { animation: sb-artflash 420ms ease-out; }
+.sb-arena.jolt-big::after { content: ''; position: absolute; inset: 0; z-index: 6; pointer-events: none; box-shadow: inset 0 0 18cqh rgba(255,40,60,.55); animation: sb-redge 420ms ease-out forwards; }
+@keyframes sb-jolt { 0% { transform: translate(0, 0); } 25% { transform: translate(-0.6cqh, 0.4cqh); } 55% { transform: translate(0.5cqh, -0.3cqh); } 100% { transform: none; } }
+@keyframes sb-jolt-big { 0% { transform: none; } 15% { transform: translate(-1.4cqh, 0.9cqh); } 35% { transform: translate(1.2cqh, -0.7cqh); } 60% { transform: translate(-0.6cqh, 0.4cqh); } 100% { transform: none; } }
+@keyframes sb-artflash { 0% { background: rgba(255,40,60,.45); } 100% { background: transparent; } }
+@keyframes sb-redge { 0% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sb-arena.jolt, .sb-arena.jolt-big { animation: none; } .sb-call { animation-duration: 1ms; animation-fill-mode: none; } }

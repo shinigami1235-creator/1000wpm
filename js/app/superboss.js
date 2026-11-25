@@ -257,6 +257,27 @@
       if (n === 'hype' && d.full) { const sp = Combat.spell(d.spell); banner('Hype train', `The crowd gave Art ${sp ? sp.word : 'a spell'}. Type it to cast it.`, 'hype', 2400); }
       if (n === 'support') alert(d);
       if (n === 'go') { lastPhase = 1; enrageShown = false; }
+      // big callouts on the moments that matter: a block, an interrupt, a hit on Art
+      if (n === 'block') call('BLOCKED', 'block', 'art');
+      if (n === 'warded' || n === 'shielded') call(n === 'warded' ? 'WARDED' : 'SHIELDED', 'block', 'art');
+      if (n === 'cancel') call('INTERRUPTED', 'cut', d.attack === 'breath' ? 'head:root' : d.attack === 'mend' ? 'head:patch' : d.attack === 'lunge' || d.attack === 'sweep' ? 'head' : 'core');
+      if (n === 'hurt') { call('-' + fmt(d.amount), d.amount >= 12 ? 'hurt big' : 'hurt', 'art'); jolt(d.amount >= 12); }
+    }
+    function call(text, kind, key) {
+      const layer = a('pops'), p = scene.anchor(key, {}); if (!layer || !p) return;
+      const e = document.createElement('span');
+      e.className = 'sb-call ' + kind;
+      e.textContent = text;
+      // Art's callouts sit well above the typing line so they never cover the words
+      e.style.left = p.x + 'px'; e.style.top = (key === 'art' ? Math.min(p.y - 60, root.clientHeight * 0.42) : p.y - 30) + 'px';
+      layer.append(e);
+      setTimeout(() => e.remove(), 1100);
+    }
+    function jolt(heavy) {
+      if (opts().reduceShake) return;
+      root.classList.remove('jolt', 'jolt-big'); void root.offsetWidth;
+      root.classList.add(heavy ? 'jolt-big' : 'jolt');
+      clearTimeout(jolt.t); jolt.t = setTimeout(() => root.classList.remove('jolt', 'jolt-big'), 450);
     }
     function addTick(amount, name, src, crit) {
       const t = performance.now();
@@ -431,7 +452,12 @@
     const o = store('wpm-sb-pick') || { boss: 'hydra', dial: 'typemaster' };
     el.innerHTML = `
       <div class="sb-lobby">
-        <div class="play-head"><div class="title-block"><h1>Superboss_</h1><p>// ART'S LIVE FIGHTS</p></div></div>
+        <div class="play-head"><div class="title-block"><h1>Superboss_</h1><p>// ART'S LIVE FIGHTS</p></div>
+          <div class="sb-go">
+          <a class="btn" data-k="stream" href="#/superboss/stream/hydra/typemaster">Stream this fight</a>
+          <a class="btn out" data-k="watch" href="#/superboss/watch">Watch the stream</a>
+          </div>
+        </div>
         <p class="sb-lede">Art fights these bosses live on his stream. Viewers watch on this site, chat and spend coins to help him or to make the fight harder.</p>
         <div class="sb-pick">
           <ol class="sb-bosses" aria-label="Bosses">
@@ -446,10 +472,6 @@
           </div>
           <p class="sb-dialnote" data-k="dialnote"></p>
         </section>
-        <div class="sb-go">
-          <a class="btn" data-k="stream" href="#/superboss/stream/hydra/typemaster">Stream this fight</a>
-          <a class="btn out" data-k="watch" href="#/superboss/watch">Watch the stream</a>
-        </div>
         <p class="sb-note">Art opens the stream view on the computer he streams from and captures it in OBS as a 1920x1080 window. Viewers open the watch page.</p>
       </div>`;
     const q = k => el.querySelector(`[data-k="${k}"]`);
