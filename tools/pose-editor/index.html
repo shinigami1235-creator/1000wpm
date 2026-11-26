@@ -13,6 +13,7 @@
 <style>
   :root { --bg: #0c0e12; --panel: #14171d; --line: #262b34; --ink: #d9dde4; --dim: #8a919c; --red: #ff3a46; --cyan: #4fd8ff; --amber: #ffb547; --green: #48e08a; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
   button, select, input { font: inherit; color: inherit; }
   select { background: #1d212a; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
@@ -95,7 +96,8 @@
         <button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="three">3/4</button><button data-cam="player">Player view</button><button data-cam="top">Top</button>
       </div>
       <div class="grp">
-        <button id="fMove" class="on" title="Drag the fist and the arm reaches for it">Fist: move</button><button id="fTurn" title="Turn the fist with the forearm and wrist">Fist: turn</button></div>
+        <span id="aimGrp" hidden style="display:contents"><button data-aim="-1">Aim: your left</button><button data-aim="0" class="on">Aim: middle</button><button data-aim="1">Aim: your right</button></span></div>
+      <div class="grp"><button id="fMove" class="on" title="Drag the fist and the arm reaches for it">Fist: move</button><button id="fTurn" title="Turn the fist with the forearm and wrist">Fist: turn</button></div>
       <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button><button id="tgSmooth" title="One smooth curve through all the scenes, so frames between scenes follow the scenes around them">Smooth through scenes</button>
       </div>
     </div>
@@ -157,6 +159,9 @@ const grid = new THREE.GridHelper(60, 30, '#2c323c', '#1a1e25'); scene.add(grid)
 // where the raid stands, so the punch has something to land on
 const raid = new THREE.Mesh(new THREE.RingGeometry(2.4, 2.8, 48), new THREE.MeshBasicMaterial({ color: '#48e08a', side: THREE.DoubleSide, transparent: true, opacity: 0.6 }));
 raid.rotation.x = -Math.PI / 2; raid.position.set(0, 0.03, 11); scene.add(raid);
+// the groups on your left and right, for the cannon's aim (x is to your right seen from the raid)
+const GROUP_X = 7;
+const sideRings = [-GROUP_X, GROUP_X].map(x => { const m = raid.clone(); m.material = raid.material.clone(); m.material.opacity = 0.25; m.position.x = x; scene.add(m); return m; });
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 400);
 const orbit = new OrbitControls(camera, renderer.domElement);
@@ -358,29 +363,24 @@ const ATTACKS = {
     }),
   },
   cannon: {
-    name: 'Arm cannon', main: 'charge', mirror: false, orb: true,
+    name: 'Arm cannon', main: 'charge', mirror: false, orb: true, aim: true,
+    // one shot per attack: the game turns the whole boss toward the group it picked (Aim at in the
+    // view previews that) and plays the same charge and shot
     scenes: [
       { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
-      { id: 'charge', name: 'Charge: middle', note: 'Aims low at the middle group and charges the orb at the hand.' },
-      { id: 'fire', name: 'Fire', note: 'The shot at the middle group and its recoil. The auto side shots take the same recoil from their own aim.' },
-      { id: 'aimL', name: 'Aim: your left', note: 'Turns to the group on your left (seen from the player\'s side) and charges again.' },
-      { id: 'fireL', name: 'Fire: your left', note: 'The shot at your left group. Auto is the left aim with the same recoil as Fire.' },
-      { id: 'aimR', name: 'Aim: your right', note: 'Turns to the group on your right and charges again.' },
-      { id: 'fireR', name: 'Fire: your right', note: 'The shot at your right group. Auto is the right aim with the same recoil as Fire.' },
+      { id: 'charge', name: 'Charge', note: 'Raises the cannon arm, aims at the group and charges the orb at the hand. Aim at (top of the view) turns the boss to the other groups.' },
+      { id: 'fire', name: 'Fire', note: 'The shot and its recoil.' },
       { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
-    segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'aimL', 'inOut', 'turn', 'spark'], ['aimL', 'aimL', 'out', 'charge2', 'grow'], ['aimL', 'fireL', 'out3', 'shot', 'fire'], ['fireL', 'aimR', 'inOut', 'turn', 'spark'], ['aimR', 'aimR', 'out', 'charge2', 'grow'], ['aimR', 'fireR', 'out3', 'shot', 'fire'], ['fireR', 'recover', 'inOut', 'recover']],
-    segName: { aim: 'Aim', charge: 'Charge', shot: 'Fire', turn: 'Turn', charge2: 'Charge', recover: 'Recover' },
-    timing: { aim: 0.9, charge: 1.4, shot: 0.12, turn: 0.5, charge2: 0.8, recover: 1.0 },
-    timeRows: [['aim', 'Raise and aim', 0.2, 3], ['charge', 'First charge', 0.2, 6], ['shot', 'Shot and recoil', 0.04, 0.6], ['turn', 'Turn to the next group', 0.1, 2], ['charge2', 'Later charges', 0.1, 4], ['recover', 'Recover', 0.2, 2.5]],
+    segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'fire', 'out', 'freeze'], ['fire', 'recover', 'inOut', 'recover']],
+    segName: { aim: 'Aim', charge: 'Charge', shot: 'Fire', freeze: 'Hold', recover: 'Recover' },
+    timing: { aim: 0.9, charge: 1.6, shot: 0.12, freeze: 0.4, recover: 1.0 },
+    timeRows: [['aim', 'Raise and aim', 0.2, 3], ['charge', 'Charge', 0.2, 6], ['shot', 'Shot and recoil', 0.04, 0.6], ['freeze', 'Hold after the shot', 0, 1.5], ['recover', 'Recover', 0.2, 2.5]],
     feel: { lead: 0.05 },
     defaults: () => ({
-      charge: cannonAim(50, -25, 0.3),
-      fire: sheet({ shoulderR: { flex: 62, abd: -25 }, elbowR: { flex: 10 }, ...BRACE, raw: { chest: [0.1, 0.25, 0], spine: [0.2, 0.125, 0], head: [-0.4, -0.25, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.3 }),
-      aimL: cannonAim(50, 5, 0.05),
-      aimR: cannonAim(50, -40, 0.62),
+      charge: cannonAim(63, -38, 0.3),
+      fire: sheet({ shoulderR: { flex: 75, abd: -38 }, elbowR: { flex: 10 }, ...BRACE, raw: { chest: [0.1, 0.25, 0], spine: [0.2, 0.125, 0], head: [-0.4, -0.25, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.3 }),
     }),
-    autos: { fireL: R => plus(R.aimL, R.fire, R.charge), fireR: R => plus(R.aimR, R.fire, R.charge) },
   },
   summon: {
     name: 'Summon shards', main: 'gather', mirror: true,
@@ -407,6 +407,8 @@ function useAttack(id) {
   DEF = ATTACKS[id];
   const A = store.attacks[id];
   // scenes added in the editor split a stretch of the timeline in two (A.segs replaces DEF.segs)
+  const known = new Set([...DEF.scenes.map(x => x.id), ...(A.extra || []).map(x => x.id)]);
+  if (A.segs && A.segs.some(sg => !known.has(sg[0]) || !known.has(sg[1]))) { delete A.segs; delete A.extra; delete A.segName; }
   SEGS = A.segs || DEF.segs; SEG_NAME = { ...DEF.segName, ...(A.segName || {}) };
   const labels = [...new Set(Object.values(DEF.segName))];
   SEG_COL = {}; for (const k in SEG_NAME) SEG_COL[k] = SEG_COLS[labels.indexOf(SEG_NAME[k]) % SEG_COLS.length] || SEG_COLS[0];
@@ -605,12 +607,25 @@ function poseAt(target, t, lead = state.feel.lead) {
   for (const bn in Bt) blendInto(Bt[bn], TORSO.has(bn) ? xb : xa, bn);
   if (target === kit) setOrb(xa);
   Bt.hips.position.y = S.hover + val(xb, 'hips'); Bt.hips.position.z = val(xb, 'move') || 0;
+  target.group.rotation.y = yawAt(xa);
 }
 // the cannon's orb at the right hand: a spark while aiming, growing while it charges, a flash on the shot
 const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff4a64' }));
 const orbHalo = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff2040', transparent: true, opacity: 0.22, depthWrite: false }));
 orb.add(orbHalo); orbHalo.scale.setScalar(1.7); orb.userData.jcSkip = orbHalo.userData.jcSkip = true;
 orb.position.set(0, -S.fist * 1.25, 0); B.handR.add(orb); orb.visible = false;
+// where the shot goes: a line from the orb along the forearm while the cannon is up
+const aimLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: '#ff4a64', dashSize: 0.8, gapSize: 0.5, transparent: true, opacity: 0.8 }));
+aimLine.visible = false; scene.add(aimLine);
+function updateAimLine() {
+  aimLine.visible = !!DEF.aim && orb.visible;
+  if (!aimLine.visible) return;
+  kit.group.updateMatrixWorld(true);
+  const e = new THREE.Vector3(), h = new THREE.Vector3(); B.foreR.getWorldPosition(e); orb.getWorldPosition(h);
+  const d = h.clone().sub(e).normalize(), end = h.clone().add(d.multiplyScalar(40));
+  if (end.y < 0) end.lerpVectors(h, end, h.y / (h.y - end.y));   // stop at the floor
+  aimLine.geometry.setFromPoints([h, end]); aimLine.computeLineDistances();
+}
 function setOrb(x) {
   if (!DEF.orb || !x || !x.fx) { orb.visible = false; return; }
   const r = x.fx === 'grow' ? 0.3 + 1.4 * x.fu : x.fx === 'fire' ? (x.fu < 0.3 ? 2.2 : 1.6 * (1 - x.fu)) : 0.25 * x.fu;
@@ -621,6 +636,7 @@ function poseKey(target, id) {
   if (target === kit) setOrb(id === 'charge' || id === 'aimL' || id === 'aimR' ? { fx: 'grow', fu: 1 } : null);
   for (const bn in Bt) Bt[bn].rotation.set(...(Pk[bn] || IDLE[bn] || [0, 0, 0]));
   Bt.hips.position.y = S.hover + (Pk._hips || 0); Bt.hips.position.z = Pk._move || 0;
+  target.group.rotation.y = DEF.aim && id !== 'idle' && id !== 'recover' ? aimYaw() : 0;
 }
 
 // ---------- handles ----------
@@ -814,6 +830,11 @@ function sceneAt(t) { const m = marks(); let best = 'idle'; for (const s of SCEN
 
 // ---------- panel ----------
 let dirty = true; const need = () => { dirty = true; };
+// which group the cannon aims at in the preview: -1 your left, 0 middle, 1 your right. The whole
+// boss turns to face it while it raises the cannon and turns back as it recovers.
+let aimAt = 0;
+const aimYaw = () => Math.atan2(aimAt * GROUP_X, raid.position.z);
+function yawAt(x) { const w = id => (id === 'idle' || id === 'recover' ? 0 : 1); return DEF.aim ? aimYaw() * (w(x.a) + (w(x.b) - w(x.a)) * x.k) : 0; }
 let cur = 'strike', time = 0, playing = false, showHandles = true, showPath = true, showGhost = true;
 const groups = ['Right arm', 'Left arm', 'Both arms', 'Body'];
 function buildFields() {
@@ -1014,7 +1035,7 @@ function exportText() {
     o._hips = Math.round((p._hips || 0) * 100) / 100; o._move = Math.round((p._move || 0) * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, hands: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, hands: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, ...(DEF.aim ? { aim: { turn: 'whole boss turns to face the picked group while it raises the cannon, back on recover', groupsAt: { left: [-GROUP_X, 0, 11], middle: [0, 0, 11], right: [GROUP_X, 0, 11] }, yawDeg: +(Math.atan2(GROUP_X, 11) * R2D).toFixed(1) } } : {}), segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
@@ -1110,6 +1131,7 @@ function frame() {
   if (renderer.domElement.width !== Math.floor(w * pr) || renderer.domElement.height !== Math.floor(h * pr)) {
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
+  updateAimLine();
   renderer.render(scene, camera);
 }
 
@@ -1161,11 +1183,13 @@ $('addScene').onclick = () => { commit(); addSceneAt(time); };
 $('delScene').onclick = () => { commit(); deleteScene(cur); };
 
 // ---------- switching attacks ----------
+document.querySelectorAll('[data-aim]').forEach(bt => bt.onclick = () => { aimAt = +bt.dataset.aim; document.querySelectorAll('[data-aim]').forEach(x => x.classList.toggle('on', x === bt)); sideRings.forEach((r, i) => { r.material.opacity = aimAt === (i ? 1 : -1) ? 0.6 : 0.25; }); raid.material.opacity = aimAt === 0 ? 0.6 : 0.25; for (const k in thumbKey) delete thumbKey[k]; refreshSoon(); need(); });
 function syncMirror() { $('mirror').classList.toggle('on', !!state.mirror); $('tgSmooth').classList.toggle('on', !!store.smooth); }
 $('mirror').onclick = () => { state.mirror = !state.mirror; syncMirror(); commit(); };
 for (const [k, a] of Object.entries(ATTACKS)) { const o = document.createElement('option'); o.value = k; o.textContent = a.name; $('attack').appendChild(o); }
 function switchTo(id, quietSwitch) {
   store.attack = id; state = store.attacks[id]; useAttack(id); $('attack').value = id;
+  $('aimGrp').hidden = !DEF.aim; kit.group.rotation.y = 0; ghost.group.rotation.y = 0;
   for (const k in thumbKey) delete thumbKey[k];
   timelineProblems = []; cur = DEF.main; time = 0; playing = false; tc.detach(); grab = null;
   buildFeel(); buildCards(); rebuild(); syncMirror();
@@ -1174,7 +1198,7 @@ function switchTo(id, quietSwitch) {
 }
 $('attack').onchange = () => { commit(); switchTo($('attack').value); commit(); };
 $('attack').value = store.attack;
-cur = DEF.main;
+cur = DEF.main; $('aimGrp').hidden = !DEF.aim;
 rebuild(); buildFields(); buildFeel(); buildCards(); buildBar(); syncMirror(); setCam('three');
 time = marks()[cur]; fillFields(); markCards(); poseNow();
 requestAnimationFrame(frame);
@@ -1194,7 +1218,7 @@ window.editor = {
   setEase: (i, e) => { state.segs = SEGS.slice(); state.segs[i] = state.segs[i].slice(); state.segs[i][2] = e; useAttack(store.attack); buildBar(); commit(); },
   ring: () => raid.position.toArray(),
   probeFists: sp => { const Pt = toPose(clampSpec(sp)); for (const bn in B) B[bn].rotation.set(...(Pt[bn] || IDLE[bn] || [0, 0, 0])); B.hips.position.y = S.hover + Pt._hips; B.hips.position.z = Pt._move || 0; kit.group.updateMatrixWorld(true);
-    const v = k => { const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return w.toArray(); }; const r = { R: v('R'), L: v('L'), probs: JC.check(rig, '').map(x => x.msg).filter(m => !quiet(m)) }; poseNow(); return r; },
+    const v = k => { const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return w.toArray(); }; const e = new THREE.Vector3(); B.foreR.getWorldPosition(e); const r = { eR: e.toArray(), R: v('R'), L: v('L'), probs: JC.check(rig, '').map(x => x.msg).filter(m => !quiet(m)) }; poseNow(); return r; },
   R: () => R, handleWorld: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); kit.group.updateMatrixWorld(true); h.getWorldPosition(v); return v.toArray().map(x => +x.toFixed(2)); }, add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
   handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   stateObj: () => state, state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
