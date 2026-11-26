@@ -96,7 +96,7 @@
       </div>
       <div class="grp">
         <button id="fMove" class="on" title="Drag the fist and the arm reaches for it">Fist: move</button><button id="fTurn" title="Turn the fist with the forearm and wrist">Fist: turn</button></div>
-      <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button>
+      <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button><button id="tgSmooth" title="One smooth curve through all the scenes, so frames between scenes follow the scenes around them">Smooth through scenes</button>
       </div>
     </div>
     <div id="between" hidden></div>
@@ -422,7 +422,7 @@ const freshAttack = id => {
   if (d.auto) sc[d.main] = { auto: false, spec: d.defaults()[d.main] };
   return { timing: { ...d.timing }, feel: { ...d.feel }, scenes: sc, mirror: d.mirror };
 };
-const DEFAULT = () => ({ v: 2, attack: 'punch', idle: {}, attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
+const DEFAULT = () => ({ v: 2, attack: 'punch', idle: {}, smooth: true, attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
 let store = DEFAULT();
 try {
   const saved = JSON.parse(localStorage.getItem('syntax-punch-editor'));
@@ -431,6 +431,7 @@ try {
 } catch (e) {}
 for (const k in ATTACKS) store.attacks[k] = store.attacks[k] || freshAttack(k);
 store.idle = store.idle || {};
+if (store.smooth === undefined) store.smooth = true;
 if (store.idle.spec) store.idle.spec = clampSpec(store.idle.spec);
 for (const k in store.attacks) for (const id in store.attacks[k].scenes) if (store.attacks[k].scenes[id].spec) store.attacks[k].scenes[id].spec = clampSpec(store.attacks[k].scenes[id].spec);
 let state = store.attacks[store.attack];
@@ -528,27 +529,51 @@ function at(t) {
   const m = marks();
   let a = 'recover', b = 'recover', u = 1, e = 'inOut';
   let start = 0;
-  let fx = null, fu = 1;
-  for (const [from, to, ez, len, orb] of SEGS) {
-    const end = start + state.timing[len];
-    if (t < end) { a = from; b = to; e = ez; fx = orb || null; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); fu = u; break; }
+  let fx = null, fu = 1, i = SEGS.length - 1;
+  for (let j = 0; j < SEGS.length; j++) {
+    const [from, to, ez, len, orb] = SEGS[j], end = start + state.timing[len];
+    if (t < end) { a = from; b = to; e = ez; fx = orb || null; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); fu = u; i = j; break; }
     start = end;
   }
-  if (t < 0) { a = b = 'idle'; u = 0; }
-  return { a, b, k: ease[e](u), fx, fu };
+  if (t < 0) { a = b = 'idle'; u = 0; i = 0; }
+  // the scenes either side of this stretch, so the motion can curve smoothly through a and b
+  const p0 = i > 0 ? SEGS[i - 1][0] : a, p3 = i < SEGS.length - 1 ? SEGS[i + 1][1] : b;
+  return { a, b, p0, p3, k: ease[e](u), fx, fu };
 }
 // joints turn along the shortest path between scenes (quaternions), so a shape like the steeple
 // stays together between its scenes; the game blends the same way
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
-// elbows and wrists blend their bend and twist separately, so a forearm that rolls on the way
-// never bends sideways at the elbow halfway through
-const HINGE = { foreR: ['elbowR', 'elbowR'], foreL: ['elbowL', 'elbowL'], handR: ['wristR', 'wristR'], handL: ['wristL', 'wristL'] };
+// Smooth through scenes: every value follows one curve through all the scenes (Catmull-Rom), so a
+// frame between two scenes also leans toward the scenes before and after, and a stretch turns no
+// corner at a scene. Shoulders use the same curve on quaternions. Off, each stretch only blends
+// its own two scenes.
+const cr = (p0, p1, p2, p3, u) => 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
+function val(x, key) {
+  const A = R[x.a], Bs = R[x.b];
+  if (x.a === x.b) return A[key];
+  if (!store.smooth) return A[key] + (Bs[key] - A[key]) * x.k;
+  return cr(R[x.p0][key], A[key], Bs[key], R[x.p3][key], x.k);
+}
+const _q = [0, 1, 2, 3].map(() => new THREE.Quaternion()), _m = [0, 1, 2].map(() => new THREE.Quaternion());
+function crQuat(x, bn, out) {
+  [x.p0, x.a, x.b, x.p3].forEach((id, i) => { const e = P[id][bn] || IDLE[bn] || [0, 0, 0]; _q[i].setFromEuler(_e.set(e[0], e[1], e[2])); });
+  for (const i of [0, 2, 3]) if (_q[i].dot(_q[1]) < 0) { _q[i].x *= -1; _q[i].y *= -1; _q[i].z *= -1; _q[i].w *= -1; }
+  const u = x.k;
+  // Barry-Goldman pyramid with slerp
+  _m[0].copy(_q[0]).slerp(_q[1], u + 1); _m[1].copy(_q[1]).slerp(_q[2], u); _m[2].copy(_q[2]).slerp(_q[3], u - 1);
+  _m[0].slerp(_m[1], (u + 1) / 2); _m[1].slerp(_m[2], u / 2);
+  return out.copy(_m[0]).slerp(_m[1], u);
+}
+const HINGE = { foreR: 'elbowR', foreL: 'elbowL', handR: 'wristR', handL: 'wristL' };
 function blendInto(bone, x, bn) {
   if (HINGE[bn] && R[x.a] && R[x.b]) {
-    const j = HINGE[bn][0], A = R[x.a], Bs = R[x.b], l = k => A[k] + (Bs[k] - A[k]) * x.k;
-    const v = j.startsWith('elbow') ? { flex: l(j + '.flex'), side: l(j + '.side'), twist: l(j + '.twist') } : { flex: l(j + '.flex'), abd: l(j + '.abd'), twist: l(j + '.twist') };
-    bone.rotation.set(...JC.bend(rig, j, v)); return;
+    const j = HINGE[bn], l = k => val(x, `${j}.${k}`);
+    bone.rotation.set(...JC.bend(rig, j, j.startsWith('elbow') ? { flex: l('flex'), side: l('side'), twist: l('twist') } : { flex: l('flex'), abd: l('abd'), twist: l('twist') }));
+    return;
   }
+  if ((bn === 'spine' || bn === 'chest' || bn === 'head') && R[x.a] && R[x.b]) { bone.rotation.set(val(x, bn + '.0') * D2R, val(x, bn + '.1') * D2R, val(x, bn + '.2') * D2R); return; }
+  if ((bn === 'clawR' || bn === 'clawL') && R[x.a] && R[x.b]) { bone.rotation.set(-0.3 + 1.8 * val(x, bn) / 100, 0, 0); return; }
+  if (store.smooth && (bn === 'armR' || bn === 'armL') && x.a !== x.b) { crQuat(x, bn, bone.quaternion); return; }
   const pa = P[x.a][bn] || IDLE[bn] || [0, 0, 0], pb = P[x.b][bn] || IDLE[bn] || [0, 0, 0];
   _qa.setFromEuler(_e.set(pa[0], pa[1], pa[2])); _qb.setFromEuler(_e.set(pb[0], pb[1], pb[2]));
   bone.quaternion.copy(_qa.slerp(_qb, x.k));
@@ -558,8 +583,7 @@ function poseAt(target, t, lead = state.feel.lead) {
   const xa = at(t), xb = at(t + lead), Bt = target.bones;
   for (const bn in Bt) blendInto(Bt[bn], TORSO.has(bn) ? xb : xa, bn);
   if (target === kit) setOrb(xa);
-  const ha = (P[xb.a]._hips || 0), hb = (P[xb.b]._hips || 0);
-  Bt.hips.position.y = S.hover + ha + (hb - ha) * xb.k;
+  Bt.hips.position.y = S.hover + val(xb, 'hips');
 }
 // the cannon's orb at the right hand: a spark while aiming, growing while it charges, a flash on the shot
 const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff4a64' }));
@@ -961,7 +985,7 @@ function exportText() {
     o._hips = Math.round((p._hips || 0) * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp), elbows and wrists by bend and twist', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
@@ -1003,6 +1027,7 @@ const setFist = m => { fistMode = m; $('fMove').classList.toggle('on', m === 'mo
 $('fMove').onclick = () => setFist('move'); $('fTurn').onclick = () => setFist('turn');
 $('tgHandles').onclick = e => { showHandles = !showHandles; e.target.classList.toggle('on', showHandles); handleMeshes.forEach(h => { h.visible = showHandles; }); if (!showHandles) { tc.detach(); grab = null; } };
 $('tgPath').onclick = e => { showPath = !showPath; e.target.classList.toggle('on', showPath); need(); };
+$('tgSmooth').onclick = () => { store.smooth = !store.smooth; $('tgSmooth').classList.toggle('on', store.smooth); commit(); refreshSoon(); need(); };
 $('tgGhost').onclick = e => { showGhost = !showGhost; e.target.classList.toggle('on', showGhost); need(); };
 document.querySelectorAll('#cams button').forEach(b => b.onclick = () => setCam(b.dataset.cam));
 addEventListener('pointerup', () => { sliding = false; });
@@ -1105,7 +1130,7 @@ $('addScene').onclick = () => { commit(); addSceneAt(time); };
 $('delScene').onclick = () => { commit(); deleteScene(cur); };
 
 // ---------- switching attacks ----------
-function syncMirror() { $('mirror').classList.toggle('on', !!state.mirror); }
+function syncMirror() { $('mirror').classList.toggle('on', !!state.mirror); $('tgSmooth').classList.toggle('on', !!store.smooth); }
 $('mirror').onclick = () => { state.mirror = !state.mirror; syncMirror(); commit(); };
 for (const [k, a] of Object.entries(ATTACKS)) { const o = document.createElement('option'); o.value = k; o.textContent = a.name; $('attack').appendChild(o); }
 function switchTo(id, quietSwitch) {
