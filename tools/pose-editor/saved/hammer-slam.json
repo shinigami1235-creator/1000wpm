@@ -1,0 +1,1706 @@
+{
+ "tool": "syntax-punch-editor",
+ "v": 2,
+ "hands": 2,
+ "attack": "slam",
+ "name": "Hammer slam",
+ "blend": "Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)",
+ "idleSharedByAllAttacks": true,
+ "timing": {
+  "wind": 1.3,
+  "hold": 0.4,
+  "swing": 0.16,
+  "strike": 0.06,
+  "freeze": 0.5,
+  "recover": 1,
+  "x1a": 0.464,
+  "x1b": 0.836,
+  "x2a": 0.348,
+  "x2b": 0.16,
+  "x3a": 0.114,
+  "x3b": 0.776,
+  "x4a": 0.232,
+  "x4b": 0.596,
+  "x5a": 0.067,
+  "x5b": 0.536,
+  "x6a": 0.116,
+  "x6b": 0.402,
+  "x7a": 0.048,
+  "x7b": 0.345,
+  "x8a": 0.117,
+  "x8b": 0.188,
+  "x9a": 0.071,
+  "x9b": 0.027,
+  "x10a": 0.128,
+  "x10b": 0.072
+ },
+ "feel": {
+  "lead": 0
+ },
+ "segments": [
+  [
+   "idle",
+   "x2",
+   "lin",
+   "x2a",
+   null
+  ],
+  [
+   "x2",
+   "x1",
+   "lin",
+   "x2b",
+   null
+  ],
+  [
+   "x1",
+   "x3",
+   "lin",
+   "x3a",
+   null
+  ],
+  [
+   "x3",
+   "x4",
+   "lin",
+   "x4a",
+   null
+  ],
+  [
+   "x4",
+   "x5",
+   "lin",
+   "x5a",
+   null
+  ],
+  [
+   "x5",
+   "x6",
+   "lin",
+   "x6a",
+   null
+  ],
+  [
+   "x6",
+   "x7",
+   "lin",
+   "x7a",
+   null
+  ],
+  [
+   "x7",
+   "x8",
+   "lin",
+   "x8a",
+   null
+  ],
+  [
+   "x8",
+   "x9",
+   "lin",
+   "x9a",
+   null
+  ],
+  [
+   "x9",
+   "steeple",
+   "out",
+   "x9b",
+   null
+  ],
+  [
+   "steeple",
+   "steeple",
+   "out",
+   "hold"
+  ],
+  [
+   "steeple",
+   "x10",
+   "lin",
+   "x10a",
+   null
+  ],
+  [
+   "x10",
+   "swing",
+   "lin",
+   "x10b",
+   null
+  ],
+  [
+   "swing",
+   "floor",
+   "lin",
+   "strike"
+  ],
+  [
+   "floor",
+   "floor",
+   "out",
+   "freeze"
+  ],
+  [
+   "floor",
+   "recover",
+   "inOut",
+   "recover"
+  ]
+ ],
+ "addedScenes": [
+  {
+   "id": "x1",
+   "name": "In-between",
+   "note": "A scene you added between Idle and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    0,
+    "inOut",
+    "wind",
+    1.3
+   ]
+  },
+  {
+   "id": "x2",
+   "name": "In-between",
+   "note": "A scene you added between Idle and In-between. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    0,
+    "in2",
+    "x1a",
+    0.464
+   ]
+  },
+  {
+   "id": "x3",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    2,
+    "out",
+    "x1b",
+    0.836
+   ]
+  },
+  {
+   "id": "x4",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    3,
+    "out",
+    "x3b",
+    0.776
+   ]
+  },
+  {
+   "id": "x5",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    4,
+    "out",
+    "x4b",
+    0.596
+   ]
+  },
+  {
+   "id": "x6",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    5,
+    "out",
+    "x5b",
+    0.536
+   ]
+  },
+  {
+   "id": "x7",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    6,
+    "out",
+    "x6b",
+    0.402
+   ]
+  },
+  {
+   "id": "x8",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    7,
+    "out",
+    "x7b",
+    0.345
+   ]
+  },
+  {
+   "id": "x9",
+   "name": "In-between",
+   "note": "A scene you added between In-between and Steeple wind-up. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    8,
+    "out",
+    "x8b",
+    0.188
+   ]
+  },
+  {
+   "id": "x10",
+   "name": "In-between",
+   "note": "A scene you added between Steeple wind-up and Swing. Fix the in-between pose here; Delete this scene joins the two stretches back up.",
+   "split": [
+    11,
+    "in2",
+    "swing",
+    0.16
+   ]
+  }
+ ],
+ "scenes": {
+  "idle": {
+   "auto": false,
+   "edited": false,
+   "spec": {
+    "shoulderR.flex": -10.3,
+    "shoulderR.abd": 28.6,
+    "shoulderR.twist": 0.1,
+    "elbowR.flex": 31.5,
+    "elbowR.side": 0,
+    "elbowR.twist": 0,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 47.2,
+    "shoulderL.flex": -10.3,
+    "shoulderL.abd": 28.6,
+    "shoulderL.twist": -0.1,
+    "elbowL.flex": 31.5,
+    "elbowL.side": 0,
+    "elbowL.twist": 0,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 47.2,
+    "pitch": 0,
+    "hips": 0,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": 0,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": 9.2,
+    "chest.2": 0,
+    "head.0": 6.9,
+    "head.1": 0
+   }
+  },
+  "steeple": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": -20,
+    "shoulderR.abd": 170,
+    "shoulderR.twist": -80,
+    "elbowR.flex": 60,
+    "elbowR.side": 0,
+    "elbowR.twist": -108.8,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 100,
+    "shoulderL.flex": -20,
+    "shoulderL.abd": 170,
+    "shoulderL.twist": 80,
+    "elbowL.flex": 60,
+    "elbowL.side": 0,
+    "elbowL.twist": 108.8,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 100,
+    "pitch": 0,
+    "hips": 0.5,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -6.9,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -17.2,
+    "chest.2": 0,
+    "head.0": -17.2,
+    "head.1": 0
+   }
+  },
+  "swing": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": -20,
+    "shoulderR.abd": 170,
+    "shoulderR.twist": -80,
+    "elbowR.flex": 60,
+    "elbowR.side": 0,
+    "elbowR.twist": -66.1,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 100,
+    "shoulderL.flex": -20,
+    "shoulderL.abd": 170,
+    "shoulderL.twist": 80,
+    "elbowL.flex": 60,
+    "elbowL.side": 0,
+    "elbowL.twist": 66.1,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 100,
+    "pitch": 40,
+    "hips": -1.2,
+    "move": 3.5,
+    "spine.1": 0,
+    "spine.0": 5.7,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": 11.5,
+    "chest.2": 0,
+    "head.0": -14.3,
+    "head.1": 0
+   }
+  },
+  "floor": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": -20,
+    "shoulderR.abd": 170,
+    "shoulderR.twist": -80,
+    "elbowR.flex": 60,
+    "elbowR.side": 0,
+    "elbowR.twist": -53.2,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 100,
+    "shoulderL.flex": -20,
+    "shoulderL.abd": 170,
+    "shoulderL.twist": 80,
+    "elbowL.flex": 60,
+    "elbowL.side": 0,
+    "elbowL.twist": 53.2,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 100,
+    "pitch": 60,
+    "hips": -3,
+    "move": 6,
+    "spine.1": 0,
+    "spine.0": 31.5,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": 37.8,
+    "chest.2": 0,
+    "head.0": -45.8,
+    "head.1": 0
+   }
+  },
+  "recover": {
+   "auto": true,
+   "edited": false,
+   "spec": {
+    "shoulderR.flex": -10.3,
+    "shoulderR.abd": 28.6,
+    "shoulderR.twist": 0.1,
+    "elbowR.flex": 31.5,
+    "elbowR.side": 0,
+    "elbowR.twist": 0,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 47.2,
+    "shoulderL.flex": -10.3,
+    "shoulderL.abd": 28.6,
+    "shoulderL.twist": -0.1,
+    "elbowL.flex": 31.5,
+    "elbowL.side": 0,
+    "elbowL.twist": 0,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 47.2,
+    "pitch": 0,
+    "hips": 0,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": 0,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": 9.2,
+    "chest.2": 0,
+    "head.0": 6.9,
+    "head.1": 0
+   }
+  },
+  "x1": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 32.8,
+    "shoulderR.abd": 55.8,
+    "shoulderR.twist": 24.8,
+    "elbowR.flex": 39.3,
+    "elbowR.side": -2.5,
+    "elbowR.twist": -29,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 62.6,
+    "shoulderL.flex": 32.8,
+    "shoulderL.abd": 55.8,
+    "shoulderL.twist": -24.8,
+    "elbowL.flex": 39.3,
+    "elbowL.side": 2.5,
+    "elbowL.twist": 29,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 62.6,
+    "pitch": 0,
+    "hips": 0.18,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -2.5,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -0.2,
+    "chest.2": 0,
+    "head.0": -1.7,
+    "head.1": 0
+   }
+  },
+  "x2": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 7.1,
+    "shoulderR.abd": 44,
+    "shoulderR.twist": 7.8,
+    "elbowR.flex": 35.4,
+    "elbowR.side": -1.3,
+    "elbowR.twist": -9,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 55,
+    "shoulderL.flex": 7.1,
+    "shoulderL.abd": 44,
+    "shoulderL.twist": -7.8,
+    "elbowL.flex": 35.4,
+    "elbowL.side": 1.3,
+    "elbowL.twist": 9,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 55,
+    "pitch": 0,
+    "hips": 0.13,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -1.8,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": 2.5,
+    "chest.2": 0,
+    "head.0": 0.8,
+    "head.1": 0
+   }
+  },
+  "x3": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 58.1,
+    "shoulderR.abd": 59.5,
+    "shoulderR.twist": 43.9,
+    "elbowR.flex": 42.2,
+    "elbowR.side": -2.5,
+    "elbowR.twist": -49.2,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 67.8,
+    "shoulderL.flex": 58.1,
+    "shoulderL.abd": 59.5,
+    "shoulderL.twist": -43.9,
+    "elbowL.flex": 42.2,
+    "elbowL.side": 2.5,
+    "elbowL.twist": 49.2,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 67.8,
+    "pitch": 0,
+    "hips": 0.27,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -3.7,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -4.7,
+    "chest.2": 0,
+    "head.0": -5.8,
+    "head.1": 0
+   }
+  },
+  "x4": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 118.4,
+    "shoulderR.abd": 48,
+    "shoulderR.twist": 87.8,
+    "elbowR.flex": 56.5,
+    "elbowR.side": -0.2,
+    "elbowR.twist": -89,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 81,
+    "shoulderL.flex": 118.4,
+    "shoulderL.abd": 48,
+    "shoulderL.twist": -87.8,
+    "elbowL.flex": 56.5,
+    "elbowL.side": 0.2,
+    "elbowL.twist": 89,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 81,
+    "pitch": 0,
+    "hips": 0.39,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -5.4,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -11.2,
+    "chest.2": 0,
+    "head.0": -11.8,
+    "head.1": 0
+   }
+  },
+  "x5": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 129,
+    "shoulderR.abd": 41.5,
+    "shoulderR.twist": 93.5,
+    "elbowR.flex": 57.2,
+    "elbowR.side": -0.1,
+    "elbowR.twist": -96.9,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 84.6,
+    "shoulderL.flex": 129,
+    "shoulderL.abd": 41.5,
+    "shoulderL.twist": -93.5,
+    "elbowL.flex": 57.2,
+    "elbowL.side": 0.1,
+    "elbowL.twist": 96.9,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 84.6,
+    "pitch": 0,
+    "hips": 0.43,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -5.9,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -13.4,
+    "chest.2": 0,
+    "head.0": -13.8,
+    "head.1": 0
+   }
+  },
+  "x6": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 144.3,
+    "shoulderR.abd": 28.1,
+    "shoulderR.twist": 98.9,
+    "elbowR.flex": 58.4,
+    "elbowR.side": 0,
+    "elbowR.twist": -105.3,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 91.3,
+    "shoulderL.flex": 144.3,
+    "shoulderL.abd": 28.1,
+    "shoulderL.twist": -98.9,
+    "elbowL.flex": 58.4,
+    "elbowL.side": 0,
+    "elbowL.twist": 105.3,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 91.3,
+    "pitch": 0,
+    "hips": 0.48,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -6.5,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -15.8,
+    "chest.2": 0,
+    "head.0": -16,
+    "head.1": 0
+   }
+  },
+  "x7": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 148.9,
+    "shoulderR.abd": 23.2,
+    "shoulderR.twist": 99.7,
+    "elbowR.flex": 58.8,
+    "elbowR.side": 0,
+    "elbowR.twist": -107.1,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 93.7,
+    "shoulderL.flex": 148.9,
+    "shoulderL.abd": 23.2,
+    "shoulderL.twist": -99.7,
+    "elbowL.flex": 58.8,
+    "elbowL.side": 0,
+    "elbowL.twist": 107.1,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 93.7,
+    "pitch": 0,
+    "hips": 0.49,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -6.7,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -16.6,
+    "chest.2": 0,
+    "head.0": -16.7,
+    "head.1": 0
+   }
+  },
+  "x8": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 157.5,
+    "shoulderR.abd": 13.2,
+    "shoulderR.twist": 100.1,
+    "elbowR.flex": 59.7,
+    "elbowR.side": 0,
+    "elbowR.twist": -108.7,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 98.5,
+    "shoulderL.flex": 157.5,
+    "shoulderL.abd": 13.2,
+    "shoulderL.twist": -100.1,
+    "elbowL.flex": 59.7,
+    "elbowL.side": 0,
+    "elbowL.twist": 108.7,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 98.5,
+    "pitch": 0,
+    "hips": 0.5,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -6.9,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -17.2,
+    "chest.2": 0,
+    "head.0": -17.2,
+    "head.1": 0
+   }
+  },
+  "x9": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 159.9,
+    "shoulderR.abd": 10,
+    "shoulderR.twist": 100.1,
+    "elbowR.flex": 60,
+    "elbowR.side": 0,
+    "elbowR.twist": -108.8,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 100,
+    "shoulderL.flex": 159.9,
+    "shoulderL.abd": 10,
+    "shoulderL.twist": -100.1,
+    "elbowL.flex": 60,
+    "elbowL.side": 0,
+    "elbowL.twist": 108.8,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 100,
+    "pitch": 0,
+    "hips": 0.5,
+    "move": 0,
+    "spine.1": 0,
+    "spine.0": -6.9,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -17.2,
+    "chest.2": 0,
+    "head.0": -17.2,
+    "head.1": 0
+   }
+  },
+  "x10": {
+   "auto": false,
+   "edited": true,
+   "spec": {
+    "shoulderR.flex": 142.5,
+    "shoulderR.abd": 10,
+    "shoulderR.twist": 100.1,
+    "elbowR.flex": 60,
+    "elbowR.side": 0,
+    "elbowR.twist": -75.1,
+    "wristR.flex": 0,
+    "wristR.abd": 0,
+    "wristR.twist": 22.9,
+    "clawR": 100,
+    "shoulderL.flex": 142.5,
+    "shoulderL.abd": 10,
+    "shoulderL.twist": -100.1,
+    "elbowL.flex": 60,
+    "elbowL.side": 0,
+    "elbowL.twist": 75.1,
+    "wristL.flex": 0,
+    "wristL.abd": 0,
+    "wristL.twist": -22.9,
+    "clawL": 100,
+    "pitch": 0,
+    "hips": 0.1,
+    "move": 1.5,
+    "spine.1": 0,
+    "spine.0": -2.8,
+    "spine.2": 0,
+    "chest.1": 0,
+    "chest.0": -5.9,
+    "chest.2": 0,
+    "head.0": -14.1,
+    "head.1": 0
+   }
+  }
+ },
+ "poses": {
+  "idle": {
+   "armR": [
+    0.18,
+    0,
+    0.5
+   ],
+   "foreR": [
+    -0.55,
+    0,
+    0
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    0.55,
+    0,
+    0
+   ],
+   "armL": [
+    0.18,
+    0,
+    -0.5
+   ],
+   "foreL": [
+    -0.55,
+    0,
+    0
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    0.55,
+    0,
+    0
+   ],
+   "spine": [
+    0,
+    0,
+    0
+   ],
+   "chest": [
+    0.16,
+    0,
+    0
+   ],
+   "head": [
+    0.12,
+    0,
+    0
+   ],
+   "_hips": 0,
+   "_move": 0
+  },
+  "steeple": {
+   "armR": [
+    -0.429,
+    -1.325,
+    2.349
+   ],
+   "foreR": [
+    2.094,
+    1.243,
+    -3.142
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.5,
+    0,
+    0
+   ],
+   "armL": [
+    -0.429,
+    1.325,
+    -2.349
+   ],
+   "foreL": [
+    2.094,
+    -1.243,
+    -3.142
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.5,
+    0,
+    0
+   ],
+   "spine": [
+    -0.12,
+    0,
+    0
+   ],
+   "chest": [
+    -0.3,
+    0,
+    0
+   ],
+   "head": [
+    -0.3,
+    0,
+    null
+   ],
+   "_hips": 0.5,
+   "_move": 0
+  },
+  "swing": {
+   "armR": [
+    0.269,
+    -1.325,
+    2.349
+   ],
+   "foreR": [
+    -1.047,
+    1.154,
+    0
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.5,
+    0,
+    0
+   ],
+   "armL": [
+    0.269,
+    1.325,
+    -2.349
+   ],
+   "foreL": [
+    -1.047,
+    -1.154,
+    0
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.5,
+    0,
+    0
+   ],
+   "spine": [
+    0.099,
+    0,
+    0
+   ],
+   "chest": [
+    0.201,
+    0,
+    0
+   ],
+   "head": [
+    -0.25,
+    0,
+    null
+   ],
+   "_hips": -1.2,
+   "_move": 3.5
+  },
+  "floor": {
+   "armR": [
+    0.618,
+    -1.325,
+    2.349
+   ],
+   "foreR": [
+    -1.047,
+    0.929,
+    0
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.5,
+    0,
+    0
+   ],
+   "armL": [
+    0.618,
+    1.325,
+    -2.349
+   ],
+   "foreL": [
+    -1.047,
+    -0.929,
+    0
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.5,
+    0,
+    0
+   ],
+   "spine": [
+    0.55,
+    0,
+    0
+   ],
+   "chest": [
+    0.66,
+    0,
+    0
+   ],
+   "head": [
+    -0.799,
+    0,
+    null
+   ],
+   "_hips": -3,
+   "_move": 6
+  },
+  "recover": {
+   "armR": [
+    0.18,
+    0,
+    0.5
+   ],
+   "foreR": [
+    -0.55,
+    0,
+    0
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    0.55,
+    0,
+    0
+   ],
+   "armL": [
+    0.18,
+    0,
+    -0.5
+   ],
+   "foreL": [
+    -0.55,
+    0,
+    0
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    0.55,
+    0,
+    0
+   ],
+   "spine": [
+    0,
+    0,
+    0
+   ],
+   "chest": [
+    0.16,
+    0,
+    0
+   ],
+   "head": [
+    0.12,
+    0,
+    0
+   ],
+   "_hips": 0,
+   "_move": 0
+  },
+  "x1": {
+   "armR": [
+    -0.207,
+    -0.238,
+    1.018
+   ],
+   "foreR": [
+    -0.704,
+    0.478,
+    0.038
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    0.827,
+    0,
+    0
+   ],
+   "armL": [
+    -0.207,
+    0.238,
+    -1.018
+   ],
+   "foreL": [
+    -0.704,
+    -0.478,
+    -0.038
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    0.827,
+    0,
+    0
+   ],
+   "spine": [
+    -0.044,
+    0,
+    0
+   ],
+   "chest": [
+    -0.003,
+    0,
+    0
+   ],
+   "head": [
+    -0.03,
+    0,
+    null
+   ],
+   "_hips": 0.18,
+   "_move": 0
+  },
+  "x2": {
+   "armR": [
+    -0.029,
+    -0.098,
+    0.773
+   ],
+   "foreR": [
+    -0.621,
+    0.144,
+    0.019
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    0.69,
+    0,
+    0
+   ],
+   "armL": [
+    -0.029,
+    0.098,
+    -0.773
+   ],
+   "foreL": [
+    -0.621,
+    -0.144,
+    -0.019
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    0.69,
+    0,
+    0
+   ],
+   "spine": [
+    -0.031,
+    0,
+    0
+   ],
+   "chest": [
+    0.044,
+    0,
+    0
+   ],
+   "head": [
+    0.014,
+    0,
+    null
+   ],
+   "_hips": 0.13,
+   "_move": 0
+  },
+  "x3": {
+   "armR": [
+    -0.322,
+    -0.36,
+    1.169
+   ],
+   "foreR": [
+    -0.772,
+    0.829,
+    0.048
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    0.92,
+    0,
+    0
+   ],
+   "armL": [
+    -0.322,
+    0.36,
+    -1.169
+   ],
+   "foreL": [
+    -0.772,
+    -0.829,
+    -0.048
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    0.92,
+    0,
+    0
+   ],
+   "spine": [
+    -0.065,
+    0,
+    0
+   ],
+   "chest": [
+    -0.082,
+    0,
+    0
+   ],
+   "head": [
+    -0.101,
+    0,
+    null
+   ],
+   "_hips": 0.27,
+   "_move": 0
+  },
+  "x4": {
+   "armR": [
+    -0.547,
+    -0.732,
+    1.536
+   ],
+   "foreR": [
+    -1.08,
+    1.55,
+    0.094
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.158,
+    0,
+    0
+   ],
+   "armL": [
+    -0.547,
+    0.732,
+    -1.536
+   ],
+   "foreL": [
+    -1.08,
+    -1.55,
+    -0.094
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.158,
+    0,
+    0
+   ],
+   "spine": [
+    -0.094,
+    0,
+    0
+   ],
+   "chest": [
+    -0.195,
+    0,
+    0
+   ],
+   "head": [
+    -0.206,
+    0,
+    null
+   ],
+   "_hips": 0.39,
+   "_move": 0
+  },
+  "x5": {
+   "armR": [
+    -0.589,
+    -0.844,
+    1.64
+   ],
+   "foreR": [
+    2.151,
+    1.452,
+    3.134
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.223,
+    0,
+    0
+   ],
+   "armL": [
+    -0.589,
+    0.844,
+    -1.64
+   ],
+   "foreL": [
+    2.151,
+    -1.452,
+    -3.134
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.223,
+    0,
+    0
+   ],
+   "spine": [
+    -0.103,
+    0,
+    0
+   ],
+   "chest": [
+    -0.234,
+    0,
+    0
+   ],
+   "head": [
+    -0.241,
+    0,
+    null
+   ],
+   "_hips": 0.43,
+   "_move": 0
+  },
+  "x6": {
+   "armR": [
+    -0.627,
+    -1.058,
+    1.853
+   ],
+   "foreR": [
+    2.122,
+    1.304,
+    -3.142
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.343,
+    0,
+    0
+   ],
+   "armL": [
+    -0.627,
+    1.058,
+    -1.853
+   ],
+   "foreL": [
+    2.122,
+    -1.304,
+    -3.142
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.343,
+    0,
+    0
+   ],
+   "spine": [
+    -0.113,
+    0,
+    0
+   ],
+   "chest": [
+    -0.276,
+    0,
+    0
+   ],
+   "head": [
+    -0.279,
+    0,
+    null
+   ],
+   "_hips": 0.48,
+   "_move": 0
+  },
+  "x7": {
+   "armR": [
+    -0.619,
+    -1.134,
+    1.945
+   ],
+   "foreR": [
+    2.115,
+    1.272,
+    3.142
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.387,
+    0,
+    0
+   ],
+   "armL": [
+    -0.619,
+    1.134,
+    -1.945
+   ],
+   "foreL": [
+    2.115,
+    -1.272,
+    -3.142
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.387,
+    0,
+    0
+   ],
+   "spine": [
+    -0.117,
+    0,
+    0
+   ],
+   "chest": [
+    -0.29,
+    0,
+    0
+   ],
+   "head": [
+    -0.291,
+    0,
+    null
+   ],
+   "_hips": 0.49,
+   "_move": 0
+  },
+  "x8": {
+   "armR": [
+    -0.516,
+    -1.282,
+    2.213
+   ],
+   "foreR": [
+    2.1,
+    1.244,
+    -3.142
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.473,
+    0,
+    0
+   ],
+   "armL": [
+    -0.516,
+    1.282,
+    -2.213
+   ],
+   "foreL": [
+    2.1,
+    -1.244,
+    -3.142
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.473,
+    0,
+    0
+   ],
+   "spine": [
+    -0.12,
+    0,
+    0
+   ],
+   "chest": [
+    -0.3,
+    0,
+    0
+   ],
+   "head": [
+    -0.3,
+    0,
+    null
+   ],
+   "_hips": 0.5,
+   "_move": 0
+  },
+  "x9": {
+   "armR": [
+    -0.422,
+    -1.323,
+    2.353
+   ],
+   "foreR": [
+    2.094,
+    1.243,
+    -3.142
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.5,
+    0,
+    0
+   ],
+   "armL": [
+    -0.422,
+    1.323,
+    -2.353
+   ],
+   "foreL": [
+    2.094,
+    -1.243,
+    -3.142
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.5,
+    0,
+    0
+   ],
+   "spine": [
+    -0.12,
+    0,
+    0
+   ],
+   "chest": [
+    -0.3,
+    0,
+    0
+   ],
+   "head": [
+    -0.3,
+    0,
+    null
+   ],
+   "_hips": 0.5,
+   "_move": 0
+  },
+  "x10": {
+   "armR": [
+    -0.118,
+    -1.323,
+    2.353
+   ],
+   "foreR": [
+    -1.047,
+    1.311,
+    0
+   ],
+   "handR": [
+    0,
+    -0.4,
+    0
+   ],
+   "clawR": [
+    1.5,
+    0,
+    0
+   ],
+   "armL": [
+    -0.118,
+    1.323,
+    -2.353
+   ],
+   "foreL": [
+    -1.047,
+    -1.311,
+    0
+   ],
+   "handL": [
+    0,
+    0.4,
+    0
+   ],
+   "clawL": [
+    1.5,
+    0,
+    0
+   ],
+   "spine": [
+    -0.049,
+    0,
+    0
+   ],
+   "chest": [
+    -0.103,
+    0,
+    0
+   ],
+   "head": [
+    -0.246,
+    0,
+    null
+   ],
+   "_hips": 0.1,
+   "_move": 1.5
+  }
+ }
+}

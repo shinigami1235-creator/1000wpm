@@ -207,7 +207,8 @@ for (const [k, side, grp] of [['R', 'right', 'Right arm'], ['L', 'left', 'Left a
   field(`claw${k}`, 'Hand: open 0 / fist 100', grp, 0, 100);
 }
 field('pitch', 'Swing both arms forward, keeping their shape', 'Both arms', -60, 150);
-field('hips', 'Body height: drop ↓ / rise ↑', 'Body', -1.5, 1, 0.05);
+field('hips', 'Body height: drop ↓ / rise ↑', 'Body', -3, 1.5, 0.05);
+field('move', 'Body forward ↑ / back ↓ (lunge)', 'Body', -6, 14, 0.05);
 field('spine.1', 'Waist turn', 'Body', -90, 90);
 field('spine.0', 'Waist lean: back ↓ / forward ↑', 'Body', -90, 90);
 field('spine.2', 'Waist tilt', 'Body', -90, 90);
@@ -234,7 +235,7 @@ function toPose(s) {
     P['claw' + k] = [-0.3 + 1.8 * s['claw' + k] / 100, 0, 0];
   }
   for (const b of ['spine', 'chest', 'head']) P[b] = [0, 1, 2].map(i => s[`${b}.${i}`] * D2R);
-  P._hips = s.hips;
+  P._hips = s.hips; P._move = s.move || 0;
   if (s.pitch) {
     // swing both arms forward about the shoulders' side-to-side axis, elbows and hands unchanged
     const q = new THREE.Quaternion(), r = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), s.pitch * D2R), e = new THREE.Euler();
@@ -283,7 +284,7 @@ function specFromPose(P) {
     s['claw' + k] = ((P['claw' + k] || [0.55])[0] + 0.3) / 1.8 * 100;
   }
   for (const b of ['spine', 'chest', 'head']) for (let i = 0; i < 3; i++) s[`${b}.${i}`] = ((P[b] || [0, 0, 0])[i]) * R2D;
-  s.hips = P._hips || 0; s.pitch = 0;
+  s.hips = P._hips || 0; s.move = P._move || 0; s.pitch = 0;
   return clampSpec(s);
 }
 const round = s => { const o = {}; for (const f of F) o[f.key] = f.step < 1 ? Math.round(s[f.key] * 100) / 100 : Math.round(s[f.key] * 10) / 10; return o; };
@@ -537,16 +538,20 @@ function at(t) {
   const m = marks();
   let a = 'recover', b = 'recover', u = 1, e = 'inOut';
   let start = 0;
-  let fx = null, fu = 1, i = SEGS.length - 1;
+  let fx = null, fu = 1, i = SEGS.length - 1, t1 = 0, t2 = 0;
   for (let j = 0; j < SEGS.length; j++) {
     const [from, to, ez, len, orb] = SEGS[j], end = start + state.timing[len];
-    if (t < end) { a = from; b = to; e = ez; fx = orb || null; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); fu = u; i = j; break; }
+    if (t < end || j === SEGS.length - 1) { a = from; b = to; e = ez; fx = orb || null; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); fu = u; i = j; t1 = start; t2 = end; break; }
     start = end;
   }
   if (t < 0) { a = b = 'idle'; u = 0; i = 0; }
-  // the scenes either side of this stretch, so the motion can curve smoothly through a and b
+  // the scenes either side of this stretch and when they happen, so the motion can curve smoothly
+  // through a and b at the speed the timing gives; next to a hold or at either end it eases to a stop
+  const holdOrEnd = j => j < 0 || j >= SEGS.length || SEGS[j][0] === SEGS[j][1];
   const p0 = i > 0 ? SEGS[i - 1][0] : a, p3 = i < SEGS.length - 1 ? SEGS[i + 1][1] : b;
-  return { a, b, p0, p3, k: ease[e](u), fx, fu };
+  const t0 = i > 0 ? t1 - state.timing[SEGS[i - 1][3]] : t1, t3 = i < SEGS.length - 1 ? t2 + state.timing[SEGS[i + 1][3]] : t2;
+  // a stretch that speeds up or runs straight into a hold (the slam into the floor) hits it at speed
+  return { a, b, p0, p3, k: ease[e](u), fx, fu, t0, t1, t2, t3, stop0: holdOrEnd(i - 1), stop3: holdOrEnd(i + 1) && !(i < SEGS.length - 1 && /^(lin|in)/.test(e)) };
 }
 // joints turn along the shortest path between scenes (quaternions), so a shape like the steeple
 // stays together between its scenes; the game blends the same way
@@ -556,21 +561,29 @@ const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE
 // corner at a scene. Shoulders use the same curve on quaternions. Off, each stretch only blends
 // its own two scenes.
 const cr = (p0, p1, p2, p3, u) => 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
+// a Hermite curve in real time: the speed through a scene is the same on both sides of it
 function val(x, key) {
   const A = R[x.a], Bs = R[x.b];
   if (x.a === x.b) return A[key];
   if (!store.smooth) return A[key] + (Bs[key] - A[key]) * x.k;
-  return cr(R[x.p0][key], A[key], Bs[key], R[x.p3][key], x.k);
+  const p0 = R[x.p0][key], p1 = A[key], p2 = Bs[key], p3 = R[x.p3][key], dt = x.t2 - x.t1, u = x.fu;
+  const m1 = x.stop0 ? 0 : (p2 - p0) / Math.max(1e-4, x.t2 - x.t0), m2 = x.stop3 ? 0 : (p3 - p1) / Math.max(1e-4, x.t3 - x.t1);
+  const u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * p1 + (u3 - 2 * u2 + u) * dt * m1 + (-2 * u3 + 3 * u2) * p2 + (u3 - u2) * dt * m2;
 }
 const _q = [0, 1, 2, 3].map(() => new THREE.Quaternion()), _m = [0, 1, 2].map(() => new THREE.Quaternion());
 function crQuat(x, bn, out) {
   [x.p0, x.a, x.b, x.p3].forEach((id, i) => { const e = P[id][bn] || IDLE[bn] || [0, 0, 0]; _q[i].setFromEuler(_e.set(e[0], e[1], e[2])); });
   for (const i of [0, 2, 3]) if (_q[i].dot(_q[1]) < 0) { _q[i].x *= -1; _q[i].y *= -1; _q[i].z *= -1; _q[i].w *= -1; }
-  const u = x.k;
-  // Barry-Goldman pyramid with slerp
-  _m[0].copy(_q[0]).slerp(_q[1], u + 1); _m[1].copy(_q[1]).slerp(_q[2], u); _m[2].copy(_q[2]).slerp(_q[3], u - 1);
-  _m[0].slerp(_m[1], (u + 1) / 2); _m[1].slerp(_m[2], u / 2);
-  return out.copy(_m[0]).slerp(_m[1], u);
+  // Barry-Goldman pyramid with slerp on the real times; next to a hold or an end the outer scene is
+  // the same pose, so it eases in or out of it
+  const t1 = x.t1, t2 = x.t2, d = Math.max(1e-4, t2 - t1), t = t1 + x.fu * d;
+  const t0 = x.stop0 ? t1 - d : x.t0, t3 = x.stop3 ? t2 + d : x.t3;
+  if (x.stop0) _q[0].copy(_q[1]); if (x.stop3) _q[3].copy(_q[2]);
+  const f = (a, b) => (t - a) / Math.max(1e-4, b - a);
+  _m[0].copy(_q[0]).slerp(_q[1], f(t0, t1)); _m[1].copy(_q[1]).slerp(_q[2], f(t1, t2)); _m[2].copy(_q[2]).slerp(_q[3], f(t2, t3));
+  _m[0].slerp(_m[1], f(t0, t2)); _m[1].slerp(_m[2], f(t1, t3));
+  return out.copy(_m[0]).slerp(_m[1], f(t1, t2));
 }
 const HINGE = { foreR: 'elbowR', foreL: 'elbowL', handR: 'wristR', handL: 'wristL' };
 function blendInto(bone, x, bn) {
@@ -591,7 +604,7 @@ function poseAt(target, t, lead = state.feel.lead) {
   const xa = at(t), xb = at(t + lead), Bt = target.bones;
   for (const bn in Bt) blendInto(Bt[bn], TORSO.has(bn) ? xb : xa, bn);
   if (target === kit) setOrb(xa);
-  Bt.hips.position.y = S.hover + val(xb, 'hips');
+  Bt.hips.position.y = S.hover + val(xb, 'hips'); Bt.hips.position.z = val(xb, 'move') || 0;
 }
 // the cannon's orb at the right hand: a spark while aiming, growing while it charges, a flash on the shot
 const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff4a64' }));
@@ -607,7 +620,7 @@ function poseKey(target, id) {
   const Pk = P[id], Bt = target.bones;
   if (target === kit) setOrb(id === 'charge' || id === 'aimL' || id === 'aimR' ? { fx: 'grow', fu: 1 } : null);
   for (const bn in Bt) Bt[bn].rotation.set(...(Pk[bn] || IDLE[bn] || [0, 0, 0]));
-  Bt.hips.position.y = S.hover + (Pk._hips || 0);
+  Bt.hips.position.y = S.hover + (Pk._hips || 0); Bt.hips.position.z = Pk._move || 0;
 }
 
 // ---------- handles ----------
@@ -998,7 +1011,7 @@ function exportText() {
   for (const id of Object.keys(P)) {
     const p = P[id], o = {};
     for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn] || IDLE[bn] || [0, 0, 0]);
-    o._hips = Math.round((p._hips || 0) * 100) / 100; poses[id] = o;
+    o._hips = Math.round((p._hips || 0) * 100) / 100; o._move = Math.round((p._move || 0) * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
   return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, hands: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
@@ -1112,7 +1125,7 @@ function addSceneAt(t) {
   // the pose on screen, as the editor's own values
   poseAt(kit, t); kit.group.updateMatrixWorld(true);
   const Pn = {}; for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) Pn[bn] = B[bn].rotation.toArray().slice(0, 3);
-  Pn._hips = B.hips.position.y - S.hover;
+  Pn._hips = B.hips.position.y - S.hover; Pn._move = B.hips.position.z;
   const spec = round(specFromPose(Pn));
   const [a, b, ez, len, fx] = SEGS[i], n = (state.next || 1), id = 'x' + n, d = state.timing[len];
   const k1 = `${id}a`, k2 = `${id}b`;
@@ -1173,9 +1186,18 @@ window.editor = {
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); const want = h[1].quaternion.clone(); onGizmo(); poseKey(kit, cur); return { deg: +(2 * Math.acos(Math.min(1, Math.abs(want.dot(h[1].quaternion)))) * R2D).toFixed(2), spec: round(R[cur]) }; },
   turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
   cur: () => cur, time: () => time,
-  near: t => sceneNear(t), handleWorld: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); kit.group.updateMatrixWorld(true); h.getWorldPosition(v); return v.toArray().map(x => +x.toFixed(2)); }, add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
+  near: t => sceneNear(t),
+  setSpec: (id, sp) => { const sc = sceneState(id); sc.auto = false; sc.spec = clampSpec(sp); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); },
+  fistsAt: id => { poseKey(kit, id); kit.group.updateMatrixWorld(true); const v = k => { const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return w.toArray(); }; const r = { R: v('R'), L: v('L') }; poseNow(); return r; },
+  fistAtT: t => { poseAt(kit, t); kit.group.updateMatrixWorld(true); const w = new THREE.Vector3(); B.handR.localToWorld(w.set(0, -S.fist * 0.5, 0)); const l = new THREE.Vector3(); B.handL.localToWorld(l.set(0, -S.fist * 0.5, 0)); poseNow(); return [...w.toArray(), w.distanceTo(l)]; },
+  setTiming: (k, v) => { state.timing[k] = v; buildFeel(); buildBar(); markCards(); poseNow(); refreshSoon(); commit(); },
+  setEase: (i, e) => { state.segs = SEGS.slice(); state.segs[i] = state.segs[i].slice(); state.segs[i][2] = e; useAttack(store.attack); buildBar(); commit(); },
+  ring: () => raid.position.toArray(),
+  probeFists: sp => { const Pt = toPose(clampSpec(sp)); for (const bn in B) B[bn].rotation.set(...(Pt[bn] || IDLE[bn] || [0, 0, 0])); B.hips.position.y = S.hover + Pt._hips; B.hips.position.z = Pt._move || 0; kit.group.updateMatrixWorld(true);
+    const v = k => { const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return w.toArray(); }; const r = { R: v('R'), L: v('L'), probs: JC.check(rig, '').map(x => x.msg).filter(m => !quiet(m)) }; poseNow(); return r; },
+  R: () => R, handleWorld: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); kit.group.updateMatrixWorld(true); h.getWorldPosition(v); return v.toArray().map(x => +x.toFixed(2)); }, add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
   handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
-  state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
+  stateObj: () => state, state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
 </script>
 </body>
