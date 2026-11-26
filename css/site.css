@@ -1103,6 +1103,17 @@ body:has(.page-boss) #rain { opacity: 0; }
     radial-gradient(ellipse at 50% 55%, transparent 35%, rgba(255,96,48,.45) 90%); }
 .page-boss .wb-smear.go { animation: wb-smear 450ms ease-out; }
 @keyframes wb-smear { 0% { opacity: 0; transform: translateX(-10%) skewX(-8deg); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateX(8%) skewX(-8deg); } }
+/* a charged punch's break bar: the raid's typing drains it before the punch lands */
+.page-boss .wb-break { position: absolute; left: 50%; top: 10px; z-index: 3; transform: translateX(-50%); width: min(420px, 46%);
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; padding: 10px 14px; background: var(--scrim); pointer-events: none;
+  border: 1px solid rgba(255,77,94,.55); box-shadow: 0 0 24px rgba(255,77,94,.35); animation: wb-brk-in 320ms var(--ease-out); }
+.page-boss .wb-break[hidden] { display: none; }
+.page-boss .wb-break span { font: 700 13px/1 var(--mono, ui-monospace); letter-spacing: .14em; text-transform: uppercase; color: #ff8a94; }
+.page-boss .wb-break b { font: 700 14px/1 var(--mono, ui-monospace); color: var(--ink-hi); font-variant-numeric: tabular-nums; }
+.page-boss .wb-break-bar { grid-column: 1 / -1; height: 12px; background: rgba(255,255,255,.08); position: relative; overflow: hidden; }
+.page-boss .wb-break-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ff4d5e, #ffb03d); box-shadow: 0 0 12px rgba(255,77,94,.7); transition: width 120ms linear; }
+@keyframes wb-brk-in { from { opacity: 0; transform: translateX(-50%) scale(.9); } }
+@media (max-width: 700px) { .page-boss .wb-break { width: 70%; top: 6px; padding: 8px 10px; } }
 /* the kill: the picture goes letterbox */
 .page-boss .wb-lbox { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .page-boss .wb-lbox::before, .page-boss .wb-lbox::after { content: ""; position: absolute; left: 0; right: 0; height: 11%; background: #000; transform: scaleY(0); transition: transform 380ms var(--ease-out); }

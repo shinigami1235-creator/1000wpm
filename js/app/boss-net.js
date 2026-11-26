@@ -22,11 +22,11 @@
 //   WorldBossNet.use(impl)                swap the implementation (same methods)
 //
 // state: { bossId, name, maxHp, hp, dealt, startedAt, defeatedAt, lastHit, demo,
-//          phase, phaseAt: [ms per phase], shield: { id, hp, max } | null,
+//          phase, phaseAt: [ms per phase], shield: { id, hp, max } | null, brk: { id, hp, max } | null (a charged punch's break bar),
 //          weak: { until, mult } | null, blocks: { [attackId]: count }, addsDown: { [addId]: name },
 //          raiders: [{ id, name, damage, blocks, you }] }   raiders sorted by damage, highest first
 // hit:   { id, name, letters, dmg, kind: 'word' | 'return' | 'block' | 'add' | 'spell', crit, weak, shield, at, you, tier, spell, color }
-// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'adds' | 'addDown' | 'impact' | 'team' | 'defeat', ... }
+// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'chargeUp' | 'broken' | 'adds' | 'addDown' | 'impact' | 'team' | 'defeat', ... }
 //   team: { tier: 'hardened' | 'overclock' | 'root', up, by } when the team firewall crosses 50, 75 or 100
 //
 // The phase is WorldBossRules.phaseOf(hp / maxHp) and the attacks come from
@@ -73,7 +73,7 @@ window.WorldBossNet = (() => {
       s.name = R.BOSS.name;
       s.phase = phaseOf(s.hp / s.maxHp);
       if (!Array.isArray(s.phaseAt)) { s.phaseAt = [s.startedAt, null, null, null, null]; if (s.phase) s.phaseAt[s.phase] = now(); }
-      s.shield ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
+      s.shield ||= null; s.brk ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
       s.raiders.forEach((r, i) => { r.blocks ||= 0; if (/^raider_\d+$/.test(r.name || '')) r.name = name(i); });
       return s;
     }
@@ -89,7 +89,7 @@ window.WorldBossNet = (() => {
         .sort((a, b) => b.damage - a.damage);
       return {
         bossId: st.bossId, name: st.name, maxHp: st.maxHp, hp: st.hp, dealt: st.maxHp - st.hp, startedAt: st.startedAt, defeatedAt: st.defeatedAt,
-        lastHit: st.lastHit, demo: true, training: !!st.training, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, weak: st.weak && { ...st.weak },
+        lastHit: st.lastHit, demo: true, training: !!st.training, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, brk: st.brk && { ...st.brk }, weak: st.weak && { ...st.weak },
         blocks: { ...st.blocks }, addsDown: { ...st.addsDown }, raiders,
         team: { ...(st.team || { fw: 0, rootUntil: 0 }) },
       };
@@ -104,7 +104,7 @@ window.WorldBossNet = (() => {
       if (p <= st.phase || st.defeatedAt) return;
       st.phase = p; st.phaseAt[p] = t;
       // a phase change ends the shield, the weak point and the attacks in flight
-      st.shield = null; st.weak = null; st.blocks = {}; st.addsDown = {}; st.done = {}; plans = {};
+      st.shield = null; st.brk = null; st.weak = null; st.blocks = {}; st.addsDown = {}; st.done = {}; plans = {};
       emitEvent({ type: 'phase', phase: p, at: t });
       emit();
     }
@@ -136,6 +136,11 @@ window.WorldBossNet = (() => {
         }
       }
       const toHp = Math.min(dmg - toShield, st.hp);
+      // a charged punch: everything that lands fills its break bar
+      if (st.brk) {
+        st.brk.hp -= dmg;
+        if (st.brk.hp <= 0) breakCharge(t, nameOf(r), id === 'you');
+      }
       st.hp -= toHp;
       r.damage += toHp;
       dmg = toShield + toHp;
@@ -199,6 +204,18 @@ window.WorldBossNet = (() => {
             healAcc -= whole;
             st.hp = Math.min(R.ceiling(st.phase, st.maxHp), st.hp + whole);
           }
+        } else if (e.type === 'charge') {
+          if (t >= e.open && t < e.hit && !st.done[e.id] && !st.done['c:' + e.id]) {
+            st.done['c:' + e.id] = 1;
+            const max = R.breakMax(st.raiders.length);
+            st.brk = { id: e.id, hp: max, max, hit: e.hit };
+            emitEvent({ type: 'chargeUp', id: e.id, max, at: t });
+          }
+          if (t >= e.hit && !st.done[e.id]) {
+            st.done[e.id] = 1; st.brk = null;
+            team(-R.TEAM.miss, t);
+            emitEvent({ type: 'impact', id: e.id, kind: 'charge', blocks: 0, of: st.raiders.length, stun: false, at: e.hit });
+          }
         } else if (e.type === 'shield') {
           if (t >= e.up && !st.done['s:' + e.id] && !st.done[e.id]) {
             st.done[e.id] = 1;
@@ -208,6 +225,13 @@ window.WorldBossNet = (() => {
           }
         }
       }
+    }
+    function breakCharge(t, by, you) {
+      const id = st.brk.id;
+      st.brk = null; st.done[id] = 1;
+      st.weak = { until: t + R.WEAK_MS, mult: R.PHASES[st.phase].weakMult };
+      team(R.TEAM.stun, t);
+      emitEvent({ type: 'broken', id, by, you, at: t });
     }
     function block(id, e) {
       const r = st.raiders.find(x => x.id === id);

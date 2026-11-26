@@ -23,7 +23,7 @@ window.BossAudio = (() => {
   const LEVEL = {
     hit: 2.2, crit: 1.35, weak: 1.5, raid: 12, shieldHit: 2.4, shieldUp: 0.4, shieldBreak: 0.6, windup: 0.7, warn: 2.3,
     blockOk: 1.6, blockFail: 1.5, impact: 0.5, launch: 2.8, returned: 1.1, projHit: 2.6, addSpawn: 1.9, addKill: 1.1,
-    roar: 0.85, stagger: 1.1, weakOpen: 1.1, milestone: 1.6, defeat: 0.5, swipe: 1.3, stomp: 0.9,
+    roar: 0.85, stagger: 1.1, weakOpen: 1.1, milestone: 1.6, defeat: 0.5, swipe: 1.3, stomp: 0.9, charge: 0.7,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
@@ -269,6 +269,17 @@ window.BossAudio = (() => {
       },
       // the boss swinging at the raid between attacks: a whoosh, and a thump for a stomp
       swipe(t) { hiss(t, 0.32, 500, 1.4, 0.4, 'bandpass', 0.06, 2600); hiss(t + 0.16, 0.2, 2200, 1.2, 0.18, 'bandpass', 0.002, 700); },
+      // a charged punch: a low hum that climbs and speeds up its pulse for the whole wind-up
+      charge(t, d = 6) {
+        const o = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain(), f = c.createBiquadFilter();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(48, t); o.frequency.exponentialRampToValueAtTime(260, t + d);
+        f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(2400, t + d);
+        lfo.frequency.setValueAtTime(3, t); lfo.frequency.exponentialRampToValueAtTime(22, t + d); lg.gain.value = 0.5;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.6); g.gain.setValueAtTime(0.5, t + d - 0.05); g.gain.linearRampToValueAtTime(0, t + d);
+        lfo.connect(lg).connect(g.gain);
+        o.connect(f).connect(g).connect(out);
+        o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
+      },
       stomp(t) { tone(t, 'sine', 70, 30, 0.45, 0.7); hiss(t, 0.35, 220, 0.7, 0.45, 'lowpass', 0.002); },
       weakOpen(t) { [660, 880, 1320].forEach((f, i) => tone(t + i * 0.08, 'triangle', f, f, 0.2, 0.18)); },
       milestone(t) { [784, 1046].forEach((f, i) => tone(t + i * 0.09, 'triangle', f, f, 0.18, 0.16)); },

@@ -30,7 +30,11 @@ Router.register('boss', (() => {
     combo: 'Words with no typo raise your combo and make your shots bigger. A typo drops it one tier.',
     spell: 'Type the green spell word with no typo to cast it. It goes away after 15 seconds.',
     orb: 'Every word charges your orb. It fires after six words or when you stop typing.',
+    charge: `${name} is charging a punch. Everything the raid types fills the break bar, so keep typing to break it before it lands.`,
+    laser: 'Type the red phrase before the laser fires.',
   });
+  // integrity a charged punch takes from everyone when the raid doesn't break it: two of your four pips
+  const CHARGE_DMG = 50;
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
   const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, return: 3, heal: 4, add: 5 };
@@ -230,6 +234,7 @@ Router.register('boss', (() => {
           <div class="kb-loading" data-k="loading">Loading</div>
           <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
           <div class="wb-smear" data-k="smear" aria-hidden="true"></div>
+          <div class="wb-break" data-k="brk" hidden><span>Break the punch</span><div class="wb-break-bar"><i data-k="brkfill"></i></div><b data-k="brkt"></b></div>
           <div class="wb-lbox" data-k="lbox" aria-hidden="true"></div>
           <div class="wb-lives" data-k="lives" role="img" aria-label="Integrity"></div>
           <div class="wb-labels" data-k="labels" aria-hidden="true"></div>
@@ -764,8 +769,13 @@ Router.register('boss', (() => {
         sent.add(e.id);
         if (e.type === 'slam' && frostMs) { grace[e.id] = frostMs; frostMs = 0; if (scene) scene.freezeAttack(e.id); }
         if (scene) scene.event(e, t);
+        if (e.type === 'charge' && !isDown) {
+          sfx('charge', (e.hit - t) / 1000); tip('charge'); pop('BREAK IT', 'amber');
+          const toHit = (e.hit - t) / 1000;
+          if (toHit > 1) A.cut(toHit - 0.9, 0.9);
+        }
         if (e.type === 'slam') {
-          sfx('windup', Math.min(2.5, (e.hit - t) / 1000)); tip(R.PHASES[st.phase].phrase ? 'phrase' : 'slam');
+          sfx('windup', Math.min(2.5, (e.hit - t) / 1000)); tip(e.kind === 'laser' ? 'laser' : R.PHASES[st.phase].phrase ? 'phrase' : 'slam');
           // the music drops out for the last 0.9 s before the hit and slams back on it
           const toHit = (e.hit + (grace[e.id] || 0) - t) / 1000;
           if (toHit > 0.2 && !isDown) A.cut(Math.max(0, toHit - 0.9), Math.min(0.9, toHit));
@@ -842,6 +852,7 @@ Router.register('boss', (() => {
     for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
+    if (st.brk) { const n = q('brkt'); if (n) { const left = Math.max(0, (st.brk.hit - t) / 1000); n.textContent = left.toFixed(1) + 's'; } }
     const th = mech.find(m => THREAT.has(m.kind));
     if (!!th !== threatOn) { threatOn = !!th; A.threat(threatOn); }
     if ((th ? th.id : null) !== threatId) { threatId = th ? th.id : null; threatAt = t; renderQueue(); }
@@ -879,12 +890,12 @@ Router.register('boss', (() => {
     const spells = st.defeatedAt ? [] : spellTargets();
     const max = spells.length ? 3 : 5;
     const rest = mech.filter(m => !THREAT.has(m.kind)), show = rest.slice(0, max);
-    const key = mech.length + ':' + show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
+    const key = mech.length + (st.brk ? 'b' : '') + ':' + show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
     if (force || key !== mechKey) {
       mechKey = key;
       let html = '';
       if (!show.length) {
-        const nx = st.defeatedAt || mech.length ? null : R.nextEventAt(st, t);
+        const nx = st.defeatedAt || mech.length || st.brk ? null : R.nextEventAt(st, t);
         html = nx ? `<span class="wb-next">Next attack in <b data-k="nexts">${Math.max(0, Math.ceil((nx - t) / 1000))}s</b></span>` : '';
       } else {
         html = show.map((m, i) => {
@@ -919,7 +930,7 @@ Router.register('boss', (() => {
     }
     if (!show.length) {
       const n = row.querySelector('[data-k="nexts"]');
-      const nx = st.defeatedAt || mech.length ? null : R.nextEventAt(st, t);
+      const nx = st.defeatedAt || mech.length || st.brk ? null : R.nextEventAt(st, t);
       if (n && nx) n.textContent = Math.max(0, Math.ceil((nx - t) / 1000)) + 's';
     }
     for (const m of show) {
@@ -1050,6 +1061,11 @@ Router.register('boss', (() => {
     q('demo').hidden = !s.demo || training;
     el.querySelectorAll('[data-p]').forEach(b => { if (b.tagName === 'BUTTON') b.disabled = +b.dataset.p <= ph || !!s.defeatedAt; });
     // shield over the HP bar
+    {
+      const bk = q('brk');
+      if (s.brk && !s.defeatedAt) { bk.hidden = false; q('brkfill').style.width = (100 * Math.max(0, s.brk.hp) / s.brk.max) + '%'; }
+      else bk.hidden = true;
+    }
     const sb = q('sbar'), sf = q('shield');
     if (s.shield) {
       sb.hidden = false; sb.style.width = (100 * f) + '%'; sb.style.setProperty('--s', s.shield.hp / s.shield.max);
@@ -1330,6 +1346,32 @@ Router.register('boss', (() => {
     }
     if (e.type === 'adds') { sfx('addSpawn'); pushFeed({ sys: true, text: `${NAME} spawned ${e.n} bugs` }); }
     if (e.type === 'addDown') pushFeed({ text: `${e.you ? 'You' : e.by} deleted a bug`, cls: e.you ? 'you' : 'add' });
+    if (e.type === 'broken') {
+      if (scene) scene.breakCharge(e.id);
+      A.uncut(); sfx('shieldBreak'); sfx('stagger');
+      pop('BROKEN', 'cyan');
+      pushFeed({ text: `${e.you ? 'You' : e.by} broke the ${R.ATTACK_NAME.charge}. Kernel open for ${R.WEAK_MS / 1000}s`, cls: e.you ? 'you' : 'shield' });
+      card({ who: e.you ? 'You' : e.by, what: `broke the ${R.ATTACK_NAME.charge}`, color: '#3ee6ff' });
+    }
+    if (e.type === 'impact' && e.kind === 'charge') {
+      pushFeed({ text: `The ${R.ATTACK_NAME.charge} hit the raid`, cls: 'alert' });
+      const t = now(), isDown = !!(squad && squad.down());
+      const dmg = Math.round(CHARGE_DMG * R.teamGuard(st, t));
+      if (squad) squad.raidHit(dmg, t);
+      if (active() && !isDown) {
+        const r = me ? me.hurt('slam') : { blocked: false };
+        if (r.blocked) { sfx('impact', true); pop('BLOCKED', 'cyan'); }
+        else {
+          if (!(me && me.status('purge'))) jamUntil = t + JAM_MS;
+          if (!me) combo = 0;
+          sess.fails++;
+          if (squad) squad.hitMe(dmg, t);
+          if (scene) scene.hurt();
+          flashTint(); sfx('blockFail'); sfx('impact', false); pop('HIT', 'red');
+        }
+      }
+      return;
+    }
     if (e.type === 'impact') {
       pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Kernel open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
       if (e.stun) card({ who: `${e.blocks} of ${e.of}`, what: `blocked the ${R.ATTACK_NAME[e.kind]}`, color: '#3ee6ff' });
@@ -1366,7 +1408,7 @@ Router.register('boss', (() => {
   let popT = 0;
   // Big callouts (the kernel opening, the firewall going down, a stagger, a lock-on) stay up
   // for 2 seconds and small ones (HIT, BLOCKED, +25) can't replace them, so they get read.
-  const MAJOR = /^(KERNEL OPEN|FIREWALL DOWN|STAGGER|LOCKED ON|EXECUTION|UNBREAKABLE)/;
+  const MAJOR = /^(KERNEL OPEN|FIREWALL DOWN|STAGGER|LOCKED ON|EXECUTION|UNBREAKABLE|BREAK IT|BROKEN)/;
   let popHold = 0;
   function pop(text, cls) {
     const p = q('pop'); if (!p) return;

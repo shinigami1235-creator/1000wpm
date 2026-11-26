@@ -67,6 +67,24 @@ with sync_playwright() as p:
         page.evaluate("_wb.setFrac(0.00002)"); play(5)
         time.sleep(real(6))
         marks.update(seen); marks['scene'] = page.evaluate("_wb.scene()") and 'ok'
+    elif mode == 'raid-big':
+        # the charged punch broken, the laser, then the armour coming off at 50% and 25%
+        page.goto(base + 'index.html#/boss'); time.sleep(real(3)); page.evaluate(hide)
+        page.keyboard.press('Enter'); time.sleep(real(5)); page.evaluate(hide)
+        def play(gsecs, idle_charge=False):
+            t0 = time.time()
+            while time.time() - t0 < real(gsecs):
+                if page.evaluate("!!(_wb.state() || {}).defeatedAt"): return
+                if idle_charge and page.evaluate("!!_wb.state().brk"): time.sleep(real(0.3)); continue
+                ms = page.evaluate("_wb.mech()")
+                blk = [m for m in ms if m['kind'] in ('block', 'dodge')]
+                if blk: time.sleep(real(0.35)); typew(blk[0]['word'], 120); continue
+                typew(page.evaluate('_wb.stack()'))
+        play(secs)
+        marks['charge broken'] = page.evaluate("_wb.feedText ? 1 : 0")
+        page.evaluate("_wb.jump(2)"); time.sleep(real(6.5)); play(14)
+        page.evaluate("_wb.jump(3)"); play(16, idle_charge=True)
+        marks['scene'] = page.evaluate("_wb.scene()") and 'ok'
     elif mode == 'rush':
         page.goto(base + 'index.html#/play/rush'); time.sleep(real(2.5)); page.evaluate(hide)
         page.keyboard.press('Enter'); time.sleep(real(4)); page.evaluate(hide)

@@ -24,19 +24,29 @@ window.WorldBossRules = (() => {
   // 2 to 3.5 s before the hit and the next attack is 5 to 9 s away. The counter phrase shows in
   // each raider's word line later than the wind-up, as late as their own speed allows (boss.js).
   // lead:    ms from this phase starting to its first attack (the boss leaves and comes back in phase 3)
+  // Gid, 26 Nov 2026: big wound-up attacks on top of the quick slam, and the armour coming off.
+  //   charge   it pulls back a glowing fist for about 6 s while a break bar fills from the whole
+  //            raid's damage; break it and the boss staggers with its kernel open, miss it and the
+  //            punch takes two pips from everyone
+  //   laser    it backs off into the arena and charges a beam at its core for 4.4 s; a two-word
+  //            red phrase in your line blocks it
+  // Phases 1 and 2 it's in full armour, from 50% the plates are off its arms and its wireframe
+  // shows, and from 25% it's bare and faster.
   const PHASES = [
     { at: 1.00, name: 'Online',        cycle: 9000,  wind: 3600, flight: 6500, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 1 }, intro: ['slam'], kinds: ['slam'], phrase: false, weakMult: 2, diff: [2, 4] },
+      pool: { slam: 3, charge: 2 }, intro: ['slam', 'charge'], kinds: ['slam'], phrase: false, weakMult: 2, diff: [2, 4] },
     { at: 0.75, name: 'Corrupted',     cycle: 8500,  wind: 3400, flight: 6000, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 4, volley: 4, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2, diff: [3, 5] },
+      pool: { slam: 3, charge: 2, volley: 3, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2, diff: [3, 5] },
     { at: 0.50, name: 'Memory leak',   cycle: 8000,  wind: 3200, flight: 5600, shots: 4, adds: 3, heal: 60, lead: 7000,
-      pool: { slam: 3, volley: 3, adds: 3, shield: 1 }, intro: ['adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2, diff: [3, 6] },
-    { at: 0.25, name: 'Kernel exposed', cycle: 7000, wind: 3200, flight: 5000, shots: 4, adds: 3, heal: 80,
-      pool: { slam: 4, volley: 3, adds: 2, shield: 2 }, intro: ['slam'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2, diff: [4, 6] },
+      pool: { slam: 2, laser: 3, charge: 1, volley: 2, adds: 2 }, intro: ['laser', 'adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2, diff: [3, 6] },
+    { at: 0.25, name: 'Kernel exposed', cycle: 7000, wind: 3200, flight: 5000, shots: 5, adds: 3, heal: 80,
+      pool: { slam: 2, laser: 2, charge: 2, volley: 3, shield: 2, adds: 1 }, intro: ['charge', 'volley'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2, diff: [4, 6] },
     { at: 0.10, name: 'Kernel panic',  cycle: 4500,  wind: 2800, flight: 4400, shots: 5, adds: 4, heal: 100,
       pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true, diff: [4, 7] },
   ];
-  const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload' };
+  const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload', laser: 'kernel laser', charge: 'overflow punch' };
+  const CHARGE_WIND = 6500, CHARGE_OPEN = 700, LASER_WIND = 4400;
+  const BREAK_PER_RAIDER = 28;  // break bar for each raider: a full raid breaks it in the last second or so
 
   const FIRST_LEAD = 4000;      // ms from the fight starting to the first attack
   const LEAD = 3500;            // ms from a phase change to its first attack, for the roar
@@ -57,6 +67,7 @@ window.WorldBossRules = (() => {
   const ceiling = (p, maxHp) => Math.floor(PHASES[p].at * maxHp);
   const phaseStart = (s, p) => (s.phaseAt && s.phaseAt[p]) || s.startedAt;
   const shieldMax = raiders => SHIELD_PER_RAIDER * Math.max(5, raiders);
+  const breakMax = raiders => BREAK_PER_RAIDER * Math.max(5, raiders);
 
   // ---------- seeded random ----------
   function hash(str) {
@@ -116,6 +127,15 @@ window.WorldBossRules = (() => {
   // ---------- schedule ----------
   function make(s, p, type, id, c0, r) {
     const P = PHASES[p];
+    if (type === 'laser') {
+      // a block attack like the slam, with its own look, a longer wind-up and a two-word phrase
+      const word = pickWords(r, 2, 4, 6, new Set(), p).join(' ');
+      return { id, type: 'slam', kind: 'laser', word, start: c0, hit: c0 + LASER_WIND, end: c0 + LASER_WIND + 1600 };
+    }
+    if (type === 'charge') {
+      const wind = Math.min(CHARGE_WIND, P.cycle - 1900);
+      return { id, type: 'charge', kind: 'charge', start: c0, open: c0 + CHARGE_OPEN, hit: c0 + wind, end: c0 + wind + 1400 };
+    }
     if (type === 'slam') {
       const kind = P.kinds[Math.floor(r() * P.kinds.length)];
       const word = P.phrase ? pickWords(r, 2, 3, 5, new Set(), p).join(' ') : pickWords(r, 1, 5, 7, new Set(), p)[0];
@@ -218,7 +238,7 @@ window.WorldBossRules = (() => {
   }
 
   return {
-    BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, AWAY_PHASE, AWAY_MS, away, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
+    BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, AWAY_PHASE, AWAY_MS, away, CHARGE_WIND, LASER_WIND, breakMax, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
     TEAM, teamMult, teamGuard, teamRoot,
     TIERS, tierOf, blockWord, pickWords,

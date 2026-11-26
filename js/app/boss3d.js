@@ -11,6 +11,9 @@
 //   aura(name, on), fxEvent(kind)     statuses that stay on screen, safe mode used up, a split copy lost
 //   react(kind, power, extra)          flinch, stagger, flash, break (the phase-break pose), stun, freeze, pull
 //   setHit(power)                      a finished set of words: the boss reels and moves to a new spot
+//   breakCharge(id)                    the raid broke a charged punch: the charge shatters and it staggers
+// A charged punch arrives as an event of type 'charge' and plays as a slam of kind 'charge'; the
+// laser is a slam of kind 'laser'.
 //   leave() / arrive()                 at half HP it leaps out of the arena, then drops back in
 //   opts.onBoom()                      the moment the dead boss blows apart, for the sound
 //   opts.onMenace(kind)                a swing, jab, stomp or lean at the raid between attacks lands
@@ -60,6 +63,7 @@ window.BossScene = (() => {
       killAdd: (id, you) => impl && impl.killAdd(id, you),
       block: id => impl && impl.block(id),
       stagger: () => impl && impl.stagger(),
+      breakCharge: id => impl && impl.breakCharge(id),
       setHit: p => impl && impl.setHit(p),
       leave: () => impl && impl.leave(),
       arrive: () => impl && impl.arrive(),
@@ -357,6 +361,22 @@ window.BossScene = (() => {
       const own = b => b.children.filter(o => o.isMesh && kit.meshes.includes(o));
       const front = (b, top) => own(b).filter(o => o.position.z > 0.5 && (top ? o.position.y > 0 : o.position.y <= 0));
       kit.shedSets = [own(B0.shL), own(B0.shR), front(B0.chest, true), front(B0.chest, false)];
+      if (opts.bossId === 'syntax') {
+        // Syntax Error (Gid, 26 Nov 2026): full armour to 50%, then the plates come off its arms and
+        // shoulders, then at 25% the rest goes and it fights as a bare wireframe
+        const deep = b => { const out = []; if (b) b.traverse(o => { if (o.isMesh && kit.meshes.includes(o)) out.push(o); }); return out; };
+        const arms = ['shL', 'shR', 'armL', 'armR', 'foreL', 'foreR'].flatMap(k => own(B0[k]));
+        const rest = ['chest', 'spine', 'hips', 'neck', 'head', 'handL', 'handR'].flatMap(k => own(B0[k])).concat(kit.tail ? deep(kit.tail) : []);
+        kit.shedSets = [[], arms, rest, []];
+      }
+      // a glowing wireframe twin of every plate that can come off, shown where the plate was
+      const ghostMat = keep(new THREE.MeshBasicMaterial({ color: C(kit.glowColor || '#ff3a2e', 1.6), wireframe: true, transparent: true, opacity: 0.75, toneMapped: false }));
+      for (const set of kit.shedSets) for (const m of set) {
+        const g = new THREE.Mesh(m.geometry, ghostMat);
+        g.position.copy(m.position); g.quaternion.copy(m.quaternion); g.scale.copy(m.scale).multiplyScalar(0.94);
+        g.visible = false; m.parent.add(g); m.userData.ghost = g;
+      }
+      kit.ghostMat = ghostMat;
       kit.shed = [];
       // Syntax Error's lightning: short arcs that crackle round a gauntlet through a wind-up, and a
       // stream from the open claw to the raid on the reach (Art's Data Erasure); redrawn jagged each
@@ -400,7 +420,12 @@ window.BossScene = (() => {
       if (!set) return;
       for (const m of set) {
         if (m.userData.home) continue;
-        m.userData.home = { parent: m.parent, pos: m.position.clone(), quat: m.quaternion.clone(), scale: m.scale.clone() };
+        // the fist anchors and the hit points stay on the body: the anchor moves to the bone, the
+        // hit points move to the wireframe twin
+        for (const f of kit.fists) if (f.at.parent === m) m.parent.attach(f.at);
+        const gh = m.userData.ghost;
+        if (gh) { gh.visible = true; for (const b of blocks) if (b.km === m) b.km = gh; }
+        m.userData.home = { parent: m.parent, pos: m.position.clone(), quat: m.quaternion.clone(), scale: m.scale.clone(), ghost: gh };
         if (instant) { m.visible = false; kit.shed.push(m); continue; }
         scene.attach(m);
         const out = m.getWorldPosition(vF).sub(root.position).setY(0).normalize();
@@ -431,7 +456,11 @@ window.BossScene = (() => {
     }
     function unshed() {
       if (!kit) return;
-      for (const m of kit.shed) { const h = m.userData.home; h.parent.add(m); m.position.copy(h.pos); m.quaternion.copy(h.quat); m.scale.copy(h.scale); m.visible = true; m.userData = {}; }
+      for (const m of kit.shed) {
+        const h = m.userData.home; h.parent.add(m); m.position.copy(h.pos); m.quaternion.copy(h.quat); m.scale.copy(h.scale); m.visible = true;
+        if (h.ghost) { h.ghost.visible = false; for (const b of blocks) if (b.km === h.ghost) b.km = m; }
+        m.userData = { ghost: h.ghost };
+      }
       kit.shed.length = 0;
     }
     if (kit) {
@@ -828,7 +857,7 @@ window.BossScene = (() => {
     const mv = { x: 0, z: 0, tx: 0, tz: 0, y: 0, face: 0, spin: 0, spinV: 0, next: 0, lungeAt: -9, blinkAt: -9, dashUntil: 0 };
     // threatK: 0 to 1 as an attack comes at the camera (the zoom and the step forward)
     // away: the half-HP exit, { leaveAt, arriveAt } on the scene clock
-    let threatK = 0, offY = 0;
+    let threatK = 0, offY = 0, chargeK = 0;
     // Between attacks it never just stands there (Gid, 26 Nov 2026: "all it does is shuffle left
     // and right then stagger"). Every 1.1 to 2.2 s it swings, jabs, stomps or leans at the raid,
     // and it walks in on the raid the whole time: adv goes from 0 at its spot to 1 right in front
@@ -921,8 +950,8 @@ window.BossScene = (() => {
     function event(ev, netNow) {
       if (dead || evs.some(x => x.id === ev.id)) return;
       const t = nowS(), off = ms => t + (ms - netNow) / 1000;
-      const x = { id: ev.id, type: ev.type, kind: ev.kind, s: off(ev.start), e: off(ev.end), started: false, hitDone: false };
-      if (ev.type === 'slam') { x.h = off(ev.hit); x.warned = 0; }
+      const x = { id: ev.id, type: ev.type === 'charge' ? 'slam' : ev.type, kind: ev.kind, s: off(ev.start), e: off(ev.end), started: false, hitDone: false };
+      if (ev.type === 'slam' || ev.type === 'charge') { x.h = off(ev.hit); x.warned = 0; }
       if (ev.type === 'volley') x.shots = ev.shots.map(s => ({ id: s.id, l: off(s.launch), a: off(s.arrive), lane: s.lane, fired: false }));
       if (ev.type === 'adds') x.adds = ev.adds.map(a => ({ id: a.id, s: off(a.spawn), u: off(a.until), slot: a.slot, done: false }));
       if (ev.type === 'shield') x.u = off(ev.up);
@@ -967,12 +996,12 @@ window.BossScene = (() => {
       shake = Math.max(shake, you ? 0.35 : 0.9);
       act('you', you ? 'cast' : 'hit');
       // the ones who didn't block it go flat
-      { const t = nowS(), pk = x.kind === 'slam' ? 0.35 : 0.25; for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
+      { const t = nowS(), pk = x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25; for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
       if (kit) {
         // the blow lands where the fists are: rings and dust from each fist, chunks of armour
         // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
         kit.group.updateMatrixWorld(true);
-        const which = x.kind === 'slam' ? [0, 1] : x.kind === 'beam' ? [] : [1];
+        const which = x.kind === 'slam' ? [0, 1] : x.kind === 'beam' || x.kind === 'laser' ? [] : [1];
         const col = you ? CYAN : RED;
         for (const i of which) {
           kit.fists[i].at.getWorldPosition(vF); vF.y = 0.2;
@@ -986,17 +1015,19 @@ window.BossScene = (() => {
         for (const b of blocks) { if (n >= (x.kind === 'slam' ? 10 : 5)) break; if (b.mode === 0 && (b.part >= 2 || x.kind === 'slam') && Math.random() < 0.2) { knock(b, false, 1.7); n++; } }
         if (x.kind === 'slam') { shake = Math.max(shake, you ? 0.5 : 1.35); if (!reduce) slowUntil = performance.now() + 380; }
         if (x.kind === 'lunge' || x.kind === 'sweep') shake = Math.max(shake, you ? 0.45 : 1.05);
-        if (x.kind === 'beam') { flare(vG.copy(at).setY(2), col, 7, 0.28, canFlash() ? 1.2 : 0.6); burst(vG, 60, 16, col, 1.5, 9); }
+        if (x.kind === 'beam' || x.kind === 'laser') { flare(vG.copy(at).setY(2), col, 7, 0.28, canFlash() ? 1.2 : 0.6); burst(vG, 60, 16, col, 1.5, 9); }
         stopUntil = Math.max(stopUntil, performance.now() + (x.kind === 'slam' ? 120 : 80));
       }
       if (!kit && (x.kind === 'slam' || x.kind === 'lunge')) wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
       if (you) { burst(v1.copy(at).setY(2), 30, 9, CYAN, 1.2, 6); flare(v1, CYAN, 6, 0.3, canFlash() ? 1.2 : 0.6); }
       else burst(v1.copy(at).setY(1), 24, 7, RED, 1, 9);
-      if (x.kind === 'beam') { beamUntil = nowS() + 0.55; }
+      if (x.kind === 'beam') { beamLen = 0.55; beamW = 0.9; beamUntil = nowS() + beamLen; }
+      if (x.kind === 'laser') { beamLen = 0.9; beamW = 2.2; beamUntil = nowS() + beamLen; shake = Math.max(shake, you ? 0.5 : 1.2); }
+      if (x.kind === 'charge') { shake = Math.max(shake, 1.7); stopUntil = Math.max(stopUntil, performance.now() + 160); if (!reduce) slowUntil = performance.now() + 500; }
       if (x.kind === 'sweep') { sweepT0 = nowS(); }
       stopUntil = Math.max(stopUntil, performance.now() + (you ? 80 : 50));
     }
-    let beamUntil = 0, sweepT0 = -9;
+    let beamUntil = 0, sweepT0 = -9, beamLen = 0.55, beamW = 0.9;
 
     // ---------- hits ----------
     const hitQueue = [];
@@ -1230,6 +1261,18 @@ window.BossScene = (() => {
       for (let k = 0; k < 8; k++) { s = SPOTS[Math.floor(Math.random() * SPOTS.length)]; if (Math.abs(s[0] - mv.tx) >= 4) break; }
       mv.tx = s[0]; mv.tz = s[1]; mv.next = t + 3 + Math.random() * 2; mv.dashUntil = t + 1.1;
     }
+    function breakCharge(id) {
+      const x = evs.find(z => z.id === id);
+      if (!x || x.cut || dead) return;
+      const t = nowS();
+      x.cut = t;
+      if (kit) { kit.fists[1].at.getWorldPosition(vF); burst(vF, 120, 22, WHITE, 1.4, 6); burst(vF, 60, 14, RED, 1.2, 6); flare(vF, WHITE, 9, 0.35, canFlash() ? 1.3 : 0.6); wave(vF.setY(0.2), 0.5, 20, 0.8, WHITE, 0.8); }
+      stagger();
+      recoilV -= 1.5; adv = 0;
+      shake = Math.max(shake, reduce ? 0.4 : 1.2);
+      stopUntil = Math.max(stopUntil, performance.now() + 180);
+      if (!reduce) slowUntil = performance.now() + 450;
+    }
     function leave() {
       if (dead) return;
       away.leaveAt = nowS(); away.arriveAt = -9; away.gone = true;
@@ -1362,10 +1405,12 @@ window.BossScene = (() => {
     // Each attack has a wind-up pose and a strike pose (bone rotations in radians, x y z), on top
     // of the kit's idle. The attack clock decides the blend: the wind-up eases in over the whole
     // telegraph, the strike snaps in within about a tenth of a second, holds, then settles back.
-    const KIND = { slam: ['raise', 'slam', 0.1], sweep: ['pull', 'sweep', 0.2], lunge: ['coil', 'punch', 0.12], beam: ['beam', 'beam', 0.15] };
+    const KIND = { slam: ['raise', 'slam', 0.1], sweep: ['pull', 'sweep', 0.2], lunge: ['coil', 'punch', 0.12], beam: ['beam', 'beam', 0.15],
+      charge: ['pull', 'punch', 0.16], laser: ['beam', 'beam', 0.15] };
     function titanPose(t) {
       const L = [];
       let busy = 0, tremble = 0, gl = 0, gr = 0, trail = 0;
+      chargeK = 0;
       const sl = current(t, 'slam');
       if (sl) {
         const K = sl.kind === 'lunge' && kit.POSES.reach ? ['coil', 'reach', 0.12] : KIND[sl.kind] || KIND.slam;
@@ -1375,11 +1420,12 @@ window.BossScene = (() => {
         const rec = after > 0.5 ? smooth((after - 0.5) / 0.9) : 0;
         const ck = cutK(sl, t);
         if (sl.cut && sl.cut < sAt) { L.push([K[0], ease(clamp((sl.cut - sl.s) / (sAt - sl.s), 0, 1)) * ck]); busy = ck; }
-        else if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = w > 0.75 ? (w - 0.75) * 4 : 0; }
+        else if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = sl.kind === 'charge' ? w * w * 1.3 : w > 0.75 ? (w - 0.75) * 4 : 0; }
         else { L.push([K[0], (1 - rec) * ck]); L.push([K[1], (1 - rec) * ck * easeIn(clamp((t - sAt) / K[2], 0, 1))]); busy = (1 - rec) * ck; }
         // the fists that strike glow red as the wind-up fills, flash on the hit, then cool
         const g = (sl.cut ? (sl.cut < sAt ? w * w : 1) : after < 0 ? w * w : Math.max(0, 1 - after / 0.6)) * ck;
-        if (sl.kind !== 'beam') { gr = g; if (sl.kind === 'slam') gl = g; }
+        if (sl.kind !== 'beam' && sl.kind !== 'laser') { gr = g; if (sl.kind === 'slam') gl = g; }
+        chargeK = sl.kind === 'charge' ? (sl.cut ? 0 : after < 0 ? w : Math.max(0, 1 - after / 0.4)) : 0;
         if (!sl.cut && after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
       }
       const mk = !dead && !away.gone ? menaceK(t) : null;
@@ -1417,7 +1463,10 @@ window.BossScene = (() => {
       const { busy, tremble, gl, gr, trail } = titanPose(t);
       kit.fists[0].g.material.opacity = gl * (calm ? 0.6 : 0.85);
       kit.fists[1].g.material.opacity = gr * (calm ? 0.6 : 0.85);
-      kit.fists[0].g.scale.setScalar(2 + gl * 2.2); kit.fists[1].g.scale.setScalar(2 + gr * 2.2);
+      kit.fists[0].g.scale.setScalar(2 + gl * 2.2);
+      // a charged punch: the fist's glow swells to the size of the boss's chest and pulses faster
+      kit.fists[1].g.scale.setScalar(2 + gr * 2.2 + chargeK * (9 + Math.sin(t * (8 + 22 * chargeK)) * 1.5));
+      if (chargeK > 0.05 && Math.random() < chargeK * 0.6) { kit.fists[1].at.getWorldPosition(vF); burst(vF, 3, 4 + 6 * chargeK, Math.random() < 0.5 ? WHITE : RED, 0.4, 0); }
       kitBusy = busy;
       const calmK = 1 - busy * 0.7;
       Bn.chest.rotation.y += Math.sin(at * 0.3) * 0.1 * still * calmK + recoil * recoilSide * 0.4;
@@ -1523,12 +1572,22 @@ window.BossScene = (() => {
           if (after < 0) { tz = tz * (1 - w) - 4 * ease(w); pose.hx = -0.3 * w; pose.lx = pose.rx = 0.8 * w; pose.y -= 0.8 * w; }
           else { const d = ease(after / 0.18), lz = -4 + 10 * d; tz = mv.tz + (lz - mv.tz) * rec; pose.hx = 0.5 * d * rec; pose.lx = pose.rx = -1.4 * d * rec; }
           tx *= 1 - w;
+        } else if (sl.kind === 'charge') {
+          // rears back as the fist charges, then the punch carries it into the raid (threatK)
+          if (after < 0) { tz = tz * (1 - w) - 3 * ease(w); pose.hx = -0.25 * w; pose.y -= 0.6 * w; }
+          tx *= 1 - w * 0.7;
+        } else if (sl.kind === 'laser') {
+          // backs off into the far end of the arena and fires from there
+          const bw = ease(clamp(w * 2.2, 0, 1));
+          tz = tz * (1 - bw) - 13 * bw * (after < 0 ? 1 : rec > 0 ? 1 - rec : 1); tx *= 1 - bw;
+          if (after < 0) { pose.lz = -1.6 * ease(w); pose.rz = 1.6 * ease(w); pose.headX = -0.25 * w; pose.y += 1 * w; }
+          else { pose.lz = -1.6 * rec; pose.rz = 1.6 * rec; pose.hx = -0.2 * rec; }
         } else if (sl.kind === 'beam') {
           if (after < 0) { pose.lz = -1.6 * ease(w); pose.rz = 1.6 * ease(w); pose.headX = -0.25 * w; pose.y += 1 * w; }
           else { pose.lz = -1.6 * rec; pose.rz = 1.6 * rec; pose.hx = -0.2 * rec; }
           tx *= 1 - w * 0.8;
         }
-        charge = after < 0 ? (sl.kind === 'beam' ? w : w * 0.5) : 0;
+        charge = after < 0 ? (sl.kind === 'beam' || sl.kind === 'laser' ? w : w * 0.5) : 0;
       } else charge = Math.max(0, charge - dt * 2);
       const vo = current(t, 'volley');
       if (vo) { const w = clamp((t - vo.s) / 1.2, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); pose.rx = -1.2 * w; pose.rz = 0.6 * w; }
@@ -1558,7 +1617,8 @@ window.BossScene = (() => {
       tz += (front - tz) * adv * 0.85 * still; tx *= 1 - 0.45 * adv;
       const mk = menaceK(t);
       if (mk && men.kind !== 'stomp') tz += (men.kind === 'lean' ? 2.6 : 1.8) * mk.surge * still;
-      tz += (front + 1 - tz) * threatK * still;           // every attack comes right up to the raid
+      const slK = current(t, 'slam');
+      if (!slK || slK.kind !== 'laser') tz += (front + 1 - tz) * threatK * still;   // every attack but the laser comes right up to the raid
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
@@ -1609,7 +1669,7 @@ window.BossScene = (() => {
         const sl = current(t, 'slam');
         if (sl && !dead && !away.gone) {
           if (sl.cut) k = Math.max(0, 1 - (t - sl.cut) / 0.25) * clamp(1 - (sl.h - sl.cut) / 0.7, 0, 1);
-          else if (t < sl.h) k = easeIn(clamp(1 - (sl.h - t) / 0.7, 0, 1));
+          else if (t < sl.h) k = Math.max(easeIn(clamp(1 - (sl.h - t) / 0.7, 0, 1)), sl.kind === 'charge' ? 0.4 * clamp((t - sl.s) / (sl.h - sl.s), 0, 1) : 0);
           else k = 1 - smooth(clamp((t - sl.h - 0.15) / 0.7, 0, 1));
         }
         threatK = k * (reduce ? 0.35 : 1);
@@ -1760,18 +1820,18 @@ window.BossScene = (() => {
         teleFill.material.opacity = 0.14 + 0.3 * w;
         tele.material.color.copy(blocked.has(sl.id) ? CYAN : RED);
         teleFill.material.color.copy(blocked.has(sl.id) ? CYAN : RED).multiplyScalar(0.4);
-        if (sl.kind === 'beam') {
+        if (sl.kind === 'beam' || sl.kind === 'laser') {
           beam.visible = true;
-          setBeam(anchorCore, raidPos[RAID], 0.06 + 0.05 * w);
+          setBeam(anchorCore, raidPos[RAID], sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
           beamMat.opacity = 0.25 + 0.35 * w;
         }
       } else { tele.visible = teleFill.visible = false; }
       if (t < beamUntil) {
         beam.visible = true;
-        const u = (beamUntil - t) / 0.55;
-        setBeam(anchorCore, raidPos[RAID], 0.9 * u + 0.2);
+        const u = (beamUntil - t) / beamLen;
+        setBeam(anchorCore, raidPos[RAID], beamW * u + 0.2);
         beamMat.opacity = 0.9 * u;
-      } else if (!(sl && !sl.cut && sl.kind === 'beam' && t < sl.h)) beam.visible = false;
+      } else if (!(sl && !sl.cut && (sl.kind === 'beam' || sl.kind === 'laser') && t < sl.h)) beam.visible = false;
       const su = t - sweepT0;
       if (su < 0.45) {
         sweepBar.visible = true;
@@ -2045,7 +2105,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { setHit, leave, arrive, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    return { breakCharge, setHit, leave, arrive, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };
