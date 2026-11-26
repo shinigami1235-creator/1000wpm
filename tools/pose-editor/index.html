@@ -273,7 +273,8 @@ function specFromPose(P) {
   return clampSpec(s);
 }
 const round = s => { const o = {}; for (const f of F) o[f.key] = f.step < 1 ? Math.round(s[f.key] * 100) / 100 : Math.round(s[f.key] * 10) / 10; return o; };
-IDLE_SPEC = round(specFromPose(IDLE));
+const IDLE_SPEC_BASE = round(specFromPose(IDLE));   // the game's idle
+IDLE_SPEC = IDLE_SPEC_BASE;
 
 // the punch the game has now (bosskit.js 'punch': right arm straight out, chest turned in)
 const GAME_STRIKE = round(specFromPose(kit.POSES.punch));
@@ -282,7 +283,7 @@ const GAME_STRIKE = round(specFromPose(kit.POSES.punch));
 // a pose written the way the pose sheets were: arms in body terms, torso in radians, claws as
 // BossKit angles (1.5 a fist, -0.3 open)
 function sheet(o) {
-  const s = { ...IDLE_SPEC };
+  const s = { ...IDLE_SPEC_BASE };
   for (const k of ['R', 'L']) {
     const sh = o['shoulder' + k], el = o['elbow' + k];
     if (sh) { s[`shoulder${k}.flex`] = sh.flex || 0; s[`shoulder${k}.abd`] = sh.abd || 0; s[`shoulder${k}.twist`] = sh.twist || 0; }
@@ -306,12 +307,12 @@ const ATTACKS = {
   punch: {
     name: 'Punch (overflow punch)', main: 'strike', mirror: false,
     scenes: [
-      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
       { id: 'wind', name: 'Wind-up', note: 'The arm draws back and the body turns away. Auto builds it as the opposite of the Strike.' },
       { id: 'load', name: 'Load', note: 'The cocked moment before the release: a little past the wind-up and sunk lower, like a spring.' },
       { id: 'strike', name: 'Strike', note: 'The moment the fist lands. Every auto scene is built from this one.' },
       { id: 'follow', name: 'Follow-through', note: 'The fist carries on past the hit along the line from the wind-up, and the body turns further than the arm.' },
-      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+      { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
     segs: [['idle', 'wind', 'inOut', 'wind'], ['wind', 'load', 'out', 'hold'], ['load', 'strike', 'in3', 'strike'], ['strike', 'follow', 'out3', 'follow'], ['follow', 'follow', 'out', 'freeze'], ['follow', 'recover', 'inOut', 'recover']],
     segName: { wind: 'Wind-up', hold: 'Load', strike: 'Strike', follow: 'Follow-through', freeze: 'Hold', recover: 'Recover' },
@@ -324,11 +325,11 @@ const ATTACKS = {
   slam: {
     name: 'Hammer slam', main: 'floor', mirror: true,
     scenes: [
-      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
       { id: 'steeple', name: 'Steeple wind-up', note: 'Fists locked above the head with the elbows wide. The game holds this while the warning runs.' },
       { id: 'swing', name: 'Swing', note: 'Halfway down: the same steeple swung forward from the shoulders. "Swing both arms forward" moves the whole shape at once.' },
       { id: 'floor', name: 'Hits the floor', note: 'The fists land in front of the boss and the data spikes burst out from here.' },
-      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+      { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
     segs: [['idle', 'steeple', 'inOut', 'wind'], ['steeple', 'steeple', 'out', 'hold'], ['steeple', 'swing', 'in2', 'swing'], ['swing', 'floor', 'lin', 'strike'], ['floor', 'floor', 'out', 'freeze'], ['floor', 'recover', 'inOut', 'recover']],
     segName: { wind: 'Wind-up', hold: 'Hold', swing: 'Swing', strike: 'Slam', freeze: 'Hold', recover: 'Recover' },
@@ -344,12 +345,14 @@ const ATTACKS = {
   cannon: {
     name: 'Arm cannon', main: 'charge', mirror: false, orb: true,
     scenes: [
-      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
       { id: 'charge', name: 'Charge: middle', note: 'Aims low at the middle group and charges the orb at the hand.' },
-      { id: 'fire', name: 'Fire', note: 'The shot and its recoil. The shots at the other two groups take the same recoil from their own aim.' },
+      { id: 'fire', name: 'Fire', note: 'The shot at the middle group and its recoil. The auto side shots take the same recoil from their own aim.' },
       { id: 'aimL', name: 'Aim: your left', note: 'Turns to the group on your left (seen from the player\'s side) and charges again.' },
+      { id: 'fireL', name: 'Fire: your left', note: 'The shot at your left group. Auto is the left aim with the same recoil as Fire.' },
       { id: 'aimR', name: 'Aim: your right', note: 'Turns to the group on your right and charges again.' },
-      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+      { id: 'fireR', name: 'Fire: your right', note: 'The shot at your right group. Auto is the right aim with the same recoil as Fire.' },
+      { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
     segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'aimL', 'inOut', 'turn', 'spark'], ['aimL', 'aimL', 'out', 'charge2', 'grow'], ['aimL', 'fireL', 'out3', 'shot', 'fire'], ['fireL', 'aimR', 'inOut', 'turn', 'spark'], ['aimR', 'aimR', 'out', 'charge2', 'grow'], ['aimR', 'fireR', 'out3', 'shot', 'fire'], ['fireR', 'recover', 'inOut', 'recover']],
     segName: { aim: 'Aim', charge: 'Charge', shot: 'Fire', turn: 'Turn', charge2: 'Charge', recover: 'Recover' },
@@ -362,16 +365,15 @@ const ATTACKS = {
       aimL: cannonAim(50, 5, 0.05),
       aimR: cannonAim(50, -40, 0.62),
     }),
-    derive: R => ({ fireL: plus(R.aimL, R.fire, R.charge), fireR: plus(R.aimR, R.fire, R.charge) }),
-    editAs: { fireL: 'fire', fireR: 'fire' },
+    autos: { fireL: R => plus(R.aimL, R.fire, R.charge), fireR: R => plus(R.aimR, R.fire, R.charge) },
   },
   summon: {
     name: 'Summon shards', main: 'gather', mirror: true,
     scenes: [
-      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
       { id: 'gather', name: 'Gather', note: 'Arms out with the claws open while the shards gather around the hands.' },
       { id: 'throw', name: 'Throw', note: 'Both hands thrust forward and the shards fly.' },
-      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+      { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
     segs: [['idle', 'gather', 'inOut', 'gather'], ['gather', 'gather', 'out', 'hold'], ['gather', 'throw', 'out3', 'throw'], ['throw', 'throw', 'out', 'freeze'], ['throw', 'recover', 'inOut', 'recover']],
     segName: { gather: 'Gather', hold: 'Hold', throw: 'Throw', freeze: 'Hold', recover: 'Recover' },
@@ -389,17 +391,19 @@ let DEF, SCENES, EDITABLE, SEGS, SEG_NAME, SEG_COL;
 function useAttack(id) {
   DEF = ATTACKS[id];
   SCENES = DEF.scenes;
-  EDITABLE = new Set(SCENES.filter(x => x.id !== 'idle' && x.id !== 'recover').map(x => x.id));
+  EDITABLE = new Set(SCENES.map(x => x.id));
   SEGS = DEF.segs; SEG_NAME = DEF.segName;
   SEG_COL = {}; Object.keys(DEF.segName).forEach((k, i) => { SEG_COL[k] = SEG_COLS[i % SEG_COLS.length]; });
 }
+// scenes built from another scene until they're set by hand
+const isAuto = (d, id) => id === 'recover' || !!(d.autos && d.autos[id]) || (d.auto && id !== d.main && id !== 'idle');
 const freshAttack = id => {
   const d = ATTACKS[id], sc = {};
-  for (const x of d.scenes) if (x.id !== 'idle' && x.id !== 'recover') sc[x.id] = d.auto && x.id !== d.main ? { auto: true } : { auto: false };
+  for (const x of d.scenes) if (x.id !== 'idle') sc[x.id] = { auto: isAuto(d, x.id) };
   if (d.auto) sc[d.main] = { auto: false, spec: d.defaults()[d.main] };
   return { timing: { ...d.timing }, feel: { ...d.feel }, scenes: sc, mirror: d.mirror };
 };
-const DEFAULT = () => ({ v: 2, attack: 'punch', attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
+const DEFAULT = () => ({ v: 2, attack: 'punch', idle: {}, attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
 let store = DEFAULT();
 try {
   const saved = JSON.parse(localStorage.getItem('syntax-punch-editor'));
@@ -407,8 +411,14 @@ try {
   else if (saved && saved.v === 1) store.attacks.punch = { ...saved, mirror: false };   // the punch from before the other attacks
 } catch (e) {}
 for (const k in ATTACKS) store.attacks[k] = store.attacks[k] || freshAttack(k);
+store.idle = store.idle || {};
+if (store.idle.spec) store.idle.spec = clampSpec(store.idle.spec);
 for (const k in store.attacks) for (const id in store.attacks[k].scenes) if (store.attacks[k].scenes[id].spec) store.attacks[k].scenes[id].spec = clampSpec(store.attacks[k].scenes[id].spec);
 let state = store.attacks[store.attack];
+function sceneState(id) {
+  if (id === 'idle') return store.idle;
+  return state.scenes[id] = state.scenes[id] || { auto: isAuto(DEF, id) };
+}
 useAttack(store.attack);
 
 // auto scenes, built from what's been set by hand
@@ -462,21 +472,25 @@ function safe(id, base, full) {
   return out;
 }
 function resolved() {
+  IDLE_SPEC = store.idle.spec || IDLE_SPEC_BASE;
+  const rec = R0 => { const sc = sceneState('recover'); R0.recover = !sc.auto && sc.spec ? sc.spec : R0.idle; return R0; };
   if (!DEF.auto) {
-    const D = DEF.defaults(), R = { idle: IDLE_SPEC, recover: IDLE_SPEC };
-    for (const id of EDITABLE) R[id] = state.scenes[id] && state.scenes[id].spec ? state.scenes[id].spec : D[id];
-    return DEF.derive ? Object.assign(R, DEF.derive(R)) : R;
+    const D = DEF.defaults(), R = { idle: IDLE_SPEC };
+    for (const id of EDITABLE) if (id !== 'idle' && id !== 'recover' && !(DEF.autos && DEF.autos[id])) { const sc = sceneState(id); R[id] = sc.spec && !sc.auto ? sc.spec : D[id]; }
+    for (const id in DEF.autos || {}) { const sc = sceneState(id); R[id] = !sc.auto && sc.spec ? sc.spec : DEF.autos[id](R); }
+    return rec(R);
   }
   const sc = state.scenes, k = state.feel, St = sc.strike.spec;
   const wind = sc.wind.auto ? safe('wind', IDLE_SPEC, windFrom(St, k)) : sc.wind.spec;
   const load = sc.load.auto ? safe('load', wind, loadFrom(wind, k)) : sc.load.spec;
   const follow = sc.follow.auto ? safe('follow', St, followFrom(wind, St, k)) : sc.follow.spec;
-  return { idle: IDLE_SPEC, wind, load, strike: St, follow, recover: IDLE_SPEC };
+  return rec({ idle: IDLE_SPEC, wind, load, strike: St, follow });
 }
 let R = null, P = null;           // resolved specs and their bone angles
 function rebuild() {
   R = resolved();
-  P = {}; for (const id in R) P[id] = id === 'idle' || id === 'recover' ? IDLE : toPose(R[id]);
+  const ip = store.idle.spec ? { ...IDLE, ...toPose(R.idle) } : IDLE;
+  P = {}; for (const id in R) P[id] = id === 'idle' || (id === 'recover' && R.recover === R.idle) ? ip : toPose(R[id]);
 }
 
 // ---------- the timeline ----------
@@ -594,14 +608,11 @@ function sceneNear(t) {
   // the scene the boss is showing at t: whichever end of the current stretch it's closer to, so a
   // hold after the wind-up still edits the wind-up
   const x = at(t), ids = [...EDITABLE];
-  let id = x.a === x.b || x.k < 0.5 ? x.a : x.b;
-  if (DEF.editAs && DEF.editAs[id]) id = DEF.editAs[id];
-  if (id === 'idle') id = ids[0];
-  if (id === 'recover') id = x.a !== 'recover' && EDITABLE.has(DEF.editAs?.[x.a] || x.a) ? (DEF.editAs?.[x.a] || x.a) : ids[ids.length - 1];
+  const id = x.a === x.b || x.k < 0.5 ? x.a : x.b;
   return EDITABLE.has(id) ? id : ids[0];
 }
 function editSpec() {
-  const sc = state.scenes[cur] = state.scenes[cur] || { auto: false };
+  const sc = sceneState(cur);
   if (sc.auto || !sc.spec) { sc.auto = false; sc.spec = { ...R[cur] }; }
   return sc.spec;
 }
@@ -745,13 +756,16 @@ function buildFields() {
       rg.addEventListener('input', () => set(rg.value)); nb.addEventListener('input', () => set(nb.value));
       rg.addEventListener('change', commit); nb.addEventListener('change', commit);
       rg.addEventListener('pointerdown', () => { sliding = true; });
-      rg.addEventListener('dblclick', () => { if (!EDITABLE.has(cur) || (state.scenes[cur] || {}).auto) return; const auto = resolvedAuto(cur); if (auto) { set(auto[f.key]); commit(); } });
+      rg.addEventListener('dblclick', () => { if (!EDITABLE.has(cur) || sceneState(cur).auto) return; const auto = resolvedAuto(cur); if (auto) { set(auto[f.key]); commit(); } });
       d.appendChild(row);
     }
     host.appendChild(d);
   }
 }
 function resolvedAuto(id) {
+  if (id === 'idle') return IDLE_SPEC_BASE;
+  if (id === 'recover') return R.idle;
+  if (DEF.autos && DEF.autos[id]) return DEF.autos[id](R);
   if (!DEF.auto) return DEF.defaults()[id] || null;
   const k = state.feel, St = state.scenes.strike.spec, W = R.wind;
   if (id === 'wind') return windFrom(St, k);
@@ -760,7 +774,7 @@ function resolvedAuto(id) {
   return null;
 }
 function fillFields() {
-  const s = R[cur], ed = EDITABLE.has(cur), auto = ed && !!(state.scenes[cur] || {}).auto, own = ed && !!(state.scenes[cur] || {}).spec;
+  const s = R[cur], ed = EDITABLE.has(cur), scs = sceneState(cur), auto = !!scs.auto, own = !scs.auto && !!scs.spec;
   for (const row of document.querySelectorAll('#fields .row')) {
     const f = FBY[row.dataset.key], [rg, nb] = row.querySelectorAll('input'), v = s[f.key];
     if (document.activeElement !== nb) nb.value = f.step < 1 ? v.toFixed(2) : v.toFixed(0);
@@ -771,11 +785,9 @@ function fillFields() {
   const sc = SCENES.find(x => x.id === cur);
   $('sceneName').textContent = sc.name;
   const b = $('badge');
-  if (!ed) { b.textContent = 'Not edited here'; b.className = 'badge'; }
-  else if (!DEF.auto) { b.textContent = own ? 'Edited' : 'Starting pose'; b.className = 'badge ' + (own ? 'edited' : 'auto'); }
-  else if (cur === DEF.main) { b.textContent = 'Set by hand'; b.className = 'badge edited'; }
-  else { b.textContent = auto ? 'Auto' : 'Edited'; b.className = 'badge ' + (auto ? 'auto' : 'edited'); }
-  $('toAuto').hidden = !ed || auto || (DEF.auto ? cur === DEF.main && JSON.stringify(round(R[cur])) === JSON.stringify(DEF.defaults()[cur]) : !own);
+  const st = sceneStatus(cur);
+  b.textContent = st[0][0].toUpperCase() + st[0].slice(1); b.className = 'badge ' + st[1];
+  $('toAuto').hidden = !own || (DEF.auto && cur === DEF.main && JSON.stringify(round(R[cur])) === JSON.stringify(DEF.defaults()[cur]));
   $('sceneNote').textContent = sc.note + (auto ? ' Move any slider here or drag a joint to set it by hand. Double-click a slider to put that one value back to auto.' : '') + (auto && autoNote[cur] ? ' ' + autoNote[cur] : '');
 }
 function feelRow(host, obj, key, label, min, max, step, unit = '') {
@@ -815,17 +827,22 @@ function buildCards() {
     cardCanvases[s.id] = c.querySelector('canvas'); host.appendChild(c);
   }
 }
+// what a card and the panel badge say about a scene
+function sceneStatus(id) {
+  const sc = sceneState(id), own = !sc.auto && !!sc.spec;
+  if (own) return ['edited', 'edited'];
+  if (id === 'idle') return ['game idle', 'auto'];
+  if (sc.auto) return [id === 'recover' ? 'same as idle' : 'auto', 'auto'];
+  if (DEF.auto && id === DEF.main) return ['set by hand', 'edited'];
+  return ['starting pose', 'auto'];
+}
 function markCards() {
   const m = marks();
   for (const c of document.querySelectorAll('.card')) {
     const id = c.dataset.id, st = c.querySelector('.s');
     c.classList.toggle('sel', id === cur);
     c.querySelector('.tm').textContent = m[id].toFixed(2) + ' s';
-    const sc = state.scenes[id] || {};
-    if (!EDITABLE.has(id)) { st.textContent = 'idle pose'; st.className = 's'; }
-    else if (!DEF.auto) { st.textContent = sc.spec ? 'edited' : 'starting pose'; st.className = 's ' + (sc.spec ? 'edited' : 'auto'); }
-    else if (id === DEF.main) { st.textContent = 'set by hand'; st.className = 's edited'; }
-    else { st.textContent = sc.auto ? 'auto' : 'edited'; st.className = 's ' + (sc.auto ? 'auto' : 'edited'); }
+    const ss = sceneStatus(id); st.textContent = ss[0]; st.className = 's ' + ss[1];
   }
 }
 function buildBar() {
@@ -913,13 +930,13 @@ $('askYes').onclick = () => { $('ask').close(); commit(); store.attacks[store.at
 const r3 = a => a.map(x => Math.round(x * 1000) / 1000);
 function exportText() {
   const poses = {};
-  for (const id of Object.keys(P).filter(x => x !== 'idle' && x !== 'recover')) {
+  for (const id of Object.keys(P)) {
     const p = P[id], o = {};
-    for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn]);
-    o._hips = Math.round(p._hips * 100) / 100; poses[id] = o;
+    for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn] || IDLE[bn] || [0, 0, 0]);
+    o._hips = Math.round((p._hips || 0) * 100) / 100; poses[id] = o;
   }
-  const scenes = {}; for (const id of EDITABLE) scenes[id] = { auto: !!(state.scenes[id] || {}).auto, edited: !!(state.scenes[id] || {}).spec, spec: round(R[id]) };
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp)', timing: state.timing, feel: state.feel, segments: SEGS, scenes, poses }, null, 1);
+  const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp), elbows and wrists by bend and twist', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
@@ -942,13 +959,14 @@ $('file').onchange = async e => {
     const d = JSON.parse(await f.text());
     if (d.tool !== 'syntax-punch-editor') throw 0;
     const id = d.attack || 'punch', A = ATTACKS[id]; if (!A) throw 0;
-    const sc = {}; for (const k of Object.keys(d.scenes)) sc[k] = A.auto && d.scenes[k].auto && k !== A.main ? { auto: true } : (d.scenes[k].edited === false ? { auto: false } : { auto: false, spec: clampSpec(d.scenes[k].spec) });
+    const sc = {}; for (const k of Object.keys(d.scenes)) { if (k === 'idle') continue; sc[k] = d.scenes[k].auto && isAuto(A, k) ? { auto: true } : (d.scenes[k].edited === false ? { auto: isAuto(A, k) } : { auto: false, spec: clampSpec(d.scenes[k].spec) }); }
+    if (d.scenes.idle && d.scenes.idle.edited) store.idle = { auto: false, spec: clampSpec(d.scenes.idle.spec) };
     commit(); store.attacks[id] = { timing: { ...A.timing, ...d.timing }, feel: { ...A.feel, ...d.feel }, scenes: sc, mirror: A.mirror }; store.attack = id;
     load(JSON.stringify(store)); commit();
   } catch (err) { dialog('That file isn\'t an attack from this editor.', ''); }
   e.target.value = '';
 };
-$('toAuto').onclick = () => { state.scenes[cur] = !DEF.auto ? { auto: false } : cur === DEF.main ? { auto: false, spec: { ...DEF.defaults()[cur] } } : { auto: true }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
+$('toAuto').onclick = () => { if (cur === 'idle') store.idle = {}; else state.scenes[cur] = DEF.auto && cur === DEF.main ? { auto: false, spec: { ...DEF.defaults()[cur] } } : { auto: isAuto(DEF, cur) }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
 
 // ---------- playback ----------
 function updatePlay() { $('play').textContent = playing ? '❚❚' : '▶'; need(); }
