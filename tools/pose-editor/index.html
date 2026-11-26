@@ -97,7 +97,7 @@
       <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button>
       </div>
     </div>
-    <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). It edits the scene nearest the playhead.</div>
+    <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). It edits the scene the boss is showing at the playhead.</div>
   </div>
   <aside>
     <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button></div>
@@ -361,6 +361,7 @@ const ATTACKS = {
       aimR: cannonAim(50, -40, 0.62),
     }),
     derive: R => ({ fireL: plus(R.aimL, R.fire, R.charge), fireR: plus(R.aimR, R.fire, R.charge) }),
+    editAs: { fireL: 'fire', fireR: 'fire' },
   },
   summon: {
     name: 'Summon shards', main: 'gather', mirror: true,
@@ -586,12 +587,14 @@ function select(name) {
 function sceneNear(t) {
   const m = marks();
   if (EDITABLE.has(cur) && Math.abs(t - m[cur]) < 1e-3) return cur;
-  const ids = [...EDITABLE];
-  if (t <= m[ids[0]]) return ids[0];
-  // the last stretch belongs to the scene the timeline left, not the next one
-  let last = ids[0]; for (const id of ids) if (m[id] <= t + 1e-6) last = id;
-  const next = ids.find(id => m[id] > t + 1e-6);
-  return next && Math.abs(m[next] - t) < Math.abs(t - m[last]) ? next : last;
+  // the scene the boss is showing at t: whichever end of the current stretch it's closer to, so a
+  // hold after the wind-up still edits the wind-up
+  const x = at(t), ids = [...EDITABLE];
+  let id = x.a === x.b || x.k < 0.5 ? x.a : x.b;
+  if (DEF.editAs && DEF.editAs[id]) id = DEF.editAs[id];
+  if (id === 'idle') id = ids[0];
+  if (id === 'recover') id = x.a !== 'recover' && EDITABLE.has(DEF.editAs?.[x.a] || x.a) ? (DEF.editAs?.[x.a] || x.a) : ids[ids.length - 1];
+  return EDITABLE.has(id) ? id : ids[0];
 }
 function editSpec() {
   const sc = state.scenes[cur] = state.scenes[cur] || { auto: false };
@@ -1024,7 +1027,9 @@ window.editor = {
   reach: (k, v) => { select('fist' + k); proxy.position.set(...v); onGizmo(); poseNow(); const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return [w.x, w.y, w.z].map(x => +x.toFixed(2)); },
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); onGizmo(); return round(R[cur]); },
   turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
-  cur: () => cur,
+  cur: () => cur, time: () => time,
+  near: t => sceneNear(t),
+  handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
 </script>
