@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Syntax Error punch editor</title>
+<title>Syntax Error attack editor</title>
 <script type="importmap">
 { "imports": {
   "three": "../../lib/three/build/three.module.min.js",
@@ -47,7 +47,7 @@
   #checks .bad { color: #ff8a8a; margin: 3px 0; cursor: pointer; }
   #checks .ok { color: var(--green); }
   footer { grid-column: 1; border-top: 1px solid var(--line); padding: 8px 12px 10px; }
-  .cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+  .cards { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
   .card { border: 1px solid var(--line); border-radius: 8px; padding: 4px; cursor: pointer; background: #11141a; }
   .card.sel { border-color: var(--cyan); }
   .card canvas { width: 100%; aspect-ratio: 16 / 11; display: block; border-radius: 4px; background: #0c0e12; }
@@ -68,14 +68,16 @@
   @media (max-width: 900px) {
     .app { grid-template-columns: 1fr; grid-template-rows: auto 55vh auto auto; height: auto; }
     aside { grid-row: 4; grid-column: 1; border-left: 0; border-top: 1px solid var(--line); }
-    .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cards { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <h1>Syntax Error: punch editor</h1>
+    <h1>Syntax Error: attack editor</h1>
+    <select id="attack" title="Which attack to edit"></select>
+    <button id="mirror" title="Moving one arm moves the other the same way">Mirror arms</button>
     <button id="undo" title="Ctrl+Z">Undo</button>
     <button id="redo" title="Ctrl+Shift+Z">Redo</button>
     <span class="sp"></span>
@@ -115,7 +117,7 @@
     </div>
   </footer>
 </div>
-<dialog id="ask"><p>Start over from the game's punch? Every scene, the feel and the timing go back to how they are in the game. Undo brings your version back.</p><p style="display:flex;gap:8px;justify-content:flex-end"><button id="askNo">Cancel</button><button id="askYes" style="border-color:var(--red);color:#ff8a8a">Start over</button></p></dialog>
+<dialog id="ask"><p id="askText">Start over? Every scene, the feel and the timing of this attack go back to where they started. Undo brings your version back.</p><p style="display:flex;gap:8px;justify-content:flex-end"><button id="askNo">Cancel</button><button id="askYes" style="border-color:var(--red);color:#ff8a8a">Start over</button></p></dialog>
 <dialog id="dlg"><p id="dlgMsg"></p><textarea id="dlgText" readonly></textarea><p><button id="dlgClose">Close</button></p></dialog>
 
 <script type="module">
@@ -132,7 +134,8 @@ window.Theme = window.Theme || { hex: () => '#39ff88' };
 await new Promise((ok, no) => { const s = document.createElement('script'); s.src = KIT_URL; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
-const quiet = m => /wrist twists 2\d°/.test(m);   // the idle pose's own wrist turn
+// the idle pose's own wrist turn, and forearm roll: a machine's forearm can turn the whole way round
+const quiet = m => /wrist twists 2\d°|elbow twists/.test(m);
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const $ = id => document.getElementById(id);
 
@@ -185,17 +188,18 @@ scene.add(ghost.group);
 // angle in degrees. hips moves the whole body down (negative) or up. claw is 0 open to 100 a fist.
 const F = [];
 const field = (key, label, group, min, max, step = 1) => F.push({ key, label, group, min, max, step });
-for (const [k, side, grp] of [['R', 'right', 'Right arm (the punch)'], ['L', 'left', 'Left arm']]) {
+for (const [k, side, grp] of [['R', 'right', 'Right arm'], ['L', 'left', 'Left arm']]) {
   field(`shoulder${k}.flex`, 'Shoulder: forward ↑ / back ↓', grp, -60, 180);
   field(`shoulder${k}.abd`, 'Shoulder: out to the side ↑ / across ↓', grp, -45, 180);
   field(`shoulder${k}.twist`, 'Upper arm twist', grp, -100, 100);
   field(`elbow${k}.flex`, 'Elbow bend', grp, -8, 150);
-  field(`elbow${k}.twist`, 'Forearm twist (turns the fist)', grp, -95, 95);
+  field(`elbow${k}.twist`, 'Forearm twist (turns the fist)', grp, -180, 180);
   field(`wrist${k}.flex`, 'Wrist bend', grp, -75, 80);
   field(`wrist${k}.abd`, 'Wrist side to side', grp, -40, 25);
   field(`wrist${k}.twist`, 'Wrist twist', grp, -40, 40);
   field(`claw${k}`, 'Hand: open 0 / fist 100', grp, 0, 100);
 }
+field('pitch', 'Swing both arms forward, keeping their shape', 'Both arms', -60, 150);
 field('hips', 'Body height: drop ↓ / rise ↑', 'Body', -1.5, 1, 0.05);
 field('spine.1', 'Waist turn', 'Body', -40, 40);
 field('spine.0', 'Waist lean: back ↓ / forward ↑', 'Body', -40, 40);
@@ -209,6 +213,9 @@ const FK = F.map(f => f.key), FBY = Object.fromEntries(F.map(f => [f.key, f]));
 const isBody = k => /^(spine|chest|head)\./.test(k) || k === 'hips';
 let IDLE_SPEC = null;   // filled in below; a scene saved before a field existed takes the idle value for it
 const clampSpec = s => { const o = {}; for (const f of F) o[f.key] = clamp(s[f.key] ?? (IDLE_SPEC ? IDLE_SPEC[f.key] : 0) ?? 0, f.min, f.max); return o; };
+// a right-arm value and its left-arm twin: twists turn the opposite way on the other side
+const MIRROR_NEG = /twist$/;
+const twin = k => k.replace(/R(\.|$)/, 'L$1');
 const lerpS = (a, b, k) => { const o = {}; for (const f of FK) o[f] = a[f] + (b[f] - a[f]) * k; return o; };
 
 function toPose(s) {
@@ -221,6 +228,11 @@ function toPose(s) {
   }
   for (const b of ['spine', 'chest', 'head']) P[b] = [0, 1, 2].map(i => s[`${b}.${i}`] * D2R);
   P._hips = s.hips;
+  if (s.pitch) {
+    // swing both arms forward about the shoulders' side-to-side axis, elbows and hands unchanged
+    const q = new THREE.Quaternion(), r = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), s.pitch * D2R), e = new THREE.Euler();
+    for (const k of ['armR', 'armL']) { q.setFromEuler(e.set(...P[k])); q.premultiply(r); e.setFromQuaternion(q); P[k] = [e.x, e.y, e.z]; }
+  }
   return P;
 }
 // the closest body-terms values for a bone angle (used when a joint is dragged in 3D)
@@ -255,7 +267,7 @@ function specFromPose(P) {
     s['claw' + k] = ((P['claw' + k] || [0.55])[0] + 0.3) / 1.8 * 100;
   }
   for (const b of ['spine', 'chest', 'head']) for (let i = 0; i < 3; i++) s[`${b}.${i}`] = ((P[b] || [0, 0, 0])[i]) * R2D;
-  s.hips = P._hips || 0;
+  s.hips = P._hips || 0; s.pitch = 0;
   return clampSpec(s);
 }
 const round = s => { const o = {}; for (const f of F) o[f.key] = f.step < 1 ? Math.round(s[f.key] * 100) / 100 : Math.round(s[f.key] * 10) / 10; return o; };
@@ -264,25 +276,137 @@ IDLE_SPEC = round(specFromPose(IDLE));
 // the punch the game has now (bosskit.js 'punch': right arm straight out, chest turned in)
 const GAME_STRIKE = round(specFromPose(kit.POSES.punch));
 
-// ---------- the scenes ----------
-const SCENES = [
-  { id: 'idle', name: 'Idle', note: 'The resting pose the punch starts from. It belongs to the whole fight, so it isn\'t edited here.' },
-  { id: 'wind', name: 'Wind-up', note: 'The arm draws back and the body turns away. Auto builds it as the opposite of the Strike.' },
-  { id: 'load', name: 'Load', note: 'The cocked moment before the release: a little past the wind-up and sunk lower, like a spring.' },
-  { id: 'strike', name: 'Strike', note: 'The moment the fist lands. Every auto scene is built from this one.' },
-  { id: 'follow', name: 'Follow-through', note: 'The fist carries on past the hit along the line from the wind-up, and the body turns further than the arm.' },
-  { id: 'recover', name: 'Recover', note: 'Back to idle.' },
-];
-const EDITABLE = new Set(['wind', 'load', 'strike', 'follow']);
-const DEFAULT = () => ({
-  v: 1,
-  timing: { wind: 1.2, hold: 0.5, strike: 0.16, follow: 0.18, freeze: 0.45, recover: 0.9 },
-  feel: { antic: 1, load: 0.5, armOver: 0.12, bodyOver: 0.2, lead: 0.08 },
-  scenes: { wind: { auto: true }, load: { auto: true }, strike: { auto: false, spec: { ...GAME_STRIKE } }, follow: { auto: true } },
-});
-let state = DEFAULT();
-try { const saved = JSON.parse(localStorage.getItem('syntax-punch-editor')); if (saved && saved.v === 1) state = saved; } catch (e) {}
-for (const id in state.scenes) if (state.scenes[id].spec) state.scenes[id].spec = clampSpec(state.scenes[id].spec);
+// ---------- the attacks ----------
+// a pose written the way the pose sheets were: arms in body terms, torso in radians, claws as
+// BossKit angles (1.5 a fist, -0.3 open)
+function sheet(o) {
+  const s = { ...IDLE_SPEC };
+  for (const k of ['R', 'L']) {
+    const sh = o['shoulder' + k], el = o['elbow' + k];
+    if (sh) { s[`shoulder${k}.flex`] = sh.flex || 0; s[`shoulder${k}.abd`] = sh.abd || 0; s[`shoulder${k}.twist`] = sh.twist || 0; }
+    if (el) { s[`elbow${k}.flex`] = el.flex || 0; s[`elbow${k}.twist`] = el.twist || 0; }
+  }
+  for (const [b, v] of Object.entries(o.raw || {})) {
+    if (b.startsWith('claw')) s[b] = (v[0] + 0.3) / 1.8 * 100;
+    else for (let i = 0; i < 3; i++) s[`${b}.${i}`] = v[i] * R2D;
+  }
+  s.hips = o.hips || 0; s.pitch = o.pitch || 0;
+  return round(clampSpec(s));
+}
+const FIST = { clawR: [1.5, 0, 0], clawL: [1.5, 0, 0] };
+const STEEPLE = { shoulderR: { flex: -20, abd: 170, twist: -80 }, shoulderL: { flex: -20, abd: 170, twist: 80 }, elbowR: { flex: 60, twist: 180 }, elbowL: { flex: 60, twist: -180 } };
+const BRACE = { shoulderL: { flex: 55, abd: -45, twist: -40 }, elbowL: { flex: 30 } };
+const cannonAim = (flex, abd, chy) => sheet({ shoulderR: { flex, abd }, elbowR: { flex: 20 }, ...BRACE, raw: { chest: [0.3, chy, 0], spine: [0.2, chy / 2, 0], head: [-0.4, -chy, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.6 });
+// in-between scenes the game builds and the editor shows but doesn't list as cards
+const plus = (a, d1, d0) => clampSpec(Object.fromEntries(FK.map(f => [f, a[f] + d1[f] - d0[f]])));
+
+const ATTACKS = {
+  punch: {
+    name: 'Punch (overflow punch)', main: 'strike', mirror: false,
+    scenes: [
+      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'wind', name: 'Wind-up', note: 'The arm draws back and the body turns away. Auto builds it as the opposite of the Strike.' },
+      { id: 'load', name: 'Load', note: 'The cocked moment before the release: a little past the wind-up and sunk lower, like a spring.' },
+      { id: 'strike', name: 'Strike', note: 'The moment the fist lands. Every auto scene is built from this one.' },
+      { id: 'follow', name: 'Follow-through', note: 'The fist carries on past the hit along the line from the wind-up, and the body turns further than the arm.' },
+      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+    ],
+    segs: [['idle', 'wind', 'inOut', 'wind'], ['wind', 'load', 'out', 'hold'], ['load', 'strike', 'in3', 'strike'], ['strike', 'follow', 'out3', 'follow'], ['follow', 'follow', 'out', 'freeze'], ['follow', 'recover', 'inOut', 'recover']],
+    segName: { wind: 'Wind-up', hold: 'Load', strike: 'Strike', follow: 'Follow-through', freeze: 'Hold', recover: 'Recover' },
+    timing: { wind: 1.2, hold: 0.5, strike: 0.16, follow: 0.18, freeze: 0.45, recover: 0.9 },
+    timeRows: [['wind', 'Wind-up', 0.2, 7], ['hold', 'Load (held cocked)', 0, 1.5], ['strike', 'Strike (release to contact)', 0.04, 0.6], ['follow', 'Follow-through', 0.04, 0.8], ['freeze', 'Hold after the hit', 0, 1.5], ['recover', 'Recover', 0.2, 2.5]],
+    feel: { antic: 1, load: 0.5, armOver: 0.12, bodyOver: 0.2, lead: 0.08 },
+    defaults: () => ({ strike: { ...GAME_STRIKE } }),
+    auto: true,
+  },
+  slam: {
+    name: 'Hammer slam', main: 'floor', mirror: true,
+    scenes: [
+      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'steeple', name: 'Steeple wind-up', note: 'Fists locked above the head with the elbows wide. The game holds this while the warning runs.' },
+      { id: 'swing', name: 'Swing', note: 'Halfway down: the same steeple swung forward from the shoulders. "Swing both arms forward" moves the whole shape at once.' },
+      { id: 'floor', name: 'Hits the floor', note: 'The fists land in front of the boss and the data spikes burst out from here.' },
+      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+    ],
+    segs: [['idle', 'steeple', 'inOut', 'wind'], ['steeple', 'steeple', 'out', 'hold'], ['steeple', 'swing', 'in2', 'swing'], ['swing', 'floor', 'lin', 'strike'], ['floor', 'floor', 'out', 'freeze'], ['floor', 'recover', 'inOut', 'recover']],
+    segName: { wind: 'Wind-up', hold: 'Hold', swing: 'Swing', strike: 'Slam', freeze: 'Hold', recover: 'Recover' },
+    timing: { wind: 1.3, hold: 0.4, swing: 0.16, strike: 0.08, freeze: 0.5, recover: 1.0 },
+    timeRows: [['wind', 'Wind-up', 0.2, 7], ['hold', 'Held at the top', 0, 1.5], ['swing', 'Swing down', 0.04, 0.6], ['strike', 'Last stretch to the floor', 0.02, 0.4], ['freeze', 'Hold on the floor', 0, 1.5], ['recover', 'Recover', 0.2, 2.5]],
+    feel: { lead: 0.06 },
+    defaults: () => ({
+      steeple: sheet({ ...STEEPLE, raw: { chest: [-0.3, 0, 0], spine: [-0.12, 0, 0], head: [-0.3, 0, 0], ...FIST }, hips: 0.5 }),
+      swing: sheet({ ...STEEPLE, pitch: 40, raw: { chest: [0.2, 0, 0], spine: [0.1, 0, 0], head: [-0.25, 0, 0], ...FIST }, hips: 0 }),
+      floor: sheet({ ...STEEPLE, pitch: 45, raw: { chest: [0.66, 0, 0], spine: [0.55, 0, 0], head: [-0.8, 0, 0], ...FIST }, hips: -1.4 }),
+    }),
+  },
+  cannon: {
+    name: 'Arm cannon', main: 'charge', mirror: false, orb: true,
+    scenes: [
+      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'charge', name: 'Charge: middle', note: 'Aims low at the middle group and charges the orb at the hand.' },
+      { id: 'fire', name: 'Fire', note: 'The shot and its recoil. The shots at the other two groups take the same recoil from their own aim.' },
+      { id: 'aimL', name: 'Aim: your left', note: 'Turns to the group on your left (seen from the player\'s side) and charges again.' },
+      { id: 'aimR', name: 'Aim: your right', note: 'Turns to the group on your right and charges again.' },
+      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+    ],
+    segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'aimL', 'inOut', 'turn', 'spark'], ['aimL', 'aimL', 'out', 'charge2', 'grow'], ['aimL', 'fireL', 'out3', 'shot', 'fire'], ['fireL', 'aimR', 'inOut', 'turn', 'spark'], ['aimR', 'aimR', 'out', 'charge2', 'grow'], ['aimR', 'fireR', 'out3', 'shot', 'fire'], ['fireR', 'recover', 'inOut', 'recover']],
+    segName: { aim: 'Aim', charge: 'Charge', shot: 'Fire', turn: 'Turn', charge2: 'Charge', recover: 'Recover' },
+    timing: { aim: 0.9, charge: 1.4, shot: 0.12, turn: 0.5, charge2: 0.8, recover: 1.0 },
+    timeRows: [['aim', 'Raise and aim', 0.2, 3], ['charge', 'First charge', 0.2, 6], ['shot', 'Shot and recoil', 0.04, 0.6], ['turn', 'Turn to the next group', 0.1, 2], ['charge2', 'Later charges', 0.1, 4], ['recover', 'Recover', 0.2, 2.5]],
+    feel: { lead: 0.05 },
+    defaults: () => ({
+      charge: cannonAim(50, -25, 0.3),
+      fire: sheet({ shoulderR: { flex: 62, abd: -25 }, elbowR: { flex: 10 }, ...BRACE, raw: { chest: [0.1, 0.25, 0], spine: [0.2, 0.125, 0], head: [-0.4, -0.25, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.3 }),
+      aimL: cannonAim(50, 5, 0.05),
+      aimR: cannonAim(50, -40, 0.62),
+    }),
+    derive: R => ({ fireL: plus(R.aimL, R.fire, R.charge), fireR: plus(R.aimR, R.fire, R.charge) }),
+  },
+  summon: {
+    name: 'Summon shards', main: 'gather', mirror: true,
+    scenes: [
+      { id: 'idle', name: 'Idle', note: 'The resting pose every attack starts from, so it isn\'t edited here.' },
+      { id: 'gather', name: 'Gather', note: 'Arms out with the claws open while the shards gather around the hands.' },
+      { id: 'throw', name: 'Throw', note: 'Both hands thrust forward and the shards fly.' },
+      { id: 'recover', name: 'Recover', note: 'Back to idle.' },
+    ],
+    segs: [['idle', 'gather', 'inOut', 'gather'], ['gather', 'gather', 'out', 'hold'], ['gather', 'throw', 'out3', 'throw'], ['throw', 'throw', 'out', 'freeze'], ['throw', 'recover', 'inOut', 'recover']],
+    segName: { gather: 'Gather', hold: 'Hold', throw: 'Throw', freeze: 'Hold', recover: 'Recover' },
+    timing: { gather: 1.0, hold: 0.8, throw: 0.18, freeze: 0.35, recover: 1.0 },
+    timeRows: [['gather', 'Arms out', 0.2, 4], ['hold', 'Shards gathering', 0, 4], ['throw', 'Throw', 0.04, 0.6], ['freeze', 'Hold after the throw', 0, 1.5], ['recover', 'Recover', 0.2, 2.5]],
+    feel: { lead: 0.06 },
+    defaults: () => ({
+      gather: sheet({ shoulderR: { flex: 60, abd: 60 }, elbowR: { flex: 60 }, shoulderL: { flex: 60, abd: 60 }, elbowL: { flex: 60 }, raw: { chest: [-0.2, 0, 0], spine: [-0.08, 0, 0], head: [-0.2, 0, 0], clawR: [-0.3, 0, 0], clawL: [-0.3, 0, 0] }, hips: 0.3 }),
+      throw: sheet({ shoulderR: { flex: 85, abd: 15 }, elbowR: { flex: 10 }, shoulderL: { flex: 85, abd: 15 }, elbowL: { flex: 10 }, raw: { chest: [0.25, 0, 0], spine: [0.1, 0, 0], head: [-0.15, 0, 0], clawR: [-0.3, 0, 0], clawL: [-0.3, 0, 0] }, hips: -0.3 }),
+    }),
+  },
+};
+const SEG_COLS = ['#2a3f57', '#4a3a1f', '#6b1f28', '#5a2a3a', '#2f3340', '#24303a', '#2f4a3a', '#3d2f57'];
+let DEF, SCENES, EDITABLE, SEGS, SEG_NAME, SEG_COL;
+function useAttack(id) {
+  DEF = ATTACKS[id];
+  SCENES = DEF.scenes;
+  EDITABLE = new Set(SCENES.filter(x => x.id !== 'idle' && x.id !== 'recover').map(x => x.id));
+  SEGS = DEF.segs; SEG_NAME = DEF.segName;
+  SEG_COL = {}; Object.keys(DEF.segName).forEach((k, i) => { SEG_COL[k] = SEG_COLS[i % SEG_COLS.length]; });
+}
+const freshAttack = id => {
+  const d = ATTACKS[id], sc = {};
+  for (const x of d.scenes) if (x.id !== 'idle' && x.id !== 'recover') sc[x.id] = d.auto && x.id !== d.main ? { auto: true } : { auto: false };
+  if (d.auto) sc[d.main] = { auto: false, spec: d.defaults()[d.main] };
+  return { timing: { ...d.timing }, feel: { ...d.feel }, scenes: sc, mirror: d.mirror };
+};
+const DEFAULT = () => ({ v: 2, attack: 'punch', attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
+let store = DEFAULT();
+try {
+  const saved = JSON.parse(localStorage.getItem('syntax-punch-editor'));
+  if (saved && saved.v === 2) store = saved;
+  else if (saved && saved.v === 1) store.attacks.punch = { ...saved, mirror: false };   // the punch from before the other attacks
+} catch (e) {}
+for (const k in ATTACKS) store.attacks[k] = store.attacks[k] || freshAttack(k);
+for (const k in store.attacks) for (const id in store.attacks[k].scenes) if (store.attacks[k].scenes[id].spec) store.attacks[k].scenes[id].spec = clampSpec(store.attacks[k].scenes[id].spec);
+let state = store.attacks[store.attack];
+useAttack(store.attack);
 
 // auto scenes, built from what's been set by hand
 function windFrom(St, k) {
@@ -335,6 +459,11 @@ function safe(id, base, full) {
   return out;
 }
 function resolved() {
+  if (!DEF.auto) {
+    const D = DEF.defaults(), R = { idle: IDLE_SPEC, recover: IDLE_SPEC };
+    for (const id of EDITABLE) R[id] = state.scenes[id] && state.scenes[id].spec ? state.scenes[id].spec : D[id];
+    return DEF.derive ? Object.assign(R, DEF.derive(R)) : R;
+  }
   const sc = state.scenes, k = state.feel, St = sc.strike.spec;
   const wind = sc.wind.auto ? safe('wind', IDLE_SPEC, windFrom(St, k)) : sc.wind.spec;
   const load = sc.load.auto ? safe('load', wind, loadFrom(wind, k)) : sc.load.spec;
@@ -349,43 +478,66 @@ function rebuild() {
 
 // ---------- the timeline ----------
 const ease = {
-  inOut: u => u * u * (3 - 2 * u), out: u => 1 - (1 - u) * (1 - u), in3: u => u * u * u, out3: u => 1 - Math.pow(1 - u, 3),
+  inOut: u => u * u * (3 - 2 * u), out: u => 1 - (1 - u) * (1 - u), in3: u => u * u * u, out3: u => 1 - Math.pow(1 - u, 3), in2: u => u * u, lin: u => u,
 };
+// each scene's time is when the timeline first reaches it
 function marks() {
-  const t = state.timing; let x = 0;
-  const m = { idle: 0 };
-  m.wind = x += t.wind; m.load = x += t.hold; m.strike = x += t.strike; m.follow = x += t.follow; m.freeze = x += t.freeze; m.recover = x += t.recover;
+  const m = { idle: 0 }; let x = 0;
+  for (const [, to, , len] of SEGS) { x += state.timing[len]; if (m[to] === undefined) m[to] = x; }
+  m.recover = x;
   return m;
 }
-const SEGS = [['idle', 'wind', 'inOut', 'wind'], ['wind', 'load', 'out', 'hold'], ['load', 'strike', 'in3', 'strike'], ['strike', 'follow', 'out3', 'follow'], ['follow', 'follow', 'out', 'freeze'], ['follow', 'recover', 'inOut', 'recover']];
-const SEG_NAME = { wind: 'Wind-up', hold: 'Load', strike: 'Strike', follow: 'Follow-through', freeze: 'Hold', recover: 'Recover' };
-const SEG_COL = { wind: '#2a3f57', hold: '#4a3a1f', strike: '#6b1f28', follow: '#5a2a3a', freeze: '#2f3340', recover: '#24303a' };
 const TORSO = new Set(['spine', 'chest', 'neck', 'head']);
 function at(t) {
   const m = marks();
   let a = 'recover', b = 'recover', u = 1, e = 'inOut';
   let start = 0;
-  for (const [from, to, ez, len] of SEGS) {
+  let fx = null, fu = 1;
+  for (const [from, to, ez, len, orb] of SEGS) {
     const end = start + state.timing[len];
-    if (t < end) { a = from; b = to; e = ez; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); break; }
+    if (t < end) { a = from; b = to; e = ez; fx = orb || null; u = clamp((t - start) / Math.max(1e-4, end - start), 0, 1); fu = u; break; }
     start = end;
   }
   if (t < 0) { a = b = 'idle'; u = 0; }
-  return { a, b, k: ease[e](u) };
+  return { a, b, k: ease[e](u), fx, fu };
 }
-function blend(x, bone) {
-  const pa = P[x.a][bone] || IDLE[bone] || [0, 0, 0], pb = P[x.b][bone] || IDLE[bone] || [0, 0, 0];
-  return [0, 1, 2].map(i => pa[i] + (pb[i] - pa[i]) * x.k);
+// joints turn along the shortest path between scenes (quaternions), so a shape like the steeple
+// stays together between its scenes; the game blends the same way
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler();
+// elbows and wrists blend their bend and twist separately, so a forearm that rolls on the way
+// never bends sideways at the elbow halfway through
+const HINGE = { foreR: ['elbowR', 'elbowR'], foreL: ['elbowL', 'elbowL'], handR: ['wristR', 'wristR'], handL: ['wristL', 'wristL'] };
+function blendInto(bone, x, bn) {
+  if (HINGE[bn] && R[x.a] && R[x.b]) {
+    const j = HINGE[bn][0], A = R[x.a], Bs = R[x.b], l = k => A[k] + (Bs[k] - A[k]) * x.k;
+    const v = j.startsWith('elbow') ? { flex: l(j + '.flex'), twist: l(j + '.twist') } : { flex: l(j + '.flex'), abd: l(j + '.abd'), twist: l(j + '.twist') };
+    bone.rotation.set(...JC.bend(rig, j, v)); return;
+  }
+  const pa = P[x.a][bn] || IDLE[bn] || [0, 0, 0], pb = P[x.b][bn] || IDLE[bn] || [0, 0, 0];
+  _qa.setFromEuler(_e.set(pa[0], pa[1], pa[2])); _qb.setFromEuler(_e.set(pb[0], pb[1], pb[2]));
+  bone.quaternion.copy(_qa.slerp(_qb, x.k));
 }
 // pose the boss at time t; the torso runs `lead` seconds ahead of the arms
 function poseAt(target, t, lead = state.feel.lead) {
   const xa = at(t), xb = at(t + lead), Bt = target.bones;
-  for (const bn in Bt) Bt[bn].rotation.set(...blend(TORSO.has(bn) ? xb : xa, bn));
+  for (const bn in Bt) blendInto(Bt[bn], TORSO.has(bn) ? xb : xa, bn);
+  if (target === kit) setOrb(xa);
   const ha = (P[xb.a]._hips || 0), hb = (P[xb.b]._hips || 0);
   Bt.hips.position.y = S.hover + ha + (hb - ha) * xb.k;
 }
+// the cannon's orb at the right hand: a spark while aiming, growing while it charges, a flash on the shot
+const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff4a64' }));
+const orbHalo = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff2040', transparent: true, opacity: 0.22, depthWrite: false }));
+orb.add(orbHalo); orbHalo.scale.setScalar(1.7); orb.userData.jcSkip = orbHalo.userData.jcSkip = true;
+orb.position.set(0, -S.fist * 1.25, 0); B.handR.add(orb); orb.visible = false;
+function setOrb(x) {
+  if (!DEF.orb || !x || !x.fx) { orb.visible = false; return; }
+  const r = x.fx === 'grow' ? 0.3 + 1.4 * x.fu : x.fx === 'fire' ? (x.fu < 0.3 ? 2.2 : 1.6 * (1 - x.fu)) : 0.25 * x.fu;
+  orb.visible = r > 0.02; orb.scale.setScalar(Math.max(0.02, r));
+}
 function poseKey(target, id) {
   const Pk = P[id], Bt = target.bones;
+  if (target === kit) setOrb(id === 'charge' || id === 'aimL' || id === 'aimR' ? { fx: 'grow', fu: 1 } : null);
   for (const bn in Bt) Bt[bn].rotation.set(...(Pk[bn] || IDLE[bn] || [0, 0, 0]));
   Bt.hips.position.y = S.hover + (Pk._hips || 0);
 }
@@ -426,7 +578,7 @@ function select(name) {
   else if (kind === 'ik') { bone.localToWorld(proxy.position.set(...off)); tc.attach(proxy); tc.setMode('translate'); tc.setSpace('world'); tc.showX = tc.showY = tc.showZ = true; }
   else if (kind === 'move') { tc.attach(bone); tc.setMode('translate'); tc.setSpace('world'); tc.showX = tc.showZ = false; tc.showY = true; }
   else { tc.attach(bone); tc.setMode('rotate'); tc.setSpace('local'); tc.showX = tc.showY = tc.showZ = true; }
-  const grp = /R$/.test(name) ? 'Right arm (the punch)' : /L$/.test(name) ? 'Left arm' : 'Body';
+  const grp = /R$/.test(name) ? 'Right arm' : /L$/.test(name) ? 'Left arm' : 'Body';
   const d = document.querySelector(`details[data-group="${grp}"]`); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); }
 }
 // the scene to edit for where the playhead is: anywhere in the wind-up is the Wind-up, and the
@@ -434,14 +586,23 @@ function select(name) {
 function sceneNear(t) {
   const m = marks();
   if (EDITABLE.has(cur) && Math.abs(t - m[cur]) < 1e-3) return cur;
-  if (t <= m.wind) return 'wind';
-  if (t >= m.follow) return 'follow';
-  return ['wind', 'load', 'strike', 'follow'].reduce((a, b) => Math.abs(m[b] - t) < Math.abs(m[a] - t) ? b : a);
+  const ids = [...EDITABLE];
+  if (t <= m[ids[0]]) return ids[0];
+  // the last stretch belongs to the scene the timeline left, not the next one
+  let last = ids[0]; for (const id of ids) if (m[id] <= t + 1e-6) last = id;
+  const next = ids.find(id => m[id] > t + 1e-6);
+  return next && Math.abs(m[next] - t) < Math.abs(t - m[last]) ? next : last;
 }
 function editSpec() {
-  const sc = state.scenes[cur];
-  if (sc.auto) { sc.auto = false; sc.spec = { ...R[cur] }; }
+  const sc = state.scenes[cur] = state.scenes[cur] || { auto: false };
+  if (sc.auto || !sc.spec) { sc.auto = false; sc.spec = { ...R[cur] }; }
   return sc.spec;
+}
+// with Mirror arms on, a right-arm change copies to the left arm and the other way round
+function mirrorFrom(s, key) {
+  if (!state.mirror || !/(R|L)(\.|$)/.test(key) || /^(spine|chest|head|hips|pitch)/.test(key)) return;
+  const other = /R(\.|$)/.test(key) ? key.replace(/R(\.|$)/, 'L$1') : key.replace(/L(\.|$)/, 'R$1');
+  if (FBY[other]) s[other] = MIRROR_NEG.test(key) ? -s[key] : s[key];
 }
 function onGizmo() {
   if (!grab || !EDITABLE.has(cur)) return;
@@ -455,6 +616,7 @@ function onGizmo() {
   } else if (kind === 'move') s.hips = bone.position.y - S.hover;
   else if (kind === 'hand') fitHand(name.slice(-1), s);
   else solveIK(name.slice(-1), proxy.position, s);
+  if (state.mirror) { const side = name.slice(-1); if (side === 'R' || side === 'L') for (const f of FK) if (f.includes(side + '.') || f === 'claw' + side) mirrorFrom(s, f); }
   Object.assign(s, clampSpec(s));
   rebuild(); fillFields(); markCards();
 }
@@ -534,7 +696,7 @@ function buildPath() {
   pathGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   pathGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   keyDots.clear();
-  for (const id of ['wind', 'load', 'strike', 'follow']) {
+  for (const id of EDITABLE) {
     poseKey(kit, id); kit.group.updateMatrixWorld(true); B.handR.localToWorld(v.set(0, -S.fist * 0.5, 0));
     const d = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), new THREE.MeshBasicMaterial({ color: id === cur ? '#ffffff' : '#ffb547', depthTest: false }));
     d.renderOrder = 9; d.position.copy(v); keyDots.add(d);
@@ -562,7 +724,7 @@ function sceneAt(t) { const m = marks(); let best = 'idle'; for (const s of SCEN
 // ---------- panel ----------
 let dirty = true; const need = () => { dirty = true; };
 let cur = 'strike', time = 0, playing = false, showHandles = true, showPath = true, showGhost = true;
-const groups = ['Right arm (the punch)', 'Left arm', 'Body'];
+const groups = ['Right arm', 'Left arm', 'Both arms', 'Body'];
 function buildFields() {
   const host = $('fields'); host.innerHTML = '';
   for (const g of groups) {
@@ -572,17 +734,18 @@ function buildFields() {
       const row = document.createElement('div'); row.className = 'row'; row.dataset.key = f.key;
       row.innerHTML = `<label><span>${f.label}</span><b></b></label><input type="range" min="${f.min}" max="${f.max}" step="${f.step}"><input type="number" min="${f.min}" max="${f.max}" step="${f.step}">`;
       const [rg, nb] = row.querySelectorAll('input');
-      const set = v => { if (!EDITABLE.has(cur)) return; if (Math.abs(time - marks()[cur]) > 1e-6) { playing = false; time = marks()[cur]; updatePlay(); } const s = editSpec(); s[f.key] = clamp(+v, f.min, f.max); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); };
+      const set = v => { if (!EDITABLE.has(cur)) return; if (Math.abs(time - marks()[cur]) > 1e-6) { playing = false; time = marks()[cur]; updatePlay(); } const s = editSpec(); s[f.key] = clamp(+v, f.min, f.max); mirrorFrom(s, f.key); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); };
       rg.addEventListener('input', () => set(rg.value)); nb.addEventListener('input', () => set(nb.value));
       rg.addEventListener('change', commit); nb.addEventListener('change', commit);
       rg.addEventListener('pointerdown', () => { sliding = true; });
-      rg.addEventListener('dblclick', () => { if (!EDITABLE.has(cur) || state.scenes[cur].auto) return; const auto = resolvedAuto(cur); if (auto) { set(auto[f.key]); commit(); } });
+      rg.addEventListener('dblclick', () => { if (!EDITABLE.has(cur) || (state.scenes[cur] || {}).auto) return; const auto = resolvedAuto(cur); if (auto) { set(auto[f.key]); commit(); } });
       d.appendChild(row);
     }
     host.appendChild(d);
   }
 }
 function resolvedAuto(id) {
+  if (!DEF.auto) return DEF.defaults()[id] || null;
   const k = state.feel, St = state.scenes.strike.spec, W = R.wind;
   if (id === 'wind') return windFrom(St, k);
   if (id === 'load') return loadFrom(W, k);
@@ -590,7 +753,7 @@ function resolvedAuto(id) {
   return null;
 }
 function fillFields() {
-  const s = R[cur], ed = EDITABLE.has(cur), auto = ed && state.scenes[cur].auto;
+  const s = R[cur], ed = EDITABLE.has(cur), auto = ed && !!(state.scenes[cur] || {}).auto, own = ed && !!(state.scenes[cur] || {}).spec;
   for (const row of document.querySelectorAll('#fields .row')) {
     const f = FBY[row.dataset.key], [rg, nb] = row.querySelectorAll('input'), v = s[f.key];
     if (document.activeElement !== nb) nb.value = f.step < 1 ? v.toFixed(2) : v.toFixed(0);
@@ -602,9 +765,10 @@ function fillFields() {
   $('sceneName').textContent = sc.name;
   const b = $('badge');
   if (!ed) { b.textContent = 'Not edited here'; b.className = 'badge'; }
-  else if (cur === 'strike') { b.textContent = 'Set by hand'; b.className = 'badge edited'; }
+  else if (!DEF.auto) { b.textContent = own ? 'Edited' : 'Starting pose'; b.className = 'badge ' + (own ? 'edited' : 'auto'); }
+  else if (cur === DEF.main) { b.textContent = 'Set by hand'; b.className = 'badge edited'; }
   else { b.textContent = auto ? 'Auto' : 'Edited'; b.className = 'badge ' + (auto ? 'auto' : 'edited'); }
-  $('toAuto').hidden = !ed || auto || (cur === 'strike' && JSON.stringify(round(R.strike)) === JSON.stringify(GAME_STRIKE));
+  $('toAuto').hidden = !ed || auto || (DEF.auto ? cur === DEF.main && JSON.stringify(round(R[cur])) === JSON.stringify(DEF.defaults()[cur]) : !own);
   $('sceneNote').textContent = sc.note + (auto ? ' Move any slider here or drag a joint to set it by hand. Double-click a slider to put that one value back to auto.' : '') + (auto && autoNote[cur] ? ' ' + autoNote[cur] : '');
 }
 function feelRow(host, obj, key, label, min, max, step, unit = '') {
@@ -617,23 +781,20 @@ function feelRow(host, obj, key, label, min, max, step, unit = '') {
   rg.addEventListener('pointerdown', () => { sliding = true; });
   row.show = show; show(); host.appendChild(row); return row;
 }
-const feelRows = [], timeRows = [];
+let feelRows = [], timeRows = [];
 function buildFeel() {
   const fh = $('feel'), th = $('timing'); fh.innerHTML = th.innerHTML = '';
+  feelRows = []; timeRows = [];
   const fe = () => state.feel, ti = () => state.timing;
+  $('feelBox').querySelector('summary').textContent = DEF.auto ? 'Feel (sets the auto scenes)' : 'Feel';
+  for (const [k, l, a, b] of DEF.timeRows) timeRows.push(feelRow(th, ti, k, l, a, b, 0.01, ' s'));
+  if (!DEF.auto) { feelRows.push(feelRow(fh, fe, 'lead', 'Body ahead of the arms', 0, 0.25, 0.01, ' s')); return; }
   feelRows.push(
     feelRow(fh, fe, 'antic', 'Wind-up size (how far it draws back)', 0, 1.6, 0.05, '×'),
     feelRow(fh, fe, 'load', 'Load (how low it sinks before the release)', 0, 1.5, 0.05, '×'),
     feelRow(fh, fe, 'armOver', 'Arm carry past the hit', 0, 0.5, 0.01, '×'),
     feelRow(fh, fe, 'bodyOver', 'Body turn past the hit', 0, 0.6, 0.01, '×'),
     feelRow(fh, fe, 'lead', 'Body ahead of the arm', 0, 0.25, 0.01, ' s'));
-  timeRows.push(
-    feelRow(th, ti, 'wind', 'Wind-up', 0.2, 7, 0.05, ' s'),
-    feelRow(th, ti, 'hold', 'Load (held cocked)', 0, 1.5, 0.01, ' s'),
-    feelRow(th, ti, 'strike', 'Strike (release to contact)', 0.04, 0.6, 0.01, ' s'),
-    feelRow(th, ti, 'follow', 'Follow-through', 0.04, 0.8, 0.01, ' s'),
-    feelRow(th, ti, 'freeze', 'Hold after the hit', 0, 1.5, 0.01, ' s'),
-    feelRow(th, ti, 'recover', 'Recover', 0.2, 2.5, 0.05, ' s'));
 }
 
 // ---------- storyboard and timeline ----------
@@ -653,9 +814,11 @@ function markCards() {
     const id = c.dataset.id, st = c.querySelector('.s');
     c.classList.toggle('sel', id === cur);
     c.querySelector('.tm').textContent = m[id].toFixed(2) + ' s';
+    const sc = state.scenes[id] || {};
     if (!EDITABLE.has(id)) { st.textContent = 'idle pose'; st.className = 's'; }
-    else if (id === 'strike') { st.textContent = 'set by hand'; st.className = 's edited'; }
-    else { const a = state.scenes[id].auto; st.textContent = a ? 'auto' : 'edited'; st.className = 's ' + (a ? 'auto' : 'edited'); }
+    else if (!DEF.auto) { st.textContent = sc.spec ? 'edited' : 'starting pose'; st.className = 's ' + (sc.spec ? 'edited' : 'auto'); }
+    else if (id === DEF.main) { st.textContent = 'set by hand'; st.className = 's edited'; }
+    else { st.textContent = sc.auto ? 'auto' : 'edited'; st.className = 's ' + (sc.auto ? 'auto' : 'edited'); }
   }
 }
 function buildBar() {
@@ -720,40 +883,46 @@ function showChecks() {
 }
 
 // ---------- history and files ----------
-let hist = [JSON.stringify(state)], hi = 0;
+let hist = [JSON.stringify(store)], hi = 0;
 function commit() {
-  const s = JSON.stringify(state);
+  const s = JSON.stringify(store);
   if (s === hist[hi]) return;
   hist = hist.slice(0, hi + 1); hist.push(s); hi = hist.length - 1; if (hist.length > 200) { hist.shift(); hi--; }
   try { localStorage.setItem('syntax-punch-editor', s); } catch (e) {}
 }
-function load(s) { state = JSON.parse(s); rebuild(); fillFields(); markCards(); feelRows.concat(timeRows).forEach(r => r.show()); buildBar(); poseNow(); refreshSoon(); try { localStorage.setItem('syntax-punch-editor', s); } catch (e) {} }
+function load(s) {
+  const was = store.attack;
+  store = JSON.parse(s); state = store.attacks[store.attack];
+  if (store.attack !== was) switchTo(store.attack, true);
+  rebuild(); fillFields(); markCards(); feelRows.concat(timeRows).forEach(r => r.show()); syncMirror(); buildBar(); poseNow(); refreshSoon();
+  try { localStorage.setItem('syntax-punch-editor', s); } catch (e) {}
+}
 function undo() { if (hi > 0) load(hist[--hi]); }
 function redo() { if (hi < hist.length - 1) load(hist[++hi]); }
 $('undo').onclick = undo; $('redo').onclick = redo;
 $('reset').onclick = () => $('ask').showModal();
 $('askNo').onclick = () => $('ask').close();
-$('askYes').onclick = () => { $('ask').close(); commit(); state = DEFAULT(); load(JSON.stringify(state)); commit(); };
+$('askYes').onclick = () => { $('ask').close(); commit(); store.attacks[store.attack] = freshAttack(store.attack); state = store.attacks[store.attack]; load(JSON.stringify(store)); commit(); };
 const r3 = a => a.map(x => Math.round(x * 1000) / 1000);
 function exportText() {
   const poses = {};
-  for (const id of ['wind', 'load', 'strike', 'follow']) {
+  for (const id of Object.keys(P).filter(x => x !== 'idle' && x !== 'recover')) {
     const p = P[id], o = {};
     for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn]);
     o._hips = Math.round(p._hips * 100) / 100; poses[id] = o;
   }
-  const scenes = {}; for (const id of ['wind', 'load', 'strike', 'follow']) scenes[id] = { auto: !!state.scenes[id].auto, spec: round(R[id]) };
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 1, timing: state.timing, feel: state.feel, scenes, poses }, null, 1);
+  const scenes = {}; for (const id of EDITABLE) scenes[id] = { auto: !!(state.scenes[id] || {}).auto, edited: !!(state.scenes[id] || {}).spec, spec: round(R[id]) };
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp)', timing: state.timing, feel: state.feel, segments: SEGS, scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
 $('copy').onclick = async () => {
   const t = exportText();
-  try { await navigator.clipboard.writeText(t); dialog('Copied. Paste it to Claude in the chat and the game gets this punch.', t); }
+  try { await navigator.clipboard.writeText(t); dialog(`Copied. Paste it to Claude in the chat and the game gets this ${DEF.name.toLowerCase()}.`, t); }
   catch (e) { dialog('Select all of this, copy it and paste it to Claude in the chat.', t); }
 };
 $('save').onclick = () => {
-  try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportText()], { type: 'application/json' })); a.download = 'syntax-punch.json'; a.click(); }
+  try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([exportText()], { type: 'application/json' })); a.download = `syntax-${store.attack}.json`; a.click(); }
   catch (e) { dialog('The file couldn\'t be saved from here. Copy this instead.', exportText()); }
 };
 // a page inside the claude.ai viewer can't start downloads, so Copy is the way out there
@@ -765,12 +934,14 @@ $('file').onchange = async e => {
   try {
     const d = JSON.parse(await f.text());
     if (d.tool !== 'syntax-punch-editor') throw 0;
-    const sc = {}; for (const id of ['wind', 'load', 'strike', 'follow']) sc[id] = d.scenes[id].auto && id !== 'strike' ? { auto: true } : { auto: false, spec: clampSpec(d.scenes[id].spec) };
-    state = { v: 1, timing: d.timing, feel: d.feel, scenes: sc }; commit(); load(JSON.stringify(state));
-  } catch (err) { dialog('That file isn\'t a punch from this editor.', ''); }
+    const id = d.attack || 'punch', A = ATTACKS[id]; if (!A) throw 0;
+    const sc = {}; for (const k of Object.keys(d.scenes)) sc[k] = A.auto && d.scenes[k].auto && k !== A.main ? { auto: true } : (d.scenes[k].edited === false ? { auto: false } : { auto: false, spec: clampSpec(d.scenes[k].spec) });
+    commit(); store.attacks[id] = { timing: { ...A.timing, ...d.timing }, feel: { ...A.feel, ...d.feel }, scenes: sc, mirror: A.mirror }; store.attack = id;
+    load(JSON.stringify(store)); commit();
+  } catch (err) { dialog('That file isn\'t an attack from this editor.', ''); }
   e.target.value = '';
 };
-$('toAuto').onclick = () => { state.scenes[cur] = cur === 'strike' ? { auto: false, spec: { ...GAME_STRIKE } } : { auto: true }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
+$('toAuto').onclick = () => { state.scenes[cur] = !DEF.auto ? { auto: false } : cur === DEF.main ? { auto: false, spec: { ...DEF.defaults()[cur] } } : { auto: true }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
 
 // ---------- playback ----------
 function updatePlay() { $('play').textContent = playing ? '❚❚' : '▶'; need(); }
@@ -816,7 +987,7 @@ function frame() {
   $('head').style.left = (time / m.recover * 100) + '%'; $('clock').textContent = time.toFixed(2) + ' s';
   poseNow(); dirty = false;
   // ghost: the scene before the one being edited
-  const order = ['idle', 'wind', 'load', 'strike', 'follow', 'recover'], prev = order[order.indexOf(cur) - 1];
+  const order = SCENES.map(x => x.id), prev = order[order.indexOf(cur) - 1];
   ghost.group.visible = showGhost && !playing && !!prev && EDITABLE.has(cur);
   if (ghost.group.visible) poseKey(ghost, prev);
   path.visible = keyDots.visible = showPath;
@@ -828,11 +999,27 @@ function frame() {
   renderer.render(scene, camera);
 }
 
-rebuild(); buildFields(); buildFeel(); buildCards(); buildBar(); setCam('three');
+// ---------- switching attacks ----------
+function syncMirror() { $('mirror').classList.toggle('on', !!state.mirror); }
+$('mirror').onclick = () => { state.mirror = !state.mirror; syncMirror(); commit(); };
+for (const [k, a] of Object.entries(ATTACKS)) { const o = document.createElement('option'); o.value = k; o.textContent = a.name; $('attack').appendChild(o); }
+function switchTo(id, quietSwitch) {
+  store.attack = id; state = store.attacks[id]; useAttack(id); $('attack').value = id;
+  for (const k in thumbKey) delete thumbKey[k];
+  timelineProblems = []; cur = DEF.main; time = 0; playing = false; tc.detach(); grab = null;
+  buildFeel(); buildCards(); rebuild(); syncMirror();
+  if (!quietSwitch) { time = marks()[cur]; fillFields(); markCards(); buildBar(); poseNow(); refreshSoon(); updatePlay(); try { localStorage.setItem('syntax-punch-editor', JSON.stringify(store)); } catch (e) {} }
+  else time = marks()[cur];
+}
+$('attack').onchange = () => { commit(); switchTo($('attack').value); commit(); };
+$('attack').value = store.attack;
+cur = DEF.main;
+rebuild(); buildFields(); buildFeel(); buildCards(); buildBar(); syncMirror(); setCam('three');
 time = marks()[cur]; fillFields(); markCards(); poseNow();
 requestAnimationFrame(frame);
 job = refreshJob();
 window.editor = {
+  attack: id => { commit(); switchTo(id); commit(); },
   // test hooks: what a drag on a fist or a joint does
   reach: (k, v) => { select('fist' + k); proxy.position.set(...v); onGizmo(); poseNow(); const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return [w.x, w.y, w.z].map(x => +x.toFixed(2)); },
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); onGizmo(); return round(R[cur]); },
