@@ -191,32 +191,35 @@ scene.add(ghost.group);
 const F = [];
 const field = (key, label, group, min, max, step = 1) => F.push({ key, label, group, min, max, step });
 for (const [k, side, grp] of [['R', 'right', 'Right arm'], ['L', 'left', 'Left arm']]) {
-  field(`shoulder${k}.flex`, 'Shoulder: forward ↑ / back ↓', grp, -60, 180);
-  field(`shoulder${k}.abd`, 'Shoulder: out to the side ↑ / across ↓', grp, -45, 180);
-  field(`shoulder${k}.twist`, 'Upper arm twist', grp, -100, 100);
-  field(`elbow${k}.flex`, 'Elbow bend', grp, -8, 150);
+  // ranges go past a human's so any angle dragged in 3D stays put; the joint check flags what a
+  // human couldn't do
+  field(`shoulder${k}.flex`, 'Shoulder: forward ↑ / back ↓', grp, -180, 180);
+  field(`shoulder${k}.abd`, 'Shoulder: out to the side ↑ / across ↓', grp, -90, 180);
+  field(`shoulder${k}.twist`, 'Upper arm twist', grp, -180, 180);
+  field(`elbow${k}.flex`, 'Elbow bend', grp, -60, 180);
+  field(`elbow${k}.side`, 'Elbow sideways (past a real elbow)', grp, -90, 90);
   field(`elbow${k}.twist`, 'Forearm twist (turns the fist)', grp, -180, 180);
-  field(`wrist${k}.flex`, 'Wrist bend', grp, -75, 80);
-  field(`wrist${k}.abd`, 'Wrist side to side', grp, -40, 25);
-  field(`wrist${k}.twist`, 'Wrist twist', grp, -40, 40);
+  field(`wrist${k}.flex`, 'Wrist bend', grp, -90, 90);
+  field(`wrist${k}.abd`, 'Wrist side to side', grp, -90, 90);
+  field(`wrist${k}.twist`, 'Wrist twist', grp, -90, 90);
   field(`claw${k}`, 'Hand: open 0 / fist 100', grp, 0, 100);
 }
 field('pitch', 'Swing both arms forward, keeping their shape', 'Both arms', -60, 150);
 field('hips', 'Body height: drop ↓ / rise ↑', 'Body', -1.5, 1, 0.05);
-field('spine.1', 'Waist turn', 'Body', -40, 40);
-field('spine.0', 'Waist lean: back ↓ / forward ↑', 'Body', -40, 40);
-field('spine.2', 'Waist tilt', 'Body', -40, 40);
-field('chest.1', 'Chest turn', 'Body', -40, 40);
-field('chest.0', 'Chest lean: back ↓ / forward ↑', 'Body', -40, 40);
-field('chest.2', 'Chest tilt', 'Body', -40, 40);
-field('head.0', 'Head nod: up ↓ / down ↑', 'Body', -60, 60);
-field('head.1', 'Head turn', 'Body', -60, 60);
+field('spine.1', 'Waist turn', 'Body', -90, 90);
+field('spine.0', 'Waist lean: back ↓ / forward ↑', 'Body', -90, 90);
+field('spine.2', 'Waist tilt', 'Body', -90, 90);
+field('chest.1', 'Chest turn', 'Body', -90, 90);
+field('chest.0', 'Chest lean: back ↓ / forward ↑', 'Body', -90, 90);
+field('chest.2', 'Chest tilt', 'Body', -90, 90);
+field('head.0', 'Head nod: up ↓ / down ↑', 'Body', -90, 90);
+field('head.1', 'Head turn', 'Body', -90, 90);
 const FK = F.map(f => f.key), FBY = Object.fromEntries(F.map(f => [f.key, f]));
 const isBody = k => /^(spine|chest|head)\./.test(k) || k === 'hips';
 let IDLE_SPEC = null;   // filled in below; a scene saved before a field existed takes the idle value for it
 const clampSpec = s => { const o = {}; for (const f of F) o[f.key] = clamp(s[f.key] ?? (IDLE_SPEC ? IDLE_SPEC[f.key] : 0) ?? 0, f.min, f.max); return o; };
 // a right-arm value and its left-arm twin: twists turn the opposite way on the other side
-const MIRROR_NEG = /twist$/;
+const MIRROR_NEG = /twist$|side$/;
 const twin = k => k.replace(/R(\.|$)/, 'L$1');
 const lerpS = (a, b, k) => { const o = {}; for (const f of FK) o[f] = a[f] + (b[f] - a[f]) * k; return o; };
 
@@ -224,7 +227,7 @@ function toPose(s) {
   const P = {};
   for (const k of ['R', 'L']) {
     P['arm' + k] = JC.bend(rig, 'shoulder' + k, { flex: s[`shoulder${k}.flex`], abd: s[`shoulder${k}.abd`], twist: s[`shoulder${k}.twist`] });
-    P['fore' + k] = JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], twist: s[`elbow${k}.twist`] });
+    P['fore' + k] = JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], side: s[`elbow${k}.side`], twist: s[`elbow${k}.twist`] });
     P['hand' + k] = JC.bend(rig, 'wrist' + k, { flex: s[`wrist${k}.flex`], abd: s[`wrist${k}.abd`], twist: s[`wrist${k}.twist`] });
     P['claw' + k] = [-0.3 + 1.8 * s['claw' + k] / 100, 0, 0];
   }
@@ -243,19 +246,28 @@ function fitJoint(name, euler) {
   const want = new THREE.Quaternion().setFromEuler(new THREE.Euler(...euler));
   const save = j.bone.rotation.toArray(); j.bone.rotation.set(...euler);
   const m = JC.measure(rig, name); j.bone.rotation.set(save[0], save[1], save[2]);
-  const p = ball ? { flex: m.fwd, abd: m.outA, twist: m.twist } : { flex: m.flex, twist: m.twist };
+  const keys = ball ? ['flex', 'abd', 'twist'] : ['flex', 'side', 'twist'];
+  // stay inside the sliders' ranges so what's stored is what's shown
+  const lim = k => FBY[`${name}.${k}`] || { min: -180, max: 180 };
   const q = new THREE.Quaternion(), e = new THREE.Euler();
   const cost = v => { q.setFromEuler(e.set(...JC.bend(rig, name, v))); return 1 - Math.abs(q.dot(want)); };
-  let best = cost(p);
-  for (const st of [16, 8, 4, 2, 1, 0.5, 0.25]) for (let it = 0; it < 6; it++) {
-    let moved = false;
-    for (const k of Object.keys(p)) for (const d of [st, -st]) {
-      const v = { ...p, [k]: p[k] + d }, c = cost(v);
-      if (c < best - 1e-9) { best = c; p[k] = v[k]; moved = true; }
+  const descend = p0 => {
+    const p = { ...p0 }; let best = cost(p);
+    for (const st of [64, 32, 16, 8, 4, 2, 1, 0.5, 0.25]) for (let it = 0; it < 8; it++) {
+      let moved = false;
+      for (const k of keys) for (const d of [st, -st]) {
+        const L = lim(k), v = { ...p, [k]: clamp(p[k] + d, L.min, L.max) }, c = cost(v);
+        if (c < best - 1e-9) { best = c; p[k] = v[k]; moved = true; }
+      }
+      if (!moved) break;
     }
-    if (!moved) break;
-  }
-  return p;
+    return [best, p];
+  };
+  const m0 = ball ? { flex: m.fwd, abd: m.outA, twist: m.twist } : { flex: m.flex, side: m.side || 0, twist: m.twist };
+  const starts = [m0, ...[[0, 0, 0], [90, 90, 0], [-90, 90, 0], [150, 0, 90], [0, 150, -90], [-120, 45, 120]].map(a => Object.fromEntries(keys.map((k, i) => [k, a[i]])))];
+  let best = null;
+  for (const st of starts) { for (const k of keys) { const L = lim(k); st[k] = clamp(st[k], L.min, L.max); } const r = descend(st); if (!best || r[0] < best[0]) best = r; if (best[0] < 1e-6) break; }
+  return best[1];
 }
 function specFromPose(P) {
   const s = {};
@@ -263,7 +275,7 @@ function specFromPose(P) {
     const a = fitJoint('shoulder' + k, P['arm' + k] || IDLE['arm' + k] || [0, 0, 0]);
     s[`shoulder${k}.flex`] = a.flex; s[`shoulder${k}.abd`] = a.abd; s[`shoulder${k}.twist`] = a.twist;
     const el = fitJoint('elbow' + k, P['fore' + k] || IDLE['fore' + k] || [0, 0, 0]);
-    s[`elbow${k}.flex`] = el.flex; s[`elbow${k}.twist`] = el.twist;
+    s[`elbow${k}.flex`] = el.flex; s[`elbow${k}.side`] = el.side || 0; s[`elbow${k}.twist`] = el.twist;
     const wr = fitJoint('wrist' + k, P['hand' + k] || IDLE['hand' + k] || [0, 0, 0]);
     s[`wrist${k}.flex`] = wr.flex; s[`wrist${k}.abd`] = wr.abd; s[`wrist${k}.twist`] = wr.twist;
     s['claw' + k] = ((P['claw' + k] || [0.55])[0] + 0.3) / 1.8 * 100;
@@ -527,7 +539,7 @@ const HINGE = { foreR: ['elbowR', 'elbowR'], foreL: ['elbowL', 'elbowL'], handR:
 function blendInto(bone, x, bn) {
   if (HINGE[bn] && R[x.a] && R[x.b]) {
     const j = HINGE[bn][0], A = R[x.a], Bs = R[x.b], l = k => A[k] + (Bs[k] - A[k]) * x.k;
-    const v = j.startsWith('elbow') ? { flex: l(j + '.flex'), twist: l(j + '.twist') } : { flex: l(j + '.flex'), abd: l(j + '.abd'), twist: l(j + '.twist') };
+    const v = j.startsWith('elbow') ? { flex: l(j + '.flex'), side: l(j + '.side'), twist: l(j + '.twist') } : { flex: l(j + '.flex'), abd: l(j + '.abd'), twist: l(j + '.twist') };
     bone.rotation.set(...JC.bend(rig, j, v)); return;
   }
   const pa = P[x.a][bn] || IDLE[bn] || [0, 0, 0], pb = P[x.b][bn] || IDLE[bn] || [0, 0, 0];
@@ -628,8 +640,9 @@ function onGizmo() {
   if (kind === 'rot') {
     if (JOINT_OF[name]) {
       const p = fitJoint(name, bone.rotation.toArray().slice(0, 3));
-      if (name.startsWith('shoulder')) { s[name + '.flex'] = p.flex; s[name + '.abd'] = p.abd; s[name + '.twist'] = p.twist; }
-      else s[name + '.flex'] = p.flex;
+      const w = v => ((v + 180) % 360 + 360) % 360 - 180;
+      if (name.startsWith('shoulder')) { s[name + '.flex'] = w(p.flex); s[name + '.abd'] = w(p.abd); s[name + '.twist'] = w(p.twist); }
+      else { s[name + '.flex'] = w(p.flex); s[name + '.side'] = w(p.side); s[name + '.twist'] = w(p.twist); }
     } else for (let i = 0; i < 3; i++) s[`${name}.${i}`] = bone.rotation.toArray()[i] * R2D;
   } else if (kind === 'move') s.hips = bone.position.y - S.hover;
   else if (kind === 'hand') fitHand(name.slice(-1), s);
@@ -645,7 +658,7 @@ function fitHand(k, s) {
   const saveF = fore.rotation.toArray(), saveH = hand.rotation.toArray();
   const keys = [`elbow${k}.twist`, `wrist${k}.flex`, `wrist${k}.abd`], lim = keys.map(x => FBY[x]), q = new THREE.Quaternion();
   const cost = v => {
-    fore.rotation.set(...JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], twist: v[0] }));
+    fore.rotation.set(...JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], side: s[`elbow${k}.side`], twist: v[0] }));
     hand.rotation.set(...JC.bend(rig, 'wrist' + k, { flex: v[1], abd: v[2], twist: s[`wrist${k}.twist`] }));
     fore.updateMatrixWorld(true); hand.getWorldQuaternion(q); return 1 - Math.abs(q.dot(want));
   };
@@ -667,7 +680,7 @@ function solveIK(k, target, s) {
   const tip = new THREE.Vector3(), base = keys.map(x => s[x]);
   const cost = v => {
     arm.rotation.set(...JC.bend(rig, 'shoulder' + k, { flex: v[0], abd: v[1], twist: s[`shoulder${k}.twist`] }));
-    fore.rotation.set(...JC.bend(rig, 'elbow' + k, { flex: v[2] }));
+    fore.rotation.set(...JC.bend(rig, 'elbow' + k, { flex: v[2], side: s[`elbow${k}.side`], twist: s[`elbow${k}.twist`] }));
     arm.updateMatrixWorld(true);
     hand.localToWorld(tip.set(0, -S.fist * 0.5, 0));
     return tip.distanceToSquared(target) + 0.0004 * ((v[0] - base[0]) ** 2 + (v[1] - base[1]) ** 2 + (v[2] - base[2]) ** 2);
@@ -1052,7 +1065,7 @@ window.editor = {
   attack: id => { commit(); switchTo(id); commit(); },
   // test hooks: what a drag on a fist or a joint does
   reach: (k, v) => { select('fist' + k); proxy.position.set(...v); onGizmo(); poseNow(); const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return [w.x, w.y, w.z].map(x => +x.toFixed(2)); },
-  turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); onGizmo(); return round(R[cur]); },
+  turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); const want = h[1].quaternion.clone(); onGizmo(); poseKey(kit, cur); return { deg: +(2 * Math.acos(Math.min(1, Math.abs(want.dot(h[1].quaternion)))) * R2D).toFixed(2), spec: round(R[cur]) }; },
   turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
   cur: () => cur, time: () => time,
   near: t => sceneNear(t),
