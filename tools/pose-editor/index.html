@@ -410,6 +410,10 @@ function useAttack(id) {
   const known = new Set([...DEF.scenes.map(x => x.id), ...(A.extra || []).map(x => x.id)]);
   if (A.segs && A.segs.some(sg => !known.has(sg[0]) || !known.has(sg[1]))) { delete A.segs; delete A.extra; delete A.segName; }
   SEGS = A.segs || DEF.segs; SEG_NAME = { ...DEF.segName, ...(A.segName || {}) };
+  // a save from an older version of this attack can lack a stretch's timing
+  A.timing = A.timing || {};
+  for (const k in DEF.timing) if (typeof A.timing[k] !== 'number') A.timing[k] = DEF.timing[k];
+  for (const sg of SEGS) if (typeof A.timing[sg[3]] !== 'number') A.timing[sg[3]] = 0.5;
   const labels = [...new Set(Object.values(DEF.segName))];
   SEG_COL = {}; for (const k in SEG_NAME) SEG_COL[k] = SEG_COLS[labels.indexOf(SEG_NAME[k]) % SEG_COLS.length] || SEG_COLS[0];
   SCENES = [...DEF.scenes, ...(A.extra || [])];
