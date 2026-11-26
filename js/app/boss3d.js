@@ -13,6 +13,8 @@
 //   setHit(power)                      a finished set of words: the boss reels and moves to a new spot
 //   leave() / arrive()                 at half HP it leaps out of the arena, then drops back in
 //   opts.onBoom()                      the moment the dead boss blows apart, for the sound
+//   opts.onMenace(kind)                a swing, jab, stomp or lean at the raid between attacks lands
+//                                      (swipe, jab, stomp, lean), for the sound
 //   freezeAttack(id)                   cryo lock: that attack's hit shows as held off for you
 //   defeat(instant) / revive()
 //   screen(key, out)      host pixels of 'head', 'core', 'you', 'shot:<id>' or 'add:<id>'
@@ -504,6 +506,9 @@ window.BossScene = (() => {
       if (OPS) for (const p of raidPos) p.y = 1.9;
     }
     const ONSCREEN = 11;   // slots below this are drawn; the rest of the raid is off screen
+    // raiders a blow knocks flat: knockAt[i] is when, and they get up again 1.4 s later
+    const knockAt = new Float32Array(ONSCREEN).fill(-9);
+    let flinchAt = -9;
 
     // ---------- operators (js/app/operator3d.js) ----------
     // You and your squad stand in the raid as full characters, facing the boss; everyone else is one
@@ -560,8 +565,10 @@ window.BossScene = (() => {
       for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) {
         if (used.has(i)) continue;
         const k = i % 2, m = crowd.meshes[k], p = raidPos[i];   // squads mix male and female
-        opP.set(p.x, Math.max(0, Math.sin(t * 9 + i) * 0.06 * markGlow[i]), p.z);
-        opQ.setFromEuler(opE.set(0, Math.PI + Math.sin(i * 1.7) * 0.25, 0));
+        const ku = t - knockAt[i], kk = ku < 0.15 ? ease(ku / 0.15) : ku < 0.8 ? 1 : ku < 1.4 ? 1 - smooth((ku - 0.8) / 0.6) : 0;
+        const fu = t - flinchAt, fk = fu < 0.35 ? Math.sin(fu / 0.35 * Math.PI) * (0.5 + 0.5 * Math.sin(i * 2.3)) : 0;
+        opP.set(p.x, Math.max(0, Math.sin(t * 9 + i) * 0.06 * markGlow[i]) + fk * 0.35, p.z + kk * 1.8);
+        opQ.setFromEuler(opE.set(-kk * 1.25, Math.PI + Math.sin(i * 1.7) * 0.25, 0));
         opS.setScalar(OPS * (0.92 + (i % 5) * 0.03));
         m.setMatrixAt(n[k], opM.compose(opP, opQ, opS));
         m.setColorAt(n[k], crowdCol.copy(crowdTint[i]).multiplyScalar(1 + markGlow[i] * 1.2));
@@ -822,6 +829,15 @@ window.BossScene = (() => {
     // threatK: 0 to 1 as an attack comes at the camera (the zoom and the step forward)
     // away: the half-HP exit, { leaveAt, arriveAt } on the scene clock
     let threatK = 0, offY = 0;
+    // Between attacks it never just stands there (Gid, 26 Nov 2026: "all it does is shuffle left
+    // and right then stagger"). Every 1.1 to 2.2 s it swings, jabs, stomps or leans at the raid,
+    // and it walks in on the raid the whole time: adv goes from 0 at its spot to 1 right in front
+    // of the raid in about 15 s, and your sets of words and blocks knock it back.
+    // MEN: wind-up pose, strike pose, wind-up seconds, weight
+    const MEN = { swipe: ['pull', 'sweep', 0.34, 0.62], jab: ['coil', 'punch', 0.26, 0.58], stomp: ['raise', 'slam', 0.4, 0.5], lean: ['coil', 'coil', 0.45, 0.7] };
+    const MEN_BY_PHASE = [['swipe', 'jab', 'lean', 'stomp'], ['swipe', 'jab', 'stomp', 'lean'], ['jab', 'swipe', 'stomp', 'jab'], ['jab', 'swipe', 'stomp', 'jab', 'swipe'], ['jab', 'swipe', 'stomp', 'jab', 'swipe']];
+    const men = { at: -9, kind: 'swipe', next: 2, fired: false };
+    let adv = 0, prevX = 0, leanZ = 0;
     const away = { leaveAt: -9, arriveAt: -9, gone: false };
 
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
@@ -950,6 +966,8 @@ window.BossScene = (() => {
       if (x.cut) { act('you', 'cast'); return; }   // you broke it off: nothing lands
       shake = Math.max(shake, you ? 0.35 : 0.9);
       act('you', you ? 'cast' : 'hit');
+      // the ones who didn't block it go flat
+      { const t = nowS(), pk = x.kind === 'slam' ? 0.35 : 0.25; for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
       if (kit) {
         // the blow lands where the fists are: rings and dust from each fist, chunks of armour
         // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
@@ -1151,6 +1169,7 @@ window.BossScene = (() => {
     }
     function stagger() {
       recoilV -= 2.6; headJerk = 1; reelAt = nowS(); jolt = 0;
+      adv = Math.max(0, adv - 0.45);
       if (!reduce) mv.z -= 1.6;
       shake = Math.max(shake, 0.7);
       stopUntil = Math.max(stopUntil, performance.now() + 120);
@@ -1159,11 +1178,47 @@ window.BossScene = (() => {
       burst(v1, 40, 10, WHITE);
       wave(root.position, 1, 14, 0.9, WHITE, 0.7);
     }
+    function menaceTick(t, dt) {
+      const quiet = dead || away.gone || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
+        t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5;
+      if (!dead && !away.gone) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
+      if (quiet) { men.next = Math.max(men.next, t + 0.6); return; }
+      if (t > men.next) {
+        const list = MEN_BY_PHASE[phase] || MEN_BY_PHASE[0];
+        men.at = t; men.kind = list[Math.floor(Math.random() * list.length)]; men.fired = false;
+        men.next = t + rnd(1.1, 2.2) * (1 - phase * 0.08) + MEN[men.kind][2];
+      }
+      const u = t - men.at, K = MEN[men.kind];
+      if (!men.fired && u >= K[2]) {
+        men.fired = true;
+        if (men.kind === 'stomp') {
+          shake = Math.max(shake, reduce ? 0.15 : 0.45);
+          flinchAt = t;
+          wave(root.position, 0.6, 16, 0.8, pal.a, 0.6);
+          burst(v1.copy(root.position).setY(0.3), 30, 8, WHITE, 0.8, 6);
+        } else if (men.kind !== 'lean') shake = Math.max(shake, reduce ? 0.08 : 0.22);
+        if (opts.onMenace) opts.onMenace(men.kind);
+      }
+    }
+    // the menace pose: wind up, strike in 0.12 s, hold 0.12 s, recover over 0.5 s (lean holds 0.8 s)
+    function menaceK(t) {
+      const u = t - men.at, K = MEN[men.kind];
+      if (u < 0 || u > K[2] + 1.3) return null;
+      const hold = men.kind === 'lean' ? 0.8 : 0.12;
+      if (u < K[2]) return { a: ease(u / K[2]), b: 0, surge: 0 };
+      const s = u - K[2];
+      if (s < 0.12) return { a: 1 - easeIn(s / 0.12) * (men.kind === 'lean' ? 0 : 1), b: easeIn(s / 0.12), surge: easeIn(s / 0.12) };
+      if (s < 0.12 + hold) return { a: men.kind === 'lean' ? 1 : 0, b: 1, surge: 1 };
+      const r = 1 - smooth(clamp((s - 0.12 - hold) / 0.5, 0, 1));
+      return { a: men.kind === 'lean' ? r : 0, b: r, surge: r };
+    }
     // a finished set of words (boss.js): reel back for about a second, then dash to a new spot
     // 4 to 8 units across, which is 0.2 to 0.4 of the screen
     function setHit(power = 1) {
       if (dead || away.gone) return;
       const t = nowS();
+      adv = Math.max(0, adv - 0.3 * power);
+      men.next = Math.max(men.next, t + 1.2);
       recoilV -= 1.6 * power; headJerk = 1; reelAt = t; jolt = 0;
       if (!reduce) mv.z -= 0.9 * power;
       shake = Math.max(shake, 0.4 * power);
@@ -1266,6 +1321,7 @@ window.BossScene = (() => {
       for (const a of adds) { a.on = false; a.m.visible = false; a.boomed = false; }
       mv.x = mv.z = mv.tx = mv.tz = 0; roarAt = -9; shieldF = null; weakOn = false;
       away.gone = false; away.leaveAt = away.arriveAt = -9; offY = 0; root.visible = true;
+      adv = 0; men.at = -9; men.next = nowS() + 2;
       palFrom = palTo = phase = 0; applyPal(1); pilHT = 0.35;
       setFrac(1, true);
     }
@@ -1325,6 +1381,13 @@ window.BossScene = (() => {
         const g = (sl.cut ? (sl.cut < sAt ? w * w : 1) : after < 0 ? w * w : Math.max(0, 1 - after / 0.6)) * ck;
         if (sl.kind !== 'beam') { gr = g; if (sl.kind === 'slam') gl = g; }
         if (!sl.cut && after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
+      }
+      const mk = !dead && !away.gone ? menaceK(t) : null;
+      if (mk) {
+        const K = MEN[men.kind], f = K[3] * (1 - busy);
+        if (mk.a > 0.01) L.push([K[0], mk.a * f]);
+        if (mk.b > 0.01 && K[1] !== K[0]) L.push([K[1], mk.b * f]);
+        if (men.kind !== 'lean' && mk.b > 0.5 && t - men.at - K[2] < 0.2) trail = Math.max(trail, men.kind === 'stomp' ? 3 : 2);
       }
       const vo = current(t, 'volley');
       if (vo) { const w = clamp((t - vo.s) / 1.0, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); L.push(['point', ease(w)]); busy = Math.max(busy, w); }
@@ -1416,6 +1479,7 @@ window.BossScene = (() => {
       if (M.every && t > mv.next) {
         const s = SPOTS[Math.floor(Math.random() * M.spots)];
         mv.tx = s[0]; mv.tz = s[1]; mv.next = t + M.every * rnd(0.7, 1.3) / Math.max(0.5, still);
+        mv.dashUntil = t + 0.55;                         // it doesn't stroll to a new spot, it lunges there
       }
       if (!M.every) { mv.tx = Math.sin(at * 0.55) * 7; mv.tz = Math.cos(at * 0.55) * 2.2 - 1; }
       if (M.blink && t - mv.blinkAt > M.blink && !reduce) {
@@ -1489,8 +1553,13 @@ window.BossScene = (() => {
       // move
       const rate = (0.6 + M.speed * 0.5) * (reduce ? 0.5 : 1);
       const strike = sl && !sl.cut && sl.kind === 'lunge' && t > sl.h && t < sl.h + 0.4;
-      tz += 3.5 * threatK * still;                       // every attack steps toward the camera
-      const dash = t < mv.dashUntil ? 6 : 0;            // after a finished set it dashes to its new spot
+      // pressure: it closes on the raid until your typing knocks it back
+      const front = Math.min(4, raidZ - 3.4);
+      tz += (front - tz) * adv * 0.85 * still; tx *= 1 - 0.45 * adv;
+      const mk = menaceK(t);
+      if (mk && men.kind !== 'stomp') tz += (men.kind === 'lean' ? 2.6 : 1.8) * mk.surge * still;
+      tz += (front + 1 - tz) * threatK * still;           // every attack comes right up to the raid
+      const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
       // phase 2: a full turn now and then
@@ -1546,6 +1615,7 @@ window.BossScene = (() => {
         threatK = k * (reduce ? 0.35 : 1);
       }
       awayTick(t);
+      menaceTick(t, bdt);
       // pose and movement
       if (!dead) motion(t, at, bdt);
       const k = Math.min(1, bdt * 7);
@@ -1556,6 +1626,10 @@ window.BossScene = (() => {
       jolt = Math.max(0, jolt - adt * 2.6);
       root.position.set(mv.x, cur.y + offY, mv.z);
       root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
+      // it leans into a dash
+      const vx = (mv.x - prevX) / Math.max(dt, 1e-3); prevX = mv.x;
+      leanZ += (clamp(-vx * 0.025, -0.22, 0.22) * still - leanZ) * Math.min(1, dt * 8);
+      root.rotation.z = leanZ;
       hip.rotation.set(cur.hx + recoil, cur.hy + recoil * recoilSide * 0.4, cur.hz + recoil * recoilSide * 0.3 + (stunned && !reduce ? Math.sin(t * 47) * 0.025 : 0));
       tintMix += ((iced ? 0.6 : stunned ? 0.5 : 0) - tintMix) * Math.min(1, dt * 6);
       if (iced) boxMat.uniforms.uTintC.value.set('#bfefff').multiplyScalar(1.3);
@@ -1890,11 +1964,11 @@ window.BossScene = (() => {
         camBase.x + root.position.x * 0.12 + Math.sin(at * 0.21) * 0.6 * still + Math.sin(t * 41) * sh * 0.5,
         camBase.y + Math.sin(at * 0.17) * 0.25 * still + Math.sin(t * 37 + 1) * sh * 0.4,
         camBase.z - roarK * 3);
-      v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5, root.position.z * 0.3);
+      v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5 + adv * 1.6 * still, root.position.z * 0.3);
       lookCur.lerp(v1, Math.min(1, dt * 2));
       if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.55); camera.lookAt(vG); }
       else camera.lookAt(lookCur);
-      const fov = baseFov * (1 - 0.36 * threatK);
+      const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.36 * threatK);
       if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 
       // post

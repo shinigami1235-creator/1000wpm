@@ -315,7 +315,8 @@ Router.register('boss', (() => {
 
     renderQueue();
     tip('start');
-    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, onBoom: boom, bossId: 'syntax' });
+    scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, onBoom: boom, bossId: 'syntax',
+      onMenace: k => { if (k === 'stomp') sfx('stomp'); else if (k !== 'lean') sfx('swipe'); } });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = "The boss can't load without an internet connection."; });
 
