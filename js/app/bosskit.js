@@ -425,7 +425,8 @@ window.BossKit = (() => {
     plantFeet();                                          // measure the feet at rest first
     pose('idle', 1);
     // set the bones from idle blended toward each [name, weight] in turn; bones a pose leaves
-    // out keep their idle angle, so a strike pose only moves what it names
+    // out keep their idle angle, so a strike pose only moves what it names. A pose marked _only
+    // moves just the bones it names and leaves the rest where the layers before it put them.
     const Z3 = [0, 0, 0];
     function mix(list) {
       const I = POSES.idle;
@@ -434,7 +435,10 @@ window.BossKit = (() => {
       for (const [n, w] of list) {
         const P = POSES[n];
         if (!P || !(w > 0)) continue;
-        for (const b in B) { const r = P[b] || I[b] || Z3, o = B[b].rotation; o.x += (r[0] - o.x) * w; o.y += (r[1] - o.y) * w; o.z += (r[2] - o.z) * w; }
+        for (const b in B) {
+          if (P._only && !P[b]) continue;
+          const r = P[b] || I[b] || Z3, o = B[b].rotation; o.x += (r[0] - o.x) * w; o.y += (r[1] - o.y) * w; o.z += (r[2] - o.z) * w;
+        }
         hy += ((P._hips || 0) - hy) * w;
       }
       B.hips.position.y = hipY + hy;

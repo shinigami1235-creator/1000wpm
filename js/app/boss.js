@@ -1095,7 +1095,7 @@ Router.register('boss', (() => {
   function transition(ph) {
     lockUntil = now() + LOCK_MS;
     if (target && target.kind) { typed = ''; target = null; }
-    if (ph === R.AWAY_PHASE) leaveAndReturn();
+    if (R.ARMOUR_PHASES.includes(ph)) armourBreak(ph);
     else { if (scene) scene.setPhase(ph, false); sfx('roar'); }
     document.dispatchEvent(new CustomEvent('buddy', { detail: 'phase' }));
     const b = q('banner');
@@ -1108,17 +1108,15 @@ Router.register('boss', (() => {
     setTimeout(renderQueue, LOCK_MS + 30);
   }
 
-  // Half HP: the boss leaps out of the arena. 2.5 s of empty screen with no music, a 3-2-1 in
-  // the silence, then it drops back in on GO (Hierophant and Judgment in The Typing of the Dead).
-  // WorldBossRules.away() keeps damage off it while it's gone.
-  function leaveAndReturn() {
-    const gap = R.AWAY_MS - 3000;
-    readyAt = performance.now() + R.AWAY_MS;
-    typed = ''; target = null;
-    if (scene) { scene.leave(); scene.setPhase(R.AWAY_PHASE, false); }
-    sfx('roar');
-    A.cut(0.5, (R.AWAY_MS - 500) / 1000);
-    timers.push(setTimeout(() => { if (el) countdown(() => { if (scene) scene.arrive(); }); }, gap));
+  // 50% and 25%: the armour breaks off instead of a roar (Gid, 26 Nov 2026: "rather pieces of the
+  // armor fall off thus starting the next phase"). The plates fly as HP crosses the line
+  // (scene.setFrac); the boss is thrown back with the music cut for 1.2 s, then it roars into the
+  // new phase as the music slams back.
+  function armourBreak(ph) {
+    if (scene) scene.react('break');
+    sfx('shieldBreak'); sfx('stagger');
+    A.cut(0, 1.2);
+    timers.push(setTimeout(() => { if (!el) return; if (scene) scene.setPhase(ph, false); sfx('roar'); }, 1200));
   }
 
   function onHit(h) {

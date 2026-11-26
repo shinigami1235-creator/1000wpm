@@ -14,7 +14,6 @@
 //   breakCharge(id)                    the raid broke a charged punch: the charge shatters and it staggers
 // A charged punch arrives as an event of type 'charge' and plays as a slam of kind 'charge'; the
 // laser is a slam of kind 'laser'.
-//   leave() / arrive()                 at half HP it leaps out of the arena, then drops back in
 //   opts.onBoom()                      the moment the dead boss blows apart, for the sound
 //   opts.onMenace(kind)                a swing, jab, stomp or lean at the raid between attacks lands
 //                                      (swipe, jab, stomp, lean), for the sound
@@ -65,8 +64,6 @@ window.BossScene = (() => {
       stagger: () => impl && impl.stagger(),
       breakCharge: id => impl && impl.breakCharge(id),
       setHit: p => impl && impl.setHit(p),
-      leave: () => impl && impl.leave(),
-      arrive: () => impl && impl.arrive(),
       hurt: k => impl && impl.hurt(k),
       cast: (id, c) => impl && impl.cast(id, c),
       aura: (name, on) => impl && impl.aura(name, on),
@@ -361,6 +358,13 @@ window.BossScene = (() => {
       const own = b => b.children.filter(o => o.isMesh && kit.meshes.includes(o));
       const front = (b, top) => own(b).filter(o => o.position.z > 0.5 && (top ? o.position.y > 0 : o.position.y <= 0));
       kit.shedSets = [own(B0.shL), own(B0.shR), front(B0.chest, true), front(B0.chest, false)];
+      // the torso half of each attack pose, so the hips and chest can lead and the arm follow
+      for (const n of ['raise', 'slam', 'pull', 'sweep', 'coil', 'punch', 'reach', 'beam']) {
+        const P = kit.POSES[n]; if (!P) continue;
+        const T = { _only: true };
+        for (const k of ['spine', 'chest', 'neck', 'head']) if (P[k]) T[k] = P[k];
+        kit.POSES[n + '_body'] = T;
+      }
       if (opts.bossId === 'syntax') {
         // Syntax Error (Gid, 26 Nov 2026): full armour to 50%, then the plates come off its arms and
         // shoulders, then at 25% the rest goes and it fights as a bare wireframe
@@ -857,8 +861,7 @@ window.BossScene = (() => {
     const anchors = new Map();
     const mv = { x: 0, z: 0, tx: 0, tz: 0, y: 0, face: 0, spin: 0, spinV: 0, next: 0, lungeAt: -9, blinkAt: -9, dashUntil: 0 };
     // threatK: 0 to 1 as an attack comes at the camera (the zoom and the step forward)
-    // away: the half-HP exit, { leaveAt, arriveAt } on the scene clock
-    let threatK = 0, offY = 0, chargeK = 0;
+    let threatK = 0, chargeK = 0;
     // Between attacks it never just stands there (Gid, 26 Nov 2026: "all it does is shuffle left
     // and right then stagger"). Every 1.1 to 2.2 s it swings, jabs, stomps or leans at the raid,
     // and it walks in on the raid the whole time: adv goes from 0 at its spot to 1 right in front
@@ -868,7 +871,6 @@ window.BossScene = (() => {
     const MEN_BY_PHASE = [['swipe', 'jab', 'lean', 'stomp'], ['swipe', 'jab', 'stomp', 'lean'], ['jab', 'swipe', 'stomp', 'jab'], ['jab', 'swipe', 'stomp', 'jab', 'swipe'], ['jab', 'swipe', 'stomp', 'jab', 'swipe']];
     const men = { at: -9, kind: 'swipe', next: 2, fired: false };
     let adv = 0, prevX = 0, leanZ = 0;
-    const away = { leaveAt: -9, arriveAt: -9, gone: false };
 
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
     const v1 = new V(), v2 = new V(), v3 = new V();
@@ -922,7 +924,7 @@ window.BossScene = (() => {
       for (const s of shots) if (s.on && s.ret < 0) { s.on = false; s.g.visible = false; burst(s.pos, 10, 4, CYAN); }
       for (const a of adds) if (a.on && a.dying < 0) a.dying = nowS();
       tele.visible = teleFill.visible = false; beam.visible = false; sweepBar.visible = false; charge = 0;
-      if (!instant && up && !away.gone) {
+      if (!instant && up) {
         roarAt = nowS();
         shake = Math.max(shake, 0.9);
         wave(root.position, 2, 30, 1.6, pal.a, 0.8);
@@ -1231,9 +1233,9 @@ window.BossScene = (() => {
       wave(root.position, 1, 14, 0.9, WHITE, 0.7);
     }
     function menaceTick(t, dt) {
-      const quiet = dead || away.gone || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
+      const quiet = dead || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
         t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5;
-      if (!dead && !away.gone) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
+      if (!dead) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
       if (quiet) { men.next = Math.max(men.next, t + 0.6); return; }
       if (t > men.next) {
         const list = MEN_BY_PHASE[phase] || MEN_BY_PHASE[0];
@@ -1267,7 +1269,7 @@ window.BossScene = (() => {
     // a finished set of words (boss.js): reel back for about a second, then dash to a new spot
     // 4 to 8 units across, which is 0.2 to 0.4 of the screen
     function setHit(power = 1) {
-      if (dead || away.gone) return;
+      if (dead) return;
       const t = nowS();
       adv = Math.max(0, adv - 0.3 * power);
       men.next = Math.max(men.next, t + 1.2);
@@ -1293,38 +1295,6 @@ window.BossScene = (() => {
       shake = Math.max(shake, reduce ? 0.4 : 1.2);
       stopUntil = Math.max(stopUntil, performance.now() + 180);
       if (!reduce) slowUntil = performance.now() + 450;
-    }
-    function leave() {
-      if (dead) return;
-      away.leaveAt = nowS(); away.arriveAt = -9; away.gone = true;
-      evs.length = 0;
-    }
-    function arrive() {
-      if (dead) return;
-      away.arriveAt = nowS(); root.visible = true;
-    }
-    function awayTick(t) {
-      const ul = t - away.leaveAt, ua = t - away.arriveAt;
-      if (away.arriveAt > away.leaveAt) {
-        // drops in from above the frame and lands in the middle
-        if (ua < 0.45) offY = 60 * (1 - easeIn(ua / 0.45));
-        else {
-          offY = 0;
-          if (away.gone) {
-            away.gone = false; roarAt = t;
-            mv.x = mv.tx = 0; mv.z = mv.tz = 0;
-            shake = Math.max(shake, reduce ? 0.4 : 1.3);
-            stopUntil = Math.max(stopUntil, performance.now() + 140);
-            wave(root.position, 1, 34, 1.4, pal.a, 0.9); wave(root.position, 0.5, 14, 0.6, WHITE, 0.8);
-            burst(v1.copy(root.position).setY(0.3), 90, 16, WHITE, 1.4, 12);
-            scatter(40, 1.4);
-          }
-        }
-      } else if (away.gone) {
-        // crouches, then leaps up out of the frame
-        offY = ul < 0.35 ? -1.2 * ease(ul / 0.35) : 70 * easeIn(Math.min(1, (ul - 0.35) / 0.6));
-        if (ul > 1.05) root.visible = false;
-      } else offY = 0;
     }
     function hurt() {
       if (!canFlash()) return;
@@ -1355,7 +1325,7 @@ window.BossScene = (() => {
       if (fx) fx.clear();
       dead = true; deadAt = nowS(); deadT = instant ? 9 : 0; won = true;
       if (!instant && !reduce) slowUntil = performance.now() + 450;
-      threatK = 0; away.gone = false; root.visible = true; offY = 0;
+      threatK = 0;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
       for (const s of shots) { s.on = false; s.g.visible = false; }
       for (const a of adds) if (a.on) a.dying = nowS();
@@ -1384,7 +1354,6 @@ window.BossScene = (() => {
       for (const s of shots) { s.on = false; s.g.visible = false; }
       for (const a of adds) { a.on = false; a.m.visible = false; a.boomed = false; }
       mv.x = mv.z = mv.tx = mv.tz = 0; roarAt = -9; shieldF = null; weakOn = false;
-      away.gone = false; away.leaveAt = away.arriveAt = -9; offY = 0; root.visible = true;
       adv = 0; men.at = -9; men.next = nowS() + 2;
       palFrom = palTo = phase = 0; applyPal(1); pilHT = 0.35;
       setFrac(1, true);
@@ -1448,12 +1417,19 @@ window.BossScene = (() => {
         const rec = after > 0.45 ? smooth((after - 0.45) / 0.9) : 0;
         const ck = cutK(sl, t);
         if (sl.cut && sl.cut < sAt) { L.push([K[0], ease(clamp((sl.cut - sl.s) / (holdAt - sl.s), 0, 1)) * ck]); busy = ck; }
-        else if (t < holdAt) { L.push([K[0], ease(w) * WX]); busy = w; tremble = sl.kind === 'charge' ? w * w * 1.1 : w > 0.75 ? (w - 0.75) * 3 : 0; }
-        else if (t < sAt) { L.push([K[0], WX]); busy = 1; tremble = sl.kind === 'charge' ? 1.6 : 1.1; }
+        // The body leads and the arm follows, in the wind-up and in the strike: the chest turns
+        // into the blow about 0.08 s before the arm comes through, and keeps turning 20% past its
+        // pose after the contact while the arm settles (references Gid asked for, 26 Nov 2026:
+        // hips and trunk give most of a punch's power, "move the shoulder first, have the arm lag
+        // behind", and the follow-through carries one step past the hit)
+        else if (t < holdAt) { L.push([K[0], ease(w) * WX], [K[0] + '_body', ease(Math.min(1, w * 1.35))]); busy = w; tremble = sl.kind === 'charge' ? w * w * 1.1 : w > 0.75 ? (w - 0.75) * 3 : 0; }
+        else if (t < sAt - 0.08) { L.push([K[0], WX]); busy = 1; tremble = sl.kind === 'charge' ? 1.6 : 1.1; }
         else {
           const sk = clamp((t - sAt) / K[2], 0, 1), over = after < 0 ? easeIn(sk) * OV : after < 0.12 ? OV - (OV - 1) * (after / 0.12) : 1;
+          const bk = clamp((t - sAt + 0.08) / K[2], 0, 1), bover = after < 0 ? easeIn(bk) * 1.2 : after < 0.2 ? 1.2 - 0.2 * (after / 0.2) : 1;
           L.push([K[0], (1 - rec) * ck * (after < 0 ? WX * (1 - sk) + 1e-3 : 0)]);
           L.push([K[1], (1 - rec) * ck * over]);
+          L.push([K[1] + '_body', (1 - rec) * ck * bover]);
           busy = (1 - rec) * ck;
           if (!sl.whoosh && sk > 0) { sl.whoosh = true; if (opts.onMenace && sl.kind !== 'beam' && sl.kind !== 'laser') opts.onMenace('strike'); }
         }
@@ -1463,7 +1439,7 @@ window.BossScene = (() => {
         chargeK = sl.kind === 'charge' ? (sl.cut ? 0 : after < 0 ? w : Math.max(0, 1 - after / 0.4)) : 0;
         if (!sl.cut && after >= -K[2] && after < (sl.kind === 'sweep' ? 0.35 : 0.22)) trail = sl.kind === 'slam' || sl.kind === 'charge' ? 3 : 2;
       }
-      const mk = !dead && !away.gone ? menaceK(t) : null;
+      const mk = !dead ? menaceK(t) : null;
       if (mk) {
         const K = MEN[men.kind], f = K[3] * (1 - busy);
         if (mk.a > 0.01) L.push([K[0], mk.a * f]);
@@ -1705,7 +1681,7 @@ window.BossScene = (() => {
       {
         let k = 0;
         const sl = current(t, 'slam');
-        if (sl && !dead && !away.gone && sl.kind !== 'laser') {
+        if (sl && !dead && sl.kind !== 'laser') {
           const st = sl.h - 0.22;
           if (sl.cut) k = 0;
           else if (t < st) k = -0.1 * ease(clamp((t - sl.s) / Math.max(0.3, st - sl.s), 0, 1));
@@ -1714,7 +1690,6 @@ window.BossScene = (() => {
         }
         threatK = k * (reduce ? 0.35 : 1);
       }
-      awayTick(t);
       menaceTick(t, bdt);
       // pose and movement
       if (!dead) motion(t, at, bdt);
@@ -1724,7 +1699,7 @@ window.BossScene = (() => {
       recoil = clamp(recoil, -0.9, 0.3);
       headJerk = Math.max(0, headJerk - adt * 2.5);
       jolt = Math.max(0, jolt - adt * 2.6);
-      root.position.set(mv.x, cur.y + offY, mv.z);
+      root.position.set(mv.x, cur.y, mv.z);
       root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
       // it leans into a dash
       const vx = (mv.x - prevX) / Math.max(dt, 1e-3); prevX = mv.x;
@@ -2158,7 +2133,7 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { breakCharge, setHit, leave, arrive, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    return { breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };

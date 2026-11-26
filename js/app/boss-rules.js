@@ -23,7 +23,7 @@ window.WorldBossRules = (() => {
   // Attack timing follows The Typing of the Dead (Gid's footage, 26 Nov 2026): the warning comes
   // 2 to 3.5 s before the hit and the next attack is 5 to 9 s away. The counter phrase shows in
   // each raider's word line later than the wind-up, as late as their own speed allows (boss.js).
-  // lead:    ms from this phase starting to its first attack (the boss leaves and comes back in phase 3)
+  // lead:    ms from this phase starting to its first attack, longer where the armour breaks off
   // Gid, 26 Nov 2026: big wound-up attacks on top of the quick slam, and the armour coming off.
   //   charge   it pulls back a glowing fist for about 6 s while a break bar fills from the whole
   //            raid's damage; break it and the boss staggers with its kernel open, miss it and the
@@ -37,9 +37,9 @@ window.WorldBossRules = (() => {
       pool: { slam: 3, charge: 2 }, intro: ['slam', 'charge'], kinds: ['slam'], phrase: false, weakMult: 2, diff: [2, 4] },
     { at: 0.75, name: 'Corrupted',     cycle: 8500,  wind: 3400, flight: 6000, shots: 3, adds: 0, heal: 0,
       pool: { slam: 3, charge: 2, volley: 3, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2, diff: [3, 5] },
-    { at: 0.50, name: 'Memory leak',   cycle: 8000,  wind: 3200, flight: 5600, shots: 4, adds: 3, heal: 60, lead: 7000,
+    { at: 0.50, name: 'Memory leak',   cycle: 8000,  wind: 3200, flight: 5600, shots: 4, adds: 3, heal: 60, lead: 5000,
       pool: { slam: 2, laser: 3, charge: 1, volley: 2, adds: 2 }, intro: ['laser', 'adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2, diff: [3, 6] },
-    { at: 0.25, name: 'Kernel exposed', cycle: 7000, wind: 3200, flight: 5000, shots: 5, adds: 3, heal: 80,
+    { at: 0.25, name: 'Kernel exposed', cycle: 7000, wind: 3200, flight: 5000, shots: 5, adds: 3, heal: 80, lead: 5000,
       pool: { slam: 2, laser: 2, charge: 2, volley: 3, shield: 2, adds: 1 }, intro: ['charge', 'volley'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2, diff: [4, 6] },
     { at: 0.10, name: 'Kernel panic',  cycle: 4500,  wind: 2800, flight: 4400, shots: 5, adds: 4, heal: 100,
       pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true, diff: [4, 7] },
@@ -50,9 +50,9 @@ window.WorldBossRules = (() => {
 
   const FIRST_LEAD = 4000;      // ms from the fight starting to the first attack
   const LEAD = 3500;            // ms from a phase change to its first attack, for the roar
-  // At half HP the boss leaves the arena: 2.5 s of empty screen, a 3-2-1, then it drops back in.
-  // No damage lands while it's gone.
-  const AWAY_PHASE = 2, AWAY_MS = 5500;
+  // At 50% and 25% the boss's armour breaks off (boss.js and boss3d.js): it's thrown back as the
+  // plates fly, then roars into the next phase, so those phases start a little later.
+  const ARMOUR_PHASES = [2, 3];
   const ADD_LIFE = 20000;       // an add heals for this long unless someone destroys it
   const WEAK_MS = 6000;         // weak point window after a stagger or a shield break
   const STAGGER_SHARE = 0.5;    // share of raiders who must block for the boss to be stunned
@@ -62,7 +62,6 @@ window.WorldBossRules = (() => {
   const CRIT_X = 2;
   const MAX_X = 3;              // weak point and crit together never pass x3
 
-  const away = (s, now) => !!(s && s.phase === AWAY_PHASE && s.phaseAt && s.phaseAt[AWAY_PHASE] && now >= s.phaseAt[AWAY_PHASE] && now < s.phaseAt[AWAY_PHASE] + AWAY_MS);
   const phaseOf = f => PHASES.reduce((p, ph, i) => (i && f <= ph.at ? i : p), 0);
   const ceiling = (p, maxHp) => Math.floor(PHASES[p].at * maxHp);
   const phaseStart = (s, p) => (s.phaseAt && s.phaseAt[p]) || s.startedAt;
@@ -238,7 +237,7 @@ window.WorldBossRules = (() => {
   }
 
   return {
-    BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, AWAY_PHASE, AWAY_MS, away, CHARGE_WIND, LASER_WIND, breakMax, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
+    BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, ARMOUR_PHASES, CHARGE_WIND, LASER_WIND, breakMax, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
     TEAM, teamMult, teamGuard, teamRoot,
     TIERS, tierOf, blockWord, pickWords,
