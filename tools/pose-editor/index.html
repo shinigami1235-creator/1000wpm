@@ -82,7 +82,7 @@
     <button id="copy">Copy for Claude</button>
     <button id="save">Save file</button>
     <button id="open">Open file</button>
-    <button id="reset">Back to the game's punch</button>
+    <button id="reset">Start over</button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </header>
   <div id="view">
@@ -97,7 +97,7 @@
     <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a dot on the boss to grab that joint, or a fist to drag it where you want it.</div>
   </div>
   <aside>
-    <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Back to auto</button></div>
+    <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button></div>
     <div class="note" id="sceneNote"></div>
     <div id="fields"></div>
     <details open id="feelBox"><summary>Feel (sets the auto scenes)</summary><div id="feel"></div></details>
@@ -114,6 +114,7 @@
     </div>
   </footer>
 </div>
+<dialog id="ask"><p>Start over from the game's punch? Every scene, the feel and the timing go back to how they are in the game. Undo brings your version back.</p><p style="display:flex;gap:8px;justify-content:flex-end"><button id="askNo">Cancel</button><button id="askYes" style="border-color:var(--red);color:#ff8a8a">Start over</button></p></dialog>
 <dialog id="dlg"><p id="dlgMsg"></p><textarea id="dlgText" readonly></textarea><p><button id="dlgClose">Close</button></p></dialog>
 
 <script type="module">
@@ -136,8 +137,8 @@ const $ = id => document.getElementById(id);
 
 // ---------- scene ----------
 const view = $('view');
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(1.5, devicePixelRatio));
 view.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#0c0e12');
@@ -152,6 +153,7 @@ raid.rotation.x = -Math.PI / 2; raid.position.set(0, 0.03, 11); scene.add(raid);
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 400);
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
+orbit.addEventListener('change', () => need());
 const CAMS = {
   front: [[0, 11, 52], [0, 9, 3]], side: [[52, 11, 3], [0, 9, 3]], three: [[-34, 19, 40], [0, 9, 3]],
   player: [[0, 5, 38], [0, 10, 0]], top: [[0.01, 60, 6], [0, 6, 4]],
@@ -396,6 +398,7 @@ const proxy = new THREE.Object3D(); scene.add(proxy);
 let grab = null;           // { name, kind, bone }
 tc.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; if (!e.value) { commit(); refreshSoon(); } });
 tc.addEventListener('objectChange', onGizmo);
+tc.addEventListener('change', () => need());
 
 const JOINT_OF = { shoulderR: 'shoulderR', elbowR: 'elbowR', shoulderL: 'shoulderL', elbowL: 'elbowL' };
 function select(name) {
@@ -510,6 +513,7 @@ function checkTimeline() {
 function sceneAt(t) { const m = marks(); let best = 'idle'; for (const s of SCENES) if (t >= m[s.id] - 1e-6) best = s.id; return best; }
 
 // ---------- panel ----------
+let dirty = true; const need = () => { dirty = true; };
 let cur = 'strike', time = 0, playing = false, showHandles = true, showPath = true, showGhost = true;
 const groups = ['Right arm (the punch)', 'Left arm', 'Body'];
 function buildFields() {
@@ -524,6 +528,7 @@ function buildFields() {
       const set = v => { if (!EDITABLE.has(cur)) return; const s = editSpec(); s[f.key] = clamp(+v, f.min, f.max); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); };
       rg.addEventListener('input', () => set(rg.value)); nb.addEventListener('input', () => set(nb.value));
       rg.addEventListener('change', commit); nb.addEventListener('change', commit);
+      rg.addEventListener('pointerdown', () => { sliding = true; });
       rg.addEventListener('dblclick', () => { if (!EDITABLE.has(cur) || state.scenes[cur].auto) return; const auto = resolvedAuto(cur); if (auto) { set(auto[f.key]); commit(); } });
       d.appendChild(row);
     }
@@ -552,7 +557,7 @@ function fillFields() {
   if (!ed) { b.textContent = 'Not edited here'; b.className = 'badge'; }
   else if (cur === 'strike') { b.textContent = 'Set by hand'; b.className = 'badge edited'; }
   else { b.textContent = auto ? 'Auto' : 'Edited'; b.className = 'badge ' + (auto ? 'auto' : 'edited'); }
-  $('toAuto').hidden = !ed || cur === 'strike' || auto;
+  $('toAuto').hidden = !ed || auto || (cur === 'strike' && JSON.stringify(round(R.strike)) === JSON.stringify(GAME_STRIKE));
   $('sceneNote').textContent = sc.note + (auto ? ' Move any slider here or drag a joint to set it by hand. Double-click a slider to put that one value back to auto.' : '') + (auto && autoNote[cur] ? ' ' + autoNote[cur] : '');
 }
 function feelRow(host, obj, key, label, min, max, step, unit = '') {
@@ -562,6 +567,7 @@ function feelRow(host, obj, key, label, min, max, step, unit = '') {
   const set = v => { obj()[key] = clamp(+v, min, max); show(); rebuild(); fillFields(); markCards(); buildBar(); poseNow(); refreshSoon(); };
   rg.addEventListener('input', () => set(rg.value)); nb.addEventListener('input', () => set(nb.value));
   rg.addEventListener('change', commit); nb.addEventListener('change', commit);
+  rg.addEventListener('pointerdown', () => { sliding = true; });
   row.show = show; show(); host.appendChild(row); return row;
 }
 const feelRows = [], timeRows = [];
@@ -624,29 +630,35 @@ $('bar').addEventListener('pointermove', e => { if (scrubbing) scrubTo(e); });
 $('bar').addEventListener('pointerup', () => { scrubbing = false; const s = sceneAt(time); if (Math.abs(marks()[s] - time) < 0.03) { cur = s; fillFields(); markCards(); } });
 
 // ---------- thumbnails, path and checks, a moment after an edit ----------
-let refreshTimer = 0;
-function refreshSoon() { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 220); }
-function refresh() {
+// Thumbnails, the fist path and the joint check of every frame run a piece at a time between
+// frames, and start over when you change something, so the page never freezes while you work.
+let refreshTimer = 0, job = null, sliding = false;
+const thumbKey = {};
+function refreshSoon() { clearTimeout(refreshTimer); job = null; refreshTimer = setTimeout(() => { if (sliding) refreshSoon(); else job = refreshJob(); }, 250); }
+function refresh() { job = refreshJob(); while (job && !job.next().done); job = null; }
+const tcam = new THREE.PerspectiveCamera(32, 320 / 220, 0.1, 300); tcam.position.set(-16, 12, 25); tcam.lookAt(0, 10, 3);
+function renderThumb(id) {
   const vis = [tc.getHelper().visible, path.visible, keyDots.visible, ghost.group.visible];
   tc.getHelper().visible = path.visible = keyDots.visible = ghost.group.visible = false;
   handleMeshes.forEach(h => { h.visible = false; });
-  const tcam = new THREE.PerspectiveCamera(32, 320 / 220, 0.1, 300); tcam.position.set(-16, 12, 25); tcam.lookAt(0, 10, 3);
-  const size = renderer.getSize(new THREE.Vector2()), w = 320 / renderer.getPixelRatio(), h = 220 / renderer.getPixelRatio();
-  renderer.setScissorTest(true);
-  for (const s of SCENES) {
-    poseKey(kit, s.id); kit.group.position.y = 0; kit.group.updateMatrixWorld(true);
-    renderer.setViewport(0, 0, w, h); renderer.setScissor(0, 0, w, h); renderer.render(scene, tcam);
-    const cv = cardCanvases[s.id], ctx = cv.getContext('2d');
-    ctx.drawImage(renderer.domElement, 0, renderer.domElement.height - 220, 320, 220, 0, 0, 320, 220);
-  }
+  const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
+  poseKey(kit, id); kit.group.position.y = 0; kit.group.updateMatrixWorld(true);
+  renderer.setScissorTest(true); renderer.setViewport(0, 0, 320 / pr, 220 / pr); renderer.setScissor(0, 0, 320 / pr, 220 / pr);
+  renderer.render(scene, tcam);
+  cardCanvases[id].getContext('2d').drawImage(renderer.domElement, 0, renderer.domElement.height - 220, 320, 220, 0, 0, 320, 220);
   renderer.setScissorTest(false); renderer.setViewport(0, 0, size.x, size.y);
   [tc.getHelper().visible, path.visible, keyDots.visible, ghost.group.visible] = vis;
   handleMeshes.forEach(hm => { hm.visible = showHandles; });
-  buildPath();
-  checkTimeline();
-  poseNow();
-  buildBar(); showChecks();
 }
+function* refreshJob() {
+  buildPath(); yield;
+  for (const sc of SCENES) { const k = JSON.stringify(P[sc.id]); if (thumbKey[sc.id] !== k) { renderThumb(sc.id); thumbKey[sc.id] = k; yield; } }
+  const m = marks(), out = [];
+  for (let i = 0; i <= 36; i++) { const t = m.recover * i / 36; poseAt(kit, t); const r = checkNow(true); if (r.length) out.push({ t, msgs: r }); yield; }
+  timelineProblems = out;
+  poseNow(); buildBar(); showChecks(); need();
+}
+function runJob() { if (!job) return; const end = performance.now() + 8; while (job && performance.now() < end) if (job.next().done) job = null; need(); }
 function showChecks() {
   const host = $('checks'), m = marks();
   const here = checkNow(true);
@@ -672,7 +684,9 @@ function load(s) { state = JSON.parse(s); rebuild(); fillFields(); markCards(); 
 function undo() { if (hi > 0) load(hist[--hi]); }
 function redo() { if (hi < hist.length - 1) load(hist[++hi]); }
 $('undo').onclick = undo; $('redo').onclick = redo;
-$('reset').onclick = () => { state = DEFAULT(); commit(); load(JSON.stringify(state)); };
+$('reset').onclick = () => $('ask').showModal();
+$('askNo').onclick = () => $('ask').close();
+$('askYes').onclick = () => { $('ask').close(); commit(); state = DEFAULT(); load(JSON.stringify(state)); commit(); };
 const r3 = a => a.map(x => Math.round(x * 1000) / 1000);
 function exportText() {
   const poses = {};
@@ -709,16 +723,18 @@ $('file').onchange = async e => {
   } catch (err) { dialog('That file isn\'t a punch from this editor.', ''); }
   e.target.value = '';
 };
-$('toAuto').onclick = () => { state.scenes[cur] = { auto: true }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
+$('toAuto').onclick = () => { state.scenes[cur] = cur === 'strike' ? { auto: false, spec: { ...GAME_STRIKE } } : { auto: true }; rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); commit(); };
 
 // ---------- playback ----------
-function updatePlay() { $('play').textContent = playing ? '❚❚' : '▶'; }
+function updatePlay() { $('play').textContent = playing ? '❚❚' : '▶'; need(); }
 $('play').onclick = () => { playing = !playing; if (playing) { tc.detach(); grab = null; if (time >= marks().recover - 1e-3) time = 0; } updatePlay(); };
 $('speed').onchange = () => {};
 $('tgHandles').onclick = e => { showHandles = !showHandles; e.target.classList.toggle('on', showHandles); handleMeshes.forEach(h => { h.visible = showHandles; }); if (!showHandles) { tc.detach(); grab = null; } };
-$('tgPath').onclick = e => { showPath = !showPath; e.target.classList.toggle('on', showPath); };
-$('tgGhost').onclick = e => { showGhost = !showGhost; e.target.classList.toggle('on', showGhost); };
+$('tgPath').onclick = e => { showPath = !showPath; e.target.classList.toggle('on', showPath); need(); };
+$('tgGhost').onclick = e => { showGhost = !showGhost; e.target.classList.toggle('on', showGhost); need(); };
 document.querySelectorAll('#cams button').forEach(b => b.onclick = () => setCam(b.dataset.cam));
+addEventListener('pointerup', () => { sliding = false; });
+addEventListener('resize', () => need());
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' && e.target.type === 'number') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
@@ -728,6 +744,7 @@ addEventListener('keydown', e => {
 });
 
 function poseNow() {
+  need();
   if (tc.dragging && grab && grab.kind !== 'ik') return;    // the joint being dragged keeps the gizmo's angle
   if (!playing && Math.abs(time - marks()[cur]) < 1e-6 && EDITABLE.has(cur)) poseKey(kit, cur); else poseAt(kit, time);
   kit.group.updateMatrixWorld(true);
@@ -736,40 +753,41 @@ function poseNow() {
 const clock = new THREE.Clock();
 let pauseLeft = 0;
 function frame() {
+  requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
   const m = marks();
+  runJob();
   if (playing) {
     if (pauseLeft > 0) pauseLeft -= dt;
     else { time += dt * +$('speed').value; if (time > m.recover) { time = 0; pauseLeft = 0.6; } }
   }
-  $('head').style.left = (time / m.recover * 100) + '%';
-  $('clock').textContent = time.toFixed(2) + ' s';
-  poseNow();
-  kit.update(performance.now() / 1000); kit.group.position.y = 0;
+  orbit.update();
+  if (!dirty && !playing) return;
+  dirty = false;
+  $('head').style.left = (time / m.recover * 100) + '%'; $('clock').textContent = time.toFixed(2) + ' s';
+  poseNow(); dirty = false;
   // ghost: the scene before the one being edited
   const order = ['idle', 'wind', 'load', 'strike', 'follow', 'recover'], prev = order[order.indexOf(cur) - 1];
   ghost.group.visible = showGhost && !playing && !!prev && EDITABLE.has(cur);
-  if (ghost.group.visible) { poseKey(ghost, prev); ghost.update(0); ghost.group.position.y = 0; }
+  if (ghost.group.visible) poseKey(ghost, prev);
   path.visible = keyDots.visible = showPath;
-  tc.getHelper().visible = !playing;
-  orbit.update();
-  const w = view.clientWidth, h = view.clientHeight;
-  if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) {
+  tc.getHelper().visible = !playing && !!tc.object;
+  const w = view.clientWidth, h = view.clientHeight, pr = renderer.getPixelRatio();
+  if (renderer.domElement.width !== Math.floor(w * pr) || renderer.domElement.height !== Math.floor(h * pr)) {
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 
 rebuild(); buildFields(); buildFeel(); buildCards(); buildBar(); setCam('three');
 time = marks()[cur]; fillFields(); markCards(); poseNow();
 requestAnimationFrame(frame);
-setTimeout(refresh, 50);
+job = refreshJob();
 window.editor = {
   // test hooks: what a drag on a fist or a joint does
   reach: (k, v) => { select('fist' + k); proxy.position.set(...v); onGizmo(); poseNow(); const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return [w.x, w.y, w.z].map(x => +x.toFixed(2)); },
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); onGizmo(); return round(R[cur]); },
-  state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; }, play: on => { playing = on; updatePlay(); } };
+  state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
 </script>
 </body>
