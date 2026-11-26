@@ -848,6 +848,7 @@ window.BossScene = (() => {
     // jolt: a short reel from your hits; reelAt: the big reel after a stagger or a blocked attack
     let jolt = 0, reelAt = -9;
     const cutK = (x, t) => x.cut ? 1 - smooth(clamp((t - x.cut) / 0.3, 0, 1)) : 1;
+    const easeOut = x => 1 - (1 - x) * (1 - x);
     let roarAt = -9, charge = 0;
     const STAGE_AT = [0.75, 0.5, 0.25, 0.1];
     const coreGreen = C(Theme.hex('accent'), 1.2), coreRed = C('#ff4d5e', 0.95), coreAmber = C('#f29d30', 1.0), coreWeak = C('#ffb347', 1.15);
@@ -992,11 +993,23 @@ window.BossScene = (() => {
     function impact(x) {
       const you = blocked.has(x.id) || frozen.has(x.id);
       const at = raidPos[RAID];
-      if (x.cut) { act('you', 'cast'); return; }   // you broke it off: nothing lands
-      shake = Math.max(shake, you ? 0.35 : 0.9);
+      if (x.cut) { act('you', 'cast'); return; }   // a broken charge: nothing lands
+      shake = Math.max(shake, you ? 0.8 : 1.1);
+      stopUntil = Math.max(stopUntil, performance.now() + (you ? 150 : 110));
       act('you', you ? 'cast' : 'hit');
+      if (you) {
+        // the blow hits your barrier: a cyan crack across it, sparks, and the boss thrown back
+        const bt = nowS();
+        barrierHitAt = bt;
+        v2.copy(raidPos[RAID]); v2.z -= 3; v2.y = 3;
+        burst(v2, 70, 18, CYAN, 1.2, 4); burst(v2, 40, 14, WHITE, 1.4, 6);
+        flare(v2, CYAN, 9, 0.3, canFlash() ? 1.3 : 0.6);
+        wave(v1.copy(raidPos[RAID]).setY(0.3), 0.4, 14, 0.7, CYAN, 0.9);
+        if (!reduce) slowUntil = Math.max(slowUntil, performance.now() + 260);
+        setTimeout(() => { if (!dead) stagger(); }, 90);
+      }
       // the ones who didn't block it go flat
-      { const t = nowS(), pk = x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25; for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
+      { const t = nowS(), pk = (x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25) * (you ? 0.3 : 1); for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
       if (kit) {
         // the blow lands where the fists are: rings and dust from each fist, chunks of armour
         // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
@@ -1027,7 +1040,13 @@ window.BossScene = (() => {
       if (x.kind === 'sweep') { sweepT0 = nowS(); }
       stopUntil = Math.max(stopUntil, performance.now() + (you ? 80 : 50));
     }
-    let beamUntil = 0, sweepT0 = -9, beamLen = 0.55, beamW = 0.9;
+    let beamUntil = 0, sweepT0 = -9, beamLen = 0.55, beamW = 0.9, barrierHitAt = -9;
+    // your block's barrier: a cyan disc in front of the raid from the block until the blow lands on it
+    const barrierMat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    const barrier = new THREE.Mesh(keep(new THREE.CircleGeometry(1, 6)), barrierMat);
+    barrier.visible = false; scene.add(barrier);
+    const barrierRim = new THREE.Mesh(keep(new THREE.RingGeometry(0.92, 1, 6)), barrierMat);
+    barrier.add(barrierRim);
 
     // ---------- hits ----------
     const hitQueue = [];
@@ -1190,9 +1209,11 @@ window.BossScene = (() => {
     }
     function block(id) {
       blocked.add(id);
-      // your block breaks the attack off: the wind-up drops and the titan reels back
+      // Gid, 26 Nov 2026: "the punches feel like taps". A block no longer breaks the attack off:
+      // a barrier goes up in front of the raid, the boss still throws the whole blow, and at the
+      // hit it smashes into the barrier and is thrown back (impact). Only a broken charge stops early.
       const t = nowS(), x = evs.find(e => e.id === id && e.type === 'slam');
-      if (x && !x.cut && t < x.h + 0.05 && !dead) { x.cut = t; stagger(); }
+      if (x && !x.cut && t < x.h + 0.05 && !dead) x.blocked = t;
       const at = v1.copy(raidPos[RAID]).setY(2.2);
       burst(at, 26, 8, CYAN, 1.4, 4);
       flare(at, CYAN, 7, 0.32, canFlash() ? 1.3 : 0.6);
@@ -1406,7 +1427,7 @@ window.BossScene = (() => {
     // of the kit's idle. The attack clock decides the blend: the wind-up eases in over the whole
     // telegraph, the strike snaps in within about a tenth of a second, holds, then settles back.
     const KIND = { slam: ['raise', 'slam', 0.1], sweep: ['pull', 'sweep', 0.2], lunge: ['coil', 'punch', 0.12], beam: ['beam', 'beam', 0.15],
-      charge: ['pull', 'punch', 0.16], laser: ['beam', 'beam', 0.15] };
+      charge: ['coil', 'punch', 0.16], laser: ['beam', 'beam', 0.15] };
     function titanPose(t) {
       const L = [];
       let busy = 0, tremble = 0, gl = 0, gr = 0, trail = 0;
@@ -1414,19 +1435,33 @@ window.BossScene = (() => {
       const sl = current(t, 'slam');
       if (sl) {
         const K = sl.kind === 'lunge' && kit.POSES.reach ? ['coil', 'reach', 0.12] : KIND[sl.kind] || KIND.slam;
-        // the strike swings in over the last K[2] seconds, so the blow has landed at the hit
-        // time and the hit-stop holds the landed pose
-        const sAt = sl.h - K[2], w = clamp((t - sl.s) / (sAt - sl.s), 0, 1), after = t - sl.h;
-        const rec = after > 0.5 ? smooth((after - 0.5) / 0.9) : 0;
+        // Wind-up, hold, strike, follow-through (Gid, 26 Nov 2026: "barely any wind up, hit and
+        // follow through"). It winds up into the pose and a little past it, holds there cocked for
+        // HOLD s, throws the strike in the last K[2] s so it lands on the hit, overshoots 15%,
+        // holds the landed pose for 0.45 s and only then recovers over 0.9 s.
+        const HOLD = sl.kind === 'charge' ? 0.55 : 0.32;
+        // how far past each pose it goes: the overhead wind-up already sits at the shoulder's limit,
+        // and the punch's rear arm and chest twist run out of room past 6% (joint-check, 26 Nov 2026)
+        const WX = sl.kind === 'slam' ? 1 : 1.08, OV = sl.kind === 'charge' ? 1.06 : 1.15;
+        const sAt = sl.h - K[2], holdAt = sAt - HOLD;
+        const w = clamp((t - sl.s) / Math.max(0.2, holdAt - sl.s), 0, 1), after = t - sl.h;
+        const rec = after > 0.45 ? smooth((after - 0.45) / 0.9) : 0;
         const ck = cutK(sl, t);
-        if (sl.cut && sl.cut < sAt) { L.push([K[0], ease(clamp((sl.cut - sl.s) / (sAt - sl.s), 0, 1)) * ck]); busy = ck; }
-        else if (t < sAt) { L.push([K[0], ease(w)]); busy = w; tremble = sl.kind === 'charge' ? w * w * 1.3 : w > 0.75 ? (w - 0.75) * 4 : 0; }
-        else { L.push([K[0], (1 - rec) * ck]); L.push([K[1], (1 - rec) * ck * easeIn(clamp((t - sAt) / K[2], 0, 1))]); busy = (1 - rec) * ck; }
+        if (sl.cut && sl.cut < sAt) { L.push([K[0], ease(clamp((sl.cut - sl.s) / (holdAt - sl.s), 0, 1)) * ck]); busy = ck; }
+        else if (t < holdAt) { L.push([K[0], ease(w) * WX]); busy = w; tremble = sl.kind === 'charge' ? w * w * 1.1 : w > 0.75 ? (w - 0.75) * 3 : 0; }
+        else if (t < sAt) { L.push([K[0], WX]); busy = 1; tremble = sl.kind === 'charge' ? 1.6 : 1.1; }
+        else {
+          const sk = clamp((t - sAt) / K[2], 0, 1), over = after < 0 ? easeIn(sk) * OV : after < 0.12 ? OV - (OV - 1) * (after / 0.12) : 1;
+          L.push([K[0], (1 - rec) * ck * (after < 0 ? WX * (1 - sk) + 1e-3 : 0)]);
+          L.push([K[1], (1 - rec) * ck * over]);
+          busy = (1 - rec) * ck;
+          if (!sl.whoosh && sk > 0) { sl.whoosh = true; if (opts.onMenace && sl.kind !== 'beam' && sl.kind !== 'laser') opts.onMenace('strike'); }
+        }
         // the fists that strike glow red as the wind-up fills, flash on the hit, then cool
         const g = (sl.cut ? (sl.cut < sAt ? w * w : 1) : after < 0 ? w * w : Math.max(0, 1 - after / 0.6)) * ck;
         if (sl.kind !== 'beam' && sl.kind !== 'laser') { gr = g; if (sl.kind === 'slam') gl = g; }
         chargeK = sl.kind === 'charge' ? (sl.cut ? 0 : after < 0 ? w : Math.max(0, 1 - after / 0.4)) : 0;
-        if (!sl.cut && after >= 0 && after < (sl.kind === 'sweep' ? 0.3 : 0.14)) trail = sl.kind === 'slam' ? 3 : 2;
+        if (!sl.cut && after >= -K[2] && after < (sl.kind === 'sweep' ? 0.35 : 0.22)) trail = sl.kind === 'slam' || sl.kind === 'charge' ? 3 : 2;
       }
       const mk = !dead && !away.gone ? menaceK(t) : null;
       if (mk) {
@@ -1615,10 +1650,13 @@ window.BossScene = (() => {
       // pressure: it closes on the raid until your typing knocks it back
       const front = Math.min(4, raidZ - 3.4);
       tz += (front - tz) * adv * 0.85 * still; tx *= 1 - 0.45 * adv;
+      const tk = Math.max(0, threatK);
       const mk = menaceK(t);
       if (mk && men.kind !== 'stomp') tz += (men.kind === 'lean' ? 2.6 : 1.8) * mk.surge * still;
       const slK = current(t, 'slam');
-      if (!slK || slK.kind !== 'laser') tz += (front + 1 - tz) * threatK * still;   // every attack but the laser comes right up to the raid
+      if (!slK || slK.kind !== 'laser') tz += (front + 1 - tz) * tk * still;   // every attack but the laser comes right up to the raid
+      // and rears back through the wind-up first
+      if (slK && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
@@ -1667,10 +1705,12 @@ window.BossScene = (() => {
       {
         let k = 0;
         const sl = current(t, 'slam');
-        if (sl && !dead && !away.gone) {
-          if (sl.cut) k = Math.max(0, 1 - (t - sl.cut) / 0.25) * clamp(1 - (sl.h - sl.cut) / 0.7, 0, 1);
-          else if (t < sl.h) k = Math.max(easeIn(clamp(1 - (sl.h - t) / 0.7, 0, 1)), sl.kind === 'charge' ? 0.4 * clamp((t - sl.s) / (sl.h - sl.s), 0, 1) : 0);
-          else k = 1 - smooth(clamp((t - sl.h - 0.15) / 0.7, 0, 1));
+        if (sl && !dead && !away.gone && sl.kind !== 'laser') {
+          const st = sl.h - 0.22;
+          if (sl.cut) k = 0;
+          else if (t < st) k = -0.1 * ease(clamp((t - sl.s) / Math.max(0.3, st - sl.s), 0, 1));
+          else if (t < sl.h) k = -0.1 + 1.1 * easeOut(clamp((t - st) / 0.22, 0, 1));
+          else k = 1 - smooth(clamp((t - sl.h - 0.3) / 0.7, 0, 1));
         }
         threatK = k * (reduce ? 0.35 : 1);
       }
@@ -2026,9 +2066,22 @@ window.BossScene = (() => {
         camBase.z - roarK * 3);
       v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5 + adv * 1.6 * still, root.position.z * 0.3);
       lookCur.lerp(v1, Math.min(1, dt * 2));
-      if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.55); camera.lookAt(vG); }
+      if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.4); camera.lookAt(vG); }
       else camera.lookAt(lookCur);
-      const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.36 * threatK);
+      const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK);
+      // the barrier in front of the raid while your block waits for the blow, cracking when it lands
+      {
+        const bx = blocked.size ? evs.find(z => z.type === 'slam' && z.blocked && t < z.h + 0.35 && !z.cut) : null;
+        const hu = t - barrierHitAt;
+        const a = bx ? (t < bx.h ? Math.min(1, (t - bx.blocked) / 0.15) * (0.22 + 0.06 * Math.sin(t * 20)) : Math.max(0, 0.9 * (1 - hu / 0.35))) : 0;
+        barrier.visible = a > 0.01;
+        if (barrier.visible) {
+          barrierMat.opacity = a;
+          barrier.position.copy(raidPos[RAID]); barrier.position.z -= 3; barrier.position.y = 3.2;
+          barrier.scale.setScalar(5.5 + (hu < 0.35 ? 1.2 * (1 - hu / 0.35) : 0));
+          barrier.rotation.set(0, 0, t * 0.4);
+        }
+      }
       if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 
       // post
