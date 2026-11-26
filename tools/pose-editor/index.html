@@ -62,6 +62,7 @@
   #bar .seg { height: 100%; border-right: 1px solid #0c0e12; font-size: 11px; color: #cfd6df; padding: 3px 5px; overflow: hidden; white-space: nowrap; }
   #bar .tick { position: absolute; top: 0; width: 2px; height: 6px; background: #ff5560; }
   #play { width: 34px; }
+  #addScene:disabled { opacity: 0.4; cursor: default; }
   #head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
   #clock { width: 64px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
   dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; width: min(640px, 92vw); }
@@ -102,7 +103,7 @@
     <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). Handles show when the playhead is on a scene.</div>
   </div>
   <aside>
-    <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button></div>
+    <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button><button id="delScene" hidden>Delete this scene</button></div>
     <div class="note" id="sceneNote"></div>
     <div id="fields"></div>
     <details open id="feelBox"><summary>Feel (sets the auto scenes)</summary><div id="feel"></div></details>
@@ -113,6 +114,7 @@
     <div class="cards" id="cards"></div>
     <div class="transport">
       <button id="play" title="Space">▶</button>
+      <button id="addScene" title="Add a scene at the playhead, starting from the pose shown there">Add scene here</button>
       <select id="speed"><option value="1">1×</option><option value="0.5">½×</option><option value="0.25" selected>¼×</option><option value="0.1">⅒×</option></select>
       <div id="bar"><div id="head"></div></div>
       <span id="clock">0.00 s</span>
@@ -402,13 +404,18 @@ const SEG_COLS = ['#2a3f57', '#4a3a1f', '#6b1f28', '#5a2a3a', '#2f3340', '#24303
 let DEF, SCENES, EDITABLE, SEGS, SEG_NAME, SEG_COL;
 function useAttack(id) {
   DEF = ATTACKS[id];
-  SCENES = DEF.scenes;
+  const A = store.attacks[id];
+  // scenes added in the editor split a stretch of the timeline in two (A.segs replaces DEF.segs)
+  SEGS = A.segs || DEF.segs; SEG_NAME = { ...DEF.segName, ...(A.segName || {}) };
+  const labels = [...new Set(Object.values(DEF.segName))];
+  SEG_COL = {}; for (const k in SEG_NAME) SEG_COL[k] = SEG_COLS[labels.indexOf(SEG_NAME[k]) % SEG_COLS.length] || SEG_COLS[0];
+  SCENES = [...DEF.scenes, ...(A.extra || [])];
   EDITABLE = new Set(SCENES.map(x => x.id));
-  SEGS = DEF.segs; SEG_NAME = DEF.segName;
-  SEG_COL = {}; Object.keys(DEF.segName).forEach((k, i) => { SEG_COL[k] = SEG_COLS[i % SEG_COLS.length]; });
+  const m = marks(); SCENES.sort((a, b) => (m[a.id] ?? 0) - (m[b.id] ?? 0) || (a.id === 'recover') - (b.id === 'recover'));
 }
+const isExtra = id => /^x\d+$/.test(id);
 // scenes built from another scene until they're set by hand
-const isAuto = (d, id) => id === 'recover' || !!(d.autos && d.autos[id]) || (d.auto && id !== d.main && id !== 'idle');
+const isAuto = (d, id) => !isExtra(id) && (id === 'recover' || !!(d.autos && d.autos[id]) || (d.auto && id !== d.main && id !== 'idle'));
 const freshAttack = id => {
   const d = ATTACKS[id], sc = {};
   for (const x of d.scenes) if (x.id !== 'idle') sc[x.id] = { auto: isAuto(d, x.id) };
@@ -485,10 +492,10 @@ function safe(id, base, full) {
 }
 function resolved() {
   IDLE_SPEC = store.idle.spec || IDLE_SPEC_BASE;
-  const rec = R0 => { const sc = sceneState('recover'); R0.recover = !sc.auto && sc.spec ? sc.spec : R0.idle; return R0; };
+  const rec = R0 => { const sc = sceneState('recover'); R0.recover = !sc.auto && sc.spec ? sc.spec : R0.idle; for (const x of state.extra || []) R0[x.id] = sceneState(x.id).spec; return R0; };
   if (!DEF.auto) {
     const D = DEF.defaults(), R = { idle: IDLE_SPEC };
-    for (const id of EDITABLE) if (id !== 'idle' && id !== 'recover' && !(DEF.autos && DEF.autos[id])) { const sc = sceneState(id); R[id] = sc.spec && !sc.auto ? sc.spec : D[id]; }
+    for (const id of EDITABLE) if (id !== 'idle' && id !== 'recover' && !isExtra(id) && !(DEF.autos && DEF.autos[id])) { const sc = sceneState(id); R[id] = sc.spec && !sc.auto ? sc.spec : D[id]; }
     for (const id in DEF.autos || {}) { const sc = sceneState(id); R[id] = !sc.auto && sc.spec ? sc.spec : DEF.autos[id](R); }
     return rec(R);
   }
@@ -800,7 +807,8 @@ function fillFields() {
   const b = $('badge');
   const st = sceneStatus(cur);
   b.textContent = st[0][0].toUpperCase() + st[0].slice(1); b.className = 'badge ' + st[1];
-  $('toAuto').hidden = !own || (DEF.auto && cur === DEF.main && JSON.stringify(round(R[cur])) === JSON.stringify(DEF.defaults()[cur]));
+  $('delScene').hidden = !isExtra(cur);
+  $('toAuto').hidden = isExtra(cur) || !own || (DEF.auto && cur === DEF.main && JSON.stringify(round(R[cur])) === JSON.stringify(DEF.defaults()[cur]));
   $('sceneNote').textContent = sc.note + (auto ? ' Move any slider here or drag a joint to set it by hand. Double-click a slider to put that one value back to auto.' : '') + (auto && autoNote[cur] ? ' ' + autoNote[cur] : '');
 }
 function feelRow(host, obj, key, label, min, max, step, unit = '') {
@@ -819,7 +827,9 @@ function buildFeel() {
   feelRows = []; timeRows = [];
   const fe = () => state.feel, ti = () => state.timing;
   $('feelBox').querySelector('summary').textContent = DEF.auto ? 'Feel (sets the auto scenes)' : 'Feel';
-  for (const [k, l, a, b] of DEF.timeRows) timeRows.push(feelRow(th, ti, k, l, a, b, 0.01, ' s'));
+  const used = new Set(SEGS.map(sg => sg[3]));
+  for (const [k, l, a, b] of DEF.timeRows) if (used.has(k)) timeRows.push(feelRow(th, ti, k, l, a, b, 0.01, ' s'));
+  for (const sg of SEGS) if (!DEF.timeRows.some(r => r[0] === sg[3]) && !timeRows.some(r => r.key === sg[3])) { const r = feelRow(th, ti, sg[3], `${SEG_NAME[sg[3]]} (${(SCENES.find(x => x.id === sg[0]) || {}).name || sg[0]} to ${(SCENES.find(x => x.id === sg[1]) || {}).name || sg[1]})`, 0.01, 4, 0.01, ' s'); r.key = sg[3]; timeRows.push(r); }
   if (!DEF.auto) { feelRows.push(feelRow(fh, fe, 'lead', 'Body ahead of the arms', 0, 0.25, 0.01, ' s')); return; }
   feelRows.push(
     feelRow(fh, fe, 'antic', 'Wind-up size (how far it draws back)', 0, 1.6, 0.05, '×'),
@@ -843,6 +853,7 @@ function buildCards() {
 // what a card and the panel badge say about a scene
 function sceneStatus(id) {
   const sc = sceneState(id), own = !sc.auto && !!sc.spec;
+  if (isExtra(id)) return ['added', 'edited'];
   if (own) return ['edited', 'edited'];
   if (id === 'idle') return ['game idle', 'auto'];
   if (sc.auto) return [id === 'recover' ? 'same as idle' : 'auto', 'auto'];
@@ -931,6 +942,7 @@ function load(s) {
   const was = store.attack;
   store = JSON.parse(s); state = store.attacks[store.attack];
   if (store.attack !== was) switchTo(store.attack, true);
+  else { useAttack(store.attack); buildCards(); buildFeel(); if (!EDITABLE.has(cur)) { cur = DEF.main; time = marks()[cur]; } }
   rebuild(); fillFields(); markCards(); feelRows.concat(timeRows).forEach(r => r.show()); syncMirror(); buildBar(); poseNow(); refreshSoon();
   try { localStorage.setItem('syntax-punch-editor', s); } catch (e) {}
 }
@@ -949,7 +961,7 @@ function exportText() {
     o._hips = Math.round((p._hips || 0) * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp), elbows and wrists by bend and twist', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, scenes, poses }, null, 1);
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: 'shortest path (quaternion slerp), elbows and wrists by bend and twist', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
@@ -974,7 +986,9 @@ $('file').onchange = async e => {
     const id = d.attack || 'punch', A = ATTACKS[id]; if (!A) throw 0;
     const sc = {}; for (const k of Object.keys(d.scenes)) { if (k === 'idle') continue; sc[k] = d.scenes[k].auto && isAuto(A, k) ? { auto: true } : (d.scenes[k].edited === false ? { auto: isAuto(A, k) } : { auto: false, spec: clampSpec(d.scenes[k].spec) }); }
     if (d.scenes.idle && d.scenes.idle.edited) store.idle = { auto: false, spec: clampSpec(d.scenes.idle.spec) };
-    commit(); store.attacks[id] = { timing: { ...A.timing, ...d.timing }, feel: { ...A.feel, ...d.feel }, scenes: sc, mirror: A.mirror }; store.attack = id;
+    commit(); store.attacks[id] = { timing: { ...A.timing, ...d.timing }, feel: { ...A.feel, ...d.feel }, scenes: sc, mirror: A.mirror };
+    if (d.addedScenes && d.addedScenes.length) Object.assign(store.attacks[id], { segs: d.segments, extra: d.addedScenes, segName: Object.fromEntries(d.segments.map(sg => [sg[3], A.segName[sg[3]] || 'Added'])), next: 1 + Math.max(...d.addedScenes.map(e => +e.id.slice(1))) });
+    store.attack = id;
     load(JSON.stringify(store)); commit();
   } catch (err) { dialog('That file isn\'t an attack from this editor.', ''); }
   e.target.value = '';
@@ -1033,7 +1047,8 @@ function frame() {
   handleMeshes.forEach(h => { h.visible = showHandles && on; });
   if (!on && tc.object) { tc.detach(); grab = null; }
   tc.getHelper().visible = !playing && !!tc.object;
-  const bt = $('between'), msg = playing ? '' : !on ? `Between scenes at ${time.toFixed(2)} s. Click a scene card below to edit it.` : '';
+  $('addScene').disabled = playing || on;
+  const bt = $('between'), msg = playing ? '' : !on ? `Between scenes at ${time.toFixed(2)} s. Click a scene card to edit it, or Add scene here to fix this frame.` : '';
   if (bt.textContent !== msg) bt.textContent = msg; bt.hidden = !msg;
   const w = view.clientWidth, h = view.clientHeight, pr = renderer.getPixelRatio();
   if (renderer.domElement.width !== Math.floor(w * pr) || renderer.domElement.height !== Math.floor(h * pr)) {
@@ -1041,6 +1056,53 @@ function frame() {
   }
   renderer.render(scene, camera);
 }
+
+// ---------- adding and deleting scenes ----------
+// Adding a scene splits the stretch of timeline under the playhead in two, and the new scene starts
+// from the pose on screen there, so fixing an in-between frame is editing a scene like any other.
+const EASE_IN = { inOut: 'in2', in: 'in2', in2: 'in2', in3: 'in3', lin: 'lin', out: 'lin', out3: 'lin' };
+const EASE_OUT = { inOut: 'out', out: 'out', out3: 'out3', lin: 'lin', in: 'lin', in2: 'lin', in3: 'lin' };
+function addSceneAt(t) {
+  let start = 0, i = -1;
+  for (let j = 0; j < SEGS.length; j++) { const end = start + state.timing[SEGS[j][3]]; if (t > start + 0.01 && t < end - 0.01) { i = j; break; } start = end; }
+  if (i < 0) return;
+  // the pose on screen, as the editor's own values
+  poseAt(kit, t); kit.group.updateMatrixWorld(true);
+  const Pn = {}; for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) Pn[bn] = B[bn].rotation.toArray().slice(0, 3);
+  Pn._hips = B.hips.position.y - S.hover;
+  const spec = round(specFromPose(Pn));
+  const [a, b, ez, len, fx] = SEGS[i], n = (state.next || 1), id = 'x' + n, d = state.timing[len];
+  const k1 = `${id}a`, k2 = `${id}b`;
+  state.next = n + 1;
+  state.segs = SEGS.slice(); state.segs.splice(i, 1, [a, id, EASE_IN[ez] || 'lin', k1, fx], [id, b, EASE_OUT[ez] || 'lin', k2, fx]);
+  state.segName = { ...(state.segName || {}), [k1]: SEG_NAME[len], [k2]: SEG_NAME[len] };
+  state.timing[k1] = +(t - start).toFixed(3); state.timing[k2] = +(start + d - t).toFixed(3);
+  const name = n => (SCENES.find(x => x.id === n) || { name: n }).name;
+  state.extra = [...(state.extra || []), { id, name: 'In-between', note: `A scene you added between ${name(a)} and ${name(b)}. Fix the in-between pose here; Delete this scene joins the two stretches back up.`, split: [i, ez, len, d] }];
+  state.scenes[id] = { auto: false, spec };
+  afterSceneChange(id);
+}
+function deleteScene(id) {
+  const x = (state.extra || []).find(e => e.id === id); if (!x) return;
+  const i = SEGS.findIndex(sg => sg[1] === id); if (i < 0 || SEGS[i + 1][0] !== id) return;
+  const [a, , ez, k1, fx] = SEGS[i], [, b, , k2] = SEGS[i + 1];
+  // join the two stretches back into one, with the timing and easing it had before
+  // back to the stretch's own timing name when nothing else uses it
+  const orig = x.split && x.split[2], free = orig && !SEGS.some((sg, j) => j !== i && j !== i + 1 && sg[3] === orig);
+  const total = state.timing[k1] + state.timing[k2], key = free ? orig : `${id}j`;
+  state.segs = SEGS.slice(); state.segs.splice(i, 2, [a, b, (x.split && x.split[1]) || ez, key, fx]);
+  state.timing[key] = +total.toFixed(3); state.segName = { ...(state.segName || {}), [key]: SEG_NAME[k1] };
+  delete state.timing[k1]; delete state.timing[k2]; delete state.scenes[id];
+  state.extra = state.extra.filter(e => e.id !== id);
+  afterSceneChange(a === 'idle' && b === 'recover' ? DEF.main : (EDITABLE.has(a) ? a : DEF.main));
+}
+function afterSceneChange(id) {
+  useAttack(store.attack); for (const k in thumbKey) delete thumbKey[k];
+  rebuild(); buildCards(); buildFeel(); cur = id; time = marks()[id]; playing = false; tc.detach(); grab = null;
+  fillFields(); markCards(); buildBar(); poseNow(); refreshSoon(); updatePlay(); commit();
+}
+$('addScene').onclick = () => { commit(); addSceneAt(time); };
+$('delScene').onclick = () => { commit(); deleteScene(cur); };
 
 // ---------- switching attacks ----------
 function syncMirror() { $('mirror').classList.toggle('on', !!state.mirror); }
@@ -1068,7 +1130,7 @@ window.editor = {
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); const want = h[1].quaternion.clone(); onGizmo(); poseKey(kit, cur); return { deg: +(2 * Math.acos(Math.min(1, Math.abs(want.dot(h[1].quaternion)))) * R2D).toFixed(2), spec: round(R[cur]) }; },
   turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
   cur: () => cur, time: () => time,
-  near: t => sceneNear(t),
+  near: t => sceneNear(t), add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
   handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
