@@ -196,8 +196,14 @@ window.BossKit = (() => {
       }
       if (S.claws) {
         // an open claw: a palm, and four two-jointed fingers and a thumb on a claw bone that curls them into a fist
-        piece(B['hand' + k], cbox(F * 0.95, F * 0.7, F * 0.75, 0.22), [0, -F * 0.35, 0]);
-        const c = B['claw' + k] = new THREE.Group(); c.position.set(0, -F * 0.68, F * 0.1); B['hand' + k].add(c);
+        // The palm faces in toward the body with the arm hanging and the thumb faces forward, the way a
+        // person stands, so the fingers close toward the side the elbow bends to (Gid, 27 Nov 2026: the
+        // hands faced backward, so a natural-looking hand needed the upper arm twisted 90-100 degrees,
+        // which turned the elbow's bend sideways). The claw bone sits in a turned holder so poses that
+        // set its rotation keep the turn.
+        piece(B['hand' + k], cbox(F * 0.95, F * 0.7, F * 0.75, 0.22), [0, -F * 0.35, 0], [0, sx * Math.PI / 2, 0]);
+        const hold = new THREE.Group(); hold.rotation.y = sx * Math.PI / 2; B['hand' + k].add(hold);
+        const c = B['claw' + k] = new THREE.Group(); c.position.set(0, -F * 0.68, F * 0.1); hold.add(c);
         for (let i = 0; i < 4; i++) {
           const x = (i - 1.5) * F * 0.23, fg = new THREE.Group(); fg.position.set(x, 0, 0); fg.rotation.z = (i - 1.5) * -0.08; c.add(fg);
           piece(fg, cbox(F * 0.18, F * 0.42, F * 0.2, 0.3), [0, -F * 0.2, 0], [0, 0, 0], dark, 0.3);

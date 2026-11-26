@@ -311,7 +311,7 @@ function sheet(o) {
   return round(clampSpec(s));
 }
 const FIST = { clawR: [1.5, 0, 0], clawL: [1.5, 0, 0] };
-const STEEPLE = { shoulderR: { flex: -20, abd: 170, twist: -80 }, shoulderL: { flex: -20, abd: 170, twist: 80 }, elbowR: { flex: 60, twist: 180 }, elbowL: { flex: 60, twist: -180 } };
+const STEEPLE = { shoulderR: { flex: -20, abd: 170, twist: -80 }, shoulderL: { flex: -20, abd: 170, twist: 80 }, elbowR: { flex: 60, twist: 90 }, elbowL: { flex: 60, twist: -90 } };
 const BRACE = { shoulderL: { flex: 55, abd: -45, twist: -40 }, elbowL: { flex: 30 } };
 const cannonAim = (flex, abd, chy) => sheet({ shoulderR: { flex, abd }, elbowR: { flex: 20 }, ...BRACE, raw: { chest: [0.3, chy, 0], spine: [0.2, chy / 2, 0], head: [-0.4, -chy, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.6 });
 // in-between scenes the game builds and the editor shows but doesn't list as cards
@@ -422,7 +422,7 @@ const freshAttack = id => {
   if (d.auto) sc[d.main] = { auto: false, spec: d.defaults()[d.main] };
   return { timing: { ...d.timing }, feel: { ...d.feel }, scenes: sc, mirror: d.mirror };
 };
-const DEFAULT = () => ({ v: 2, attack: 'punch', idle: {}, smooth: true, attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
+const DEFAULT = () => ({ v: 2, hands: 2, attack: 'punch', idle: {}, smooth: true, attacks: Object.fromEntries(Object.keys(ATTACKS).map(k => [k, freshAttack(k)])) });
 let store = DEFAULT();
 try {
   const saved = JSON.parse(localStorage.getItem('syntax-punch-editor'));
@@ -432,6 +432,14 @@ try {
 for (const k in ATTACKS) store.attacks[k] = store.attacks[k] || freshAttack(k);
 store.idle = store.idle || {};
 if (store.smooth === undefined) store.smooth = true;
+// Scenes saved before the hands were turned a quarter turn (palms in, 27 Nov 2026): take the turn
+// out of their forearm twist so they look exactly as they did.
+const handsTurned = sp => { if (!sp) return; const w = v => ((v + 180) % 360 + 360) % 360 - 180; sp['elbowR.twist'] = w((sp['elbowR.twist'] || 0) - 90); sp['elbowL.twist'] = w((sp['elbowL.twist'] || 0) + 90); };
+if (store.hands !== 2) {
+  if (store.idle.spec) handsTurned(store.idle.spec);
+  for (const k in store.attacks) for (const id in store.attacks[k].scenes) handsTurned(store.attacks[k].scenes[id].spec);
+  store.hands = 2;
+}
 if (store.idle.spec) store.idle.spec = clampSpec(store.idle.spec);
 for (const k in store.attacks) for (const id in store.attacks[k].scenes) if (store.attacks[k].scenes[id].spec) store.attacks[k].scenes[id].spec = clampSpec(store.attacks[k].scenes[id].spec);
 let state = store.attacks[store.attack];
@@ -985,7 +993,7 @@ function exportText() {
     o._hips = Math.round((p._hips || 0) * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of EDITABLE) { const sc = sceneState(id); scenes[id] = { auto: !!sc.auto, edited: !sc.auto && !!sc.spec, spec: round(R[id]) }; }
-  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
+  return JSON.stringify({ tool: 'syntax-punch-editor', v: 2, hands: 2, attack: store.attack, name: DEF.name, blend: store.smooth ? 'Catmull-Rom curve through all scenes: shoulders on quaternions, the rest on the editor values (elbows and wrists by bend, side and twist)' : 'per stretch: shoulders slerp, the rest on the editor values', idleSharedByAllAttacks: true, timing: state.timing, feel: state.feel, segments: SEGS, addedScenes: state.extra || [], scenes, poses }, null, 1);
 }
 function dialog(msg, text) { $('dlgMsg').textContent = msg; $('dlgText').value = text; $('dlg').showModal(); $('dlgText').select(); }
 $('dlgClose').onclick = () => $('dlg').close();
@@ -1008,6 +1016,7 @@ $('file').onchange = async e => {
     const d = JSON.parse(await f.text());
     if (d.tool !== 'syntax-punch-editor') throw 0;
     const id = d.attack || 'punch', A = ATTACKS[id]; if (!A) throw 0;
+    if (d.hands !== 2) for (const k of Object.keys(d.scenes)) if (d.scenes[k].edited || d.scenes[k].auto === false) handsTurned(d.scenes[k].spec);
     const sc = {}; for (const k of Object.keys(d.scenes)) { if (k === 'idle') continue; sc[k] = d.scenes[k].auto && isAuto(A, k) ? { auto: true } : (d.scenes[k].edited === false ? { auto: isAuto(A, k) } : { auto: false, spec: clampSpec(d.scenes[k].spec) }); }
     if (d.scenes.idle && d.scenes.idle.edited) store.idle = { auto: false, spec: clampSpec(d.scenes.idle.spec) };
     commit(); store.attacks[id] = { timing: { ...A.timing, ...d.timing }, feel: { ...A.feel, ...d.feel }, scenes: sc, mirror: A.mirror };
