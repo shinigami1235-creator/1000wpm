@@ -100,7 +100,7 @@
       </div>
     </div>
     <div id="between" hidden></div>
-    <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). Handles show when the playhead is on a scene.</div>
+    <div id="hint">The orange arrows show which way each elbow bends. Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). Handles show when the playhead is on a scene.</div>
   </div>
   <aside>
     <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button><button id="delScene" hidden>Delete this scene</button></div>
@@ -197,7 +197,7 @@ for (const [k, side, grp] of [['R', 'right', 'Right arm'], ['L', 'left', 'Left a
   // human couldn't do
   field(`shoulder${k}.flex`, 'Shoulder: forward ↑ / back ↓', grp, -180, 180);
   field(`shoulder${k}.abd`, 'Shoulder: out to the side ↑ / across ↓', grp, -90, 180);
-  field(`shoulder${k}.twist`, 'Upper arm twist', grp, -180, 180);
+  field(`shoulder${k}.twist`, 'Upper arm twist (turns which way the elbow bends)', grp, -180, 180);
   field(`elbow${k}.flex`, 'Elbow bend', grp, -60, 180);
   field(`elbow${k}.side`, 'Elbow sideways (past a real elbow)', grp, -90, 90);
   field(`elbow${k}.twist`, 'Forearm twist (turns the fist)', grp, -180, 180);
@@ -617,6 +617,14 @@ const HANDLE = [
   ['chest', B.chest, [0, 0, 0], 'rot'], ['spine', B.spine, [0, 0, 0], 'rot'], ['head', B.head, [0, 0, 0], 'rot'], ['hips', B.hips, [0, 0, 0], 'move'],
 ];
 const handleMeshes = [];
+// an arrow at each elbow showing which way it bends: the upper arm's twist turns it, the elbow's own
+// twist only rolls the forearm
+const bendArrows = ['R', 'L'].map(k => {
+  const R0 = rig.rest['elbow' + k], a = R0.a.clone(), f = R0.f.clone().sub(a.clone().multiplyScalar(R0.f.dot(a))).normalize();
+  const ar = new THREE.ArrowHelper(f, B['fore' + k].position.clone(), 2.6, 0xffb547, 0.7, 0.45);
+  ar.traverse(o => { o.userData.jcSkip = true; if (o.material) { o.material.depthTest = false; o.material.transparent = true; o.material.opacity = 0.9; } o.renderOrder = 11; });
+  B['arm' + k].add(ar); return ar;
+});
 for (const [name, bone, off, kind] of HANDLE) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(kind === 'ik' ? 0.55 : 0.38, 16, 12), new THREE.MeshBasicMaterial({ color: kind === 'ik' ? '#ffb547' : '#4fd8ff', depthTest: false, transparent: true, opacity: 0.9 }));
   m.renderOrder = 10; m.userData = { jcSkip: true, handle: name, kind, bone }; m.position.set(...off);
@@ -930,7 +938,7 @@ const tcam = new THREE.PerspectiveCamera(32, 320 / 220, 0.1, 300); tcam.position
 function renderThumb(id) {
   const vis = [tc.getHelper().visible, path.visible, keyDots.visible, ghost.group.visible];
   tc.getHelper().visible = path.visible = keyDots.visible = ghost.group.visible = false;
-  handleMeshes.forEach(h => { h.visible = false; });
+  handleMeshes.forEach(h => { h.visible = false; }); bendArrows.forEach(a => { a.visible = false; });
   const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
   poseKey(kit, id); kit.group.position.y = 0; kit.group.updateMatrixWorld(true);
   renderer.setScissorTest(true); renderer.setViewport(0, 0, 320 / pr, 220 / pr); renderer.setScissor(0, 0, 320 / pr, 220 / pr);
@@ -1079,6 +1087,7 @@ function frame() {
   path.visible = keyDots.visible = showPath;
   const on = onScene();
   handleMeshes.forEach(h => { h.visible = showHandles && on; });
+  bendArrows.forEach(a => { a.visible = showHandles && on; });
   if (!on && tc.object) { tc.detach(); grab = null; }
   tc.getHelper().visible = !playing && !!tc.object;
   $('addScene').disabled = playing || on;
@@ -1164,7 +1173,7 @@ window.editor = {
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); const want = h[1].quaternion.clone(); onGizmo(); poseKey(kit, cur); return { deg: +(2 * Math.acos(Math.min(1, Math.abs(want.dot(h[1].quaternion)))) * R2D).toFixed(2), spec: round(R[cur]) }; },
   turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
   cur: () => cur, time: () => time,
-  near: t => sceneNear(t), add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
+  near: t => sceneNear(t), handleWorld: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); kit.group.updateMatrixWorld(true); h.getWorldPosition(v); return v.toArray().map(x => +x.toFixed(2)); }, add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
   handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
   state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
