@@ -91,10 +91,11 @@
         <button data-cam="front">Front</button><button data-cam="side">Side</button><button data-cam="three">3/4</button><button data-cam="player">Player view</button><button data-cam="top">Top</button>
       </div>
       <div class="grp">
-        <button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button>
+        <button id="fMove" class="on" title="Drag the fist and the arm reaches for it">Fist: move</button><button id="fTurn" title="Turn the fist with the forearm and wrist">Fist: turn</button></div>
+      <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button>
       </div>
     </div>
-    <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a dot on the boss to grab that joint, or a fist to drag it where you want it.</div>
+    <div id="hint">Drag to orbit, scroll to zoom, right-drag to pan. Click a blue dot to turn that joint, or an orange fist to move it or turn it (switch with Fist: move and Fist: turn). It edits the scene nearest the playhead.</div>
   </div>
   <aside>
     <div class="scenehead"><h2 id="sceneName">Strike</h2><span class="badge" id="badge"></span><span class="sp" style="flex:1"></span><button id="toAuto" hidden>Reset this scene</button></div>
@@ -189,6 +190,10 @@ for (const [k, side, grp] of [['R', 'right', 'Right arm (the punch)'], ['L', 'le
   field(`shoulder${k}.abd`, 'Shoulder: out to the side ↑ / across ↓', grp, -45, 180);
   field(`shoulder${k}.twist`, 'Upper arm twist', grp, -100, 100);
   field(`elbow${k}.flex`, 'Elbow bend', grp, -8, 150);
+  field(`elbow${k}.twist`, 'Forearm twist (turns the fist)', grp, -95, 95);
+  field(`wrist${k}.flex`, 'Wrist bend', grp, -75, 80);
+  field(`wrist${k}.abd`, 'Wrist side to side', grp, -40, 25);
+  field(`wrist${k}.twist`, 'Wrist twist', grp, -40, 40);
   field(`claw${k}`, 'Hand: open 0 / fist 100', grp, 0, 100);
 }
 field('hips', 'Body height: drop ↓ / rise ↑', 'Body', -1.5, 1, 0.05);
@@ -202,14 +207,16 @@ field('head.0', 'Head nod: up ↓ / down ↑', 'Body', -60, 60);
 field('head.1', 'Head turn', 'Body', -60, 60);
 const FK = F.map(f => f.key), FBY = Object.fromEntries(F.map(f => [f.key, f]));
 const isBody = k => /^(spine|chest|head)\./.test(k) || k === 'hips';
-const clampSpec = s => { const o = {}; for (const f of F) o[f.key] = clamp(s[f.key] ?? 0, f.min, f.max); return o; };
+let IDLE_SPEC = null;   // filled in below; a scene saved before a field existed takes the idle value for it
+const clampSpec = s => { const o = {}; for (const f of F) o[f.key] = clamp(s[f.key] ?? (IDLE_SPEC ? IDLE_SPEC[f.key] : 0) ?? 0, f.min, f.max); return o; };
 const lerpS = (a, b, k) => { const o = {}; for (const f of FK) o[f] = a[f] + (b[f] - a[f]) * k; return o; };
 
 function toPose(s) {
   const P = {};
   for (const k of ['R', 'L']) {
     P['arm' + k] = JC.bend(rig, 'shoulder' + k, { flex: s[`shoulder${k}.flex`], abd: s[`shoulder${k}.abd`], twist: s[`shoulder${k}.twist`] });
-    P['fore' + k] = JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`] });
+    P['fore' + k] = JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], twist: s[`elbow${k}.twist`] });
+    P['hand' + k] = JC.bend(rig, 'wrist' + k, { flex: s[`wrist${k}.flex`], abd: s[`wrist${k}.abd`], twist: s[`wrist${k}.twist`] });
     P['claw' + k] = [-0.3 + 1.8 * s['claw' + k] / 100, 0, 0];
   }
   for (const b of ['spine', 'chest', 'head']) P[b] = [0, 1, 2].map(i => s[`${b}.${i}`] * D2R);
@@ -222,7 +229,7 @@ function fitJoint(name, euler) {
   const want = new THREE.Quaternion().setFromEuler(new THREE.Euler(...euler));
   const save = j.bone.rotation.toArray(); j.bone.rotation.set(...euler);
   const m = JC.measure(rig, name); j.bone.rotation.set(save[0], save[1], save[2]);
-  const p = ball ? { flex: m.fwd, abd: m.outA, twist: m.twist } : { flex: m.flex };
+  const p = ball ? { flex: m.fwd, abd: m.outA, twist: m.twist } : { flex: m.flex, twist: m.twist };
   const q = new THREE.Quaternion(), e = new THREE.Euler();
   const cost = v => { q.setFromEuler(e.set(...JC.bend(rig, name, v))); return 1 - Math.abs(q.dot(want)); };
   let best = cost(p);
@@ -241,7 +248,10 @@ function specFromPose(P) {
   for (const k of ['R', 'L']) {
     const a = fitJoint('shoulder' + k, P['arm' + k] || IDLE['arm' + k] || [0, 0, 0]);
     s[`shoulder${k}.flex`] = a.flex; s[`shoulder${k}.abd`] = a.abd; s[`shoulder${k}.twist`] = a.twist;
-    s[`elbow${k}.flex`] = fitJoint('elbow' + k, P['fore' + k] || IDLE['fore' + k] || [0, 0, 0]).flex;
+    const el = fitJoint('elbow' + k, P['fore' + k] || IDLE['fore' + k] || [0, 0, 0]);
+    s[`elbow${k}.flex`] = el.flex; s[`elbow${k}.twist`] = el.twist;
+    const wr = fitJoint('wrist' + k, P['hand' + k] || IDLE['hand' + k] || [0, 0, 0]);
+    s[`wrist${k}.flex`] = wr.flex; s[`wrist${k}.abd`] = wr.abd; s[`wrist${k}.twist`] = wr.twist;
     s['claw' + k] = ((P['claw' + k] || [0.55])[0] + 0.3) / 1.8 * 100;
   }
   for (const b of ['spine', 'chest', 'head']) for (let i = 0; i < 3; i++) s[`${b}.${i}`] = ((P[b] || [0, 0, 0])[i]) * R2D;
@@ -249,7 +259,7 @@ function specFromPose(P) {
   return clampSpec(s);
 }
 const round = s => { const o = {}; for (const f of F) o[f.key] = f.step < 1 ? Math.round(s[f.key] * 100) / 100 : Math.round(s[f.key] * 10) / 10; return o; };
-const IDLE_SPEC = round(specFromPose(IDLE));
+IDLE_SPEC = round(specFromPose(IDLE));
 
 // the punch the game has now (bosskit.js 'punch': right arm straight out, chest turned in)
 const GAME_STRIKE = round(specFromPose(kit.POSES.punch));
@@ -272,6 +282,7 @@ const DEFAULT = () => ({
 });
 let state = DEFAULT();
 try { const saved = JSON.parse(localStorage.getItem('syntax-punch-editor')); if (saved && saved.v === 1) state = saved; } catch (e) {}
+for (const id in state.scenes) if (state.scenes[id].spec) state.scenes[id].spec = clampSpec(state.scenes[id].spec);
 
 // auto scenes, built from what's been set by hand
 function windFrom(St, k) {
@@ -396,6 +407,7 @@ tc.setSize(0.8);
 scene.add(tc.getHelper());
 const proxy = new THREE.Object3D(); scene.add(proxy);
 let grab = null;           // { name, kind, bone }
+let fistMode = 'move';
 tc.addEventListener('dragging-changed', e => { orbit.enabled = !e.value; if (!e.value) { commit(); refreshSoon(); } });
 tc.addEventListener('objectChange', onGizmo);
 tc.addEventListener('change', () => need());
@@ -406,14 +418,25 @@ function select(name) {
   if (!name) return;
   const h = HANDLE.find(x => x[0] === name); if (!h) return;
   const [, bone, off, kind] = h;
-  if (!EDITABLE.has(cur)) pick('strike');
+  const id = sceneNear(time);
+  if (id !== cur || Math.abs(time - marks()[id]) > 1e-6) pick(id);
   playing = false; time = marks()[cur]; poseKey(kit, cur); kit.group.updateMatrixWorld(true);
   grab = { name, kind, bone };
-  if (kind === 'ik') { bone.localToWorld(proxy.position.set(...off)); tc.attach(proxy); tc.setMode('translate'); tc.setSpace('world'); tc.showX = tc.showY = tc.showZ = true; }
+  if (kind === 'ik' && fistMode === 'turn') { grab.kind = 'hand'; tc.attach(bone); tc.setMode('rotate'); tc.setSpace('local'); tc.showX = tc.showY = tc.showZ = true; }
+  else if (kind === 'ik') { bone.localToWorld(proxy.position.set(...off)); tc.attach(proxy); tc.setMode('translate'); tc.setSpace('world'); tc.showX = tc.showY = tc.showZ = true; }
   else if (kind === 'move') { tc.attach(bone); tc.setMode('translate'); tc.setSpace('world'); tc.showX = tc.showZ = false; tc.showY = true; }
   else { tc.attach(bone); tc.setMode('rotate'); tc.setSpace('local'); tc.showX = tc.showY = tc.showZ = true; }
   const grp = /R$/.test(name) ? 'Right arm (the punch)' : /L$/.test(name) ? 'Left arm' : 'Body';
   const d = document.querySelector(`details[data-group="${grp}"]`); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); }
+}
+// the scene to edit for where the playhead is: anywhere in the wind-up is the Wind-up, and the
+// recover goes back to the Follow-through
+function sceneNear(t) {
+  const m = marks();
+  if (EDITABLE.has(cur) && Math.abs(t - m[cur]) < 1e-3) return cur;
+  if (t <= m.wind) return 'wind';
+  if (t >= m.follow) return 'follow';
+  return ['wind', 'load', 'strike', 'follow'].reduce((a, b) => Math.abs(m[b] - t) < Math.abs(m[a] - t) ? b : a);
 }
 function editSpec() {
   const sc = state.scenes[cur];
@@ -430,9 +453,33 @@ function onGizmo() {
       else s[name + '.flex'] = p.flex;
     } else for (let i = 0; i < 3; i++) s[`${name}.${i}`] = bone.rotation.toArray()[i] * R2D;
   } else if (kind === 'move') s.hips = bone.position.y - S.hover;
+  else if (kind === 'hand') fitHand(name.slice(-1), s);
   else solveIK(name.slice(-1), proxy.position, s);
   Object.assign(s, clampSpec(s));
   rebuild(); fillFields(); markCards();
+}
+// fist turn: forearm twist and wrist bend that give the hand the angle the gizmo put it at
+function fitHand(k, s) {
+  const fore = B['fore' + k], hand = B['hand' + k];
+  const want = new THREE.Quaternion(); hand.getWorldQuaternion(want);
+  const saveF = fore.rotation.toArray(), saveH = hand.rotation.toArray();
+  const keys = [`elbow${k}.twist`, `wrist${k}.flex`, `wrist${k}.abd`], lim = keys.map(x => FBY[x]), q = new THREE.Quaternion();
+  const cost = v => {
+    fore.rotation.set(...JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], twist: v[0] }));
+    hand.rotation.set(...JC.bend(rig, 'wrist' + k, { flex: v[1], abd: v[2], twist: s[`wrist${k}.twist`] }));
+    fore.updateMatrixWorld(true); hand.getWorldQuaternion(q); return 1 - Math.abs(q.dot(want));
+  };
+  const v = keys.map(x => s[x]); let best = cost(v);
+  for (const st of [24, 12, 6, 3, 1.5, 0.75, 0.3]) for (let it = 0; it < 8; it++) {
+    let moved = false;
+    for (let i = 0; i < 3; i++) for (const d of [st, -st]) {
+      const w = v.slice(); w[i] = clamp(w[i] + d, lim[i].min, lim[i].max);
+      const c = cost(w); if (c < best - 1e-9) { best = c; v[i] = w[i]; moved = true; }
+    }
+    if (!moved) break;
+  }
+  fore.rotation.set(saveF[0], saveF[1], saveF[2]); hand.rotation.set(saveH[0], saveH[1], saveH[2]); fore.updateMatrixWorld(true);
+  keys.forEach((x, i) => { s[x] = v[i]; });
 }
 // two-bone reach: shoulder forward/out and elbow bend so the fist lands on the handle
 function solveIK(k, target, s) {
@@ -525,7 +572,7 @@ function buildFields() {
       const row = document.createElement('div'); row.className = 'row'; row.dataset.key = f.key;
       row.innerHTML = `<label><span>${f.label}</span><b></b></label><input type="range" min="${f.min}" max="${f.max}" step="${f.step}"><input type="number" min="${f.min}" max="${f.max}" step="${f.step}">`;
       const [rg, nb] = row.querySelectorAll('input');
-      const set = v => { if (!EDITABLE.has(cur)) return; const s = editSpec(); s[f.key] = clamp(+v, f.min, f.max); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); };
+      const set = v => { if (!EDITABLE.has(cur)) return; if (Math.abs(time - marks()[cur]) > 1e-6) { playing = false; time = marks()[cur]; updatePlay(); } const s = editSpec(); s[f.key] = clamp(+v, f.min, f.max); rebuild(); fillFields(); markCards(); poseNow(); refreshSoon(); };
       rg.addEventListener('input', () => set(rg.value)); nb.addEventListener('input', () => set(nb.value));
       rg.addEventListener('change', commit); nb.addEventListener('change', commit);
       rg.addEventListener('pointerdown', () => { sliding = true; });
@@ -627,7 +674,7 @@ let scrubbing = false;
 const scrubTo = e => { const r = $('bar').getBoundingClientRect(); time = clamp((e.clientX - r.left) / r.width, 0, 1) * marks().recover; playing = false; updatePlay(); };
 $('bar').addEventListener('pointerdown', e => { scrubbing = true; $('bar').setPointerCapture(e.pointerId); tc.detach(); grab = null; scrubTo(e); });
 $('bar').addEventListener('pointermove', e => { if (scrubbing) scrubTo(e); });
-$('bar').addEventListener('pointerup', () => { scrubbing = false; const s = sceneAt(time); if (Math.abs(marks()[s] - time) < 0.03) { cur = s; fillFields(); markCards(); } });
+$('bar').addEventListener('pointerup', () => { scrubbing = false; const m = marks(), s = sceneNear(time); if (s !== cur) { cur = s; fillFields(); markCards(); } if (Math.abs(m[s] - time) < 0.03) time = m[s]; need(); });
 
 // ---------- thumbnails, path and checks, a moment after an edit ----------
 // Thumbnails, the fist path and the joint check of every frame run a piece at a time between
@@ -692,7 +739,7 @@ function exportText() {
   const poses = {};
   for (const id of ['wind', 'load', 'strike', 'follow']) {
     const p = P[id], o = {};
-    for (const bn of ['armR', 'foreR', 'clawR', 'armL', 'foreL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn]);
+    for (const bn of ['armR', 'foreR', 'handR', 'clawR', 'armL', 'foreL', 'handL', 'clawL', 'spine', 'chest', 'head']) o[bn] = r3(p[bn]);
     o._hips = Math.round(p._hips * 100) / 100; poses[id] = o;
   }
   const scenes = {}; for (const id of ['wind', 'load', 'strike', 'follow']) scenes[id] = { auto: !!state.scenes[id].auto, spec: round(R[id]) };
@@ -729,6 +776,8 @@ $('toAuto').onclick = () => { state.scenes[cur] = cur === 'strike' ? { auto: fal
 function updatePlay() { $('play').textContent = playing ? '❚❚' : '▶'; need(); }
 $('play').onclick = () => { playing = !playing; if (playing) { tc.detach(); grab = null; if (time >= marks().recover - 1e-3) time = 0; } updatePlay(); };
 $('speed').onchange = () => {};
+const setFist = m => { fistMode = m; $('fMove').classList.toggle('on', m === 'move'); $('fTurn').classList.toggle('on', m === 'turn'); if (grab && /^fist/.test(grab.name)) select(grab.name); need(); };
+$('fMove').onclick = () => setFist('move'); $('fTurn').onclick = () => setFist('turn');
 $('tgHandles').onclick = e => { showHandles = !showHandles; e.target.classList.toggle('on', showHandles); handleMeshes.forEach(h => { h.visible = showHandles; }); if (!showHandles) { tc.detach(); grab = null; } };
 $('tgPath').onclick = e => { showPath = !showPath; e.target.classList.toggle('on', showPath); need(); };
 $('tgGhost').onclick = e => { showGhost = !showGhost; e.target.classList.toggle('on', showGhost); need(); };
@@ -787,6 +836,8 @@ window.editor = {
   // test hooks: what a drag on a fist or a joint does
   reach: (k, v) => { select('fist' + k); proxy.position.set(...v); onGizmo(); poseNow(); const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return [w.x, w.y, w.z].map(x => +x.toFixed(2)); },
   turn: (name, e) => { select(name); const h = HANDLE.find(x => x[0] === name); h[1].rotation.set(...e); onGizmo(); return round(R[cur]); },
+  turnFist: (k, e) => { setFist('turn'); select('fist' + k); B['hand' + k].rotation.set(...e); onGizmo(); const w = new THREE.Quaternion(); poseKey(kit, cur); kit.group.updateMatrixWorld(true); B['hand' + k].getWorldQuaternion(w); return { cur, q: w.toArray().map(x => +x.toFixed(3)) }; },
+  cur: () => cur,
   state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
 </script>
