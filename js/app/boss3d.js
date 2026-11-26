@@ -1442,7 +1442,7 @@ window.BossScene = (() => {
         const HOLD = sl.kind === 'charge' ? 0.55 : 0.32;
         // how far past each pose it goes: the overhead wind-up already sits at the shoulder's limit,
         // and the punch's rear arm and chest twist run out of room past 6% (joint-check, 26 Nov 2026)
-        const WX = sl.kind === 'slam' ? 1 : 1.08, OV = sl.kind === 'charge' ? 1.06 : 1.15;
+        const WX = sl.kind === 'slam' || sl.kind === 'sweep' ? 1 : 1.08, OV = sl.kind === 'charge' ? 1.06 : 1.15;
         const sAt = sl.h - K[2], holdAt = sAt - HOLD;
         const w = clamp((t - sl.s) / Math.max(0.2, holdAt - sl.s), 0, 1), after = t - sl.h;
         const rec = after > 0.45 ? smooth((after - 0.45) / 0.9) : 0;

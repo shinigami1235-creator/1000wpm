@@ -535,7 +535,24 @@ window.BossKit = (() => {
       // and the punch becomes a reach: the claw thrown open at the raid (Art's Data Erasure)
       base.idle = { chest: [0.16, 0, 0], head: [0.12, 0, 0], armL: [0.18, 0, -0.5], armR: [0.18, 0, 0.5], foreL: [-0.55, 0, 0], foreR: [-0.55, 0, 0], clawL: [0.55, 0, 0], clawR: [0.55, 0, 0], handL: [0, 0.4, 0], handR: [0, -0.4, 0] };
       for (const n of ['raise', 'slam', 'guard', 'coil']) base[n] = { ...base[n], clawL: [1.5, 0, 0], clawR: [1.5, 0, 0] };
-      base.reach = { chest: [0.35, 0.45, 0], spine: [0.15, 0.1, 0], armR: [-1.55, -0.15, 0.15], foreR: [-0.05, 0, 0], handR: [0.25, -0.5, 0], clawR: [-0.25, 0, 0], armL: [0.7, 0, -0.55], foreL: [-1.4, 0, 0], clawL: [1.3, 0, 0], head: [0.25, -0.35, 0], _hips: -0.6 };
+      // Attack poses with wide arcs (Gid, 26 Nov 2026: "they clip the arms and shoulders closer to the
+      // body. the arms arent really swinging"). Made with joint-check's bend() in body terms and checked:
+      //   coil   haymaker cocked: right upper arm out 80° and back 25°, elbow 95°, chest turned away 35°
+      //   punch  right arm straight out in front (flex 105°, elbow 5°), chest turned in 40°, left fist pulled back
+      //   pull   right arm straight out to the side and a little behind it (flex 90°, out 100°)
+      //   sweep  the same arm swung level across the front (flex 90°, 35° across): only z changes, so the
+      //          blend stays at shoulder height the whole way
+      //   raise  both arms up overhead and wide (flex 150°, out 30°), leaning back
+      //   slam   both arms straight down at the raid in front (flex 70°), bent over at the waist
+      Object.assign(base, {
+        coil: { armR: [0.436, 0, 1.396], foreR: [-1.658, 0, 0], armL: [-0.96, 0, -0.349], foreL: [-1.571, 0, 0], chest: [-0.12, -0.35, 0], spine: [-0.05, -0.2, 0], head: [0.05, 0.3, 0], clawR: [1.5, 0, 0], clawL: [1.5, 0, 0], _hips: -0.3 },
+        punch: { armR: [-1.833, 0, 0], foreR: [-0.087, 0, 0], armL: [0.524, 0, -0.524], foreL: [-1.745, 0, 0], chest: [0.25, 0.4, 0], spine: [0.1, 0.2, 0], head: [-0.1, -0.3, 0], clawR: [1.5, 0, 0], clawL: [1.5, 0, 0], _hips: -0.5 },
+        pull: { armR: [-1.571, 0, 1.745], foreR: [-0.262, 0, 0], armL: [-0.698, 0, -0.524], foreL: [-1.396, 0, 0], chest: [0, -0.4, 0], spine: [0, -0.25, 0], head: [0, 0.3, 0], _hips: -0.4 },
+        sweep: { armR: [-1.571, 0, -0.611], foreR: [-0.262, 0, 0], armL: [0.436, 0, -0.698], foreL: [-1.222, 0, 0], chest: [0.15, 0.45, 0], spine: [0.05, 0.25, 0], head: [0, -0.35, 0], _hips: -0.5 },
+        raise: { armR: [-2.618, 0, 0.524], foreR: [-0.436, 0, 0], armL: [-2.618, 0, -0.524], foreL: [-0.436, 0, 0], chest: [-0.3, 0, 0], spine: [-0.12, 0, 0], head: [-0.3, 0, 0], clawR: [1.5, 0, 0], clawL: [1.5, 0, 0], _hips: 0.5 },
+        slam: { armR: [-1.222, 0, 0.209], foreR: [-0.175, 0, 0], armL: [-1.222, 0, -0.209], foreL: [-0.175, 0, 0], chest: [0.55, 0, 0], spine: [0.28, 0, 0], head: [-0.45, 0, 0], clawR: [1.5, 0, 0], clawL: [1.5, 0, 0], _hips: -1.1 },
+        reach: { armR: [-1.833, 0, 0], foreR: [-0.087, 0, 0], armL: [0.524, 0, -0.524], foreL: [-1.745, 0, 0], chest: [0.25, 0.4, 0], spine: [0.1, 0.2, 0], head: [-0.1, -0.3, 0], clawR: [-0.25, 0, 0], clawL: [1.5, 0, 0], handR: [0.25, -0.5, 0], _hips: -0.5 },
+      });
       base.beam = { ...base.beam, clawL: [-0.3, 0, 0], clawR: [-0.3, 0, 0] };
       base.roar = { ...base.roar, clawL: [-0.35, 0, 0], clawR: [-0.35, 0, 0] };
     }
