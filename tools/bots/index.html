@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stormtyper bots</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --bg: #070908; --ink: #dfe8e2; --dim: #8a978f; --line: #1f2a24; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #bar { position: fixed; left: 12px; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #bar button { background: #111714; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
+  #bar button.on { border-color: currentColor; }
+  #bar .sw { width: 30px; height: 30px; padding: 0; border-radius: 50%; }
+  .tag { position: fixed; transform: translate(-50%, 0); text-align: center; white-space: nowrap; pointer-events: none; text-transform: uppercase; letter-spacing: .08em; }
+  .tag b { display: block; font-size: 15px; }
+  .tag span { font-size: 11px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="tags"></div>
+<div id="bar">
+  <span id="cols"></span>
+  <button data-f="">Own face</button><button data-f="happy">Happy</button><button data-f="angry">Angry</button><button data-f="hurt">Hurt</button><button data-f="heart">Heart</button>
+  <button id="hit">Hit them</button>
+</div>
+<script type="module">
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const THREE = { ...T, RoundedBoxGeometry };
+const KIT_URL = '../../js/app/botkit.js';
+await new Promise((ok, no) => { const s = document.createElement('script'); s.src = KIT_URL; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(1.5, devicePixelRatio)); view.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#070908');
+scene.add(new THREE.HemisphereLight('#dfe8ff', '#1a1e24', 1.6));
+const key = new THREE.DirectionalLight('#ffffff', 2.6); key.position.set(4, 8, 9); scene.add(key);
+const back = new THREE.DirectionalLight('#9fdcff', 1.4); back.position.set(-6, 4, -8); scene.add(back);
+const grid = new THREE.GridHelper(80, 40, '#1d2a22', '#121a15'); grid.position.y = -2.4; scene.add(grid);
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200); camera.position.set(0, 2.6, 19); camera.lookAt(0, 0.2, 0);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.22, 0.78)); composer.addPass(new OutputPass());
+
+const COLS = { Lime: '#8cff58', Ice: '#5cc8ff', Amber: '#ffb000', Violet: '#b48cff' };
+let colour = COLS.Lime, faceOverride = '', bots = [];
+const ids = Object.keys(BotKit.BOTS);
+function build() {
+  bots.forEach(b => b.dispose()); bots = [];
+  document.getElementById('tags').innerHTML = '';
+  ids.forEach((id, i) => {
+    const b = BotKit.create(THREE, id, { color: colour });
+    b.group.position.set((i - 2.5) * 3.1, 0, 0); b.group.rotation.y = -0.35; scene.add(b.group); bots.push(b);
+    const tag = document.createElement('div'); tag.className = 'tag'; tag.innerHTML = `<b style="color:${colour}">${b.name}</b><span>${b.role} · ${b.division}</span>`;
+    document.getElementById('tags').appendChild(tag); b.tag = tag;
+  });
+}
+build();
+const cols = document.getElementById('cols');
+for (const [n, c] of Object.entries(COLS)) { const bt = document.createElement('button'); bt.className = 'sw'; bt.style.background = c; bt.title = n; bt.onclick = () => { colour = c; build(); }; cols.appendChild(bt); }
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { faceOverride = b.dataset.f; });
+let tNow = 0;
+document.getElementById('hit').onclick = () => bots.forEach((b, i) => b.hit(new THREE.Vector3(i % 2 ? 1 : -1, 0, 0.3), tNow));
+
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.fov = w / h < 1.2 ? 52 : 30; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const v = new THREE.Vector3();
+function draw(t, dt) {
+  tNow = t;
+  bots.forEach((b, i) => {
+    b.update(t, dt, { face: faceOverride || undefined });
+    b.group.rotation.y = -0.35 + Math.sin(t * 0.4 + i) * 0.25;
+    v.copy(b.group.position).setY(-1.9).project(camera);
+    b.tag.style.left = ((v.x + 1) / 2 * view.clientWidth) + 'px'; b.tag.style.top = ((1 - v.y) / 2 * view.clientHeight) + 'px';
+  });
+  composer.render();
+}
+const clock = new THREE.Clock();
+let auto = true;
+renderer.setAnimationLoop(() => { if (auto) draw(clock.getElapsedTime(), clock.getDelta()); });
+// for recording: stop the clock and draw a given time
+window.botView = { at: (t, f, hitAt) => { auto = false; faceOverride = f || ''; if (hitAt != null && t >= hitAt && t < hitAt + 0.02) bots.forEach((b, i) => b.hit(new THREE.Vector3(i % 2 ? 1 : -1, 0, 0.3), hitAt)); draw(t, 1 / 30); return renderer.domElement.toDataURL('image/jpeg', 0.92); }, cam: (p, l) => { camera.position.set(...p); camera.lookAt(...l); } };
+window.ready = true;
+</script>
+</body>
+</html>

@@ -98,7 +98,7 @@
       <div class="grp">
         <span id="aimGrp" hidden style="display:contents"><button data-aim="-1">Aim: your left</button><button data-aim="0" class="on">Aim: middle</button><button data-aim="1">Aim: your right</button></span></div>
       <div class="grp"><button id="fMove" class="on" title="Drag the fist and the arm reaches for it">Fist: move</button><button id="fTurn" title="Turn the fist with the forearm and wrist">Fist: turn</button></div>
-      <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button><button id="tgSmooth" title="One smooth curve through all the scenes, so frames between scenes follow the scenes around them">Smooth through scenes</button>
+      <div class="grp"><button id="tgHandles" class="on">Handles</button><button id="tgPath" class="on">Fist path</button><button id="tgGhost" class="on">Ghost of the scene before</button><button id="tgBots" class="on" title="Two operator bots in each group, so you can see what the attack hits">Raid bots</button><button id="tgSmooth" title="One smooth curve through all the scenes, so frames between scenes follow the scenes around them">Smooth through scenes</button>
       </div>
     </div>
     <div id="between" hidden></div>
@@ -141,7 +141,7 @@ import { bossSpec } from './bossrig.js';
 const KIT_URL = '../../js/app/bosskit.js';
 const THREE = { ...T, RoundedBoxGeometry };
 window.Theme = window.Theme || { hex: () => '#39ff88' };
-for (const src of [KIT_URL, KIT_URL.replace('bosskit.js', 'cannonfx.js')]) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+for (const src of [KIT_URL, KIT_URL.replace('bosskit.js', 'cannonfx.js'), KIT_URL.replace('bosskit.js', 'botkit.js')]) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 // the idle pose's own wrist turn, and forearm roll: a machine's forearm can turn the whole way round
@@ -650,6 +650,40 @@ scene.add(cfx.group);
 const fxClock = new THREE.Clock();
 let fxOn = false, fxActive = false, fxT = null;   // fxT: a fixed effect clock, for recording
 const muzzle = new THREE.Vector3(), aimDir = new THREE.Vector3();
+
+// the raid: two operator bots per group (js/app/botkit.js). With the cannon, the group it aims at
+// scatters out of the target ring; the second bot there goes late and gets clipped by the beam
+const RAID = [['orbit', -1, -1.3, '#8cff58'], ['nova', -1, 1.3, '#5cc8ff'], ['pixel', 0, -1.3, '#ffb000'], ['beep', 0, 1.3, '#b48cff'], ['kite', 1, -1.3, '#5cc8ff'], ['raze', 1, 1.3, '#8cff58']];
+const bots = RAID.map(([id, g, dx, col]) => { const b = BotKit.create(THREE, id, { color: col, scale: 1 }); b.g = g; b.dx = dx; scene.add(b.group); return b; });
+let showBots = true;
+const smooth01 = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+function botAt(b, t) {
+  const home = new THREE.Vector3(b.g * GROUP_X + b.dx, 2.6, raid.position.z + (b.dx > 0 ? 0.6 : -0.4));
+  if (!DEF.aim || b.g !== aimAt) return { p: home, hitT: null };
+  const m = marks(), shot = m.fire - state.timing.shot, back = m.fire + state.timing.freeze + 0.5;
+  const late = b.dx > 0, side = Math.sign(b.dx) || 1;
+  const go = late ? shot - 0.05 : shot - 0.45;
+  const out = home.clone().add(new THREE.Vector3(side * (late ? 1.6 : 3.4), 0.6, 1.2));
+  const p = home.clone().lerp(out, smooth01((t - go) / 0.28) * (1 - smooth01((t - back) / 0.9)));
+  return { p, hitT: late ? shot + state.timing.shot * 0.6 : null };
+}
+function updateBots() {
+  bots.forEach(b => { b.group.visible = showBots; });
+  if (!showBots) return;
+  const ft = fxT == null ? fxClock.getElapsedTime() : fxT;
+  for (const b of bots) {
+    const a = botAt(b, time), a0 = botAt(b, time - 1 / 30), side = Math.sign(b.dx) || 1;
+    b.group.position.copy(a.p);
+    const dir = new THREE.Vector3(side, 0, 0.8).normalize();
+    if (a.hitT != null && time >= a.hitT) {
+      const since = time - a.hitT;
+      b.group.position.addScaledVector(dir, 2.4 * (1 - Math.pow(1 - clamp(since / 0.35, 0, 1), 3)) * (1 - smooth01((since - 1.1) / 0.9)));
+      b.hit(dir, ft - since);
+    } else b.hit(dir, -1e9);
+    b.group.rotation.y = Math.atan2(-b.group.position.x, -b.group.position.z) + (b.dx > 0 ? 0.45 : -0.45);
+    b.update(ft, 1 / 30, { vel: a.p.clone().sub(a0.p).multiplyScalar(30) });
+  }
+}
 // where the shot goes: a line from the orb along the forearm while the cannon is up
 const aimLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: '#ff4a64', dashSize: 0.8, gapSize: 0.5, transparent: true, opacity: 0.8 }));
 aimLine.visible = false; scene.add(aimLine);
@@ -669,7 +703,8 @@ function setOrb(x) {
   B.handR.localToWorld(muzzle.set(0, -S.fist * 1.25, 0));
   const e = new THREE.Vector3(), w = new THREE.Vector3(); B.foreR.getWorldPosition(e); B.handR.getWorldPosition(w);
   aimDir.copy(w).sub(e).normalize();
-  cfx.update({ phase: x.fx, u: x.fu, t: fxT == null ? fxClock.getElapsedTime() : fxT, at: muzzle, dir: aimDir });
+  // the shot lands on the group it aims at
+  cfx.update({ phase: x.fx, u: x.fu, t: fxT == null ? fxClock.getElapsedTime() : fxT, at: muzzle, dir: aimDir, target: DEF.aim ? new THREE.Vector3(aimAt * GROUP_X, 0, raid.position.z) : null });
 }
 function poseKey(target, id) {
   const Pk = P[id], Bt = target.bones;
@@ -1046,6 +1081,7 @@ function refresh() { job = refreshJob(); while (job && !job.next().done); job = 
 const tcam = new THREE.PerspectiveCamera(32, 320 / 220, 0.1, 300); tcam.position.set(-16, 12, 25); tcam.lookAt(0, 10, 3);
 function renderThumb(id) {
   const vis = [tc.getHelper().visible, path.visible, keyDots.visible, ghost.group.visible];
+  bots.forEach(b => { b.group.visible = false; });
   tc.getHelper().visible = path.visible = keyDots.visible = ghost.group.visible = false;
   handleMeshes.forEach(h => { h.visible = false; }); bendArrows.forEach(a => { a.visible = false; });
   const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
@@ -1154,6 +1190,7 @@ const setFist = m => { fistMode = m; $('fMove').classList.toggle('on', m === 'mo
 $('fMove').onclick = () => setFist('move'); $('fTurn').onclick = () => setFist('turn');
 $('tgHandles').onclick = e => { showHandles = !showHandles; e.target.classList.toggle('on', showHandles); handleMeshes.forEach(h => { h.visible = showHandles; }); if (!showHandles) { tc.detach(); grab = null; } };
 $('tgPath').onclick = e => { showPath = !showPath; e.target.classList.toggle('on', showPath); need(); };
+$('tgBots').onclick = () => { showBots = !showBots; $('tgBots').classList.toggle('on', showBots); need(); };
 $('tgSmooth').onclick = () => { store.smooth = !store.smooth; $('tgSmooth').classList.toggle('on', store.smooth); commit(); refreshSoon(); need(); };
 $('tgGhost').onclick = e => { showGhost = !showGhost; e.target.classList.toggle('on', showGhost); need(); };
 document.querySelectorAll('#cams button').forEach(b => b.onclick = () => setCam(b.dataset.cam));
@@ -1174,6 +1211,7 @@ function poseNow() {
   if (onKey) poseKey(kit, cur); else poseAt(kit, time);
   kit.group.updateMatrixWorld(true);
   setOrb(onKey ? (cur === 'charge' ? { fx: 'grow', fu: 0.85 } : null) : at(time));
+  updateBots();
   if (grab && grab.kind === 'ik' && !tc.dragging) grab.bone.localToWorld(proxy.position.set(0, -S.fist * 0.5, 0));
 }
 const clock = new THREE.Clock();
@@ -1188,7 +1226,7 @@ function frame() {
     else { time += dt * +$('speed').value; if (time > m.recover) { time = 0; pauseLeft = 0.6; } }
   }
   orbit.update();
-  if (!dirty && !playing && !fxActive) return;
+  if (!dirty && !playing && !fxActive && !showBots) return;
   dirty = false;
   $('head').style.left = (time / m.recover * 100) + '%'; $('clock').textContent = time.toFixed(2) + ' s';
   poseNow(); dirty = false;
