@@ -904,7 +904,7 @@ window.BossScene = (() => {
           let d = bossYaw - rel - orbit.phi; d = Math.atan2(Math.sin(d), Math.cos(d));
           if (Math.abs(d) < 1.0) d += Math.sign(d || 1) * 1.0;
           d = clamp(d, -2.6, 2.6);
-          orbit.sw = { from: orbit.phi, to: orbit.phi + d, t0: t, dur: 1.5 + Math.abs(d) * 0.55 };
+          orbit.sw = { from: orbit.phi, to: orbit.phi + d, t0: t, dur: 1.1 + Math.abs(d) * 0.45 };
           orbit.next = t + orbit.sw.dur + rnd(6, 10);
           if (Math.random() < 0.3) orbit.drift = -orbit.drift;
         } else if (!hold) orbit.phi += orbit.drift * dt;
@@ -914,37 +914,83 @@ window.BossScene = (() => {
       orbit.lag = (orbit.lag - (orbit.phi - prev) * 0.75) * Math.exp(-dt * 0.9);
       env.rotation.y = -orbit.phi;
     }
-    // cutaways: a short shot from another angle on a stagger, a phase change or the kill, never
-    // while an attack is winding up
-    const cut = { at: -9, len: 0, pos: new V(), look: new V(), kind: '', x: null };
-    function cutaway(kind, len = 1.5, x = null) {
-      if (reduce || !BOT) return;
-      const t = nowS(), sl = own(t);
-      if (sl && !sl.cut && t < sl.h + 0.3) return;
-      if (locks.some(l => l.slot === RAID && t < l.h + 0.3)) return;
-      if (t < cut.at + cut.len + 2) return;
-      cut.at = t; cut.len = len; cut.kind = kind; cut.x = x;
+    // ---------- the camera director (Gid, 27 Nov 2026: Final Fantasy XVI and Asura's Wrath) ----------
+    // Big moments play a short sequence of shots instead of one cutaway: a hard cut to a close-up of
+    // your bot in slow motion, then a hard cut to a wide shot as the hit lands; a low shot from behind
+    // the boss's back as the squad charges it, then over your bot's shoulder as the blast goes in; a
+    // crane up from the floor to show the boss's size on a phase change; a slow-motion pass as your bot
+    // rolls out of a lock-on. Each shot is a moving camera (it dollies, cranes or orbits), not a still.
+    // Nothing plays while an attack winds up at your squad, and a sequence running when one starts
+    // cuts straight back. Reduce motion keeps the fixed view.
+    const seq = { shots: null, at: -9, x: null, pri: 0, end: -9, idx: -1, kind: '' };
+    const bF = new V(), bS = new V(), tB = new V();
+    function bossFrame() { const a = root.rotation.y; bF.set(Math.sin(a), 0, Math.cos(a)); bS.set(bF.z, 0, -bF.x); }
+    function toBoss(y) { return tB.copy(root.position).sub(y).setY(0).normalize(); }
+    const CLOSE = { len: 0.6, slow: 0.6, cut: 1, f: (u, o, l) => {          // your bot's face, pushing in
+      const y = raidPos[RAID]; toBoss(y);
+      o.copy(y).addScaledVector(tB, 3.8 - 0.8 * ease(u)); o.x += tB.z * 1.3; o.z -= tB.x * 1.3; o.y = y.y + 0.6; l.copy(y); l.y += 0.15; } };
+    const WIDE_HIT = { len: 1.05, slow: 0.35, cut: 1, f: (u, o, l) => {     // side on to the boss as it's hit
+      bossFrame(); const sd = bS.dot(tB.copy(camera.position).sub(root.position)) > 0 ? 1 : -1;
+      o.copy(root.position).addScaledVector(bS, sd * (22 - 3.5 * u)).addScaledVector(bF, 4); o.y = 4.5 + 1.2 * u; l.copy(anchorCore); } };
+    const BACK_LOW = { len: 1.25, cut: 1, f: (u, o, l) => {                 // low behind its back, craning up, the squad coming at it
+      bossFrame(); o.copy(root.position).addScaledVector(bF, -15 + 2 * u).addScaledVector(bS, 6); o.y = 1 + 3.5 * smooth(u);
+      l.copy(anchorHead); l.y -= 2; } };
+    const SHOULDER = { len: 0.95, slow: 0.5, cut: 1, f: (u, o, l) => {     // over your bot's shoulder as the blast goes in
+      const y = raidPos[RAID]; toBoss(y);
+      o.copy(y).addScaledVector(tB, -4.6 + 1.2 * u); o.x += tB.z * 1.5; o.z -= tB.x * 1.5; o.y = y.y + 2.2; l.copy(anchorCore).lerp(anchorHead, 0.4); } };
+    const CLASH = { len: 0.7, slow: 0.5, cut: 1, f: (u, o, l) => {          // low behind your barrier as the blow smashes into it
+      o.copy(aim); o.x += 6; o.y = 2 + 0.8 * u; o.z += 9 - 1.5 * u; l.copy(aim); l.y = 5; l.z -= 5; } };
+    const CAM_SHOTS = {
+      strike: [CLOSE, WIDE_HIT],
+      back: [BACK_LOW, SHOULDER],
+      block: [CLASH, WIDE_HIT],
+      dodge: [{ len: 0.8, slow: 0.8, cut: 1, f: (u, o, l) => {             // beside your bot as the shot passes
+        const y = raidPos[RAID]; toBoss(y);
+        o.copy(y).addScaledVector(tB, -1.2 - 0.8 * u); o.x += tB.z * 3.2; o.z -= tB.x * 3.2; o.y = y.y + 0.4; l.copy(y).lerp(anchorCore, 0.15); } }],
+      scale: [{ len: 2.4, cut: 0, f: (u, o, l) => {                        // from the floor in front of it, craning up and back
+        bossFrame(); o.copy(root.position).addScaledVector(bF, 8 + 9 * u).addScaledVector(bS, 2.5); o.y = 0.6 + 5.5 * smooth(u); l.copy(anchorHead); } }],
+      over: [{ len: 1.3, cut: 1, f: (u, o, l) => {                         // side on to the boss and the squad it's going after
+        const x = seq.x, b = root.position; if (!x) return;
+        const a = x.at; v4.set(a.x - b.x, 0, a.z - b.z); const d = v4.length(); v4.normalize();
+        const sd = (v4.x * camBase.z - v4.z * camBase.x) > 0 ? -1 : 1, r = d * 0.9 + 12 - 2 * u;
+        o.set((a.x + b.x) / 2 + v4.z * sd * r, 7.5 - u, (a.z + b.z) / 2 - v4.x * sd * r); l.set((a.x + b.x) / 2, 5.5, (a.z + b.z) / 2); } }],
+      dive: [{ len: 1.8, cut: 0, f: (u, o, l) => {                         // riding behind your bot as your squad dives in
+        const y = raidPos[RAID], b = root.position; v4.set(y.x - b.x, 0, y.z - b.z).normalize();
+        o.set(y.x + v4.x * 3.4 + v4.z * 1.2, y.y + 1.4, y.z + v4.z * 3.4 - v4.x * 1.2); l.copy(anchorHead); } }],
+      kill: [{ len: 3.6, slow: 1, cut: 0, f: (u, o, l) => {                // a slow orbit round it as it comes apart
+        const a = ease(u) * 1.4 + 0.4; o.set(root.position.x + Math.sin(a) * 19, 5.5 + 2 * u, root.position.z + Math.cos(a) * 19); l.copy(anchorCore); } }],
+    };
+    function windingUp(t) {
+      const sl = own(t);
+      return !!(sl && !sl.cut && t > sl.h - 1.8 && t < sl.h) || locks.some(l => l.slot === RAID && !l.fired && t > l.h - 1.8);
     }
-    function cutPose(out, look) {
-      const b = root.position, side = cut.kind === 'side' ? 1 : cut.kind === 'low' ? -1 : 0.6;
-      if (cut.kind === 'over' && cut.x) {
-        // side on to the boss and the squad it's going after, both in frame
-        const a = cut.x.at; v4.set(a.x - b.x, 0, a.z - b.z); const d = v4.length(); v4.normalize();
-        const sd = (v4.x * camera.position.z - v4.z * camera.position.x) > 0 ? -1 : 1;   // the side nearer the usual view
-        out.set((a.x + b.x) / 2 + v4.z * sd * (d * 0.9 + 12), 7.5, (a.z + b.z) / 2 - v4.x * sd * (d * 0.9 + 12));
-        look.set((a.x + b.x) / 2, 5.5, (a.z + b.z) / 2);
-        return out;
-      }
-      if (cut.kind === 'dive') {
-        // riding behind your bot as your squad dives in
-        const y = raidPos[RAID]; v4.set(y.x - b.x, 0, y.z - b.z).normalize();
-        out.set(y.x + v4.x * 3.4 + v4.z * 1.2, y.y + 1.4, y.z + v4.z * 3.4 - v4.x * 1.2); look.copy(anchorHead);
-        return out;
-      }
-      if (cut.kind === 'side') { out.set(b.x + 17, 6.5, b.z + 5); look.copy(anchorCore); }
-      else if (cut.kind === 'low') { out.set(b.x - 9, 1.4, b.z + 12); look.copy(anchorHead); }
-      else { out.copy(aim); out.x += 4.5 * side; out.y -= 0.8; out.z += 6; look.copy(anchorHead); }   // from among the raid, looking up
-      return out;
+    function play(kind, x = null, pri = 1) {
+      if (reduce || !BOT) return false;
+      const t = nowS(), shots = CAM_SHOTS[kind]; if (!shots) return false;
+      if (kind !== 'dodge' && kind !== 'kill' && windingUp(t)) return false;
+      if (seq.shots && pri <= seq.pri) return false;
+      if (!seq.shots && t < seq.end + 1.2 && pri < 3) return false;
+      seq.shots = shots; seq.at = t; seq.x = x; seq.pri = pri; seq.idx = -1; seq.kind = kind;
+      seq.end = t + shots.reduce((a, z) => a + z.len, 0);
+      return true;
+    }
+    const cutaway = (kind, len, x) => play(kind, x, 1);
+    // where the director puts the camera this frame: blends v3/v4 into camera.position and vG; returns how much
+    function direct(t) {
+      if (!seq.shots) return 0;
+      if (seq.kind !== 'dodge' && seq.kind !== 'kill' && windingUp(t)) { seq.shots = null; return 0; }
+      const e = t - seq.at; let acc = 0, sh = null, idx = -1;
+      for (let i = 0; i < seq.shots.length; i++) { if (e < acc + seq.shots[i].len) { sh = seq.shots[i]; idx = i; break; } acc += seq.shots[i].len; }
+      if (!sh) { seq.shots = null; return 0; }
+      if (idx !== seq.idx) { seq.idx = idx; if (sh.slow && !reduce) slowUntil = Math.max(slowUntil, performance.now() + sh.slow * 1000); }
+      const u = (e - acc) / sh.len;
+      sh.f(u, v3, v4);
+      let k = sh.cut || idx > 0 ? 1 : smooth(Math.min(1, (e - acc) / 0.3));
+      if (idx === seq.shots.length - 1) k *= smooth(Math.min(1, (1 - u) * sh.len / 0.3));
+      // a little hand-held drift on every shot
+      v3.x += Math.sin(t * 2.3) * 0.06; v3.y += Math.sin(t * 1.9 + 1) * 0.05;
+      camera.position.lerp(v3, k); vG.lerp(v4, k);
+      return k;
     }
     let baseFov = 40;
     function fit() {
@@ -1052,7 +1098,7 @@ window.BossScene = (() => {
       for (const a of adds) if (a.on && a.dying < 0) a.dying = nowS();
       tele.visible = teleFill.visible = false; beam.visible = false; sweepBar.visible = false; charge = 0;
       if (!instant && up) {
-        roarAt = nowS(); cutaway('side', 1.6);
+        roarAt = nowS(); play('scale', null, 2);
         shake = Math.max(shake, 0.9);
         wave(root.position, 2, 30, 1.6, pal.a, 0.8);
         scatter(70, 1.4);
@@ -1221,6 +1267,7 @@ window.BossScene = (() => {
         wave(v1.copy(aim).setY(0.3), 0.4, 14, 0.7, CYAN, 0.9);
         if (!reduce) slowUntil = Math.max(slowUntil, performance.now() + 260);
         setTimeout(() => { if (!dead) stagger(); }, 90);
+        play('block', null, 3);
       }
       // the ones who didn't block it go flat
       { const t = nowS(), pk = (x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25) * (you ? 0.3 : 1);
@@ -1284,7 +1331,7 @@ window.BossScene = (() => {
         if (t > l.h + 0.7) { locks.splice(i, 1); continue; }
         if (!l.fired) {
           if (t < l.h - 0.3) l.at.copy(p);
-          if (l.outcome === 'dodge' && !l.rolled && t >= l.h - 0.28 && flight) { l.rolled = true; flight.roll(l.slot, t); }
+          if (l.outcome === 'dodge' && !l.rolled && t >= l.h - 0.28 && flight) { l.rolled = true; flight.roll(l.slot, t); if (l.slot === RAID) play('dodge', null, 3); }
           if (t >= l.h) {
             l.fired = true; zapAt = t; zapFrom.copy(anchorHead);
             if (l.outcome === 'cover') {
@@ -1518,7 +1565,7 @@ window.BossScene = (() => {
     }
     function stagger() {
       if (flight) flight.strike(nowS());
-      cutaway(Math.random() < 0.5 ? 'low' : 'side', 1.4);
+      if (seq.kind !== 'block' || !seq.shots) play(Math.random() < 0.5 ? 'strike' : 'back', null, 2);
       recoilV -= 2.6; headJerk = 1; reelAt = nowS(); jolt = 0;
       adv = Math.max(0, adv - 0.45);
       if (!reduce) mv.z -= 1.6;
@@ -1615,13 +1662,13 @@ window.BossScene = (() => {
         shieldF = f;
       }
     }
-    function setWeak(on) { if (on && !weakOn && flight) flight.strike(nowS()); weakOn = on; }
+    function setWeak(on) { if (on && !weakOn) { if (flight) flight.strike(nowS()); play('back', null, 2); } weakOn = on; }
 
     function defeat(instant) {
       if (dead) return;
       if (fx) fx.clear();
       dead = true; deadAt = nowS(); deadT = instant ? 9 : 0; won = true;
-      if (!instant) { cut.at = -9; cutaway('raid', 3.2); }
+      if (!instant) play('kill', null, 9);
       if (!instant && !reduce) slowUntil = performance.now() + 450;
       threatK = 0;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
@@ -2388,14 +2435,11 @@ window.BossScene = (() => {
       lookCur.lerp(v1, Math.min(1, dt * 2));
       if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.4); }
       else vG.copy(lookCur);
-      const cu = t - cut.at;
-      if (cu >= 0 && cu < cut.len) {
-        const k = smooth(Math.min(cu / 0.18, (cut.len - cu) / 0.25, 1));
-        cutPose(v3, v4); camera.position.lerp(v3, k); vG.lerp(v4, k);
-      }
+      const shotK = direct(t);
       camera.lookAt(vG);
-      if (orbit.w && !(cu >= 0 && cu < cut.len)) camera.rotateZ(clamp(-orbit.w * 0.13, -0.15, 0.15));
-      const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK);
+      // banking into a swing, and a slow hand-held roll the rest of the time
+      if (!reduce) camera.rotateZ((1 - shotK) * (clamp(-orbit.w * 0.13, -0.15, 0.15) + Math.sin(t * 0.53) * 0.006 + Math.sin(t * 1.7) * 0.003));
+      const fov = baseFov * (1 - 0.12 * adv * still * (1 - shotK)) * (1 - 0.3 * threatK * (1 - shotK)) * (1 + 0.1 * orbit.k) * (1 - 0.12 * shotK);
       // the barrier in front of the raid while your block waits for the blow, cracking when it lands
       {
         const bx = blocked.size ? evs.find(z => z.type === 'slam' && !z.side && z.blocked && t < z.h + 0.35 && !z.cut) : null;
@@ -2485,6 +2529,7 @@ window.BossScene = (() => {
       const from = orbPos(new V());
       act('you', 'cast');
       if (flight) { if (tier >= 3 && power >= 0.6) flight.strike(nowS()); else if (tier >= 1) flight.strafe(RAID, nowS()); }
+      if (tier >= 3 && power >= 0.6) play(Math.random() < 0.6 ? 'strike' : 'back', null, 2);
       const ti = -2, sh = shieldF !== null;   // a release always goes for the core
       fx.release(tier, power, from, out => aimAt(ti, sh, from, out), at => {
         recoilV -= 0.3 + 1.4 * power;
