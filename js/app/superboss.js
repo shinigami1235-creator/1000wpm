@@ -120,7 +120,7 @@
       if (s.status === 'countdown') { c.hidden = false; const n = Math.ceil(s.countdown / 1000); if (c.dataset.n !== String(n)) { c.dataset.n = n; c.textContent = n || 'Go'; c.classList.remove('beat'); void c.offsetWidth; c.classList.add('beat'); } }
       else c.hidden = true;
       paintTargets();
-      if (B.id === 'compiler') paintCode(); else a('code').hidden = true;
+      if (B.id === 'compiler' && s.status !== 'won' && s.status !== 'lost') paintCode(); else a('code').hidden = true;
     }
     function paintTargets() {
       const typed = s.typed || '';
@@ -153,7 +153,7 @@
           e = document.createElement('div');
           const sp = x.spell && Combat.spell(x.spell);
           e.className = `sb-chip ${x.kind}${sp ? ' r' + sp.rarity : ''}`;
-          e.innerHTML = `<small>${x.kind === 'block' ? ({ breath: 'Block the breath', overflow: 'Block the overflow', lunge: 'Block the lunge', sweep: 'Block the tail sweep' })[x.attack] || 'Block' : x.kind === 'crowd' ? 'Crowd spell' : 'Spell'}</small><b></b><i class="sb-tbar"><i></i></i>`;
+          e.innerHTML = `<small>${x.kind === 'block' ? ({ breath: 'Block the breath', overflow: 'Block the overflow', lunge: 'Block the lunge', sweep: 'Block the tail sweep', slam: 'Block the wave', laser: 'Block the laser', breach: 'Block the breach' })[x.attack] || 'Block' : x.kind === 'crowd' ? 'Crowd spell' : 'Spell'}</small><b></b><i class="sb-tbar"><i></i></i>`;
           if (sp) e.style.setProperty('--sc', sp.color);
           a('attacks').append(e);
           chips.set(x.id, e);
@@ -263,7 +263,7 @@
       scene.event(n, d);
       if (n === 'miss' || n === 'fizzle') missed = true;
       if (n === 'hit') {
-        const name = d.src === 'spell' ? (Combat.spell(d.spell) || {}).word : d.src === 'sever' ? 'head cut' : d.src === 'weak' ? 'weak point' : d.src === 'packet' ? 'packet back' : d.src === 'fix' ? 'bug fix' : d.word;
+        const name = d.src === 'spell' ? (Combat.spell(d.spell) || {}).word : d.src === 'sever' ? 'head cut' : d.src === 'weak' ? 'weak point' : d.src === 'packet' ? 'packet back' : d.src === 'fix' ? 'bug fix' : d.src === 'counter' ? 'counter' : d.word;
         addTick(d.amount, name || '', d.src, d.crit);
       }
       if (n === 'phase') {
@@ -414,7 +414,7 @@
     const A = window.SuperAudio;
     const cs = window.Combat && Combat.Audio ? Combat.Audio.create({ ctx: () => A.combat().ac, out: () => A.combat().bus, on: () => A.on }) : null;
     const c = (n, x) => { if (cs) cs.play(n, x); };
-    let boss = 'hydra', lastCount = -1;
+    let boss = 'hydra', lastCount = -1, lastS = null;
     function event(n, d, snap) {
       switch (n) {
         case 'hit':
@@ -422,6 +422,7 @@
           else if (d.src === 'sever') A.play('sever');
           else if (d.src === 'weak') A.play('weak');
           else if (d.src === 'packet') A.play('packet');
+          else if (d.src === 'counter') A.play('counter');
           else if (d.crit) A.play('crit');
           else { A.play('hit', d.tier || 0); if (d.tier >= 1) c('shot' + Math.min(4, d.tier)); }
           break;
@@ -434,7 +435,14 @@
         case 'hurt': A.play('hurt'); break;
         case 'shielded': A.play('shielded'); break;
         case 'block': A.play('block'); break;
-        case 'windup': if (d.kind !== 'spit') A.play('windup', d.ms); else A.play('weakOpen'); break;
+        case 'windup':
+          if (d.kind === 'spit' || d.kind === 'bomb') A.play('weakOpen');
+          else if (d.kind === 'slam') A.play('windupSlam', d.ms);
+          else if (d.kind === 'laser') A.play('windupLaser', d.ms);
+          else if (d.kind === 'breach') A.play('windupBreach', d.ms);
+          else A.play('windup', d.ms);
+          break;
+        case 'key': if (d.finish && d.good) A.play('key', lastS && lastS.typed ? lastS.typed.length : 0); break;
         case 'attack': if (d.kind === 'bite') A.play('bite'); if (d.kind === 'mend') A.play('mend'); break;
         case 'regrow': A.play('regrow'); break;
         case 'neck': if (d.on) A.play('neck'); break;
@@ -458,7 +466,7 @@
       void snap;
     }
     function state(s) {
-      boss = s.boss;
+      boss = s.boss; lastS = s;
       if (s.status === 'countdown') { const n = Math.ceil(s.countdown / 1000); if (n !== lastCount && n > 0) { lastCount = n; A.play('count', false); } }
       else lastCount = -1;
     }
@@ -731,7 +739,7 @@
 
     // test hooks
     window._sb = {
-      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(),
+      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(), bench: n => arena.scene.bench(n), cam: (p, l, f) => arena.scene.cam(p, l, f), model: () => arena.scene.model(),
       phase: n => fight.debug.phase(n), hp: f => fight.debug.hp(f), finish: ms => fight.debug.finish(ms), enrage: () => fight.debug.enrage(),
       support: (id, buyer) => fight.support(id, buyer || 'nova_k'), combo: n => fight.debug.combo(n), offer: ids => fight.debug.offer(ids), crowd: () => fight.debug.crowd(),
       artHp: n => fight.debug.artHp(n), type: s => { for (const ch of s) fight.char(ch); },

@@ -17,12 +17,16 @@ Superboss is the mode Art streams: he fights one of three bosses live while his 
 | `js/app/sb-bot.js` | `SuperBot.create()`: a simulated typist that reads snapshots and types into a fight |
 | `js/app/sb-stream.js` | `SuperStream`: the messages below, the simulated chat and the simulated viewers |
 | `js/app/sb-audio.js` | `SuperAudio`: music beds, sound effects and stingers made in code, the buses and the ducking |
-| `js/app/sb-scene.js` | `SuperScene`: the three arenas in three.js, with `Combat.FX` for spells |
+| `js/app/sb-scene.js` | `SuperScene`: the stage (light, fog, mist, light shafts, dust, the floor with light streaks), post, hit feel and the camera, with `Combat.FX` for spells |
+| `js/app/sb-kit.js` | `SuperKit`: armour materials with panel seams and a rim light, geometry builders, the environment map, and the pooled effects (sparks, beams, rings, floor telegraphs, orbs, a flash light) |
+| `js/app/sb-hydra.js`, `sb-compiler.js`, `sb-leviathan.js` | `SuperModels`: each boss's body, props, actions, death and anchors |
+| `js/app/sb-support.js` | `SuperSupport`: viewers' items on stage |
+| `js/app/sb-cam.js` | `SuperCam`: the broadcast shots that `CamDirector` (`js/app/camdir.js`) plays |
 | `js/app/superboss.js` | The route: lobby, streamer view, viewer view, HUD and results card |
 | `css/superboss.css` | Every style for the mode |
 | `tools/superboss/balance.js` | Runs every boss on every dial against bots in node and prints win rates |
 
-Shared files got small additions only: two script and one stylesheet line in `index.html`, the Play tab in `js/app/play.js`, the calm background in `js/app/shell.js`, `REWARDS.superboss` in `js/app/rewards-config.js`, `superboss` in the mode names in `js/app/ui.js`, and `superboss` beside `boss` in the gift crate and buddy route checks (`js/app/progress-ui.js`, `js/app/buddy.js`).
+The page also loads `js/app/camdir.js` and `js/room/aq.js` (adaptive quality) unchanged. Shared files got small additions only: two script and one stylesheet line in `index.html`, the Play tab in `js/app/play.js`, the calm background in `js/app/shell.js`, `REWARDS.superboss` in `js/app/rewards-config.js`, `superboss` in the mode names in `js/app/ui.js`, and `superboss` beside `boss` in the gift crate and buddy route checks (`js/app/progress-ui.js`, `js/app/buddy.js`).
 
 ## The fight
 
@@ -49,9 +53,9 @@ Typemaster is the dial for Art. `node tools/superboss/balance.js 6` runs six fig
 
 | Boss | Typemaster, bot at 165 wpm | Typemaster, bot at 105 wpm | Casual, bot at 66 wpm |
 |---|---|---|---|
-| Kernel Hydra | won 5 of 6, about 2:30 | won 0 of 6 | won 3 of 6 |
-| The Compiler | won 6 of 6, about 3:25 | won 0 of 6 | won 6 of 6 |
-| Packet Leviathan | won 6 of 6, about 3:05 | won 0 of 6 | won 6 of 6 |
+| Kernel Hydra | won 6 of 6, about 2:15 | won 0 of 6 | won 5 of 6 |
+| The Compiler | won 5 of 6, about 3:25 | won 0 of 6 | won 6 of 6 |
+| Packet Leviathan | won 6 of 6, about 3:10 | won 0 of 6 | won 5 of 6 |
 
 The bot reads a misspelled line instantly, so the Compiler is harder for a person than this table shows.
 
@@ -67,6 +71,7 @@ Three heads on one body of blocks, in a flooded server pit. Each head has its ow
 - **Root** (cyan, cyber words) winds up a breath with a red block word. Block it, or cut Root before it lands. It hits for 14 HP (16 in phase 2, 18 in phase 3), and in phase 3 the block is two words.
 - **Patch** (gold, mixed words) mends the other heads by 25% every 7.5 seconds. From phase 2 it also puts cut heads back on at half HP, so Patch is the head to cut first.
 - All three heads down opens the neck for 5 seconds: the word stack appears and every core word deals triple damage.
+- **Tidal slam** (phase 2 on): the hull rises out of the water and drops, and a wave rolls at Art. A block word, 10 HP (12 in phase 3, 70% on Casual and Normal). Blocking it throws the wave back: a counter hit of 2.5% of the boss's HP, and Fork's next bite waits 2.5 seconds. About every 16 seconds (13.5 in phase 3), longer on slow dials.
 - Finish phrases: `sever every head`, `cut the kernel loose`, `no head grows back`.
 
 ### The Compiler (enrages at 4:45)
@@ -76,7 +81,9 @@ A tower of screens that writes a program at you, in a hall of build pillars. Eac
 - Fixing the oldest line first deals double damage. Fixing any other line first costs 3 HP and drops a combo tier.
 - A line that compiles with its bug hits Art for 9 HP (11 in phase 2, 13 in phase 3).
 - The word stack between lines is cyber and common words.
-- Stack overflow: a block word every 13 seconds (11, 9) for 14 to 16 HP, two words in phase 3.
+- Stack overflow: a block word every 13 seconds (11, 9) for 14 to 16 HP, two words in phase 3. The arms lift a column of blocks overhead and hurl it.
+- **Segfault** (phase 2 on): the eye charges and sweeps a laser over the floor to Art. A block word, 10 HP (12 in phase 3), about every 14 seconds (11.5).
+- **Fork bomb** (phase 3): two drones fly from the racks at Art. Type each one's word to kill it (triple damage); one that lands costs 4 HP. About every 12.5 seconds.
 - Phase 2: 40% of lines carry two bugs, fixed left to right. Phase 3: lines compile faster and two can arrive at once.
 - Casual and Normal show the fixed word in grey under each bug.
 - Finish phrases: `exit with code zero`, `build failed for good`, `end of program`.
@@ -88,8 +95,20 @@ A serpent of packet segments circling an open network sea.
 - A weak point word shows on the segment facing you for a split second: the time to react and type it at 1.25 times the dial's speed in phase 1, 1.15 in phase 2 and 1.05 in phase 3. Typing it deals 3.5 times the word's damage.
 - Phase 2: about half the weak points come with a red decoy word on a far segment. Typing the decoy costs 8 HP and a combo tier.
 - Lunge: a block word, 14 HP. In phase 3 it is a tail sweep with a two-word block, 16 HP.
+- **Breach** (phase 2 on): 45% of lunges (35% in phase 3) are a breach instead: it dives, the water boils under Art and it bursts up out of the sea. A block word, 15 HP.
 - Packets: 2 (then 3) short cyan words fly at Art one after another. Typing one sends it back for triple damage. One that lands costs 4 HP.
 - Finish phrases: `drop every packet`, `close the last port`, `sink the leviathan`.
+
+## How it looks and moves
+
+- Every boss is built in code from lit armour (metal with glowing panel seams and a rim light) on a stage with a key light, a coloured rim light, low mist, shafts of light, dust and a floor that reflects the lights above it as streaks.
+- **Kernel Hydra:** an armoured hull in black water with a tail behind it and three heads on vertebra necks. Fork has twin forked horns, Root a crown of antenna spikes and hanging cables, Patch a frill of stapled spines and a plate over one eye. The bite coils back and lunges with the jaws snapping; the breath rears up, charges an orb in the jaws while a red ring fills under Art, then fires a beam; the mend sends gold threads; the slam lifts the hull and sends a wave. A cut head flies off and sinks, and grows back out of the stump.
+- **The Compiler:** a monitor monolith with a tracking eye on top, server racks at its shoulders, satellite screens orbiting it and two industrial arms (two-bone IK, elbows always bending forward) typing on floating keyboards beside the screen. The code lines are laid over the screen by the page, so nothing of the model ever covers them.
+- **Packet Leviathan:** an armoured sea serpent arcing in and out of the sea under a storm, with data running down its spine. The weak point segment opens to a white core, the decoy glows red. Lightning on phase breaks.
+- Phase breaks make the boss roar. The finish phrase leaves the boss beaten down with its core lit, and each right key of the phrase sends a spark into it with a rising tick. The kill: the Hydra's heads go limp and drop one by one, the hull cracks with light and blows; the Compiler's screen cracks, the eye bursts, the arms fall off and the tower sinks; the Leviathan's segments burst from the tail up and the head falls into the sea.
+- **Broadcast camera** (`sb-cam.js` with `CamDirector`): the game shot frames each boss by its size. Cutaways: a hero intro during the countdown, a phase break (close-up in slow motion, then the wide), a cut head, the Hydra's open neck, a Leviathan weak point hit, and the kill (a close-up in slow motion, then an orbit). The director turns down any cutaway when an attack Art has to answer lands within 3 seconds (blocks, packets, weak points, decoys and bug lines), caps them at 3 in 20 seconds, and keeps the game shot with reduced motion.
+- **Viewers' items** (`sb-support.js`): a gold barrier of hexagons rises in front of Art for each shield and shatters a layer when it stops a hit (typed blocks light it cyan), a green column for a heal, orange embers and a rune ring for Overclock, a clock face over the arena for Slow mo (the boss moves slower), a train of gold lights round the rim for the Hype train and gold rain when the meter fills, fog, a magenta glitch swirl and red speed streaks for the chaos items.
+- **Adaptive quality:** `js/room/aq.js` lowers the resolution first, then turns off the mist, the light shafts and the dust, on a machine that can't hold 60 fps.
 
 ## Support and chaos
 
@@ -200,4 +219,4 @@ Every message is one JSON object:
 
 ## Test hooks
 
-`window._sb` on the streamer view: `start()`, `phase(n)`, `hp(frac)`, `finish(ms)`, `enrage()`, `support(id, buyer)`, `combo(n)`, `offer(ids)`, `crowd()`, `artHp(n)`, `type(text)`, `bot(wpm)`, `camera(on)`, `streamer(on)`, `slot(v)`, `slow(k)`, `pause(on)`, `render(name)`, `mix(track)`. `window._sbw` on the viewer view: `state()`, `mode()`, `sim()`, `bot()`, `buy(id)`, `phase(n)`, `finish()`, `support(id, who)`. `window.__sbHold = 3` keeps banners and alerts up three times longer for screenshots.
+`window._sb` on the streamer view: `bench(n)` (frames back to back: ms, draw calls, triangles), `cam(pos, look, fov)` (a fixed review camera, `null` to release), `model()`, `scene()` (shot, camera log, adaptive quality), `start()`, `phase(n)`, `hp(frac)`, `finish(ms)`, `enrage()`, `support(id, buyer)`, `combo(n)`, `offer(ids)`, `crowd()`, `artHp(n)`, `type(text)`, `bot(wpm)`, `camera(on)`, `streamer(on)`, `slot(v)`, `slow(k)`, `pause(on)`, `render(name)`, `mix(track)`. `window._sbw` on the viewer view: `state()`, `mode()`, `sim()`, `bot()`, `buy(id)`, `phase(n)`, `finish()`, `support(id, who)`. `window.__sbHold = 3` keeps banners and alerts up three times longer for screenshots. `window.__sbFull = true` keeps full quality (no adaptive quality) for screenshots and benches. `_sb.arena().scene.step(secs, fps)` advances a paused scene by fixed frames, and `_sb.arena().scene.event(name, data)` plays a boss action without the rules, for reviewing animation.
