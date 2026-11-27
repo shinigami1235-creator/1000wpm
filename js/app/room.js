@@ -1,11 +1,10 @@
-// #/room: the room agent's window.Room mounted into the page.
+// #/room: My Room (js/room/tier-page.js) mounted full width under the site header.
 Router.register('room', (() => {
   let cancel = null, mounted = false;
 
   function mount(el) {
-    el.classList.add('page-full');
     document.body.classList.add('no-scan');
-    el.innerHTML = `<p class="room-links"><a class="btn out sm" href="#/hangar">Hangar</a><a class="btn out sm" href="#/lab">Operator</a></p><section class="panel room-host" aria-label="My room" data-host></section>`;
+    el.innerHTML = '<div data-host></div>';
     const host = el.querySelector('[data-host]');
     mounted = false;
     cancel = UI.waitFor('Room', host, R => { R.mount(host); mounted = true; });
