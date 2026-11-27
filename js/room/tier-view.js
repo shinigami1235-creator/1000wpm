@@ -164,8 +164,12 @@ window.RoomView = (() => {
     const equipOf = () => { const e = { ...opt.equip }; if (previewing) { if (previewing.item === undefined) delete e[previewing.slot]; else e[previewing.slot] = previewing.item; } return e; };
     const itemIn = (slot, e) => { const id = e[slot.id] !== undefined ? e[slot.id] : RT.defaultFor(slot.id, slot.kind); return id ? RT.get(id) : null; };
 
+    // the picture as plain pixels for the canvases (an <img> with srcset reports a scaled natural size)
+    let pix = null;
+    const pixels = () => (pix ||= new Promise(ok => { const go = () => loadImg(bg.currentSrc || bg.src).then(ok, () => ok(null)); if (bg.complete && bg.naturalWidth) go(); else bg.addEventListener('load', go, { once: true }); }));
+
     function build() {
-      room.innerHTML = ''; ticks = []; glassCv = null;
+      room.innerHTML = ''; ticks = []; glassCv = null; pix = null;
       T = RT.TIERS[opt.tier];
       room.style.width = T.w + 'px'; room.style.height = T.h + 'px';
       room.style.setProperty('--dim', T.dim);
@@ -195,36 +199,46 @@ window.RoomView = (() => {
     }
 
     // -------- the window
+    // Two canvases behind the glass mask: the painted scene, drawn once per size, and the moving
+    // layer (rain, snow, petals, fish), small and redrawn about 20 times a second.
     function windowView(it) {
       const [bx, by, bw, bh] = T.glass;
-      const cv = document.createElement('canvas'); cv.className = 'rv-glass';
-      cv.style.cssText = `left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px`;
-      room.append(cv);
+      const cv = document.createElement('canvas'), lv = document.createElement('canvas');
+      cv.className = lv.className = 'rv-glass';
+      cv.style.cssText = lv.style.cssText = `left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px`;
+      room.append(cv, lv);
       const { sc, base } = sceneArt(it.scene);
-      const layer = document.createElement('canvas'); layer.width = OW; layer.height = OH;
-      const lc = layer.getContext('2d'), draw = sc.layer ? sc.layer(RoomScenes.K.rng(it.scene.length * 13)) : null;
-      let m = null; mask(opt.tier).then(i => { m = i; paint(2); }, () => {});
-      const ctx = cv.getContext('2d');
+      const draw = sc.layer ? sc.layer(RoomScenes.K.rng(it.scene.length * 13)) : null;
+      let m = null, P = null; Promise.all([mask(opt.tier), pixels()]).then(([i, p]) => { m = i; P = p; paint(); layer(2); }, () => {});
+      const ctx = cv.getContext('2d'), lx = lv.getContext('2d');
       // the glass sits a little darker than the scene, and keeps a ghost of the room's own reflections
-      function paint(t) {
+      function paint() {
         if (!m) return;
         const k = Math.min(2, s * (devicePixelRatio || 1));
         const W = Math.max(1, Math.round(bw * k)), H = Math.max(1, Math.round(bh * k));
-        if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-        ctx.clearRect(0, 0, W, H);
-        // cover the box with the scene, a little bigger, so the parallax has room to move it
-        const sk = Math.max(W / SW, H / SH) * 1.12, sw = SW * sk, sh = SH * sk;
-        const px = (W - sw) / 2 - par.x * W * 0.04, py = (H - sh) / 2 - par.y * H * 0.03;
-        ctx.drawImage(base, px, py, sw, sh);
-        if (draw) { lc.clearRect(0, 0, OW, OH); draw(lc, OW, OH, t); const lk = Math.max(W / OW, H / OH) * 1.05; ctx.drawImage(layer, (W - OW * lk) / 2 - par.x * W * 0.02, (H - OH * lk) / 2, OW * lk, OH * lk); }
+        if (cv.width === W && cv.height === H && cv._done) return;
+        cv.width = W; cv.height = H; cv._done = true;
+        const sk = Math.max(W / SW, H / SH) * 1.06, sw = SW * sk, sh = SH * sk;
+        ctx.drawImage(base, (W - sw) / 2, (H - sh) / 2, sw, sh);
         ctx.fillStyle = `rgba(3,7,10,${(1 - T.dim) * 0.8 + 0.08})`; ctx.fillRect(0, 0, W, H);
-        if (bg.complete && bg.naturalWidth) { const f = bg.naturalWidth / T.w; ctx.globalAlpha = 0.2; ctx.drawImage(bg, bx * f, by * f, bw * f, bh * f, 0, 0, W, H); ctx.globalAlpha = 1; }
+        if (P) { const f = P.naturalWidth / T.w; ctx.globalAlpha = 0.2; ctx.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, W, H); ctx.globalAlpha = 1; }
         ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(m, 0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
       }
+      const LW = Math.min(420, Math.round(bw * 1.2)), LH = Math.round(LW * bh / bw);
+      lv.width = LW; lv.height = LH;
+      let last = -1;
+      function layer(t) {
+        if (!draw || !m || t - last < 0.05) return;
+        last = t;
+        lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, LW, LH);
+        // the layers were painted for a 384 x 288 window; keep their scale on a wide one
+        const lk = Math.max(LW / OW, LH / OH);
+        lx.save(); lx.scale(lk, lk); draw(lx, LW / lk, LH / lk, t); lx.restore();
+        lx.globalCompositeOperation = 'destination-in'; lx.drawImage(m, 0, 0, LW, LH);
+      }
       glassCv = { paint };
-      ticks.push(t => paint(t));
+      ticks.push(layer);
       // the view's light in the room, faint, around the window
       const [gx, gy, gw, gh] = [bx + bw / 2, by + bh * 0.6, bw * 2.2, bh * 1.3];
       el('rv-spill', '', `left:${gx - gw / 2}px;top:${gy - gh / 2}px;width:${gw}px;height:${gh}px;background:radial-gradient(closest-side,${sc.glow}26,transparent)`);
@@ -250,11 +264,30 @@ window.RoomView = (() => {
       quad(w, 200, 200, B.full ? sub(b.q, [0.04, 0.03, 0.96, 0.97]) : sub(b.q, b.u));
     }
 
-    // -------- light: a hue blend over each zone, softened at the edges
+    // -------- light: each zone is a copy of the picture with the hue turned to the LED colour
+    // (saturation and brightness kept, so grey stays grey), faded out at its edges. Drawn once into
+    // a canvas instead of a CSS blend, so the page doesn't blend the whole room on every frame.
     function light(L, it) {
       if (!it.c) return;
       for (const [x, y, w, h] of L.zones) {
-        el('rv-hue' + (it.anim ? ' ' + it.anim : ''), '', `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px;background:${it.c}`);
+        const c = document.createElement('canvas');
+        c.className = 'rv-tint' + (it.anim ? ' ' + it.anim : '');
+        c.style.cssText = `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px`;
+        room.append(c);
+        const paint = P => {
+          if (!P) return;
+          const f = P.naturalWidth / T.w, k = Math.min(1.5, f);
+          const W = Math.round(w * k), H = Math.round(h * k);
+          c.width = W; c.height = H;
+          const g = c.getContext('2d');
+          g.drawImage(P, (x - w / 2) * f, (y - h / 2) * f, w * f, h * f, 0, 0, W, H);
+          g.globalCompositeOperation = 'hue'; g.fillStyle = it.c; g.fillRect(0, 0, W, H);
+          g.globalCompositeOperation = 'destination-in';
+          g.save(); g.translate(W / 2, H / 2); g.scale(W / 2, H / 2);
+          const r = g.createRadialGradient(0, 0, 0, 0, 0, 1); r.addColorStop(0, '#000'); r.addColorStop(0.55, '#000'); r.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = r; g.fillRect(-1, -1, 2, 2); g.restore();
+        };
+        pixels().then(paint);
         if (it.anim === 'pulse') el('rv-dark', '', `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px`);
       }
       for (const [x, y, w, h] of L.cores || []) el('rv-core' + (it.anim ? ' ' + it.anim : ''), '', `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${it.c}`);
@@ -290,7 +323,7 @@ window.RoomView = (() => {
       if (it.id === 'holo-rush') { add(['siege', 'warden', 'colossus', 'king', 'half', 'brute'].map((f, i) => `<img class="fig rush" style="animation-delay:${i * 3}s" src="assets/room/items/fig-${f}.webp" alt="">`).join('')); }
       if (it.id === 'holo-earth') {
         const c = document.createElement('canvas'); c.width = c.height = 300; c.className = 'earth'; w.append(c);
-        const cx = c.getContext('2d'); drawEarth(cx, 300, 300, 1); ticks.push(t => drawEarth(cx, 300, 300, t));
+        const cx = c.getContext('2d'); let el0 = -1; drawEarth(cx, 300, 300, 1); ticks.push(t => { if (t - el0 > 0.05) { el0 = t; drawEarth(cx, 300, 300, t); } });
       }
       add('<div class="lines"></div>');
     }
@@ -336,7 +369,7 @@ window.RoomView = (() => {
       else { s = Math.max(cw / T.w, ch / T.h); ox = (cw - T.w * s) * T.focus; oy = (ch - T.h * s) * 0.45; }
       if (!opt.still && bg.srcset) bg.sizes = Math.round(T.w * s) + 'px';
       place();
-      if (glassCv) glassCv.paint(lastT);
+      if (glassCv) glassCv.paint();
     }
     function place() {
       const k = motion() && opt.fit === 'cover' ? 1.015 : 1;
