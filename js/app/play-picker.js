@@ -30,6 +30,19 @@ window.PlayPicker = (() => {
       desc: 'Talk with other players in the public rooms or privately with your friends.' },
   ];
   const flat = s => s.replace(/\s+/g, '');
+  // short tones for the command line: a rising one when a game starts, a low one for a name that doesn't exist
+  let ac = null;
+  function tone(f0, f1, dur, vol, type = 'square') {
+    if (!window.TT || !TT.soundOn()) return;
+    try {
+      ac ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function mount(host) {
@@ -108,6 +121,7 @@ window.PlayPicker = (() => {
     function launch(i) {
       if (launching) return;
       launching = true;
+      tone(440, 1320, 0.22, 0.05); setTimeout(() => tone(880, 1760, 0.12, 0.035, 'triangle'), 90);
       const r = rows[i];
       r.classList.add('go');
       setTimeout(() => { location.hash = GAMES[i].href; }, reduce ? 0 : 260);
@@ -134,8 +148,9 @@ window.PlayPicker = (() => {
       e.preventDefault();
       const next = (typed + k.toLowerCase()).replace(/^\s+/, '').replace(/\s{2,}/g, ' ');
       const m = matches(next);
-      if (!m.length) { paintTyped(true); return; }
+      if (!m.length) { paintTyped(true); tone(160, 110, 0.12, 0.05); return; }
       typed = next;
+      if (window.TT) TT.click(k === ' ');
       paintTyped();
       show(m[0].i, 'type');
       // the whole name typed starts the game; a shorter alias needs Enter
@@ -217,17 +232,29 @@ window.PlayPicker = (() => {
     breach() {
       const G = Theme.hex('accent');
       const ws = Array.from({ length: 6 }, (_, i) => ({ x: 0.12 + i * 0.15, y: 0.08 + ((i * 3) % 6) * 0.11, w: pickW(i), v: 0.1 + (i % 3) * 0.025, done: 0 }));
-      let n = 6, bursts = [];
+      let n = 6, bursts = [], bolts = [], flashes = [];
       return (c, w, h, t, dt) => {
+        // a dark sky with the chapter glow along the horizon, then the floor
+        const hg = c.createLinearGradient(0, h * 0.3, 0, h * 0.62);
+        hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(0.8, alpha('#a35bff', 0.16)); hg.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = hg; c.fillRect(0, h * 0.3, w, h * 0.32);
         grid(c, w, h, G, t, 0.5);
+        // shots come in from the lower right, where the blaster sits in the game
+        const muzzle = { x: w * 0.82, y: h * 1.02 };
         c.fillStyle = alpha('#ff4d5e', 0.75); c.fillRect(0, h * 0.86, w, 2);
         glowText(c, 'firewall', 10, h * 0.86 - 6, alpha('#ff4d5e', 0.8), mono(0, 11), 0);
         const low = ws.reduce((a, b) => (b.y > a.y && !b.done ? b : a), ws[0]);
         for (const o of ws) {
           o.y += o.v * dt;
-          if (o === low && o.y > 0.35) o.done = Math.min(o.w.length, o.done + dt * 9);
+          if (o === low && o.y > 0.35) {
+            const before = Math.floor(o.done);
+            o.done = Math.min(o.w.length, o.done + dt * 9);
+            // a bolt for every letter typed
+            if (Math.floor(o.done) > before) bolts.push({ x0: muzzle.x, y0: muzzle.y, x1: o.x * w, y1: o.y * h - 4, l: 0.12 });
+          }
           if (o.done >= o.w.length) {
             for (let k = 0; k < 14; k++) bursts.push({ x: o.x * w, y: o.y * h, vx: (Math.random() - 0.5) * 160, vy: (Math.random() - 0.8) * 160, l: 0.6 });
+            flashes.push({ x: o.x * w, y: o.y * h, l: 0.35 });
             Object.assign(o, { y: -0.12, w: pickW(n++), done: 0 });
           }
           if (o.y > 0.84) Object.assign(o, { y: -0.12, w: pickW(n++), done: 0 });
@@ -242,29 +269,83 @@ window.PlayPicker = (() => {
         }
         bursts = bursts.filter(b => (b.l -= dt) > 0);
         for (const b of bursts) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 300 * dt; c.fillStyle = alpha(G, b.l / 0.6); c.fillRect(b.x, b.y, 3, 3); }
+        c.globalCompositeOperation = 'lighter';
+        bolts = bolts.filter(b => (b.l -= dt) > 0);
+        for (const b of bolts) {
+          const k = b.l / 0.12;
+          c.strokeStyle = alpha(G, k); c.lineWidth = 1 + 2 * k; c.beginPath(); c.moveTo(b.x0, b.y0); c.lineTo(b.x1, b.y1); c.stroke();
+          c.fillStyle = alpha('#ffffff', k); c.beginPath(); c.arc(b.x1, b.y1, 2 + 3 * k, 0, 7); c.fill();
+        }
+        c.lineWidth = 1;
+        flashes = flashes.filter(f => (f.l -= dt) > 0);
+        for (const f of flashes) {
+          const k = f.l / 0.35, r = 10 + (1 - k) * 40;
+          const g = c.createRadialGradient(f.x, f.y, 0, f.x, f.y, r); g.addColorStop(0, alpha('#ffffff', k)); g.addColorStop(0.4, alpha('#ff4d5e', 0.6 * k)); g.addColorStop(1, 'rgba(0,0,0,0)');
+          c.fillStyle = g; c.fillRect(f.x - r, f.y - r, r * 2, r * 2);
+          c.strokeStyle = alpha('#ff4d5e', k); c.beginPath(); c.ellipse(f.x, f.y + 6, r * 1.2, r * 0.35, 0, 0, 7); c.stroke();
+        }
+        c.globalCompositeOperation = 'source-over';
       };
     },
     race() {
-      const C = Theme.hex('ink'), G = Theme.hex('accent');
+      // the road from behind two cars, like the race itself: you in green, Art in cyan, trading the lead
+      const G = Theme.hex('accent'), CY = '#3ee6ff';
+      const RV = window.RaceView;
+      let sky = null;
       return (c, w, h, t) => {
-        const lanes = [h * 0.36, h * 0.62];
-        c.strokeStyle = alpha(C, 0.15);
-        for (let i = 0; i < 3; i++) { const y = h * (0.23 + i * 0.26); c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
-        // dashes rushing past
-        c.fillStyle = alpha(C, 0.25);
-        for (let i = 0; i < 12; i++) { const x = w - ((t * 380 + i * 90) % (w + 90)); c.fillRect(x, h * 0.49, 40, 2); }
-        // finish flags
-        for (let r = 0; r < 8; r++) for (let k = 0; k < 2; k++) { c.fillStyle = (r + k) % 2 ? alpha(C, 0.6) : 'transparent'; c.fillRect(w * 0.9 + k * 6, h * 0.23 + r * (h * 0.52 / 8), 6, h * 0.52 / 8); }
-        const cars = [{ n: 'you', col: G, p: 0.42 + 0.3 * Math.sin(t * 0.7) + 0.06 * Math.sin(t * 2.3), wpm: 96 + Math.round(10 * Math.sin(t * 1.1)) },
-          { n: 'art', col: '#3ee6ff', p: 0.45 + 0.28 * Math.sin(t * 0.7 + 0.5), wpm: 204 }];
-        cars.forEach((car, k) => {
-          const x = w * (0.08 + 0.72 * car.p), y = lanes[k];
-          for (let s = 1; s < 8; s++) { c.fillStyle = alpha(car.col, 0.35 - s * 0.04); c.fillRect(x - 46 - s * 18, y - 3, 16, 6); }
-          c.fillStyle = car.col; c.shadowColor = car.col; c.shadowBlur = 14;
-          c.beginPath(); c.moveTo(x - 40, y - 10); c.lineTo(x + 10, y - 10); c.lineTo(x + 26, y); c.lineTo(x + 10, y + 10); c.lineTo(x - 40, y + 10); c.closePath(); c.fill(); c.shadowBlur = 0;
-          c.fillStyle = Theme.hex('bg'); c.font = head(12); c.fillText(car.n, x - 32, y + 4);
-          glowText(c, `${car.wpm} wpm`, x - 40, y - 18, car.col, mono(0, 12), 0);
-        });
+        const hy = h * 0.46;
+        if (!sky || sky.h !== h) { const g = c.createLinearGradient(0, 0, 0, hy); g.addColorStop(0, '#000201'); g.addColorStop(0.6, '#021208'); g.addColorStop(1, alpha(G, 0.28)); sky = { g, h }; }
+        c.fillStyle = sky.g; c.fillRect(0, 0, w, hy);
+        // synth sun with its cut lines, then a skyline in front of it
+        const sr = h * 0.17, sx = w * 0.62;
+        c.save(); c.beginPath(); c.rect(0, 0, w, hy); c.clip();
+        const sg = c.createLinearGradient(0, hy - sr * 2, 0, hy); sg.addColorStop(0, G); sg.addColorStop(1, '#0b6b3c');
+        c.fillStyle = sg; c.beginPath(); c.arc(sx, hy - sr * 0.2, sr, 0, 7); c.fill();
+        c.fillStyle = '#021208'; for (let k = 0; k < 6; k++) c.fillRect(sx - sr, hy - sr * 0.55 + k * sr * 0.14, sr * 2, 1 + k * 0.8);
+        for (let i = 0; i < 26; i++) {
+          const bw = w * (0.03 + ((i * 37) % 7) * 0.006), bh = h * (0.05 + ((i * 53) % 9) * 0.018), bx = (i * w * 0.041 + ((i * 13) % 5) * 6) % w;
+          c.fillStyle = '#031409'; c.fillRect(bx, hy - bh, bw, bh);
+          c.fillStyle = alpha(G, 0.55); for (let k = 0; k < 4; k++) if (((i + k) * 7) % 3 === 0) c.fillRect(bx + 3 + k * 5, hy - bh + 5 + ((i * k) % 4) * 5, 2, 2);
+        }
+        c.restore();
+        c.fillStyle = alpha(G, 0.5); c.fillRect(0, hy - 1, w, 2);
+        // ground and road in perspective, dashes rushing toward the viewer
+        c.fillStyle = '#010503'; c.fillRect(0, hy, w, h - hy);
+        const cx = w * 0.5, top = w * 0.03, bot = w * 0.62;
+        c.fillStyle = '#050b08'; c.beginPath(); c.moveTo(cx - top, hy); c.lineTo(cx + top, hy); c.lineTo(cx + bot, h); c.lineTo(cx - bot, h); c.fill();
+        c.strokeStyle = G; c.lineWidth = 2; c.beginPath(); c.moveTo(cx - top, hy); c.lineTo(cx - bot, h); c.moveTo(cx + top, hy); c.lineTo(cx + bot, h); c.stroke(); c.lineWidth = 1;
+        c.strokeStyle = alpha(G, 0.14);
+        for (let i = 1; i < 9; i++) { c.beginPath(); c.moveTo(cx - top * (1 + i * 0.6), hy); c.lineTo(cx - bot * (1 + i * 0.6), h); c.moveTo(cx + top * (1 + i * 0.6), hy); c.lineTo(cx + bot * (1 + i * 0.6), h); c.stroke(); }
+        for (let k = 0; k < 8; k++) {
+          const z = ((k / 8 + t * 0.9) % 1), y = hy + (h - hy) * z * z, half = top + (bot - top) * z * z;
+          c.fillStyle = alpha(G, 0.85 * z); c.fillRect(cx - half / 3 - 1.5 * (0.3 + z), y, 3 * (0.3 + z), Math.max(1, 14 * z * z));
+          c.fillRect(cx + half / 3 - 1.5 * (0.3 + z), y, 3 * (0.3 + z), Math.max(1, 14 * z * z));
+        }
+        // the two cars: the one behind is lower and bigger
+        const lead = Math.sin(t * 0.6);
+        const cars = [
+          { col: G, name: 'you', wpm: 98 + Math.round(8 * Math.sin(t * 1.3)), lane: -1, z: 0.5 + lead * 0.35 },
+          { col: CY, name: 'art', wpm: 204, lane: 1, z: 0.5 - lead * 0.35 },
+        ].sort((a, b) => a.z - b.z);
+        for (const car of cars) {
+          const z = 0.45 + car.z * 0.5, y = hy + (h - hy) * z * z + h * 0.02, half = top + (bot - top) * z * z, x = cx + car.lane * half / 3, s = (h / 400) * (0.25 + z * z * 0.75);
+          if (RV && RV.carSprite) {
+            c.fillStyle = 'rgba(0,0,0,.5)'; c.beginPath(); c.ellipse(x, y, 100 * s, 12 * s, 0, 0, 7); c.fill();
+            const sp = RV.carSprite(car.col);
+            c.drawImage(sp.c, x - 100 * s, y - 108 * s, 200 * s, 116 * s);
+            c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.6;
+            for (const lx of [-72, 72]) c.drawImage(RV.glow('#ff2a3c').c, x + lx * s - 35 * s, y - 54 * s - 17 * s, 70 * s, 34 * s);
+            c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+          }
+          glowText(c, `${car.name} ${car.wpm} wpm`, x - 40, y - 118 * s - 6, car.col, mono(0, 12), 6);
+        }
+        // speed lines at the edges
+        c.strokeStyle = 'rgba(255,255,255,.18)';
+        for (let k = 0; k < 10; k++) {
+          const a = k * 2.4 + 0.3, r = ((t * 0.8 + k / 10) % 1), x0 = cx + Math.cos(a) * (w * 0.3 + r * w * 0.5), y0 = hy + Math.sin(a) * 0.4 * (w * 0.3 + r * w * 0.5);
+          if (Math.abs(Math.cos(a)) < 0.45) continue;
+          c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + Math.cos(a) * 30 * r, y0 + Math.sin(a) * 12 * r); c.stroke();
+        }
       };
     },
     rush() {

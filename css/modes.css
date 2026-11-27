@@ -46,3 +46,9 @@
   .typetext .w.wclean::after { animation: none; opacity: 0; }
   .page-type .result-grid > *, .pb-banner, .vs-fill { animation: none; }
 }
+
+/* ---------- game picker (js/app/play-picker.js) ---------- */
+/* each letter of a game's name pops as it is typed */
+.pk-name span.ok { display: inline-block; animation: pk-pop 200ms var(--ease-out, ease-out); }
+@keyframes pk-pop { 0% { transform: translateY(-3px) scale(1.18); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pk-name span.ok { animation: none; } }

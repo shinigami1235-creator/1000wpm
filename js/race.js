@@ -992,5 +992,7 @@ window.RaceView = (() => {
     }
   }
   View.THEMES = THEMES;
+  // the picker's preview screen draws the same cars
+  View.carSprite = carSprite; View.glow = glow;
   return View;
 })();
