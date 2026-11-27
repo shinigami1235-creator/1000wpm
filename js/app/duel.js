@@ -15,7 +15,7 @@ Router.register('duel', (() => {
   const e = s => UI.esc(s);
   let el = null, off = [], mode = 'menu', info = null, scene = null, raf = 0, keys = null, onDoc = null;
   let ty = null, lastState = null, fog = 0, endShown = false, waitC = null, incoming = null, incT = 0, ctl = null, noticeT = 0;
-  let snd = null, phaseWas = '', countWas = 0, endT = 0;
+  let snd = null, phaseWas = '', countWas = 0, endT = 0, resT = 0;
   const SIDE_COL = [Theme.hex('accent'), '#f29d30'];
 
   function mount(root, params) {
@@ -551,7 +551,10 @@ Router.register('duel', (() => {
       return;
     }
     const won = me >= 0 && r.winner === me, lost = me >= 0 && r.winner === 1 - me;
-    if (scene && r.forfeit == null) scene.result(r.winner);
+    // the last KO plays its slow-motion fall first, then the winner's moment, then the card
+    const koEnd = r.forfeit == null && r.rounds && r.rounds.length && r.rounds[r.rounds.length - 1].winner >= 0;
+    clearTimeout(resT);
+    if (scene && r.forfeit == null) { if (koEnd) resT = setTimeout(() => { if (scene) scene.result(r.winner); }, 2200); else scene.result(r.winner); }
     let reward = null;
     if (me >= 0) {
       const s = (r.sides && r.sides[me]) || {};
@@ -566,7 +569,7 @@ Router.register('duel', (() => {
     // the KO and the winner's moment play out first (the camera circles the winner), then the card
     const show = () => paintEnd(m, r, won, lost, reward);
     clearTimeout(endT);
-    if (r.forfeit != null || matchMedia('(prefers-reduced-motion: reduce)').matches) show(); else endT = setTimeout(show, 3600);
+    if (r.forfeit != null || matchMedia('(prefers-reduced-motion: reduce)').matches) show(); else endT = setTimeout(show, koEnd ? 5200 : 3600);
   }
   function paintEnd(m, r, won, lost, reward) {
     if (!el || !info) return;
@@ -620,7 +623,7 @@ Router.register('duel', (() => {
     if (snd) { snd.dispose(); snd = null; }
     if (onDoc) { document.removeEventListener('keydown', onDoc); onDoc = null; }
     keys = null; ty = null; info = null; lastState = null; waitC = null;
-    clearTimeout(incT); clearTimeout(bannerT); clearTimeout(endT);
+    clearTimeout(incT); clearTimeout(bannerT); clearTimeout(endT); clearTimeout(resT);
   }
   function unmount() {
     stopFight();

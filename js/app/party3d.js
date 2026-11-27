@@ -876,6 +876,7 @@ window.PartyScene = (() => {
       else if (f.adds === 'mites') { const main = (f.foes || [])[0]; mites = miteLayer(out => cre.hitPos(main && main.id, out).add(v4.set(0, 1, 1))); }
       if (fx) fx.clear();
       teamWon = false; frags.count = 0; fragS.forEach(f => { f.life = 0; });
+      dieT = 0; holder.visible = true; holder.position.y = 0; holder.scale.set(1, 1, 1);
       if (dir) dir.reset();
       want('reveal', { pri: 3 });
       snd('reveal'); roarT = 2.2;
@@ -1108,13 +1109,25 @@ window.PartyScene = (() => {
       shatter(at, 60, 14, 0.6); smoke(v1.copy(at).setY(0.5), 12, 6, { size: 3, life: 2, op: 0.45 });
       ring(v1.copy(at).setY(0.05), C(pal.a), 16, 1); ring(v1.copy(at).setY(0.05), C('#ffffff'), 9, 0.6);
       if (arena) arena.pulse(1.4);
-      killAt.copy(at);
+      killAt.copy(at); dieT = 0.001;
       if (!reduce) { slowUntil = performance.now() + 1400; slowK = 0.3; }
       want('kill', { pri: 5 });
       snd('shatter', 1);
     }
     const killAt = new V();
-    let slowUntil = 0, slowK = 1;
+    let slowUntil = 0, slowK = 1, dieT = 0, dieSpawn = 0;
+    // the dead boss glitches, sinks and comes apart into pieces over a second and a half
+    function drawDeath(dt) {
+      if (!dieT) return;
+      dieT += dt;
+      const u = Math.min(1, dieT / 1.5);
+      holder.position.y = -Math.pow(u, 2) * 4;
+      holder.scale.set(1 + u * 0.08, 1 - 0.6 * Math.pow(u, 1.5), 1 + u * 0.08);
+      holder.visible = u < 1 && !(u > 0.45 && Math.random() < u * 0.5);
+      dieSpawn -= dt;
+      if (u < 1 && dieSpawn <= 0) { dieSpawn = 0.12; shatter(v3.set(killAt.x + rnd(-3, 3), rnd(1, 8) * (1 - u), killAt.z + rnd(-2, 2)), 6, 8, 0.4); burst(v3, 6, 5, C(pal.a), { size: 0.3 }); }
+      if (u >= 1) { dieT = 0; holder.visible = false; }
+    }
 
     const _s = new V();
     function screen(p) {
@@ -1151,8 +1164,9 @@ window.PartyScene = (() => {
         out.fov = 42 - lean * 8;
       } },
       reveal: { pri: 3, free: true, parts: [
-        { len: 1.6, cut: 1, fov: 46, omega: 3, pose(c, out) { const u = c.u; out.pos.set(-7 + u * 3, 0.8 + u * 1.5, 7 - u * 2); out.look.set(bossAt.x, 3.5 + u * 2.5, bossAt.z); } },
-        { len: 1.2, cut: 1, fov: 38, omega: 3, pose(c, out) { out.pos.set(6, 4 + c.u * 1.5, 10); out.look.set(bossAt.x, bossAt.y + 1, bossAt.z); } },
+        // low between the team and the boss, looking up as it rises, then a three-quarter from its side
+        { len: 1.6, cut: 1, fov: 46, omega: 3, pose(c, out) { const u = c.u; out.pos.set(-8 + u * 4, 0.9 + u * 1.6, 2.2); out.look.set(bossAt.x, 3.5 + u * 2.5, bossAt.z); } },
+        { len: 1.2, cut: 1, fov: 38, omega: 3, pose(c, out) { out.pos.set(9, 5 + c.u * 1.5, 3.5); out.look.set(bossAt.x, bossAt.y + 1, bossAt.z); } },
       ] },
       sever: { pri: 3, parts: [
         { len: 1.25, cut: 1, slow: 0.4, fov: 36, pose(c, out) { const x = c.x || bossAt; out.pos.set(x.x * 0.6 + 4, x.y + 1.2, x.z + 11 - c.u * 1.5); out.look.copy(x); } },
@@ -1160,7 +1174,7 @@ window.PartyScene = (() => {
       weak: { pri: 2, len: 1.5, fov: 34, pose(c, out) { out.pos.set(3.5, 6.5, 8.5 - c.u * 1.2); out.look.copy(bossAt); } },
       kill: { pri: 5, free: true, duringThreat: true, parts: [
         { len: 1.4, cut: 1, slow: 0.3, fov: 40, pose(c, out) { out.pos.set(killAt.x + 6, 2.2, killAt.z + 10); out.look.set(killAt.x, killAt.y, killAt.z); } },
-        { len: 2.0, cut: 1, fov: 44, omega: 2.5, pose(c, out) { const a = -0.7 + c.u * 1.2; out.pos.set(killAt.x + Math.sin(a) * 16, 5 + c.u * 2, killAt.z + Math.cos(a) * 16); out.look.set(killAt.x, 3.5, killAt.z); } },
+        { len: 2.0, cut: 1, fov: 44, omega: 2.5, pose(c, out) { const a = -0.7 + c.u * 1.2; out.pos.set(killAt.x + Math.sin(a) * 15, 6.5 + c.u * 2, killAt.z + Math.cos(a) * 15); out.look.set(killAt.x, 3, killAt.z); } },
       ] },
     };
     const dir = window.CamDirector ? CamDirector.create(THREE, camera, {
@@ -1216,6 +1230,7 @@ window.PartyScene = (() => {
       }
       drawFrags(dt);
       drawStreaks(dt);
+      drawDeath(dt);
       for (const w of rings) {
         if (!w.m.visible) continue;
         w.t += dt; const k = w.t / w.life;
