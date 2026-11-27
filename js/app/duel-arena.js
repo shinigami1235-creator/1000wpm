@@ -158,6 +158,21 @@ window.DuelArena = (() => {
       tiers.setMatrixAt(n++, m4.compose(pos.set(Math.cos(a) * rad, 0.4 + r * 1.1 - 0.5, Math.sin(a) * rad), q, sc.set(rad * (A1 - A0) / segs + 0.05, 1.1 + r * 0 + 0.8, 2.2)));
     }
     root.add(tiers); keep.push(tiers);
+    const washes = [];
+    // a soft wash of each side's colour behind the top of the stands: the crowd reads as silhouettes against it
+    for (const i of [0, 1]) {
+      const m = new THREE.Mesh(own(new THREE.PlaneGeometry(40, 14)), own(new THREE.MeshBasicMaterial({ map: glow, color: cols[i].clone().multiplyScalar(0.15), transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false })));
+      m.position.set((i ? 1 : -1) * 18, 7.5, -36); m.renderOrder = -1; root.add(m); washes.push(m);
+    }
+    // a thin strip of light along the front edge of each tier, in the colour of the side it faces
+    for (let r = 0; r < TIERS; r++) {
+      const rad = 21 + r * 2.2 - 1.12;
+      const g = own(new THREE.CylinderGeometry(rad, rad, 0.06, 64, 1, true, Math.PI / 2 - A1 + Math.PI * 0, A1 - A0));
+      // three's cylinder angle runs from +z toward +x; turn it so the arc covers the stands behind the stage
+      g.rotateY(0); sideColors(g, 0.55 - r * 0.05);
+      const m = new THREE.Mesh(g, own(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, opacity: 0.8, side: THREE.BackSide })));
+      m.position.y = 0.4 + r * 1.1 + 0.42; root.add(m);
+    }
     // the crowd: a body and a head per person, bobbing in the vertex shader, lit only by a rim
     const PEOPLE = lite ? 220 : 400;
     // one shape per person (a body and a head merged), so the whole crowd is a single draw call
@@ -196,7 +211,7 @@ window.DuelArena = (() => {
       m4.compose(pos.set(x, y, z), q, sc.set(s, s * rnd(0.9, 1.1), s));
       bodies.setMatrixAt(i, m4);
       const side = x < 0 ? 0 : 1;
-      tmpC.setHSL(rnd(0.5, 0.65), rnd(0.1, 0.3), rnd(0.004, 0.011)); bodies.setColorAt(i, tmpC);
+      tmpC.setHSL(rnd(0.5, 0.65), rnd(0.1, 0.3), rnd(0.01, 0.022)); bodies.setColorAt(i, tmpC);
       // light sticks and phones, in the colour of the side they sit on (some white)
       stickPos[i * 3] = x + rnd(-0.25, 0.25); stickPos[i * 3 + 1] = y + 1.55 + rnd(0, 0.35); stickPos[i * 3 + 2] = z;
       const sc2 = rnd() < 0.22 ? new THREE.Color('#dfe9ff') : cols[side];
