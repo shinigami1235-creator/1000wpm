@@ -22,6 +22,8 @@ window.SuperScene = (() => {
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
       import('three/addons/postprocessing/ShaderPass.js'),
+      import('three/addons/geometries/RoundedBoxGeometry.js'),
+      import('three/addons/utils/BufferGeometryUtils.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
   }
@@ -31,7 +33,7 @@ window.SuperScene = (() => {
     const ctl = {
       ready: load().then(L => {
         if (gone) return false;
-        impl = build(host, { ...opts, boss, reduceShake: reduce }, L[0], L[1].EffectComposer, L[2].RenderPass, L[3].UnrealBloomPass, L[4].OutputPass, L[5].ShaderPass);
+        impl = build(host, { ...opts, boss, reduceShake: reduce }, L[0], L[1].EffectComposer, L[2].RenderPass, L[3].UnrealBloomPass, L[4].OutputPass, L[5].ShaderPass, { RoundedBox: L[6].RoundedBoxGeometry, BGU: L[7] });
         if (last) impl.apply(last);
         return true;
       }),
@@ -45,12 +47,15 @@ window.SuperScene = (() => {
       slow: k => impl && impl.slow(k),
       info: () => (impl ? impl.info() : null),
       bench: n => (impl ? impl.bench(n) : null),
+      cam: (p, l, f) => impl && impl.cam(p, l, f),
+      step: (s2, f) => impl && impl.step(s2, f),
+      model: () => impl && impl.model(),
       dispose: () => { gone = true; if (impl) impl.dispose(); },
     };
     return ctl;
   }
 
-  function build(host, opts, THREE, EffectComposer, RenderPass, UnrealBloomPass, OutputPass, ShaderPass) {
+  function build(host, opts, THREE, EffectComposer, RenderPass, UnrealBloomPass, OutputPass, ShaderPass, ext) {
     const V = THREE.Vector3;
     const motionOff = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let reduceShake = !!opts.reduceShake;
@@ -78,8 +83,14 @@ window.SuperScene = (() => {
     renderer.domElement.setAttribute('aria-hidden', 'true');
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(Theme.hex('bg-0'));
-    scene.fog = new THREE.Fog(Theme.hex('bg-0'), 40, 110);
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 240);
+    scene.fog = new THREE.FogExp2(Theme.hex('bg-0'), 0.011);
+    // light: a cool key from high front, a coloured rim from behind and a fill from the floor, so the
+    // armour has a lit side, a dark side and an edge that reads against the dark
+    const hemi = new THREE.HemisphereLight(0xa8b8c8, 0x06080a, 0.5); scene.add(hemi);
+    const key = new THREE.DirectionalLight(0xe8f2ff, 2.4); key.position.set(-8, 22, 18); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x39ff88, 1.5); rim.position.set(10, 12, -24); scene.add(rim);
+    const K = SuperKit.create(THREE, scene, renderer, ext);
 
     // ---------- palette ----------
     let bossId = opts.boss || 'hydra', B = SuperData.boss(bossId);
@@ -107,38 +118,120 @@ window.SuperScene = (() => {
     }
     const codeTex = own(new THREE.CanvasTexture(codeCv));
     codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping; codeTex.repeat.set(8, 3);
-    const wallMat = own(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a.clone(), transparent: true, opacity: 0.12, depthWrite: false, fog: false }));
+    const wallMat = own(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a.clone(), transparent: true, opacity: 0.07, depthWrite: false, fog: false }));
     const wall = new THREE.Mesh(own(new THREE.PlaneGeometry(190, 70)), wallMat);
     wall.position.set(0, 24, -48); scene.add(wall);
+    // the floor: flooded pit (hydra), build hall (compiler) or open sea (leviathan). Lights above it
+    // (each head, the core, the wave) leave a pool and a streak on it, the way neon reflects on water
+    const LP = 6;
     const floorMat = own(new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uMode: { value: 0 }, uA: { value: pal.a.clone() }, uB: { value: pal.b.clone() }, uBg: { value: pal.bg.clone() }, uPulse: { value: 0 } },
+      uniforms: { uTime: { value: 0 }, uMode: { value: 0 }, uA: { value: pal.a.clone() }, uB: { value: pal.b.clone() }, uBg: { value: pal.bg.clone() }, uPulse: { value: 0 },
+        uLP: { value: Array.from({ length: LP }, () => new THREE.Vector4(0, 0, 0, 0)) }, uLC: { value: Array.from({ length: LP }, () => new THREE.Color()) }, uCam: { value: new V() } },
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-      fragmentShader: `uniform float uTime; uniform float uMode; uniform vec3 uA; uniform vec3 uB; uniform vec3 uBg; uniform float uPulse; varying vec3 vW;
+      fragmentShader: `uniform float uTime; uniform float uMode; uniform vec3 uA; uniform vec3 uB; uniform vec3 uBg; uniform float uPulse; uniform vec4 uLP[${LP}]; uniform vec3 uLC[${LP}]; uniform vec3 uCam; varying vec3 vW;
         float ln(float x, float s, float w){ float f = abs(fract(x / s + 0.5) - 0.5) * s; return 1.0 - smoothstep(0.0, w, f); }
+        float h21(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
         void main(){
           vec2 p = vW.xz;
           float g = max(ln(p.x, 3.0, 0.06), ln(p.y, 3.0, 0.06));
           vec3 c = uBg + uB * g * 0.55;
+          float wet = 0.0;
           if (uMode < 0.5) {
-            float r = length(p - vec2(0.0, -6.0));
-            float rip = smoothstep(0.82, 1.0, sin(r * 1.3 - uTime * 2.2)) * exp(-r * 0.045);
-            c = uBg * 1.4 + uB * g * 0.25 + uA * rip * 0.55 + vec3(0.0, 0.02, 0.025);
+            // black water over a sunken grid: slow ripples, glints and the grid seen through it
+            float r = length(p - vec2(0.0, -8.0));
+            float rip = smoothstep(0.82, 1.0, sin(r * 1.3 - uTime * 2.2)) * exp(-r * 0.05);
+            float n = vn(p * 0.35 + vec2(uTime * 0.12, uTime * 0.05)) * 0.6 + vn(p * 1.1 - vec2(uTime * 0.3, 0.0)) * 0.4;
+            float glint = smoothstep(0.78, 0.95, n) * 0.35;
+            c = uBg * 0.9 + uB * g * 0.18 * (0.6 + 0.4 * n) + uA * rip * 0.16 + uA * glint * 0.25;
+            wet = 1.0;
           } else if (uMode < 1.5) {
+            // polished floor of the build hall: lanes of light running to the tower
             float lane = ln(p.x, 9.0, 0.12) * step(-40.0, p.y);
             float run = smoothstep(0.7, 1.0, sin(p.y * 0.6 + uTime * 4.0)) * ln(p.x, 9.0, 0.5);
-            c += uA * (lane * 0.35 + run * 0.4);
+            float tile = max(ln(p.x, 4.5, 0.03), ln(p.y, 4.5, 0.03));
+            c = uBg * 1.1 + uB * tile * 0.25 + uA * (lane * 0.35 + run * 0.4);
+            wet = 0.55;
           } else {
+            // the open sea: long swells and foam lines
+            float sw = sin(p.x * 0.18 + p.y * 0.35 + uTime * 1.2) * 0.5 + sin(p.x * -0.31 + p.y * 0.17 - uTime * 0.8) * 0.5;
+            float n = vn(p * 0.5 + vec2(uTime * 0.2, -uTime * 0.1));
             float w = smoothstep(0.75, 1.0, sin(p.x * 0.35 + p.y * 0.55 + uTime * 1.6)) * 0.5 + smoothstep(0.85, 1.0, sin(p.x * -0.5 + p.y * 0.3 - uTime * 1.1)) * 0.35;
-            c = uBg * 1.2 + uB * g * 0.3 + uA * w * 0.45;
+            c = uBg * (1.0 + sw * 0.25) + uB * g * 0.12 + uA * w * 0.32 + uA * smoothstep(0.8, 0.95, n) * 0.15;
+            wet = 1.0;
+          }
+          // reflections of the lights above: a pool under each and a streak toward the camera
+          vec2 toCam = normalize(uCam.xz - p);
+          for (int i = 0; i < ${LP}; i++) {
+            vec4 L = uLP[i]; if (L.w <= 0.0) continue;
+            vec2 d = p - L.xz;
+            float pool = exp(-dot(d, d) / (6.0 + L.y * 0.8));
+            float along = dot(d, normalize(uCam.xz - L.xz)); float across = length(d - along * normalize(uCam.xz - L.xz));
+            float wob = 1.0 + 0.35 * sin(along * 2.2 - uTime * 3.0 + across * 3.0);
+            float streak = exp(-across * across / (0.9 * wob)) * smoothstep(-2.0, 2.0, along) * exp(-max(0.0, along) / (6.0 + L.y));
+            c += uLC[i] * L.w * (pool * 0.35 + streak * 0.55 * wet);
           }
           c += uA * uPulse * 0.25 * exp(-length(p - vec2(0.0, 8.0)) * 0.06);
-          float d = length(p - vec2(0.0, 0.0));
-          c = mix(c, uBg, smoothstep(30.0, 85.0, d));
+          float d = length(p - vec2(0.0, -2.0));
+          c = mix(c, uBg, smoothstep(34.0, 90.0, d));
           gl_FragColor = vec4(c, 1.0);
         }`,
     }));
+    const pools = floorMat.uniforms.uLP.value, poolC = floorMat.uniforms.uLC.value;
+    function lightPool(i, at, c, k) { if (i >= LP) return; pools[i].set(at.x, Math.max(0, at.y), at.z, k); poolC[i].copy(c.isColor ? c : C(c)); }
     const floor = new THREE.Mesh(own(new THREE.PlaneGeometry(240, 200)), floorMat);
     floor.rotation.x = -Math.PI / 2; scene.add(floor);
+
+    // ---------- atmosphere: low mist, shafts of light from above and dust in the air ----------
+    const mistMat = own(new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uC: { value: new THREE.Color() }, uA: { value: 0.28 }, uFog: { value: 0 } },
+      vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `uniform float uTime; uniform vec3 uC; uniform float uA; uniform float uFog; varying vec3 vW;
+        float h21(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+        void main(){
+          vec2 p = vW.xz * 0.07 + vec2(uTime * 0.02, uTime * 0.008) + vW.y * 0.3;
+          float n = vn(p) * 0.6 + vn(p * 2.3 - uTime * 0.03) * 0.4;
+          float edge = smoothstep(40.0, 18.0, length(vW.xz - vec2(0.0, -6.0)));
+          float a = smoothstep(0.35, 0.85, n) * edge * (uA + uFog);
+          gl_FragColor = vec4(uC * a, 1.0);
+        }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    const mistGeo = own(new THREE.PlaneGeometry(90, 70));
+    const mists = [1.2].map((y, i) => { const m = new THREE.Mesh(mistGeo, mistMat); m.rotation.x = -Math.PI / 2; m.position.set(0, y, -8 + i * 3); m.renderOrder = 2; scene.add(m); return m; });
+    const shaftMat = own(new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uC: { value: new THREE.Color() }, uA: { value: 0.13 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform float uTime; uniform vec3 uC; uniform float uA; varying vec2 vUv;
+        void main(){ float x = abs(vUv.x - 0.5) * 2.0; float a = (1.0 - x * x) * smoothstep(0.0, 0.35, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+          a *= 0.7 + 0.3 * sin(vUv.y * 9.0 + uTime * 0.7 + vUv.x * 4.0);
+          gl_FragColor = vec4(uC * a * uA, 1.0); }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    const shaftGeo = own(new THREE.PlaneGeometry(1, 1).translate(0, -0.5, 0));
+    const shafts = [[-16, 30, -20, 9, 0.35], [-4, 32, -26, 6, 0.12], [12, 30, -22, 8, -0.3], [24, 28, -12, 6, -0.4]].map(([x, y, z, w, tilt]) => {
+      const m = new THREE.Mesh(shaftGeo, shaftMat); m.position.set(x, y, z); m.scale.set(w, 40, 1); m.rotation.set(0, 0, tilt); m.renderOrder = 1; scene.add(m); return m;
+    });
+    // dust: drifts on its own in the vertex shader, so the CPU never touches it
+    const DUST = 320, dPos = new Float32Array(DUST * 3), dSeed = new Float32Array(DUST);
+    for (let i = 0; i < DUST; i++) { dPos[i * 3] = rnd(-34, 34); dPos[i * 3 + 1] = rnd(0, 22); dPos[i * 3 + 2] = rnd(-30, 22); dSeed[i] = Math.random() * 100; }
+    const dGeo = own(new THREE.BufferGeometry()); dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3)); dGeo.setAttribute('seed', new THREE.BufferAttribute(dSeed, 1));
+    const dustMat = own(new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uC: { value: new THREE.Color() }, uPx: { value: 600 }, uRise: { value: 0.3 } },
+      vertexShader: `attribute float seed; uniform float uTime; uniform float uPx; uniform float uRise; varying float vA;
+        void main(){ vec3 p = position; p.y = mod(p.y + uTime * uRise * (0.5 + fract(seed) ), 22.0); p.x += sin(uTime * 0.3 + seed) * 1.5; p.z += cos(uTime * 0.23 + seed * 1.3) * 1.2;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); vA = (0.4 + 0.6 * sin(uTime * 1.5 + seed * 7.0) * 0.5 + 0.3) * smoothstep(0.0, 2.0, p.y) * smoothstep(22.0, 17.0, p.y);
+          gl_PointSize = clamp((0.08 + fract(seed * 3.7) * 0.1) * uPx / max(0.5, -mv.z), 1.0, 8.0); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: 'uniform vec3 uC; varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(uC * smoothstep(0.5, 0.0, d) * vA, 1.0); }',
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    const dust = new THREE.Points(dGeo, dustMat); dust.frustumCulled = false; scene.add(dust);
+    function atmosphere(t, px, fogK) {
+      mistMat.uniforms.uTime.value = t; mistMat.uniforms.uC.value.copy(pal.c).lerp(pal.a, 0.4).multiplyScalar(0.18); mistMat.uniforms.uFog.value = fogK;
+      shaftMat.uniforms.uTime.value = t; shaftMat.uniforms.uC.value.copy(pal.c).lerp(new THREE.Color(1, 1, 1), 0.35);
+      dustMat.uniforms.uTime.value = t; dustMat.uniforms.uPx.value = px; dustMat.uniforms.uC.value.copy(pal.a).lerp(new THREE.Color(1, 1, 1), 0.4).multiplyScalar(0.9);
+    }
 
     // ---------- blocks: every boss part, prop and piece of debris is one of these ----------
     const N = 700;
@@ -204,7 +297,7 @@ window.SuperScene = (() => {
     // ---------- post ----------
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.38, 0.3);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.42, 0.52);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     const post = new ShaderPass({
@@ -222,6 +315,11 @@ window.SuperScene = (() => {
           c *= 1.0 - smoothstep(0.45, 0.95, length(q)) * 0.5;
           c *= 1.0 - uDim * (0.35 + 0.65 * smoothstep(0.05, 0.5, length(q)));
           c += uFlash * 0.35;
+          // grade: a touch less saturation in the mids and more contrast, so colour is kept for light
+          c = clamp(c, 0.0, 1.0);
+          float l = dot(c, vec3(0.299, 0.587, 0.114));
+          c = mix(vec3(l), c, 0.86 + 0.14 * smoothstep(0.5, 1.0, l));
+          c = c * c * (3.0 - 2.0 * c) * 0.32 + c * 0.68;
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
@@ -261,66 +359,25 @@ window.SuperScene = (() => {
     };
     let recoil = 0;
 
-    // Kernel Hydra
-    const HEADS = [
-      { id: 'fork', base: new V(-8.5, 9, -2), c: C(Theme.hex('accent')), dir: -1 },
-      { id: 'root', base: new V(0, 12.5, -3.5), c: C('#3ee6ff'), dir: 0 },
-      { id: 'patch', base: new V(8.5, 9, -2), c: C('#f2c230'), dir: 1 },
-    ];
-    const hstate = Object.fromEntries(HEADS.map(h => [h.id, { up: true, grow: 1, lunge: -9, charge: 0, chargeUntil: 0, flash: 0, pos: h.base.clone(), hpk: 1, kb: 0, kbV: 0 }]));
-    const DOME = [];
-    for (let r = 0; r < 4; r++) { const n = 14 - r * 3, rad = 6.2 - r * 1.3; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + r * 0.4; DOME.push({ x: Math.cos(a) * rad, y: 1 + r * 1.7, z: Math.sin(a) * rad * 0.7 - 6, s: 2.2 - r * 0.3, a }); } }
-    let neckOpen = 0;
-    function hydra(t, dt) {
-      const body = pal.b;
-      const breathe = Math.sin(t * 1.4) * 0.15;
-      const rec = recoil * 0.6 + kb * 1.8;
-      for (const d of DOME) put(v1.set(d.x, d.y + breathe - (dead ? deadT * 2 : 0), d.z - rec), d.s, d.s * 0.8, d.s, 0, d.a + t * 0.05, 0, neckOpen ? pal.a : body, neckOpen ? 1.4 + Math.sin(t * 12) * 0.3 : 0.9);
-      // core glow, visible when the neck is open
-      anchors.core.set(0, 6.5 + breathe, -6);
-      put(v1.copy(anchors.core), 2.4, 2.4, 2.4, t, t * 1.3, 0, neckOpen ? C('#ffffff') : pal.c, neckOpen ? 2.2 : 0.8);
-      for (const h of HEADS) {
-        const s = hstate[h.id];
-        s.flash = Math.max(0, s.flash - dt * 4);
-        s.kbV += (-s.kb * 60 - s.kbV * 9) * dt; s.kb = clamp(s.kb + s.kbV * dt, -0.4, 2.5);
-        const growT = s.up ? s.grow : 0;
-        s.grow = s.up ? Math.min(1, s.grow + dt * 1.6) : 0;
-        const lungeU = clamp((t - s.lunge) / 0.45, 0, 1), lunge = Math.sin(lungeU * Math.PI);
-        const ch = s.chargeUntil > t ? 1 - (s.chargeUntil - t) / Math.max(0.1, s.chargeLen) : 0;
-        const sway = Math.sin(t * (1.1 + h.dir * 0.2) + h.dir) * 1.1;
-        v2.copy(h.base).add(v3.set(sway * 0.8 + h.dir * s.kb * 1.2, Math.sin(t * 1.7 + h.dir) * 0.6 + ch * 2.2 + s.kb * 2.2, lunge * 9 - rec - s.kb * 5));
-        if (dead) v2.y -= deadT * 6;
-        s.pos.lerp(v2, Math.min(1, dt * (s.kb > 0.05 ? 20 : 8)));
-        // neck: a curve from the body to the head
-        const start = v3.set(h.dir * 2.4, 6, -6);
-        const segs = 11, shown = Math.max(2, Math.round(segs * (s.up ? 0.2 + 0.8 * growT : 0.18)));
-        for (let i = 0; i < shown; i++) {
-          const u = i / segs;
-          v1.lerpVectors(start, s.pos, u);
-          v1.y += Math.sin(u * Math.PI) * 3.2;
-          v1.x += Math.sin(u * Math.PI) * h.dir * 1.6;
-          const w = 1.5 - u * 0.5;
-          put(v1, w, w, w, t * 0.3 + i, u * 2, 0, h.c, s.up ? 0.75 + s.flash * 1.2 : 0.5);
-        }
-        if (!s.up || growT < 0.85) continue;
-        // head: skull, snout, jaws, eyes, horns
-        const yaw = Math.atan2(artPos.x - s.pos.x, artPos.z - s.pos.z);
-        const k = 1 + s.flash * 1.5 + ch * 1.2;
-        const fw = v4.set(Math.sin(yaw), 0, Math.cos(yaw));
-        put(s.pos, 2.6, 2.1, 2.6, 0, yaw, 0, h.c, k);
-        put(v1.copy(s.pos).addScaledVector(fw, 2.1).setY(s.pos.y - 0.3), 1.8, 1.1, 2.0, 0, yaw, 0, h.c, k);
-        const jaw = Math.max(0, 0.3 + lunge * 0.9 + ch * 0.6 - s.kb * 0.4);
-        put(v1.copy(s.pos).addScaledVector(fw, 1.9).setY(s.pos.y - 1.1 - jaw * 0.5), 1.6, 0.4, 1.9, jaw * 0.4, yaw, 0, h.c, k * 0.8);
-        for (const sd of [-1, 1]) {
-          v1.copy(s.pos).addScaledVector(fw, 1.3).add(v3.set(Math.cos(yaw) * sd * 0.8, 0.55, -Math.sin(yaw) * sd * 0.8));
-          put(v1, 0.42, 0.3, 0.3, 0, yaw, 0, h.id === 'root' && ch > 0 ? C('#ffffff') : C('#ff4d5e'), 2.4);
-          v1.copy(s.pos).add(v3.set(Math.cos(yaw) * sd * 0.9, 1.4, -Math.sin(yaw) * sd * 0.9));
-          put(v1, 0.35, 1.3, 0.35, -0.4, yaw, sd * 0.3, h.c, k * 0.9);
-        }
-        if (ch > 0 && h.id === 'root') put(v1.copy(s.pos).addScaledVector(fw, 3.2).setY(s.pos.y - 0.6), 0.6 + ch * 1.6, 0.6 + ch * 1.6, 0.6 + ch * 1.6, t * 4, t * 5, 0, C('#bfefff'), 1.5 + ch * 2);
-      }
-      // drowned server racks around the pit
-      for (let i = 0; i < 8; i++) { const sd = i % 2 ? 1 : -1, z = -22 + Math.floor(i / 2) * 7; put(v1.set(sd * (19 + (i % 3)), 2.5, z), 2.2, 5 + (i % 3), 2.2, 0, 0.2 * sd, 0.08 * sd, pal.b, 0.35); }
+    // the boss models (sb-hydra.js, ...): each builds its body, props and actions with the kit
+    let model = null, release = null, neckOpen = 0;
+    const mctx = {
+      artPos, pal, lightPool, camPos: camera.position,
+      juice: { shake: k => juice.shake(k), stop: ms => juice.stop(ms), flash: k => { if (canFlash()) flashAmt = Math.max(flashAmt, k); }, tint: (h, k) => juice.tint(h, k), glitch: (k, s2) => juice.glitch(k, s2) },
+      shed: (at, n, c, p, sz) => shed(at, n, c, p, sz),
+      sfx: (n, a) => { if (opts.sfx !== false && window.SuperAudio) SuperAudio.play(n, a); },
+      // where a blocked attack stops: Art's barrier, a little in front of him
+      shieldAt: out => out.set(artPos.x, 2.2, artPos.z - 3.2),
+    };
+    function mountModel(id) {
+      if (model) { scene.remove(model.group, model.props); model.dispose(); }
+      if (release) release();
+      model = null; release = null;
+      const make = window.SuperModels && SuperModels[id];
+      if (!make) return;
+      release = K.scope();
+      model = make(THREE, K, mctx);
+      scene.add(model.group, model.props);
     }
 
     // The Compiler
@@ -467,7 +524,7 @@ window.SuperScene = (() => {
     }
     function anchor(key, out = {}) {
       if (key === 'art') return proj(v1.copy(artPos).setY(artPos.y + 1), out);
-      if (key.startsWith('head:')) { const s = hstate[key.slice(5)]; return s ? proj(v1.copy(s.pos).setY(s.pos.y + 3.2), out) : null; }
+      if (model) { const w = model.anchor(key, v1); if (w) return proj(w, out); if (key.startsWith('head:')) return null; }
       if (key === 'seg:front') return proj(v1.copy(segPos[weakI >= 0 ? weakI : frontI]).setY(segPos[weakI >= 0 ? weakI : frontI].y + 3.4), out);
       if (key === 'seg:far') return proj(v1.copy(segPos[decoyI >= 0 ? decoyI : 12]).setY(segPos[decoyI >= 0 ? decoyI : 12].y + 3.4), out);
       if (key.startsWith('packet:')) { const pk = packets.get(key.slice(7)); return pk ? proj(v1.copy(pk.pos).setY(pk.pos.y + 1.3), out) : null; }
@@ -477,7 +534,7 @@ window.SuperScene = (() => {
     }
     function worldOf(at, out) {
       if (!at) return out.copy(anchors.core);
-      if (at.startsWith('head:')) { const s = hstate[at.slice(5)]; return out.copy(s ? s.pos : anchors.core); }
+      if (model) return model.worldOf(at, out);
       if (at === 'seg:front') return out.copy(segPos[weakI >= 0 ? weakI : frontI]);
       if (at === 'head') return out.copy(anchors.head);
       if (at.startsWith('line:')) return out.copy(anchors.core).add(v4.set(rnd(-4, 4), rnd(-2, 3), 1));
@@ -493,7 +550,6 @@ window.SuperScene = (() => {
       if (s.status === 'won' && !dead) { dead = true; deadT = 0; }
       if (s.status !== 'won' && dead && s.status !== 'lost') { dead = false; }
       lost = s.status === 'lost';
-      if (s.b && s.b.heads) for (const h of s.b.heads) { const st = hstate[h.id]; if (st) { if (h.up && !st.up) st.grow = 0; st.up = h.up; st.hpk = h.max ? h.hp / h.max : 1; } }
       neckOpen = s.b && s.b.neck ? 1 : 0;
       if (bossId === 'leviathan') {
         const weak = s.targets.find(x => x.kind === 'weak'), decoy = s.targets.find(x => x.kind === 'decoy');
@@ -515,18 +571,18 @@ window.SuperScene = (() => {
     const hitCol = tier => tier >= 3 ? C('#ffffff') : tier === 2 ? C('#3ee6ff') : C(Theme.hex('accent'));
     // where an attack comes from, for the shots and bursts on a block, a miss or an interrupt
     function attackerPos(attack, owner, out) {
-      if (bossId === 'hydra') { const s = hstate[owner] || (attack === 'breath' ? hstate.root : attack === 'mend' ? hstate.patch : hstate.fork); return out.copy(s.pos); }
+      if (model) return model.attacker(attack, owner, out);
       if (bossId === 'leviathan') return out.copy(anchors.head);
       return out.copy(anchors.core);
     }
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
+      if (model) model.event(n, d, t);
       if (n === 'hit') {
         const crit = !!d.crit, big = d.src === 'sever' || d.src === 'weak' || (d.src === 'spell' && d.last);
         const land = () => {
           worldOf(d.at, v1);
           hitGlow = Math.max(hitGlow, crit ? 1 : 0.45);
-          if (d.at && d.at.startsWith('head:') && hstate[d.at.slice(5)]) hstate[d.at.slice(5)].flash = 1;
           if (bossId === 'leviathan' && weakI >= 0 && d.src === 'weak') segFlash[weakI] = 1;
           flare(v1, crit ? C('#ffffff') : hitCol(d.tier || 0), crit ? 5 : 2.6, 0.22);
           if (crit || big) { juice.shake(big ? 0.6 : 0.3); juice.stop(big ? 95 : 55); recoil = Math.max(recoil, big ? 1 : 0.5); }
@@ -534,8 +590,6 @@ window.SuperScene = (() => {
           // every hit knocks it back: the body on a spring, the head that was hit thrown up and back
           const imp = Math.min(2.4, 0.35 + (d.amount || 0) * 0.012) * (crit ? 1.5 : 1) * (big ? 1.7 : 1);
           knock(imp);
-          if (d.at && d.at.startsWith('head:') && hstate[d.at.slice(5)]) hstate[d.at.slice(5)].kbV += imp * 2.2;
-          else if (bossId === 'hydra') for (const h of HEADS) hstate[h.id].kbV += imp * 0.5;
           if (bossId === 'leviathan') { const i = d.src === 'weak' && weakI >= 0 ? weakI : frontI; for (let k = -2; k <= 2; k++) { const j = i + k; if (j > 0 && j < SEG) segKick[j] = Math.max(segKick[j], imp * (1 - Math.abs(k) * 0.3)); } }
           if (big && canFlash()) flashAmt = 0.5;
           if (opts.onPop) { const p = proj(v1, {}); opts.onPop(d.amount, p.x, p.y, { crit, src: d.src, big }); }
@@ -560,20 +614,12 @@ window.SuperScene = (() => {
         shed(v1.copy(artPos).setY(1.2), heavy ? 22 : 8, C('#ff4d5e'), heavy ? 1.6 : 1, 0.5);
       }
       if (n === 'block' || n === 'shielded' || n === 'warded') { wave(v1.copy(artPos).setY(0.15), C(n === 'shielded' ? '#f2c230' : '#3ee6ff'), 1, 7, 0.45); flare(v1.copy(artPos).setY(1.6), C('#bfefff'), 4, 0.25); }
-      if (n === 'sever') {
-        const s = hstate[d.head], h = HEADS.find(x => x.id === d.head);
-        if (s && h) { shed(s.pos, 14, h.c, 1.2, 0.9); s.up = false; s.grow = 0; wave(v1.copy(s.pos), h.c, 1, 8, 0.5, false); }
-        juice.shake(0.5); juice.stop(90);
-      }
-      if (n === 'regrow') { const s = hstate[d.head]; if (s) { s.up = true; s.grow = 0; } }
+      if (n === 'sever') { juice.shake(0.5); juice.stop(90); }
       if (n === 'neck') { if (d.on) { juice.shake(0.4); wave(v1.copy(anchors.core), C('#ffffff'), 1, 14, 0.7, false); } }
       if (n === 'windup') {
-        if (d.kind === 'breath' || d.kind === 'mend') { const s = hstate[d.owner]; if (s) { s.chargeUntil = t + d.ms / 1000; s.chargeLen = d.ms / 1000; } }
         if (d.kind === 'overflow') { towerChargeUntil = t + d.ms / 1000; towerCharge = d.ms / 1000; }
         if (d.kind === 'lunge' || d.kind === 'sweep') { diveUntil = t + d.ms / 1000; diveLen = d.ms / 1000; }
       }
-      if (n === 'attack' && d.kind === 'bite') { const s = hstate.fork; if (s) s.lunge = t; }
-      if (n === 'attack' && d.kind === 'mend') { const s = hstate.patch; if (s) { flare(s.pos, C('#f2c230'), 5, 0.4); wave(v1.copy(anchors.core), C('#f2c230'), 1, 10, 0.6, false); } }
       // a missed block: the attack flies from the boss and lands on Art
       if (n === 'blockFail' && fx) {
         attackerPos(d.attack, d.owner, v4);
@@ -588,7 +634,7 @@ window.SuperScene = (() => {
         wave(v1.copy(artPos).setY(1.4), C('#bfefff'), 0.5, 6, 0.4, false);
         shed(v1.copy(artPos).setY(1.4), 16, C('#3ee6ff'), 1.4, 0.45);
         attackerPos(d.attack, d.owner, v4);
-        const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (hstate[d.owner]) hstate[d.owner].kbV += 6; if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
+        const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
         if (fx) fx.shot(4, new V().copy(artPos).setY(artPos.y + 0.8), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
       }
       // an interrupt: the charge shatters in the boss's face and it reels
@@ -598,14 +644,12 @@ window.SuperScene = (() => {
         wave(v1.copy(v4), C('#ffffff'), 1, 12, 0.55, false);
         flare(v4, C('#bfefff'), 9, 0.35);
         knock(2.2); hitGlow = 1; juice.shake(0.5); juice.stop(100);
-        if (hstate[d.owner]) hstate[d.owner].kbV += 5;
       }
       if (n === 'blockFail' || n === 'cancel') {
-        if (d.attack === 'breath' || d.owner === 'root') hstate.root.chargeUntil = 0;
         if (d.attack === 'overflow') towerChargeUntil = 0;
         if (d.attack === 'lunge' || d.attack === 'sweep') { diveUntil = 0; if (n === 'blockFail') lungeAt = t; }
       }
-      if (n === 'block') { if (d.attack === 'breath') hstate.root.chargeUntil = 0; if (d.attack === 'overflow') towerChargeUntil = 0; if (d.attack === 'lunge' || d.attack === 'sweep') diveUntil = 0; }
+      if (n === 'block') { if (d.attack === 'overflow') towerChargeUntil = 0; if (d.attack === 'lunge' || d.attack === 'sweep') diveUntil = 0; }
       if (n === 'compile') { screenPulse = 1; juice.tint('#ff4d5e', 0.5); wave(v1.copy(anchors.core), C('#ff4d5e'), 2, 16, 0.6, false); }
       if (n === 'fix') screenPulse = Math.max(screenPulse, 0.4);
       if (n === 'phase') {
@@ -627,13 +671,13 @@ window.SuperScene = (() => {
     }
 
     // ---------- the frame ----------
-    let paused = false, slowK = 1, lastT = performance.now();
+    let paused = false, slowK = 1, lastT = performance.now(), debugCam = null;
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
     function frameStep(nowMs) {
       // rdt is real time for fades, so a slow frame never leaves a tint or a flash on screen
-      const rdt = Math.min(0.5, (nowMs - lastT) / 1000);
+      const rdt = Math.max(0, Math.min(0.5, (nowMs - lastT) / 1000));
       let dt = Math.min(0.05, rdt); lastT = nowMs;
       if (!visible || document.hidden) return;
       if (paused) dt = 0;
@@ -655,7 +699,8 @@ window.SuperScene = (() => {
       kbV += (-kb * 55 - kbV * 9) * adt; kb = clamp(kb + kbV * adt, -0.5, 3);
       if (dead) deadT = Math.min(3, deadT + dt);
       nB = 0;
-      if (bossId === 'hydra') hydra(t, adt);
+      for (const pl of pools) pl.w = 0;
+      if (model) { model.update(t, adt, { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); }
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's marker
@@ -685,6 +730,7 @@ window.SuperScene = (() => {
       camera.position.set(camBase.x + Math.sin(t * 0.21) * 0.5 + Math.sin(nowMs * 0.041) * sh, camBase.y + Math.sin(t * 0.17) * 0.25 + Math.sin(nowMs * 0.037 + 1) * sh * 0.7 + kick * 0.15 * shakeK(), camBase.z - push);
       lookCur.lerp(v1.set(anchors.core.x * 0.25, camLook.y, camLook.z), Math.min(1, dt * 2));
       camera.lookAt(lookCur);
+      if (debugCam) { camera.position.copy(debugCam.p); camera.lookAt(debugCam.l); if (camera.fov !== debugCam.f) { camera.fov = debugCam.f; camera.updateProjectionMatrix(); } }
       // post
       tintAmt = Math.max(0, tintAmt - rdt * 1.6); post.uniforms.uTintAmt.value = Math.max(tintAmt, enraged ? 0.22 + Math.sin(nowMs / 300) * 0.06 : 0);
       if (enraged && tintAmt < 0.01) post.uniforms.uTint.value.set('#ff4d5e');
@@ -697,6 +743,10 @@ window.SuperScene = (() => {
       post.uniforms.uFlash.value = flashAmt;
       post.uniforms.uTime.value = nowMs / 1000;
       if (fx) fx.update(adt);
+      const pxK = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+      K.update(adt, t, pxK);
+      atmosphere(t, pxK, snap && snap.chaos && snap.chaos.fog ? 0.8 : 0);
+      floorMat.uniforms.uCam.value.copy(camera.position);
       composer.render();
       if (opts.onFrame) opts.onFrame();
     }
@@ -716,7 +766,9 @@ window.SuperScene = (() => {
       floorMat.uniforms.uMode.value = id === 'hydra' ? 0 : id === 'compiler' ? 1 : 2;
       phase = snap && snap.boss === id ? snap.phase : 1;
       dead = false; deadT = 0; debris.length = 0; towerLost.clear(); packets.clear(); weakI = decoyI = -1;
-      for (const h of HEADS) Object.assign(hstate[h.id], { up: true, grow: 1, chargeUntil: 0 });
+      mountModel(id);
+      scene.environment = K.environment([B.pal[0].a, B.pal[0].c, B.pal[0].b]);
+      K.clear();
       if (fx) fx.clear();
       palette(phase - 1, true);
     }
@@ -726,6 +778,8 @@ window.SuperScene = (() => {
     function dispose() {
       renderer.setAnimationLoop(null);
       if (fx) fx.dispose();
+      if (release) release();
+      K.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
       keep.forEach(x => x.dispose && x.dispose());
@@ -733,7 +787,7 @@ window.SuperScene = (() => {
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     function info() { return { boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
-    return { apply, event, anchor, screenRect, setBoss, bench, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
+    return { apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
   return { mount };

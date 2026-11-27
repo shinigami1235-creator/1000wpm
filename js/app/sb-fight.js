@@ -125,7 +125,7 @@ window.SuperFight = (() => {
     const LINE_KINDS = new Set(['block', 'packet', 'weak', 'fix', 'crowd']);
     const LABEL = { block: 'BLOCK', packet: 'SEND BACK', weak: 'WEAK POINT', fix: 'FIX', crowd: 'CROWD SPELL' };
     const lineList = () => [...targets.filter(x => LINE_KINDS.has(x.kind)).map(x => ({ ...x, n: x.word.split(' ').length, label: LABEL[x.kind] })),
-      ...earned.map(e => ({ ...e, n: e.word.split(' ').length, label: e.word.toUpperCase() }))];
+      ...earned.map(e => ({ ...e, n: e.word.split(' ').length, label: e.word.toUpperCase() }))].map(x => (x.tag ? { ...x, label: x.tag } : x));
     function typeables() {
       if (IL && status === 'fight') return stack.length ? [{ id: 'stack', kind: 'stack', word: stack[0], due: Infinity }] : [];
       const out = status === 'finish' && finish ? [{ id: 'finish', kind: 'finish', word: finish.phrase, due: finish.due }] : [...targets, ...spellTargets()];
@@ -220,6 +220,7 @@ window.SuperFight = (() => {
           drop(tg.id);
           stats.blocks++;
           emit('block', { id: tg.id, attack: tg.attack, owner: tg.owner });
+          if (mod.blocked) mod.blocked(tg);
           return;
         }
         case 'decoy': {
@@ -243,7 +244,7 @@ window.SuperFight = (() => {
       const x = get(it.id);
       if (!x) return hitStack(text, wasClean);   // its moment passed: a plain word
       shiftStack();
-      if (x.kind === 'block') { me.word({ letters: 0, clean: wasClean }); drop(x.id); stats.blocks++; emit('block', { id: x.id, attack: x.attack, owner: x.owner }); return; }
+      if (x.kind === 'block') { me.word({ letters: 0, clean: wasClean }); drop(x.id); stats.blocks++; emit('block', { id: x.id, attack: x.attack, owner: x.owner }); if (mod.blocked) mod.blocked(x); return; }
       if (x.kind === 'crowd') return castCrowd(x);
       return mod.typed && mod.typed(x, text, wasClean);
     }
@@ -552,7 +553,7 @@ window.SuperFight = (() => {
       const AVG = { fork: 4, root: 7, patch: 6 }, WORDS = { fork: 5, root: 7, patch: 6 };
       const heads = B.heads.map((h, i) => ({ ...h, i, max: 1, hp: 1, up: true, downUntil: 0, lastHit: 0, tid: null, word: '' }));
       const REGROW = [0, 9000, 7500, 6000], REGEN = [0, 0.08, 0.1, 0.13];
-      let neckUntil = 0, nextBite = 0, nextBreath = 0, nextMend = 0, biteWarn = false, mendAt = 0;
+      let neckUntil = 0, nextBite = 0, nextBreath = 0, nextMend = 0, nextSlam = Infinity, biteWarn = false, mendAt = 0;
       const head = id => heads.find(h => h.id === id);
       // in the one line a head can't be picked to focus on, so heads are a little smaller there
       const size = h => Math.round(WORDS[h.id] * AVG[h.id] * 1.6 * (1 + 0.15 * (F.phase - 1)) * (T.wpm / 150 * 0.5 + 0.5) * (F.inline ? 0.8 : 1));
@@ -633,9 +634,20 @@ window.SuperFight = (() => {
               F.emit('attack', { kind: 'mend', owner: 'patch' });
             }
           } else if (!patch.up && at >= nextMend) nextMend = at + 1500;
+          // the tidal slam (phase 2 on): the hull rises and drops, and a wave rolls at Art. Block it
+          if (F.phase >= 2 && at >= nextSlam && !F.targets.some(x => x.kind === 'block')) {
+            const w = F.pick(['cyber', 'common'], [5, 8]);
+            const ms = F.win(w.length, 1.7) + 1100;
+            F.addTarget('block', w, ms, { owner: 'body', attack: 'slam', dmg: Math.round([0, 10, 10, 12][F.phase] * (T.wpm < 100 ? 0.7 : 1)) });
+            F.emit('windup', { kind: 'slam', owner: 'body', ms });
+            nextSlam = at + ms + F.gap([0, 16000, 16000, 13500][F.phase]) * (T.wpm < 100 ? 1.6 : 1);
+            nextBreath = Math.max(nextBreath, at + ms + 1500);
+          }
         },
-        phase() { const at = F.now(); nextBreath = Math.max(nextBreath, at + 3500); nextBite = Math.max(nextBite, at + 3000); nextMend = Math.max(nextMend, at + 3000); biteWarn = false; mendAt = 0; heads.forEach(h => { const k = h.hp / h.max; h.max = size(h); h.hp = Math.round(h.max * k); }); },
-        resume() { const at = F.now(); if (neckUntil) { neckUntil = 0; F.setStack(false); } heads.forEach(h => regrow(h, 0.6)); nextBreath = at + 3000; nextBite = at + 2500; nextMend = at + 3000; },
+        phase(n) { const at = F.now(); nextBreath = Math.max(nextBreath, at + 3500); nextBite = Math.max(nextBite, at + 3000); nextMend = Math.max(nextMend, at + 3000); biteWarn = false; mendAt = 0; if (n >= 2) nextSlam = at + F.gap(n === 2 ? 7000 : 9000); heads.forEach(h => { const k = h.hp / h.max; h.max = size(h); h.hp = Math.round(h.max * k); }); },
+        resume() { const at = F.now(); if (neckUntil) { neckUntil = 0; F.setStack(false); } heads.forEach(h => regrow(h, 0.6)); nextBreath = at + 3000; nextBite = at + 2500; nextMend = at + 3000; nextSlam = at + 8000; },
+        // a blocked wave crashes back into the hull: a counter hit, and Fork loses its next bite's timing
+        blocked(x) { if (x.attack === 'slam') { F.deal(F.maxHp * 0.025, { src: 'counter', at: 'core', crit: true }); nextBite = Math.max(nextBite, F.now() + 2500); biteWarn = false; } },
         stackK: () => 3,
         stackAt: () => 'core',
         spellAt: () => 'core',
@@ -676,7 +688,7 @@ window.SuperFight = (() => {
     compiler(F) {
       const { T, B } = F;
       const TWO = ['{w}.send({w2});', 'if ({w}) {w2}();', 'const {w} = {w2}(cfg);', 'return {w} + {w2};', '{w}.merge({w2});', 'emit({w}, {w2});'];
-      let lines = [], nextLine = 0, nextOverflow = 0, lid = 0;
+      let lines = [], nextLine = 0, nextOverflow = 0, nextLaser = Infinity, nextBomb = Infinity, lid = 0;
       function mutate(w) {
         for (let k = 0; k < 12; k++) {
           const r = F.rng(), n = w.length;
@@ -709,6 +721,13 @@ window.SuperFight = (() => {
       return {
         init() { const at = F.now(); nextLine = at + 1200; nextOverflow = at + F.gap(12000); },
         typed(tg, text, ok) {
+          if (tg.kind === 'packet') {   // a fork bomb process: kill it before it reaches Art
+            const x = F.wordHit(text.length, ok);
+            F.drop(tg.id);
+            F.deal(x.amount * 3 * (x.crit ? 2 : 1), { src: 'packet', word: text, tier: x.tier, crit: x.crit, at: 'core' });
+            F.emit('packet', { returned: true, id: tg.id });
+            return;
+          }
           const line = lines.find(l => l.id === tg.owner);
           if (!line || line.state !== 'live') return;
           const inOrder = line === oldest();
@@ -722,6 +741,7 @@ window.SuperFight = (() => {
           else { done(line, 'fixed'); F.emit('fix', { line: line.id, inOrder }); }
         },
         expire(x) {
+          if (x.kind === 'packet') { F.emit('packet', { returned: false, id: x.id }); F.chip(4, 'packet'); return; }
           if (x.kind !== 'fix') return;
           const line = lines.find(l => l.id === x.owner);
           if (!line || line.state !== 'live') return;
@@ -743,13 +763,29 @@ window.SuperFight = (() => {
             F.addTarget('block', w, ms, { owner: 'tower', attack: 'overflow', dmg: [0, 14, 15, 16][F.phase] });
             F.emit('windup', { kind: 'overflow', ms });
             nextOverflow = at + ms + F.gap([0, 13000, 11000, 9000][F.phase]);
+            nextLaser = Math.max(nextLaser, at + ms + 2500);
+          }
+          // segfault (phase 2 on): the eye sweeps a laser across the floor. Block it
+          if (F.phase >= 2 && at >= nextLaser && !F.targets.some(x => x.kind === 'block')) {
+            const w = F.pick(['cyber', 'common'], [5, 8]);
+            const ms = F.win(w.length, 1.7) + 700;
+            F.addTarget('block', w, ms, { owner: 'eye', attack: 'laser', dmg: [0, 10, 10, 12][F.phase] });
+            F.emit('windup', { kind: 'laser', owner: 'eye', ms });
+            nextLaser = at + ms + F.gap([0, 14000, 14000, 11500][F.phase]);
+            nextOverflow = Math.max(nextOverflow, at + ms + 2500);
+          }
+          // fork bomb (phase 3): two processes fly at Art. Type each one to kill it
+          if (F.phase >= 3 && at >= nextBomb && !F.targets.some(x => x.kind === 'packet')) {
+            for (let i = 0; i < 2; i++) { const w = F.pick(['common'], [3, 5]); F.addTarget('packet', w, F.win(w.length, 1.6) + 900 + i * 600, { i, attack: 'fork', tag: 'KILL' }); }
+            F.emit('windup', { kind: 'bomb', n: 2 });
+            nextBomb = at + F.gap(12500);
           }
         },
-        phase() { const at = F.now(); nextLine = Math.max(nextLine, at + 2500); nextOverflow = Math.max(nextOverflow, at + 4000); },
-        resume() { const at = F.now(); lines = []; nextLine = at + 1200; nextOverflow = at + 4000; },
+        phase(n) { const at = F.now(); nextLine = Math.max(nextLine, at + 2500); nextOverflow = Math.max(nextOverflow, at + 4000); if (n >= 2) nextLaser = at + F.gap(n === 2 ? 7000 : 9000); if (n >= 3) nextBomb = at + F.gap(5000); },
+        resume() { const at = F.now(); lines = []; nextLine = at + 1200; nextOverflow = at + 4000; nextLaser = at + 8000; nextBomb = at + 6000; },
         stackAt: () => 'core',
         spellAt: () => 'core',
-        clearAdds() { for (const l of lines.filter(l => l.state === 'live')) { done(l, 'fixed'); F.emit('fix', { line: l.id, inOrder: true, auto: true }); } },
+        clearAdds() { for (const l of lines.filter(l => l.state === 'live')) { done(l, 'fixed'); F.emit('fix', { line: l.id, inOrder: true, auto: true }); } for (const x of F.targets.filter(x => x.kind === 'packet')) { F.drop(x.id); F.emit('packet', { returned: true, id: x.id, auto: true }); } },
         snap(at) {
           return {
             lines: lines.map(l => {
@@ -798,12 +834,15 @@ window.SuperFight = (() => {
             nextWeak = at + ms + F.gap([0, 2300, 2000, 1700][F.phase]);
           }
           if (at >= nextLunge && !F.targets.some(x => x.kind === 'block')) {
-            const sweep = F.phase >= 3;
+            // from phase 2 some lunges are a breach instead: it dives and comes up under Art
+            const breach = F.phase >= 2 && F.rng() < (F.phase >= 3 ? 0.35 : 0.45);
+            const sweep = !breach && F.phase >= 3;
             const w = sweep ? F.phrase() : F.pick(['cyber', 'common'], [4, 8]);
-            const ms = F.win(w.length, 1.6) + 500;
-            F.addTarget('block', w, ms, { owner: 'serpent', attack: sweep ? 'sweep' : 'lunge', dmg: sweep ? 16 : 14 });
+            const ms = F.win(w.length, 1.6) + (breach ? 1000 : 500);
+            const kind = breach ? 'breach' : sweep ? 'sweep' : 'lunge';
+            F.addTarget('block', w, ms, { owner: 'serpent', attack: kind, dmg: sweep ? 16 : breach ? 15 : 14 });
             dive = at + ms;
-            F.emit('windup', { kind: sweep ? 'sweep' : 'lunge', ms });
+            F.emit('windup', { kind, ms });
             nextLunge = at + ms + F.gap([0, 11000, 9000, 7500][F.phase]);
           }
           if (at >= nextSpit && !F.targets.some(x => x.kind === 'packet')) {

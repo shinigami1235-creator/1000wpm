@@ -153,7 +153,7 @@
           e = document.createElement('div');
           const sp = x.spell && Combat.spell(x.spell);
           e.className = `sb-chip ${x.kind}${sp ? ' r' + sp.rarity : ''}`;
-          e.innerHTML = `<small>${x.kind === 'block' ? ({ breath: 'Block the breath', overflow: 'Block the overflow', lunge: 'Block the lunge', sweep: 'Block the tail sweep' })[x.attack] || 'Block' : x.kind === 'crowd' ? 'Crowd spell' : 'Spell'}</small><b></b><i class="sb-tbar"><i></i></i>`;
+          e.innerHTML = `<small>${x.kind === 'block' ? ({ breath: 'Block the breath', overflow: 'Block the overflow', lunge: 'Block the lunge', sweep: 'Block the tail sweep', slam: 'Block the wave', laser: 'Block the laser', breach: 'Block the breach' })[x.attack] || 'Block' : x.kind === 'crowd' ? 'Crowd spell' : 'Spell'}</small><b></b><i class="sb-tbar"><i></i></i>`;
           if (sp) e.style.setProperty('--sc', sp.color);
           a('attacks').append(e);
           chips.set(x.id, e);
@@ -263,7 +263,7 @@
       scene.event(n, d);
       if (n === 'miss' || n === 'fizzle') missed = true;
       if (n === 'hit') {
-        const name = d.src === 'spell' ? (Combat.spell(d.spell) || {}).word : d.src === 'sever' ? 'head cut' : d.src === 'weak' ? 'weak point' : d.src === 'packet' ? 'packet back' : d.src === 'fix' ? 'bug fix' : d.word;
+        const name = d.src === 'spell' ? (Combat.spell(d.spell) || {}).word : d.src === 'sever' ? 'head cut' : d.src === 'weak' ? 'weak point' : d.src === 'packet' ? 'packet back' : d.src === 'fix' ? 'bug fix' : d.src === 'counter' ? 'counter' : d.word;
         addTick(d.amount, name || '', d.src, d.crit);
       }
       if (n === 'phase') {
@@ -731,7 +731,7 @@
 
     // test hooks
     window._sb = {
-      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(), bench: n => arena.scene.bench(n),
+      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(), bench: n => arena.scene.bench(n), cam: (p, l, f) => arena.scene.cam(p, l, f), model: () => arena.scene.model(),
       phase: n => fight.debug.phase(n), hp: f => fight.debug.hp(f), finish: ms => fight.debug.finish(ms), enrage: () => fight.debug.enrage(),
       support: (id, buyer) => fight.support(id, buyer || 'nova_k'), combo: n => fight.debug.combo(n), offer: ids => fight.debug.offer(ids), crowd: () => fight.debug.crowd(),
       artHp: n => fight.debug.artHp(n), type: s => { for (const ch of s) fight.char(ch); },
