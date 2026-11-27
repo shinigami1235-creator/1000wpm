@@ -77,7 +77,9 @@ const juice = {
   tint: (hex, k) => { tintCol = typeof hex === 'number' ? '#' + hex.toString(16).padStart(6, '0') : hex; tintK = Math.max(tintK, k); },
   wave: () => {}, canFlash: () => true,
 };
-const fx = Combat.FX.create(THREE, scene, camera, { pixelHeight: () => renderer.domElement.height, juice });
+const fx = Combat.FX.create(THREE, scene, camera, { pixelHeight: () => renderer.domElement.height, juice, lights: !q.has('nolight') });
+// ?off=smoke,decalGlow,decalDark,crystals hides a layer, to measure what it costs
+for (const k of (q.get('off') || '').split(',')) if (fx._layers && fx._layers[k]) { const o = fx._layers[k]; o.layers.set(1); }
 const reacts = [];
 const caster = { pos: out => out.copy(me.position).add(new THREE.Vector3(0, 0.3, -1)) };
 const target = { size: 6, pos: out => out.copy(core), top: out => out.copy(head), base: out => out.set(0, 0, 1), react: (k, p) => reacts.push([+clock.toFixed(2), k, p]) };
@@ -137,6 +139,18 @@ window.spellLab = {
       for (let i = 0; i < secs * 60; i++) { const a = performance.now(); fx.update(1 / 60); tot += performance.now() - a; n++; const inf = fx.info(); peakSeg = Math.max(peakSeg, inf.segs); peakP = Math.max(peakP, inf.particles); }
     }
     return { msPerUpdate: +(tot / n).toFixed(4), peakSeg, peakP };
+  },
+  // ms per rendered frame (draw included, read back so the GPU work counts) over a cast of each spell
+  renderBench(ids, secs = 2) {
+    auto = false; fx.clear();
+    const gl = renderer.getContext(), px = new Uint8Array(4);
+    const list = ids || Combat.SPELLS().map(s => s.id);
+    let tot = 0, n = 0;
+    for (const id of list) {
+      cast(id, false);
+      for (let i = 0; i < secs * 30; i++) { step(1 / 30); const a = performance.now(); draw(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); tot += performance.now() - a; n++; }
+    }
+    return { msPerFrame: +(tot / n).toFixed(2), frames: n };
   },
   cam(p, l) { CAM.set(...p); LOOK.set(...l); camera.position.copy(CAM); camera.lookAt(LOOK); },
   cast, ids: () => Combat.SPELLS().map(s => s.id),

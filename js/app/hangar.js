@@ -190,7 +190,7 @@ Router.register('hangar', (() => {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio)); host.append(renderer.domElement);
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
     const keep = [], own = x => (keep.push(x), x);
     const scene = new THREE.Scene();
     const accent = () => new THREE.Color(glowOf(look()));
@@ -220,7 +220,7 @@ Router.register('hangar', (() => {
     // ---------- lights: a key spot from above with soft shadows, a fill, and two coloured rims ----------
     scene.add(new THREE.HemisphereLight('#cfdcff', '#0b0d10', 0.35));
     const key = new THREE.SpotLight('#ffffff', 130, 40, 0.42, 0.55, 1.5); key.position.set(3.5, 11, 6); key.target.position.set(0, -1, 0);
-    key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0004; key.shadow.radius = 4; key.shadow.camera.near = 4; key.shadow.camera.far = 30;
+    key.castShadow = true; key.shadow.mapSize.set(512, 512); key.shadow.bias = -0.0004; key.shadow.radius = 4; key.shadow.camera.near = 4; key.shadow.camera.far = 30;
     scene.add(key, key.target);
     const fill = new THREE.DirectionalLight('#9fb8ff', 0.5); fill.position.set(-7, 3, 6); scene.add(fill);
     const rimA = new THREE.PointLight('#ffffff', 60, 18, 1.6); rimA.position.set(-4.5, 3, -4.5); scene.add(rimA);
@@ -304,8 +304,14 @@ Router.register('hangar', (() => {
     let chirpAt = now() + 8 + Math.random() * 6;
     const IDLE = [['boop', 'calm'], ['ooh', 'happy'], ['happy', 'happy'], ['sleep', 'blink'], ['giggle', 'heart']];
     const flyP = new V(), flyPrev = new V(), vel = new V(), VP = {};
+    // a slow device drops the shadows and draws at one pixel per pixel, once (adaptive-quality skill)
+    let slowFor = 0, lean = false;
     renderer.setAnimationLoop(() => {
-      const t = now(), dt = Math.min(0.05, t - last); last = t;
+      const t = now(), dt = Math.min(0.05, t - last), raw = t - last; last = t;
+      if (!lean) {
+        slowFor = raw > 0.04 && !document.hidden ? slowFor + Math.min(raw, 0.2) : Math.max(0, slowFor - raw);
+        if (slowFor > 2) { lean = true; renderer.setPixelRatio(1); size(); key.castShadow = false; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
+      }
       if (t > chirpAt) {
         chirpAt = t + 10 + Math.random() * 8;
         if (t - busyAt > IDLE_AFTER && !document.hidden) { if (Math.random() < 0.35) { bot.emote(look().emote, t); voice('giggle'); } else { const [m, f] = IDLE[Math.floor(Math.random() * IDLE.length)]; voice(m); face = f; faceUntil = t + 1.2; } }

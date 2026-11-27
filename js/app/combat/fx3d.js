@@ -268,7 +268,11 @@ Combat.FX = (() => {
     smokePts.frustumCulled = false; smokePts.renderOrder = 3;
     root.add(smokePts);
     let sI = 0, sAlive = 0;
+    // a slow device (frames longer than 34 ms for a second or more) gets thinner smoke and burns, and none
+    // at all when it's very slow; the light pulse, lines and sparks stay (adaptive-quality skill)
+    let slow = 0;
     function puff(at, vel, col, size, life, alpha = 0.5) {
+      if (slow > 0.85 || (slow > 0.5 && Math.random() < 0.6)) return;
       const i = sI = (sI + 1) % SN;
       sPos[i * 3] = at.x; sPos[i * 3 + 1] = at.y; sPos[i * 3 + 2] = at.z;
       sVel[i * 3] = vel.x; sVel[i * 3 + 1] = vel.y; sVel[i * 3 + 2] = vel.z;
@@ -291,18 +295,25 @@ Combat.FX = (() => {
     // ---------- floor decals: a glowing burn and a dark scorch where a spell lands on the floor ----------
     const DN = 28;
     const decalGeo = own(new THREE.PlaneGeometry(1, 1)); decalGeo.rotateX(-Math.PI / 2);
+    // the burn and the scorch are drawn once into textures, so the floor costs one texture read per pixel
+    const decalTex = mode => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d');
+      if (mode) {
+        let sd = 3; const r01 = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        for (let i = 0; i < 18; i++) { const a = r01() * 6.28, d = r01() * 30, x = 64 + Math.cos(a) * d, y = 64 + Math.sin(a) * d, rr = 20 + r01() * 26; const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(255,255,255,.28)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
+      } else {
+        const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,.6)'); gr.addColorStop(0.45, 'rgba(255,255,255,.18)'); gr.addColorStop(0.72, 'rgba(255,255,255,.05)'); gr.addColorStop(0.78, 'rgba(255,255,255,.9)'); gr.addColorStop(0.84, 'rgba(255,255,255,.05)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+        g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineCap = 'round';
+        for (let i = 0; i < 9; i++) { const a = i / 9 * 6.28 + 0.2; g.lineWidth = 3 + (i % 3) * 2; g.beginPath(); g.moveTo(64 + Math.cos(a) * 10, 64 + Math.sin(a) * 10); g.lineTo(64 + Math.cos(a) * 58, 64 + Math.sin(a) * 58); g.stroke(); }
+      }
+      return own(new THREE.CanvasTexture(cv));
+    };
     const decalMat = mode => own(new THREE.ShaderMaterial({
-      uniforms: {},
+      uniforms: { uTex: { value: decalTex(mode) } },
       vertexShader: `varying vec2 vUv; varying vec3 vC; void main(){ vUv = uv; vC = instanceColor; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
-      fragmentShader: mode ? `varying vec2 vUv; varying vec3 vC;
-          void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0, a = atan(q.y, q.x);
-            float k = smoothstep(1.0, 0.15, r) * (0.75 + 0.25 * sin(a * 7.0 + r * 9.0)) * (0.8 + 0.2 * sin(a * 23.0));
-            gl_FragColor = vec4(0.02, 0.02, 0.025, k * vC.r * 0.8); }`
-        : `varying vec2 vUv; varying vec3 vC;
-          void main(){ vec2 q = vUv - 0.5; float r = length(q) * 2.0, a = atan(q.y, q.x);
-            float core = smoothstep(0.7, 0.0, r) * 0.55, rim = smoothstep(0.1, 0.0, abs(r - 0.78)) * 0.9;
-            float rays = smoothstep(0.95, 0.3, r) * pow(0.5 + 0.5 * sin(a * 9.0 + sin(a * 3.0) * 2.0), 6.0) * 0.6;
-            float k = (core + rim + rays) * step(r, 1.0); gl_FragColor = vec4(vC * k, k); }`,
+      fragmentShader: mode ? `uniform sampler2D uTex; varying vec2 vUv; varying vec3 vC; void main(){ float k = texture2D(uTex, vUv).a * vC.r * 0.85; gl_FragColor = vec4(0.02, 0.02, 0.025, k); }`
+        : `uniform sampler2D uTex; varying vec2 vUv; varying vec3 vC; void main(){ float k = texture2D(uTex, vUv).a; gl_FragColor = vec4(vC * k, k); }`,
       transparent: true, depthWrite: false, fog: false, blending: mode ? THREE.NormalBlending : THREE.AdditiveBlending,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     }));
@@ -313,6 +324,7 @@ Combat.FX = (() => {
     let dI = 0;
     // a burn on the floor at at (y is ignored): glow fades over life, scorch lingers a little longer
     function decal(at, col, size, life = 1.2, dark = 0.8, grow = 0.25) {
+      if (slow > 0.5) { size *= 0.7; dark = 0; life *= 0.7; }
       const d = decals[dI = (dI + 1) % DN];
       d.on = true; d.at.set(at.x, 0.03, at.z); d.col.copy(col); d.size = size; d.t = 0; d.life = life; d.rot = Math.random() * 6.28; d.dark = dark; d.grow = grow;
     }
@@ -337,11 +349,11 @@ Combat.FX = (() => {
     // ---------- light pulses: one point light that the biggest current hit borrows ----------
     // It lights the boss, the floor and the raid in the spell's colour for a moment. One light only,
     // always in the scene so no material recompiles when it fires; o.lights false leaves it out.
-    const lamp = o.lights === false ? null : new THREE.PointLight('#ffffff', 0, 70, 1.6);
+    const lamp = o.lights === false || window.__noFxLight ? null : new THREE.PointLight('#ffffff', 0, 70, 1.6);
     if (lamp) root.add(lamp);
     const lampS = { t: 1, life: 1, peak: 0 };
     function light(at, col, k = 1, life = 0.35) {
-      if (!lamp) return;
+      if (!lamp || lampGone) return;
       const left = lampS.t < lampS.life ? lampS.peak * Math.pow(1 - lampS.t / lampS.life, 2) : 0;
       if (left > k) return;
       lamp.position.copy(at); lamp.color.copy(col); lampS.t = 0; lampS.life = life; lampS.peak = k * (calm ? 0.6 : 1);
@@ -362,6 +374,7 @@ Combat.FX = (() => {
       _m.compose(base, _cq, _cs.set(r, len, r));
       crystals.setMatrixAt(nCry, _m); crystals.setColorAt(nCry, _c.copy(col).multiplyScalar(k)); nCry++;
     }
+    const lampGone = false;
     function drawLamp(dt) {
       if (!lamp) return;
       lampS.t += dt;
@@ -1145,7 +1158,7 @@ Combat.FX = (() => {
           prism(t1, s.dir, len * g, 0.75 * S * (1 - out), deep, col, shimmer * (1 - out), 4, s.spin);
         }
         if (Math.random() < 0.6) { t1.set(e.base.x + rnd(-6, 6) * S, rnd(0, 14) * S, e.base.z + rnd(-3, 4) * S); spawn(t1, _pv.set(rnd(-0.5, 0.5), rnd(-0.6, 0.2), rnd(-0.5, 0.5)), col, 0.35 * S, 1.6, G.dot); }
-        if (!reduce && Math.random() < 0.25) { t1.set(e.base.x + rnd(-5, 5) * S, rnd(0, 2) * S, e.base.z + rnd(-3, 3) * S); puff(t1, _pv.set(rnd(-0.6, 0.6), 0.2, rnd(-0.3, 0.6)), mist, rnd(2.5, 4) * S, 1.8, 0.22); }
+        if (!reduce && Math.random() < dt * 9) { t1.set(e.base.x + rnd(-5, 5) * S, rnd(0, 2) * S, e.base.z + rnd(-3, 3) * S); puff(t1, _pv.set(rnd(-0.6, 0.6), 0.2, rnd(-0.3, 0.6)), mist, rnd(2.5, 4) * S, 1.8, 0.22); }
         return true;
       };
     };
@@ -1174,10 +1187,11 @@ Combat.FX = (() => {
         // the cloud: dark puffs turning in a disk over the target, lit from inside now and then
         const cloudOn = e.t < last + 0.4, grow = Math.min(1, e.t / 0.7);
         if (cloudOn) {
-          if (!reduce || Math.random() < 0.5) for (let k = 0; k < 2; k++) {
+          e.cloudAcc = (e.cloudAcc || 0) + dt * (reduce ? 10 : 20);
+          for (; e.cloudAcc >= 1; e.cloudAcc--) {
             const a = rnd(0, Math.PI * 2), r = rnd(0, 8) * S * grow;
             t2.set(t1.x + Math.cos(a) * r, t1.y + 2.4 * S + rnd(-0.8, 0.8) * S, t1.z + Math.sin(a) * r * 0.5);
-            puff(t2, _pv.set(-Math.sin(a) * 2.5, rnd(-0.2, 0.2), Math.cos(a) * 1.2), Math.random() < 0.2 ? dark : cloud, rnd(4, 6.5) * S, rnd(1.2, 1.8), 0.55);
+            puff(t2, _pv.set(-Math.sin(a) * 2.5, rnd(-0.2, 0.2), Math.cos(a) * 1.2), Math.random() < 0.2 ? dark : cloud, rnd(3.5, 5) * S, rnd(1.2, 1.6), 0.6);
           }
           for (let k = 0; k < 2; k++) {
             const a = rnd(0, Math.PI * 2), r = rnd(0, 8) * S * grow;
@@ -1411,7 +1425,7 @@ Combat.FX = (() => {
               t5.set(e.at.x + Math.cos(a) * rr, e.at.y + rnd(-3, 3) * S, e.at.z + Math.sin(a) * rr * 0.6);
               spawn(t5, _pv.set(-Math.sin(a) * 6 * S, 0, Math.cos(a) * 6 * S), Math.random() < 0.25 ? pink : Math.random() < 0.3 ? hi : vio, rnd(0.3, 0.6) * S, 1.4, k === 0 ? G.box : G.dot, { pull: e.pullI });
             }
-            if (!reduce && Math.random() < 0.5) { const a = rnd(0, 6.28), rr = rnd(5, 8) * S; t5.set(e.at.x + Math.cos(a) * rr, e.at.y + rnd(-2, 2) * S, e.at.z + Math.sin(a) * rr * 0.6); puff(t5, _pv.set(-Math.sin(a) * 4 - Math.cos(a) * 3, 0, Math.cos(a) * 4 - Math.sin(a) * 3), ink, rnd(3, 5) * S, 0.9, 0.5); }
+            if (!reduce && Math.random() < dt * 14) { const a = rnd(0, 6.28), rr = rnd(5, 8) * S; t5.set(e.at.x + Math.cos(a) * rr, e.at.y + rnd(-2, 2) * S, e.at.z + Math.sin(a) * rr * 0.6); puff(t5, _pv.set(-Math.sin(a) * 4 - Math.cos(a) * 3, 0, Math.cos(a) * 4 - Math.sin(a) * 3), ink, rnd(3, 5) * S, 0.9, 0.5); }
             if (!reduce) juice('shake', 0.08);
           } else if (Math.random() < 0.8) spawn(e.at, _pv.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)), vio, 0.4 * S, 0.4, G.dot);
           return true;
@@ -1543,7 +1557,7 @@ Combat.FX = (() => {
         burst(t1.clone().setY(0.5), 80, 18 * S, red, 0.5, 1, G.one, { flat: true, drag: 1.2 });
         impact(t2, red, 3 * S, { shake: 1.3 });
         t1.y = 0.4;
-        smoke(t1, 18, soot, 6 * S, 3, { up: 4, speed: 9 * S, alpha: 0.55, spread: 3 * S, tint: 0.5 });
+        smoke(t1, 12, soot, 5 * S, 2.6, { up: 4, speed: 9 * S, alpha: 0.55, spread: 3 * S, tint: 0.5 });
         decal(t1, red, 34 * S, 2.6, 1, 0.3);
         if (!reduce) burst(t1, 40, 14 * S, CHIP, 0.6, 1.4, G.box, { up: 1.4, grav: 18, drag: 0.4 });
         react(tg, 'break', h.power);
@@ -1696,6 +1710,7 @@ Combat.FX = (() => {
     // ---------- frame ----------
     function update(dt) {
       clock += dt;
+      slow += ((dt > 0.034 ? 1 : 0) - slow) * Math.min(1, dt * 1.2);
       nSeg = 0; nCry = 0;
       for (let i = live.length - 1; i >= 0; i--) {
         const e = live[i];
@@ -1797,9 +1812,9 @@ Combat.FX = (() => {
       scene.remove(root);
       keep.forEach(x => x.dispose && x.dispose());
     }
-    function info() { return { live: live.map(e => ({ id: e.id || 'shot' + e.tier, t: +e.t.toFixed(3) })), auras: Object.keys(auras), segs: nSeg, particles: pAlive, smoke: sAlive, decals: decalGlow.count, light: lamp ? +lamp.intensity.toFixed(1) : 0 }; }
+    function info() { return { live: live.map(e => ({ id: e.id || 'shot' + e.tier, t: +e.t.toFixed(3) })), auras: Object.keys(auras), segs: nSeg, particles: pAlive, smoke: sAlive, slow: +slow.toFixed(2), decals: decalGlow.count, light: lamp ? +lamp.intensity.toFixed(1) : 0 }; }
 
-    return { shot, charge, feed, release, cast, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP) };
+    return { shot, charge, feed, release, cast, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP), _layers: { smoke: smokePts, decalGlow, decalDark, lamp, crystals } };
   }
   return { create };
 })();
