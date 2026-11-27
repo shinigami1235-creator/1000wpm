@@ -1670,7 +1670,8 @@ window.BossScene = (() => {
       for (const x of evs) {
         if (x.type !== 'slam' || !MOVE_KINDS.has(x.kind) || dead) continue;
         const w = clamp((t - x.s) / Math.max(0.3, x.h - x.s), 0, 1), after = t - x.h, cutk = x.cut ? 0 : 1;
-        if (!x.sndWind && t >= x.s) { x.sndWind = true; snd(x.kind + 'Wind', Math.max(0.5, x.h - t)); }
+        // the wind-up sound is for attacks at you; a flank squad's fight only gets its landing
+        if (!x.sndWind && t >= x.s) { x.sndWind = true; if (!x.side) snd(x.kind + 'Wind', Math.max(0.5, x.h - t)); }
         if (!x.sndHit && t >= x.h - (x.kind === 'scan' ? 0.25 : x.kind === 'rain' ? 0.12 : 0) && !x.cut) { x.sndHit = true; snd(x.kind + 'Hit', !!(x.side ? x.outcome === 'block' : blocked.has(x.id))); }
         const ta = frameOf(x), mine = !x.side;
         if (x.kind === 'quake') {
