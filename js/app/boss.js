@@ -923,17 +923,18 @@ Router.register('boss', (() => {
   const hashOf = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
   let shieldFor = null;
   function renderShield(t) {
-    const box = q('shield'); if (!box) return;
+    // the raid shield's cells; q('shield') also matches the firewall flag, so look for the cells themselves
+    const box = el && el.querySelector('.wb-shieldbar[data-k="shield"]'), cells = q('dcells'); if (!box || !cells) return;
     const e = st && !st.defeatedAt ? R.eventsAt(st, t, 0).find(x => x.type === 'slam' && t >= x.start && t < x.hit + (grace[x.id] || 0) + 900) : null;
     if (!e) { if (!box.hidden) box.hidden = true; shieldFor = null; return; }
     box.hidden = false;
     if (shieldFor !== e.id) {
       shieldFor = e.id;
-      q('dcells').innerHTML = st.raiders.map(r => `<i data-r="${esc(r.id)}"${r.you ? ' class="me"' : ''}></i>`).join('');
+      cells.innerHTML = st.raiders.map(r => `<i data-r="${esc(r.id)}"${r.you ? ' class="me"' : ''}></i>`).join('');
     }
     const L = (st.locked && st.locked[e.id]) || {};
     let n = 0;
-    for (const c of q('dcells').children) { const k = !!L[c.dataset.r]; c.classList.toggle('on', k); if (k) n++; }
+    for (const c of cells.children) { const k = !!L[c.dataset.r]; c.classList.toggle('on', k); if (k) n++; }
     q('dcount').textContent = `${n} of ${st.raiders.length} blocked`;
   }
   // every segment locked: the whole raid blocked it
