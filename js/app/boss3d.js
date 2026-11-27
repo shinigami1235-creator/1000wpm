@@ -879,18 +879,39 @@ window.BossScene = (() => {
     const camBase = new V(0, 5.5, 30), camLook = new V(0, 7.4, 0), lookCur = new V(0, 7.4, 0);
     // the orbit: every so often your squad swings round to a new side of the boss, and the view goes
     // with it at a capped speed; it holds still through a wind-up. Reduce motion keeps the fixed view.
-    // Gid, 27 Nov 2026: "the camera spins along with your party as you encircle the boss". The raid
-    // circles all the time at a turn rate that changes every few seconds and now and then reverses; it
-    // eases to a stop while an attack or a lock-on winds up at your squad, so you can read it.
-    const orbit = { phi: 0, w: 0, want: 0.14, next: 5 };
+    // Gid, 27 Nov 2026: "at times the boss stays in place. the party rotates to the back or to the
+    // side. the camera follows so it looks like everything moves along". Every 7 to 12 s the party
+    // swings round the boss in one arc of 60 to 150 degrees over 2 to 3 s, picked so it ends up off
+    // the boss's side or behind it; the boss holds still and keeps its facing through the swing, the
+    // camera pulls back and banks, and the other squads trail and catch up. In between, a slow drift.
+    // It won't start a swing into an attack at your squad, and drifting stops for the last second
+    // before one lands.
+    const orbit = { phi: 0, w: 0, drift: 0.07, next: 5, sw: null, lag: 0, k: 0 };
     function orbitTick(t, dt) {
-      if (reduce || !BOT) { orbit.w = 0; return; }
-      // only the last second before a hit at your squad: attacks come often, and the raid keeps circling
+      if (reduce || !BOT) { orbit.w = 0; orbit.k = 0; return; }
       const sl = own(t), lk = locks.find(l => l.slot === RAID && t > l.h - 1.0 && t < l.h + 0.4);
       const hold = !!(sl && !sl.cut && t > sl.h - 1.0 && t < sl.h + 0.4) || !!lk || dead;
-      if (t > orbit.next) { orbit.want = (Math.random() < 0.3 ? -Math.sign(orbit.want || 1) : Math.sign(orbit.want || 1)) * rnd(0.12, 0.25); orbit.next = t + rnd(5, 9); }
-      orbit.w += ((hold ? 0 : orbit.want) - orbit.w) * Math.min(1, dt * (hold ? 3 : 0.8));
-      orbit.phi += orbit.w * dt;
+      const prev = orbit.phi;
+      if (orbit.sw) {
+        const u = (t - orbit.sw.t0) / orbit.sw.dur;
+        if (u >= 1) { orbit.phi = orbit.sw.to; orbit.sw = null; orbit.k = 0; }
+        else { orbit.phi = orbit.sw.from + (orbit.sw.to - orbit.sw.from) * smooth(u); orbit.k = Math.sin(u * Math.PI); }
+      } else {
+        const soon = evs.some(x => x.type === 'slam' && !x.side && !x.cut && x.h > t - 0.3 && x.h < t + 3.4) || locks.some(l => l.slot === RAID && t < l.h + 0.3);
+        if (!hold && !soon && t > orbit.next) {
+          // end up off its side or behind it: where its facing sits against the view afterwards
+          const rel = (Math.random() < 0.5 ? -1 : 1) * rnd(1.4, 2.9);
+          let d = bossYaw - rel - orbit.phi; d = Math.atan2(Math.sin(d), Math.cos(d));
+          if (Math.abs(d) < 1.0) d += Math.sign(d || 1) * 1.0;
+          d = clamp(d, -2.6, 2.6);
+          orbit.sw = { from: orbit.phi, to: orbit.phi + d, t0: t, dur: 1.5 + Math.abs(d) * 0.55 };
+          orbit.next = t + orbit.sw.dur + rnd(6, 10);
+          if (Math.random() < 0.3) orbit.drift = -orbit.drift;
+        } else if (!hold) orbit.phi += orbit.drift * dt;
+      }
+      orbit.w = (orbit.phi - prev) / Math.max(dt, 1e-3);
+      // the other squads fall behind the swing and fly to catch up
+      orbit.lag = (orbit.lag - (orbit.phi - prev) * 0.75) * Math.exp(-dt * 0.9);
       env.rotation.y = -orbit.phi;
     }
     // cutaways: a short shot from another angle on a stagger, a phase change or the kill, never
@@ -1916,8 +1937,9 @@ window.BossScene = (() => {
       // and rears back through the wind-up first
       if (slK && !slK.side && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
-      mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
-      mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
+      const hold = orbit.sw && !own(t) ? 0.08 : 1;   // it stays put while the party swings round it
+      mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash) * hold);
+      mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash) * hold);
       // phase 2: a full turn now and then
       const su = t - mv.spin;
       mv.face = su < 1.3 && M.spin ? smooth(su / 1.3) * Math.PI * 2 : 0;
@@ -1998,7 +2020,8 @@ window.BossScene = (() => {
         let want = null, rate = 2.2;
         if (sl) { const a = sl.at || aim; want = Math.atan2(a.x - root.position.x, a.z - root.position.z); rate = sl.side ? 4 : 6; }
         else if (lk) { const p = raidPos[lk.slot]; want = Math.atan2(p.x - root.position.x, p.z - root.position.z); rate = 4; }
-        else if (flight && !reduce) { const f = flight.focus(t); if (f) { want = Math.atan2(f.x - root.position.x, f.z - root.position.z); rate = 1.8; } }
+        else if (flight && !reduce && !orbit.sw) { const f = flight.focus(t); if (f) { want = Math.atan2(f.x - root.position.x, f.z - root.position.z); rate = 1.8; } }
+        if (orbit.sw && sl && sl.side) want = null;
         if (reduce || !BOT) bossYaw = orbit.phi;
         else if (want !== null) { const d = want + orbit.phi - bossYaw; bossYaw += Math.atan2(Math.sin(d), Math.cos(d)) * Math.min(1, dt * rate); }
         const r = bossYaw - orbit.phi; bossTurn = Math.atan2(Math.sin(r), Math.cos(r));
@@ -2020,7 +2043,7 @@ window.BossScene = (() => {
       if (flight) {
         const sl = dead ? null : own(t), sx = dead ? null : evs.find(z => z.side && !z.cut && t >= z.s && t <= z.e);
         const calm = !dead && !evs.some(z => !z.side && z.type === 'slam' && z.e > t && z.s < t + 3) && !locks.some(l => t < l.h + 0.4) && !current(t, 'volley');
-        flight.update(t, adt, { boss: root.position, aim, spin: orbit.w, calm,
+        flight.update(t, adt, { boss: root.position, aim, spin: orbit.w, lag: orbit.lag, calm: calm && !orbit.sw,
           threat: sl && !sl.cut ? { id: sl.id, kind: sl.kind, h: sl.h, blocked: !!sl.blocked } : null,
           side: sx ? { id: sx.id, k: sx.side, kind: sx.kind, h: sx.h, at: sx.at, outcome: sx.outcome } : null }, raidPos);
         youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
@@ -2359,6 +2382,8 @@ window.BossScene = (() => {
         camBase.z - roarK * 3);
       // the view follows your bot a little as it flies
       if (flight) camera.position.x += (raidPos[RAID].x - homePos[RAID].x) * 0.35;
+      // through a swing round the boss: back and up, trailing the turn
+      if (orbit.k) { camera.position.z += 4 * orbit.k; camera.position.y += 1.6 * orbit.k; camera.position.x -= clamp(orbit.w, -1.6, 1.6) * 2.2; }
       v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5 + adv * 1.6 * still, root.position.z * 0.3);
       lookCur.lerp(v1, Math.min(1, dt * 2));
       if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.4); }
@@ -2369,7 +2394,7 @@ window.BossScene = (() => {
         cutPose(v3, v4); camera.position.lerp(v3, k); vG.lerp(v4, k);
       }
       camera.lookAt(vG);
-      if (orbit.w && !(cu >= 0 && cu < cut.len)) camera.rotateZ(-orbit.w * 0.35);
+      if (orbit.w && !(cu >= 0 && cu < cut.len)) camera.rotateZ(clamp(-orbit.w * 0.13, -0.15, 0.15));
       const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK);
       // the barrier in front of the raid while your block waits for the blow, cracking when it lands
       {

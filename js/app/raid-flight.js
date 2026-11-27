@@ -165,7 +165,9 @@ window.RaidFlight = (() => {
         const k = squadOf[i] < 0 ? 0 : squadOf[i];
         // your squad holds the front (the view follows it round); the others swing out to the boss's
         // sides and round behind it, slowly, each on its own side
-        const a = k === 0 ? 0.2 * Math.sin(t * 0.19) : (k === 1 ? 1 : -1) * (0.6 + 1.9 * (0.5 + 0.5 * Math.sin(t * 0.11 + k * 2.3)));   // out to its side and round behind it
+        let a = k === 0 ? 0.2 * Math.sin(t * 0.19) : (k === 1 ? 1 : -1) * (0.6 + 1.9 * (0.5 + 0.5 * Math.sin(t * 0.11 + k * 2.3)));   // out to its side and round behind it
+        // when your squad swings round the boss, the others trail it and fly to catch up (never into your spot)
+        if (k && ctx.lag) a = k === 1 ? Math.max(0.45, a + ctx.lag) : Math.min(-0.45, a + ctx.lag);
         tmp.copy(s.home).sub(boss); const c = Math.cos(a), sn = Math.sin(a);
         tgt.set(tmp.x * c - tmp.z * sn, tmp.y, tmp.x * sn + tmp.z * c).add(boss);
         const calm = i === YOU ? 0.45 : 1;
