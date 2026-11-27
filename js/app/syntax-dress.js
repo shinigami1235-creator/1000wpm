@@ -75,7 +75,7 @@ window.SyntaxDress = (() => {
           .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
             roughnessFactor = clamp(roughnessFactor * (0.72 + 0.55 * sdN(vec2(du.x * 0.6, du.y * 9.0))) + groove * 0.3 + scorch * 0.35 - rivet * 0.2, 0.08, 1.0);`)
           .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-            { float fr = pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 5.0);
+            { float fr = pow(clamp(1.0 - abs(dot(normalize(vViewPosition), normal)), 0.0, 1.0), 5.0);
               totalEmissiveRadiance += uRim * fr * ${k.toFixed(2)};
               float fl = 0.75 + 0.25 * sin(vSP.y * 3.0 + uHot * 40.0);
               totalEmissiveRadiance += mix(uCrack, vec3(1.6, 1.3, 1.0), uHot * 0.6) * crack * fl * (0.6 + 0.8 * uDmg);
@@ -411,8 +411,10 @@ window.SyntaxDress = (() => {
       glow.color.setRGB(1, 0.16, 0.22).multiplyScalar(2.6 * (dead ? Math.max(0.2, visorK) : 1) * (1 + 0.25 * U.hot.value));
       // the core light pulses, swells with a charge and runs white-hot at the end
       const beat = 0.8 + 0.2 * Math.sin(t * (3 + ph)) ;
-      coreLight.intensity = dead ? Math.max(0, 60 * (1 - (st.deadT || 0) / 1.8)) : (10 + 30 * (st.charge || 0) + 8 * (st.weak ? 1 : 0)) * beat;
-      coreLight.color.setRGB(1, 0.17 + 0.25 * U.hot.value, 0.2 + 0.15 * U.hot.value);
+      // dying, the core overloads: its light climbs, flickers and runs white until it blows
+      const dT = st.deadT || 0, over = dead ? Math.min(1, dT / 2.2) : 0;
+      coreLight.intensity = dead ? (dT < 2.25 ? (12 + 140 * over * over) * (0.7 + 0.3 * Math.random()) : 0) : (10 + 30 * (st.charge || 0) + 8 * (st.weak ? 1 : 0)) * beat;
+      coreLight.color.setRGB(1, 0.17 + 0.25 * U.hot.value + 0.7 * over, 0.2 + 0.15 * U.hot.value + 0.6 * over);
       codeRing.rotation.y += dt * (0.35 + ph * 0.18 + (st.charge || 0) * 2.5);
       ringMat.opacity = dead ? Math.max(0, 1 - (st.deadT || 0)) : 0.85;
       ringTex.offset.x = (ringTex.offset.x + dt * 0.02) % 1;
@@ -479,7 +481,7 @@ window.SyntaxDress = (() => {
       for (const x of [glyphs, smoke.pts, embers.pts, pool, shadow]) if (x.parent) x.parent.remove(x);
       keep.forEach(x => x.dispose && x.dispose());
     }
-    return { arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow };
+    return { arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow, smoke, embers };
   }
   return { dress };
 })();

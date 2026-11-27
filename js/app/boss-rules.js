@@ -34,17 +34,21 @@ window.WorldBossRules = (() => {
   // shows, and from 25% it's bare and faster.
   const PHASES = [
     { at: 1.00, name: 'Online',        cycle: 9000,  wind: 3600, flight: 6500, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 3, charge: 2 }, intro: ['slam', 'charge'], kinds: ['slam'], phrase: false, weakMult: 2, diff: [2, 4] },
+      pool: { slam: 3, charge: 2 }, intro: ['slam', 'charge'], kinds: ['slam', 'quake'], phrase: false, weakMult: 2, diff: [2, 4] },
     { at: 0.75, name: 'Corrupted',     cycle: 8500,  wind: 3400, flight: 6000, shots: 3, adds: 0, heal: 0,
-      pool: { slam: 3, charge: 2, volley: 3, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep'], phrase: false, weakMult: 2, diff: [3, 5] },
+      pool: { slam: 3, charge: 2, volley: 3, shield: 2 }, intro: ['volley', 'shield'], kinds: ['slam', 'sweep', 'grab'], phrase: false, weakMult: 2, diff: [3, 5] },
     { at: 0.50, name: 'Memory leak',   cycle: 8000,  wind: 3200, flight: 5600, shots: 4, adds: 3, heal: 60, lead: 5000,
-      pool: { slam: 2, laser: 3, charge: 1, volley: 2, adds: 2 }, intro: ['laser', 'adds'], kinds: ['sweep', 'lunge'], phrase: false, weakMult: 2, diff: [3, 6] },
+      pool: { slam: 2, laser: 3, charge: 1, volley: 2, adds: 2 }, intro: ['laser', 'adds'], kinds: ['sweep', 'lunge', 'scan'], phrase: false, weakMult: 2, diff: [3, 6] },
     { at: 0.25, name: 'Kernel exposed', cycle: 7000, wind: 3200, flight: 5000, shots: 5, adds: 3, heal: 80, lead: 5000,
-      pool: { slam: 2, laser: 2, charge: 2, volley: 3, shield: 2, adds: 1 }, intro: ['charge', 'volley'], kinds: ['lunge', 'beam'], phrase: true, weakMult: 2, diff: [4, 6] },
+      pool: { slam: 2, laser: 2, charge: 2, volley: 3, shield: 2, adds: 1 }, intro: ['charge', 'volley'], kinds: ['lunge', 'beam', 'rain', 'quake'], phrase: true, weakMult: 2, diff: [4, 6] },
     { at: 0.10, name: 'Kernel panic',  cycle: 4500,  wind: 2800, flight: 4400, shots: 5, adds: 4, heal: 100,
-      pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam'], phrase: true, weakMult: 3, enrage: true, diff: [4, 7] },
+      pool: { volley: 3, adds: 2, shield: 1 }, intro: [], kinds: ['slam', 'sweep', 'lunge', 'beam', 'quake', 'scan', 'rain', 'grab'], phrase: true, weakMult: 3, enrage: true, diff: [4, 7] },
   ];
-  const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload', laser: 'kernel laser', charge: 'overflow punch' };
+  // Gid, 28 Nov 2026: four more, each animated and drawn its own way in boss3d.js
+  //   quake  it rises and pounds the floor, a wall of light runs out     scan  a visor beam sweeps across the squad
+  //   rain   red code rains down on targets round the squad              grab  it lunges and the claw closes on them
+  const ATTACK_NAME = { slam: 'crash', sweep: 'packet flood', lunge: 'fork bomb', beam: 'overload', laser: 'kernel laser', charge: 'overflow punch',
+    quake: 'segfault', scan: 'scan line', rain: 'code rain', grab: 'memory grab' };
   const CHARGE_WIND = 6500, CHARGE_OPEN = 700, LASER_WIND = 4400;
   const BREAK_PER_RAIDER = 28;  // break bar for each raider: a full raid breaks it in the last second or so
 

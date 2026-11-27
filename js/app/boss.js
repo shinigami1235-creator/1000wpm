@@ -341,7 +341,8 @@ Router.register('boss', (() => {
     renderQueue();
     tip('start');
     scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, onBoom: boom, bossId: 'syntax',
-      onMenace: k => { if (k === 'stomp') sfx('stomp'); else if (k !== 'lean') sfx('swipe'); } });
+      onMenace: k => { if (k === 'stomp') sfx('stomp'); else if (k !== 'lean') sfx('swipe'); },
+      onSfx: (n, a) => sfx(n, a) });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = "The boss can't load without an internet connection."; });
 
@@ -1763,11 +1764,12 @@ Router.register('boss', (() => {
     if (scene) { scene.setWeak(false); scene.defeat(instant); }
     // the last word: the music stops dead, the picture goes letterbox and slow, and the sound
     // comes back as the boss blows apart (Magician and Emperor in The Typing of the Dead)
-    if (!instant) { A.silence(); boomWant = true; q('lbox').classList.add('on'); timers.push(setTimeout(boom, 1800)); }
+    // the scene's death runs about 2.3 s before it blows (boss3d.js calls onBoom); this is the fallback
+    if (!instant) { A.silence(); boomWant = true; q('lbox').classList.add('on'); timers.push(setTimeout(boom, 2700)); }
     else A.stop();
     if (!instant) document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-kill' }));
     clearTimeout(downTimer);
-    downTimer = setTimeout(() => showResult(instant), instant ? 0 : 4200);
+    downTimer = setTimeout(() => showResult(instant), instant ? 0 : 5000);
   }
   function boom() {
     if (!boomWant || !el) return;
