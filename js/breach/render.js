@@ -313,7 +313,7 @@ window.Breach3D = (() => {
     const tip = new THREE.Object3D(); tip.position.set(0, 0.006, -0.5); body.add(tip);
     const mf = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright(acc, 2.4), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false }));
     mf.position.copy(tip.position); mf.scale.setScalar(0.001); body.add(mf);
-    g.position.set(0.34, -0.26, -0.64); g.rotation.set(0.05, 0.16, 0); g.scale.setScalar(0.62);
+    g.position.set(0.36, -0.27, -0.66); g.rotation.set(0.05, 0.17, 0); g.scale.setScalar(0.55);
     g.traverse(o => { o.renderOrder = 20; o.frustumCulled = false; });
     camera.add(g);
     gun = { g, body, holo, lm, rings, cell, keys, tip, mf, kick: 0, flash: 0, heat: 0, spin: 0, base: g.position.clone() };
@@ -1593,7 +1593,11 @@ window.Breach3D = (() => {
       live.add(f);
       let a = actors.get(f);
       if (a && a.disguised && f.revealed) { scene.remove(a.root); disposeTree(a.root); a = null; }
-      if (!a) { a = makeFoe(f, col2); actors.set(f, a); }
+      if (!a) {
+        a = makeFoe(f, col2); actors.set(f, a);
+        // it beams in: a flash where it lands and a ring on the floor under it
+        if (!f.revealed && f.type !== 'burrower' && t - (f.born || 0) < 0.5) { flash(f.pos, col2, 1.6, 0.3, 1.2); shock(f.pos, col2, 0.45); }
+      }
       f.cloakVis = st.cloak ? st.cloak(f) : 1;
       animateFoe(a, f, t, camPos, st.target === f);
     }
