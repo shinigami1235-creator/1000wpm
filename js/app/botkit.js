@@ -200,8 +200,20 @@ window.BotKit = (() => {
     };
     const arm = it.part === 'arm' ? ARMS[it.v] || '' : '';
     const trail = it.part === 'trail' && TRAILS[it.v] ? TRAILS[it.v]() : '';
-    const moves = it.part === 'emote' ? `<path d="M40 80q-10 24 0 48M28 72q-14 32 0 64M160 80q10 24 0 48M172 72q14 32 0 64" stroke="${acc}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".8"/>`
-      : it.part === 'victory' ? [[40, 40, '#ffd23d'], [160, 46, '#ff6fae'], [30, 140, '#5cc8ff'], [170, 136, acc], [100, 20, '#fff']].map(([x, y, c]) => `<path d="M${x} ${y - 9}l3 6 6 3-6 3-3 6-3-6-6-3 6-3z" fill="${c}"/>`).join('') : '';
+    // each move gets its own mark: arcs for a wave, a turning arrow for a spin, notes for a dance...
+    const stroke = (d, c = acc) => `<path d="${d}" stroke="${c}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const spark = (x, y, c, r = 9) => `<path d="M${x} ${y - r}l${r / 3} ${r * 0.67} ${r * 0.67} ${r / 3}-${r * 0.67} ${r / 3}-${r / 3} ${r * 0.67}-${r / 3}-${r * 0.67}-${r * 0.67}-${r / 3} ${r * 0.67}-${r / 3}z" fill="${c}"/>`;
+    const note = (x, y) => `<path d="M${x} ${y}v-22l14-4v22" stroke="${acc}" stroke-width="4" fill="none"/><circle cx="${x - 4}" cy="${y}" r="5" fill="${acc}"/><circle cx="${x + 10}" cy="${y - 4}" r="5" fill="${acc}"/>`;
+    const arrowSpin = stroke('M52 150a56 26 0 1 0 30-36') + `<path d="M82 104l4 14-14 0z" fill="${acc}"/>`;
+    const arrowFlip = stroke('M150 150a52 64 0 1 0-24-104') + `<path d="M118 38l14 6-10 10z" fill="${acc}"/>`;
+    const hearts = '<path d="M46 60l-8-8a5 5 0 0 1 8-6a5 5 0 0 1 8 6zM156 48l-7-7a4 4 0 0 1 7-5a4 4 0 0 1 7 5zM164 92l-6-6a4 4 0 0 1 6-4a4 4 0 0 1 6 4z" fill="#ff6fae"/>';
+    const MOVES = {
+      wave: stroke('M150 70q14 16 0 32M164 60q20 26 0 52'), laugh: `<text x="146" y="70" fill="${acc}" font-family="monospace" font-weight="bold" font-size="22">HA</text><text x="24" y="64" fill="${acc}" font-family="monospace" font-weight="bold" font-size="16">ha</text>`,
+      spin: arrowSpin, heart: hearts, dance: note(36, 80) + note(150, 60), flip: arrowFlip,
+      hop: stroke('M80 168h40M88 180h24') + stroke('M60 40v14M140 40v14M100 30v14'), float: stroke('M66 166q12-8 22 0t22 0t22 0') + stroke('M74 180q10-6 18 0t18 0t18 0'),
+      fireworks: [[40, 40, '#ffd23d', 12], [160, 46, '#ff6fae', 10], [30, 140, '#5cc8ff', 9], [170, 136, acc, 11], [100, 20, '#fff', 8]].map(([x, y, c, r]) => spark(x, y, c, r)).join(''),
+    };
+    const moves = it.part === 'emote' || it.part === 'victory' ? (it.part === 'victory' && (it.v === 'spin' || it.v === 'flip' || it.v === 'dance') ? spark(40, 36, '#ffd23d') + spark(164, 34, '#ff6fae', 7) : '') + (MOVES[it.v] || '') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
       <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
       <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}</svg>`;
