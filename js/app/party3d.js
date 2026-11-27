@@ -131,8 +131,8 @@ window.PartyScene = (() => {
         vec3 n = normalize(vN);
         float lit = 0.35 + 0.65 * max(dot(n, normalize(vec3(0.3, 1.0, 0.55))), 0.0);
         float rim = pow(1.0 - abs(dot(n, normalize(vV))), 2.2);
-        vec3 col = mix(uCol, vec3(1.0), uHit * 0.55);
-        vec3 c = vec3(0.012, 0.016, 0.02) * lit + col * uFill * (0.05 + 0.05 * scan) * lit + col * edge * (0.95 + uHit * 1.4)
+        vec3 col = mix(uCol, vec3(1.0), uHit * 0.4);
+        vec3 c = vec3(0.012, 0.016, 0.02) * lit + col * uFill * (0.05 + 0.05 * scan) * lit + col * edge * (0.95 + uHit * 0.9)
           + col * panel * 0.16 * uFill + col * rim * 0.42 * uFill + vec3(uHit * 0.12);
         c = mix(c, vec3(0.0), smoothstep(45.0, 85.0, vD) * 0.7);
         gl_FragColor = vec4(c, uOp);
@@ -465,7 +465,7 @@ window.PartyScene = (() => {
         anchor(id, out) { return out.copy(queen.position).add(v4.set(0, 5.2, 0)); },
         hitPos(id, out) { return out.copy(queen.position); },
         source(out) { return out.copy(qPos).add(v4.set(0, -1, 1)); },
-        hit(id) { qHit = 1.4; },
+        hit(id) { qHit = Math.min(1, qHit + 0.5); },
         charge() {},
         lunge() { for (const a of arms) a.rotation.x = -0.9; },
         gone() {},
@@ -832,7 +832,7 @@ window.PartyScene = (() => {
     const isMite = id => !!(mites && mites.has(id));
     const foePos = (id, out) => (isMite(id) ? mites.hitPos(id, out) : cre.hitPos(id, out));
     // the snake's route, shared with the arena so the track is laid where the train runs
-    const trainPath = (tt, out) => out.set(Math.sin(tt * 0.36) * 10.5, 0, -4.5 + Math.sin(tt * 0.72) * 4.2);
+    const trainPath = (tt, out) => out.set(Math.sin(tt * 0.36) * 10.5, 0, -6.2 + Math.sin(tt * 0.72) * 4.2);
     function applyPal(look, k) {
       pal = PALS[look] || PALS[0];
       if (arena) { arena.set(pal, k, trainPath); return; }
@@ -855,7 +855,7 @@ window.PartyScene = (() => {
       teamWon = false; frags.count = 0; fragS.forEach(f => { f.life = 0; });
       if (dir) dir.reset();
       want('reveal', { pri: 3 });
-      snd('reveal');
+      snd('reveal'); roarT = 2.2;
       // the new creature's shaders compile before its first frame, not during the fight
       try { renderer.compile(scene, camera); } catch (e) {}
     }
@@ -876,13 +876,15 @@ window.PartyScene = (() => {
     orb.visible = false; orb.renderOrder = 6; scene.add(orb);
     const orbCore = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ffffff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
     orbCore.visible = false; orbCore.renderOrder = 7; scene.add(orbCore);
-    let atkK = 0, sparkT = 0;
+    let atkK = 0, sparkT = 0, roarT = 0;
     function drawAttack(t, dt) {
       for (const a of aims) a.visible = false;
       for (const r of aimRings) r.visible = false;
       orb.visible = orbCore.visible = false; atkK = 0;
       if (!cre) return;
       for (const f of foes.values()) if (cre.charge) cre.charge(f.id, 0);
+      // the roar as a fight starts: every part of the boss rears up together
+      if (roarT > 0 && cre.charge) { roarT -= dt; const rk = Math.sin(Math.min(1, (2.2 - roarT) / 2.2) * Math.PI) * 0.75; for (const f of foes.values()) if (f.alive && f.kind !== 'mite') cre.charge(f.id, rk); }
       if (!atk || !st) return;
       const now = opts.now ? opts.now() : 0;
       const s0 = atk.show || atk.start;   // the counter word comes first; the wind-up shows after the lead
@@ -948,7 +950,7 @@ window.PartyScene = (() => {
       for (let k = 0; k < n; k++) {
         const f = fragS[fI = (fI + 1) % FN];
         f.p.copy(at).add(v4.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)));
-        f.v.set(rnd(-1, 1), rnd(0.2, 1.4), rnd(-1, 1)).normalize().multiplyScalar(speed * rnd(0.4, 1));
+        f.v.set(rnd(-1, 1), rnd(0.4, 1.4), rnd(-1, 0.25)).normalize().multiplyScalar(speed * rnd(0.4, 1));
         f.r.set(rnd(0, 6), rnd(0, 6), rnd(0, 6)); f.w.set(rnd(-8, 8), rnd(-8, 8), rnd(-8, 8));
         f.s = size * rnd(0.4, 1.2); f.life = rnd(1.2, 2.2);
       }
@@ -1058,7 +1060,7 @@ window.PartyScene = (() => {
       cre.hitPos(id, v1);
       cre.gone(id, how);
       if (how === 'kill' || how === 'cut') {
-        shatter(v1, how === 'cut' ? 10 : 18, 9, 0.45); burst(v1, 30, 10, C('#ffffff'), { size: 0.35, life: 0.5, grav: 2 });
+        shatter(v1, how === 'cut' ? 8 : 16, 7, how === 'cut' ? 0.3 : 0.42); burst(v1, 30, 10, C('#ffffff'), { size: 0.35, life: 0.5, grav: 2 });
         snd('sever'); hitStop = Math.max(hitStop, performance.now() + (reduce ? 0 : 120));
         // a head or a twin falls: a slow close look at it, if nothing is coming at the team
         if (f && (f.kind === 'head' || f.kind === 'twin')) want('sever', { x: v1.clone(), pri: 3 });

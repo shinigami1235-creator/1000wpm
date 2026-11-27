@@ -67,10 +67,10 @@ window.DuelArena = (() => {
     }
     const floorTex = own(new THREE.CanvasTexture(fcv)); floorTex.colorSpace = THREE.SRGBColorSpace; floorTex.anisotropy = 4;
     const STAGE_R = 12.5;
-    const floorMat = own(new THREE.MeshLambertMaterial({ map: floorTex }));
+    const floorMat = own(new THREE.MeshBasicMaterial({ map: floorTex, color: C('#ffffff', 0.92) }));
     const floor = new THREE.Mesh(own(new THREE.CylinderGeometry(STAGE_R, STAGE_R + 0.25, 0.55, 96, 1)), [floorMat, floorMat, floorMat]);
     // only the top cap shows the texture, the side gets a dark band
-    const sideMat = own(new THREE.MeshLambertMaterial({ color: '#0b1114' }));
+    const sideMat = own(new THREE.MeshBasicMaterial({ color: '#070b0d' }));
     floor.material = [sideMat, floorMat, sideMat];
     floor.position.y = -0.275; root.add(floor);
     // fix the cap's UVs so the texture spans the disc
@@ -78,7 +78,7 @@ window.DuelArena = (() => {
     const gcv = document.createElement('canvas'); gcv.width = gcv.height = 256;
     { const c = gcv.getContext('2d'); c.fillStyle = '#05090b'; c.fillRect(0, 0, 256, 256); c.strokeStyle = 'rgba(120,160,170,0.12)'; c.lineWidth = 2; c.strokeRect(0, 0, 256, 256); c.strokeStyle = 'rgba(120,160,170,0.05)'; c.lineWidth = 1; c.beginPath(); c.moveTo(128, 0); c.lineTo(128, 256); c.moveTo(0, 128); c.lineTo(256, 128); c.stroke(); }
     const gTex = own(new THREE.CanvasTexture(gcv)); gTex.wrapS = gTex.wrapT = THREE.RepeatWrapping; gTex.repeat.set(30, 30); gTex.colorSpace = THREE.SRGBColorSpace;
-    const ground = new THREE.Mesh(own(new THREE.PlaneGeometry(160, 160)), own(new THREE.MeshLambertMaterial({ map: gTex })));
+    const ground = new THREE.Mesh(own(new THREE.PlaneGeometry(160, 160)), own(new THREE.MeshBasicMaterial({ map: gTex })));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.56; root.add(ground);
 
     // the rim: a lit strip round the stage edge, each half in its fighter's colour, white where they meet
@@ -115,9 +115,9 @@ window.DuelArena = (() => {
     const pads = POS.map((p, i) => {
       const g = new THREE.Group(); g.position.copy(p); root.add(g);
       const col = cols[i];
-      const body = new THREE.Mesh(own(new THREE.CylinderGeometry(2.45, 2.7, 0.14, 6)), own(new THREE.MeshStandardMaterial({ color: '#151c20', metalness: 0.7, roughness: 0.38 })));
+      const body = new THREE.Mesh(own(new THREE.CylinderGeometry(2.45, 2.7, 0.14, 6)), own(new THREE.MeshBasicMaterial({ color: '#0c1215' })));
       body.position.y = 0.07; body.rotation.y = Math.PI / 6; g.add(body);
-      const top = new THREE.Mesh(own(new THREE.CylinderGeometry(2.26, 2.26, 0.01, 6)), own(new THREE.MeshLambertMaterial({ color: '#10171b' })));
+      const top = new THREE.Mesh(own(new THREE.CylinderGeometry(2.26, 2.26, 0.01, 6)), own(new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.05).add(new THREE.Color('#0d1316')) })));
       top.position.y = 0.145; top.rotation.y = Math.PI / 6; g.add(top);
       const ringG = own(new THREE.RingGeometry(2.28, 2.42, 6)); ringG.rotateX(-Math.PI / 2);
       const edge = new THREE.Mesh(ringG, own(new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(1.6), toneMapped: false })));
@@ -136,17 +136,16 @@ window.DuelArena = (() => {
     // ---------- lights ----------
     scene.add(own(new THREE.HemisphereLight('#9fb6c4', '#0a0c0e', 0.75)));
     const key = new THREE.DirectionalLight('#f3f6ff', 2.6); key.position.set(2, 10, 16); scene.add(key); keep.push(key);
+    // the fighters are the only lit things (everything else is drawn with its light painted in), so
+    // the light count stays as low as the old arena's: a fill, a key, and a rim in each side's colour
     const spots = POS.map((p, i) => {
-      const s = new THREE.SpotLight(cols[i].clone().lerp(new THREE.Color('#ffffff'), 0.55), lite ? 110 : 150, 24, 0.42, 0.6, 1.5);
-      s.position.set(p.x * 0.85, 13, p.z + 4); s.target.position.copy(p).setY(1.5);
-      scene.add(s, s.target); keep.push(s);
-      const rim = new THREE.DirectionalLight(cols[i], 1.4); rim.position.set(p.x * 1.6, 5, -9); scene.add(rim); keep.push(rim);
-      return { s, rim, base: s.intensity };
+      const rim = new THREE.DirectionalLight(cols[i].clone().lerp(new THREE.Color('#ffffff'), 0.3), 2.0); rim.position.set(p.x * 1.6, 6, -9); scene.add(rim); keep.push(rim);
+      return { s: rim, rim, base: rim.intensity };
     });
 
     // ---------- stands and the crowd ----------
     // tiers on the far half of a circle behind the stage, a crowd of simple figures on them
-    const tierMat = own(new THREE.MeshLambertMaterial({ color: '#0d1316' }));
+    const tierMat = own(new THREE.MeshBasicMaterial({ color: '#080d10' }));
     const TIERS = lite ? 4 : 6, A0 = Math.PI * 1.06, A1 = Math.PI * 1.94;
     const tierGeo = own(new THREE.BoxGeometry(1, 1, 1));
     const segs = 28, tierN = TIERS * segs;
@@ -160,12 +159,18 @@ window.DuelArena = (() => {
     }
     root.add(tiers); keep.push(tiers);
     // the crowd: a body and a head per person, bobbing in the vertex shader, lit only by a rim
-    const PEOPLE = lite ? 260 : 620;
-    const bodyGeo = own(new THREE.CapsuleGeometry(0.26, 0.55, 2, 6)); bodyGeo.translate(0, 0.55, 0);
-    const headGeo = own(new THREE.SphereGeometry(0.2, 8, 6)); headGeo.translate(0, 1.22, 0);
+    const PEOPLE = lite ? 220 : 400;
+    // one shape per person (a body and a head merged), so the whole crowd is a single draw call
+    const personGeo = (() => {
+      const a = new THREE.CapsuleGeometry(0.27, 0.55, 2, 5).translate(0, 0.55, 0), b = new THREE.SphereGeometry(0.2, 6, 4).translate(0, 1.22, 0);
+      const g = new THREE.BufferGeometry(), n = a.attributes.position.count;
+      for (const k of ['position', 'normal']) g.setAttribute(k, new THREE.Float32BufferAttribute([...a.attributes[k].array, ...b.attributes[k].array], 3));
+      g.setIndex([...a.index.array, ...Array.from(b.index.array, i => i + n)]);
+      a.dispose(); b.dispose(); return own(g);
+    })();
     const crowdT = { value: 0 }, crowdHype = { value: new THREE.Vector2(0, 0) };
     const crowdMat = () => {
-      const m = new THREE.MeshLambertMaterial({ color: '#ffffff' });
+      const m = new THREE.MeshBasicMaterial({ color: '#ffffff' });
       m.onBeforeCompile = sh => {
         sh.uniforms.uT = crowdT; sh.uniforms.uHype = crowdHype;
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uT; uniform vec2 uHype;')
@@ -179,7 +184,7 @@ window.DuelArena = (() => {
       };
       return own(m);
     };
-    const bodies = new THREE.InstancedMesh(bodyGeo, crowdMat(), PEOPLE), heads = new THREE.InstancedMesh(headGeo, crowdMat(), PEOPLE);
+    const bodies = new THREE.InstancedMesh(personGeo, crowdMat(), PEOPLE);
     const stickPos = new Float32Array(PEOPLE * 3), stickCol = new Float32Array(PEOPLE * 3), stickPh = new Float32Array(PEOPLE);
     const tmpC = new THREE.Color();
     for (let i = 0; i < PEOPLE; i++) {
@@ -189,19 +194,18 @@ window.DuelArena = (() => {
       q.setFromAxisAngle(up, Math.atan2(-x, -z));
       const s = rnd(0.85, 1.12);
       m4.compose(pos.set(x, y, z), q, sc.set(s, s * rnd(0.9, 1.1), s));
-      bodies.setMatrixAt(i, m4); heads.setMatrixAt(i, m4);
+      bodies.setMatrixAt(i, m4);
       const side = x < 0 ? 0 : 1;
-      tmpC.setHSL(rnd(0.5, 0.65), rnd(0.05, 0.2), rnd(0.018, 0.045)); bodies.setColorAt(i, tmpC);
-      tmpC.setHSL(0.07, 0.25, rnd(0.03, 0.06)); heads.setColorAt(i, tmpC);
+      tmpC.setHSL(rnd(0.5, 0.65), rnd(0.1, 0.3), rnd(0.004, 0.011)); bodies.setColorAt(i, tmpC);
       // light sticks and phones, in the colour of the side they sit on (some white)
       stickPos[i * 3] = x + rnd(-0.25, 0.25); stickPos[i * 3 + 1] = y + 1.55 + rnd(0, 0.35); stickPos[i * 3 + 2] = z;
       const sc2 = rnd() < 0.22 ? new THREE.Color('#dfe9ff') : cols[side];
       stickCol[i * 3] = sc2.r; stickCol[i * 3 + 1] = sc2.g; stickCol[i * 3 + 2] = sc2.b;
       stickPh[i] = rnd(0, 100);
     }
-    bodies.instanceColor.needsUpdate = true; heads.instanceColor.needsUpdate = true;
-    bodies.frustumCulled = heads.frustumCulled = false;
-    root.add(bodies, heads); keep.push(bodies, heads);
+    bodies.instanceColor.needsUpdate = true;
+    bodies.frustumCulled = false;
+    root.add(bodies); keep.push(bodies);
     const stickGeo = own(new THREE.BufferGeometry());
     stickGeo.setAttribute('position', new THREE.BufferAttribute(stickPos, 3));
     stickGeo.setAttribute('color', new THREE.BufferAttribute(stickCol, 3));
@@ -222,7 +226,7 @@ window.DuelArena = (() => {
     // ---------- screens: a jumbotron in the middle, a tall banner over each fighter's stand ----------
     const led = (w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const t = own(new THREE.CanvasTexture(cv)); t.colorSpace = THREE.SRGBColorSpace; return { cv, t, c: cv.getContext('2d') }; };
     const grid = (L, cell = 4) => { const c = L.c; c.fillStyle = 'rgba(0,0,0,0.35)'; for (let x = 0; x < L.cv.width; x += cell) c.fillRect(x, 0, 1, L.cv.height); for (let y = 0; y < L.cv.height; y += cell) c.fillRect(0, y, L.cv.width, 1); };
-    const frameMat = own(new THREE.MeshStandardMaterial({ color: '#12181c', metalness: 0.8, roughness: 0.35 }));
+    const frameMat = own(new THREE.MeshBasicMaterial({ color: '#0b1013' }));
     const J = led(1024, 432);
     const jumbo = new THREE.Group(); jumbo.position.set(0, 10.2, -31); root.add(jumbo);
     const jScreen = new THREE.Mesh(own(new THREE.PlaneGeometry(17, 7.2)), own(new THREE.MeshBasicMaterial({ map: J.t, toneMapped: false, color: C('#ffffff', 0.92), fog: false })));
@@ -295,7 +299,7 @@ window.DuelArena = (() => {
     // camera, so they read as light in haze rather than as solid wedges
     const coneGeo = own(new THREE.CylinderGeometry(0.18, 1.7, 15, 24, 1, true)); coneGeo.translate(0, -7.5, 0);
     const beams = [];
-    const BEAMS = lite ? 4 : 8;
+    const BEAMS = lite ? 4 : 6;
     for (let k = 0; k < BEAMS; k++) {
       const side = k % 2, col = k % 4 === 3 ? C('#dfe9ff') : cols[side];
       const mat = own(new THREE.ShaderMaterial({
@@ -319,7 +323,7 @@ window.DuelArena = (() => {
     const dust = new THREE.Points(dGeo, own(new THREE.PointsMaterial({ map: glow, color: C('#cfe3e8', 0.9), size: 0.12, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true })));
     dust.frustumCulled = false; root.add(dust);
     const haze = [];
-    for (let k = 0; k < (lite ? 3 : 6); k++) {
+    for (let k = 0; k < (lite ? 2 : 3); k++) {
       const m = new THREE.Mesh(own(new THREE.PlaneGeometry(18, 6)), own(new THREE.MeshBasicMaterial({ map: glow, color: C('#6f8f99', 0.35), transparent: true, opacity: 0.22, depthWrite: false, fog: false })));
       m.position.set(rnd(-14, 14), 1.4, rnd(-14, -4)); m.renderOrder = 0; root.add(m);
       haze.push({ m, ph: rnd(0, 9), x: m.position.x });
@@ -358,8 +362,15 @@ window.DuelArena = (() => {
       if (cam) stickMat.uniforms.uPx.value = (o.pixelHeight ? o.pixelHeight() : 600) / 600;
     }
     function pad(i, out) { return out.copy(POS[i]).setY(PAD_TOP); }
+    // 2 is everything; 1 drops the beams and the haze; 0 drops the crowd's lights and the dust too
+    let level = 2;
+    function quality(l) {
+      level = Math.max(0, Math.min(2, l));
+      beams.forEach(b => { b.m.visible = level >= 2; }); haze.forEach(h => { h.m.visible = level >= 2; });
+      sticks.visible = level >= 1; dust.visible = level >= 1;
+    }
     function dispose() { scene.remove(root); keep.forEach(x => { try { x.dispose(); } catch (e) {} }); }
-    return { update, board, hype, pad, dispose, root, spots, STAGE_R, PAD_TOP, PAD_R, textures: [floorTex, gTex, glow, J.t, ...banners.map(b => b.L.t)] };
+    return { update, board, hype, pad, quality, level: () => level, dispose, root, spots, STAGE_R, PAD_TOP, PAD_R, textures: [floorTex, gTex, glow, J.t, ...banners.map(b => b.L.t)] };
   }
   return { build };
 })();

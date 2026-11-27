@@ -234,26 +234,30 @@ window.PartyArena = (() => {
     const embers = new THREE.Points(eGeo, own(new THREE.PointsMaterial({ map: glow, color: '#ff8a3d', size: 0.3, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending })));
     embers.frustumCulled = false; embers.visible = false; root.add(embers);
 
-    // the train's track, laid along the route it runs
+    // the train's track, laid along the route it runs: two lit rails and dark sleepers, as flat ribbons
     function layTrack(path) {
       const S = sets.snake, g = S.track;
       while (g.children.length) { const c = g.children.pop(); if (c.geometry && c.geometry !== boxG) c.geometry.dispose(); }
       if (!path) return;
       const p = new V(), q = new V(), rails = [], ties = [];
-      const N = 360;
+      const N = 300;
+      const quad = (arr, ax, az, bx, bz, cx, cz, dx, dz, y) => arr.push(ax, y, az, bx, y, bz, cx, y, cz, ax, y, az, cx, y, cz, dx, y, dz);
       for (let k = 0; k < N; k++) {
         path(k / N * Math.PI * 2 / 0.36, p); path((k + 1) / N * Math.PI * 2 / 0.36, q);
         const d = new V().subVectors(q, p); const L = d.length(); if (L < 1e-4) continue; d.divideScalar(L);
         const sx = -d.z, sz = d.x;
-        for (const off of [-1.1, 1.1]) rails.push(p.x + sx * off, 0.06, p.z + sz * off, q.x + sx * off, 0.06, q.z + sz * off);
-        if (k % 2 === 0) ties.push(p.x + sx * 1.5, 0.03, p.z + sz * 1.5, p.x - sx * 1.5, 0.03, p.z - sz * 1.5);
+        for (const off of [-1.05, 1.05]) {
+          const a0 = off - 0.09, a1 = off + 0.09;
+          quad(rails, p.x + sx * a0, p.z + sz * a0, p.x + sx * a1, p.z + sz * a1, q.x + sx * a1, q.z + sz * a1, q.x + sx * a0, q.z + sz * a0, 0.05);
+        }
+        if (k % 2 === 0) { const w = 0.16; quad(ties, p.x + sx * 1.5 - d.x * w, p.z + sz * 1.5 - d.z * w, p.x - sx * 1.5 - d.x * w, p.z - sz * 1.5 - d.z * w, p.x - sx * 1.5 + d.x * w, p.z - sz * 1.5 + d.z * w, p.x + sx * 1.5 + d.x * w, p.z + sz * 1.5 + d.z * w, 0.03); }
       }
       const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rails, 3));
       const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(ties, 3));
-      g.add(new THREE.LineSegments(rg, railMat), new THREE.LineSegments(tg, tieMat));
+      g.add(new THREE.Mesh(tg, tieMat), new THREE.Mesh(rg, railMat));
     }
-    const railMat = own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.7, toneMapped: false }));
-    const tieMat = own(new THREE.LineBasicMaterial({ color: '#3a4448' }));
+    const railMat = own(new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false, side: THREE.DoubleSide }));
+    const tieMat = own(new THREE.MeshBasicMaterial({ color: '#1c2428', side: THREE.DoubleSide }));
 
     // ---------- the area ----------
     let pal = null, kind = '', cur = null, pulseK = 0;
@@ -271,7 +275,7 @@ window.PartyArena = (() => {
       shafts.forEach((s, i) => { s.m.material.uniforms.uCol.value.set(i % 2 ? p.a : '#dfe9ff'); });
       for (const n in sets) sets[n].g.visible = n === k;
       cur = sets[k] || null;
-      if (k === 'snake') { railMat.color.set(p.c); layTrack(path); }
+      if (k === 'snake') { railMat.color.set(p.c).multiplyScalar(0.9); layTrack(path); }
       embers.visible = !!(cur && cur.embers);
     }
     function pulse(k = 1) { pulseK = Math.max(pulseK, 0.001); pulseAmp = k; }

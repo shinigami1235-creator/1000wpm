@@ -60,6 +60,7 @@ window.DuelScene = (() => {
       result: w => impl && impl.result(w),
       director: () => (impl ? impl.director() : null),
       debugPose: (i, name, t) => impl && impl.debugPose(i, name, t),
+      _impl: () => impl,   // tests
       screen: (side, out) => (impl ? impl.screen(side, out) : null),
       // resolves true once the arena has loaded and played every effect once (false if it failed)
       warm: chars => ctl.ready.then(ok => (ok && impl ? impl.warm(chars) : false)).catch(() => false),
@@ -232,10 +233,9 @@ window.DuelScene = (() => {
     const snd = (name, arg) => { if (!warming && opts.audio) opts.audio.play(name, arg); };
     const csnd = (name, arg) => { if (!warming && opts.audio) opts.audio.combat(name, arg); };
     // one light that flashes where a hit lands, so the hit lights the bodies and the floor round it
-    const hitLight = new THREE.PointLight('#ffffff', 0, 9, 1.6); scene.add(hitLight);
+    // (a real light here cost a light on every lit surface; the flare sprites carry the flash instead)
     let hitLightK = 0;
-    function flashLight(at, col, k) { if (reduce) k *= 0.4; hitLight.position.copy(at).add(_fl.set(0, 0.6, 2.2)); hitLight.color.copy(col); hitLightK = Math.max(hitLightK, Math.min(6, k)); }
-    const _fl = new V();
+    function flashLight(at, col, k) { hitLightK = Math.max(hitLightK, Math.min(6, k)); }
 
     // ---------- the word as the weapon ----------
     // Each finished word leaves the attacker's card as its own letters. They fly an arc,
@@ -304,6 +304,19 @@ window.DuelScene = (() => {
         p.s.material.color.set(o.col || '#7d888c'); p.op = o.op || 0.55; p.s.visible = true;
       }
     }
+    // impact flares: a sharp four-point star with a soft core, for the instant a hit lands
+    const flCv = document.createElement('canvas'); flCv.width = flCv.height = 128;
+    {
+      const c = flCv.getContext('2d'), g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.12, 'rgba(255,255,255,0.8)'); g.addColorStop(0.35, 'rgba(255,255,255,0.12)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+      c.globalCompositeOperation = 'lighter';
+      for (const [w, h] of [[128, 5], [5, 128], [70, 3], [3, 70]]) { const lg = c.createRadialGradient(64, 64, 0, 64, 64, Math.max(w, h) / 2); lg.addColorStop(0, 'rgba(255,255,255,0.95)'); lg.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = lg; c.save(); c.translate(64, 64); if (w === 70 || h === 70) c.rotate(Math.PI / 4); c.fillRect(-w / 2, -h / 2, w, h); c.restore(); }
+    }
+    const flareTex = own(new THREE.CanvasTexture(flCv));
+    const flares = Array.from({ length: 6 }, () => ({ s: sprite(flareTex, 1, 9), t: 9, life: 0.2, size: 2 }));
+    let flI = 0;
+    function flare(at, col, size = 2, life = 0.2) { const f = flares[flI = (flI + 1) % flares.length]; f.s.position.copy(at); f.s.material.color.copy(col).lerp(WHITE, 0.4).multiplyScalar(2); f.t = 0; f.life = life; f.size = size; f.s.visible = true; f.s.material.rotation = rnd(0, 0.6); }
     // shockwave rings on the floor under a fighter
     const rings = Array.from({ length: 6 }, () => {
       const m = new THREE.Mesh(own(new THREE.RingGeometry(0.92, 1, 64)), own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
@@ -512,6 +525,7 @@ window.DuelScene = (() => {
       burst(at, 3 + p, 2.5 + p * 0.6, WHITE, { size: 0.3, life: 0.18, grav: 0, k: 1 });
       if (p >= 2) smoke(at, 3 + p, 1.4, { size: 1.3, life: 0.9, op: 0.35 });
       ringAt(to, col, 2.6 + p * 0.6, 0.45 + p * 0.05);
+      flare(at, col, 1.6 + p * 0.7, 0.14 + p * 0.03);
       flashLight(at, col, 2 + p * 2.5);
       if (!reduce) {
         stopUntil = Math.max(stopUntil, performance.now() + (crit ? 110 : 20 + tier * 18));
@@ -687,7 +701,11 @@ window.DuelScene = (() => {
         }, undefined, () => res());
       })).catch(() => {});
     }
-    function setHp(i, frac) { F[i].hp = Math.max(0, Math.min(1, frac)); }
+    function setHp(i, frac) {
+      const was = F[i].hp; F[i].hp = Math.max(0, Math.min(1, frac));
+      // the crowd gasps when someone drops into the danger zone
+      if (was >= 0.25 && F[i].hp < 0.25 && F[i].hp > 0) { snd('gasp'); if (arena) arena.hype(1 - i, 0.5); }
+    }
     const koGeo = [];
     // the KO: the loser is blown off their feet in slow motion and stays down; without operators
     // the card breaks into pieces of the portrait
@@ -851,7 +869,7 @@ window.DuelScene = (() => {
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
-    let loopErr = 0;
+    let loopErr = 0, perfAcc = 0, perfN = 0, qLevel = 2;
     renderer.setAnimationLoop(() => { try { frame(); } catch (e) { if (loopErr++ < 3) console.error('arena frame', e); } });
     function frame() {
       if (!alive || document.hidden || !visible) { last = performance.now(); return; }
@@ -962,6 +980,12 @@ window.DuelScene = (() => {
         p.s.scale.setScalar(p.size * (0.3 + 0.7 * k)); p.s.material.opacity = Math.min(1, k * 1.6);
         p.s.material.rotation += p.spin * dt;
       }
+      for (const f of flares) {
+        if (!f.s.visible) continue;
+        f.t += dt; const u = f.t / f.life;
+        if (u >= 1) { f.s.visible = false; continue; }
+        f.s.scale.setScalar(f.size * (0.6 + 0.6 * u)); f.s.material.opacity = 1 - u * u;
+      }
       for (const p of puffs) {
         if (!p.s.visible) continue;
         p.life -= dt;
@@ -1003,8 +1027,11 @@ window.DuelScene = (() => {
       drawBeams(dt);
       drawStatus(dt);
       hitLightK = Math.max(0, hitLightK - real * 14);
-      hitLight.intensity = hitLightK * 2.2;
       if (arena) arena.update(t, dt, camera);
+      // steady slow frames step the detail down (beams and haze, then the crowd lights, dust and pixel ratio)
+      perfAcc += real; perfN++;
+      if (perfAcc > 2.5) { const ms = perfAcc / perfN * 1000; perfAcc = 0; perfN = 0;
+        if (ms > 30 && !warming && qLevel > 0 && !window.__fullQuality) { qLevel--; if (arena) arena.quality(qLevel); if (qLevel === 0) { renderer.setPixelRatio(1); fit(); } } }
       // the camera: the director picks the shot, then shake and the punch-in on big hits on top
       shake = Math.max(0, shake - real * 2.5);
       punch = Math.max(0, punch - real * 2.2);
@@ -1049,7 +1076,7 @@ window.DuelScene = (() => {
       fontOk = true;
       const set = new Set(('abcdefghijklmnopqrstuvwxyz0123456789-\'.,>' + chars).replace(/\s/g, ''));
       for (const ch of set) renderer.initTexture(glyph(ch));
-      for (const x of [blank, glowTex, shardTex, beamTex, frostTex]) renderer.initTexture(x);
+      for (const x of [blank, glowTex, shardTex, beamTex, frostTex, flareTex, runeTex, hexTex, shadowTex]) renderer.initTexture(x);
       await Promise.race([Promise.all(F.map(f => f.looked)), new Promise(r => setTimeout(r, 8000))]);
       if (!alive) return false;
       F.forEach(f => { if (f.tex) renderer.initTexture(f.tex); });
@@ -1072,6 +1099,7 @@ window.DuelScene = (() => {
       for (const g of glyphs) { g.on = false; g.cb = null; g.s.visible = false; g.tr.forEach(x => { x.visible = false; }); }
       for (const p of parts) { p.s.visible = false; p.life = 0; }
       for (const p of puffs) { p.s.visible = false; p.life = 0; }
+      for (const f of flares) f.s.visible = false;
       for (const w of rings) w.m.visible = false;
       for (const B of beams) { B.on = false; B.core.visible = B.glow.visible = false; }
       revive();
@@ -1101,7 +1129,7 @@ window.DuelScene = (() => {
     }
 
     return { shot, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
-      info: () => ({ warming, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
+      arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
   }
 
   return { mount };

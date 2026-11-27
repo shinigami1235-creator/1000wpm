@@ -290,7 +290,7 @@ Router.register('duel', (() => {
       case 'hit': {
         num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
         if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
-        else if (ev.kind !== 'word') scene.react(ev.to, 'hit', 0.5);
+        else if (ev.kind !== 'word') scene.react(ev.to, 'hit', ev.dmg >= 40 ? 1 : 0.5);
         hpTo(ev.to, ev.hp);
         break;
       }
