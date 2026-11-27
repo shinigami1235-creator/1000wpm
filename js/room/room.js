@@ -495,7 +495,7 @@ window.Room = (() => {
     s.size = visit ? (z.price === 0 || vOwned.has(z.id) ? z : sizes()[0]) : sizeOwned(z) ? z : sizes()[0];
     setDims(s.size);
     const fin = (key, kind) => { const d = saved && saved[key] ? def(saved[key]) : null; return d && d.finish && d.finish.kind === kind && finishOwned(d, vOwned) ? d.id : null; };
-    s.paper = fin('paper', 'wall'); s.floorF = fin('floor', 'floor');
+    s.paper = fin('paper', 'wall'); s.floorF = fin('floor', 'floor'); s.viewF = fin('view', 'view');
     buildShell(s, phone);
     s.itemsRoot = new THREE.Group();
     scene.add(s.itemsRoot);
@@ -657,7 +657,9 @@ window.Room = (() => {
     // window: frame, glass, city and blinds
     const fm = K.std('#1a1e1c', 0.4, 0.6);
     const wz = (WIN.z0 + WIN.z1) / 2, wy = (WIN.y0 + WIN.y1) / 2, ww = WIN.z1 - WIN.z0, wh = WIN.y1 - WIN.y0;
-    const city = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), new THREE.MeshStandardMaterial({ color: '#000', emissive: '#fff', emissiveMap: K.canvasTex('city', 512, 384, (c, w, h) => K.drawCity(c, w, h, 14)), emissiveIntensity: 1.1 }));
+    // the view outside (views.js): a painted scene with a moving layer, seen with parallax
+    const view = s.view = RoomItems.viewMesh(K, s.viewF, ww, wh);
+    const city = view.mesh;
     city.rotation.y = Math.PI / 2; city.position.set(-T + 0.004, wy, wz); shell.add(city);
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), K.glass('#9fc0d9', 0.12));
     glass.rotation.y = Math.PI / 2; glass.position.set(-T / 2, wy, wz); shell.add(glass);
@@ -690,7 +692,7 @@ window.Room = (() => {
     Object.assign(key.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 14 * k + 6 });
     key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03 * k;
     shell.add(key, key.target);
-    const moon = new THREE.DirectionalLight('#7f9cff', 0.45);
+    const moon = new THREE.DirectionalLight(s.view ? s.view.moon : '#7f9cff', 0.45);
     moon.position.set(-5, 3, wz); moon.target.position.set(W / 2, 0.5, wz); shell.add(moon, moon.target);
     const lightBonus = window.Progress && Progress.ready() && Progress.bonus('roomlight');   // a streak bonus colour
     const green = new THREE.PointLight(lightBonus ? lightBonus.color : GREEN, 5 * Math.min(k, 1.6), 5.5 * k, 1.6); green.position.set(0.3, H - 0.15, 0.3); shell.add(green);
@@ -701,7 +703,7 @@ window.Room = (() => {
       warm.position.set(nx === 1 ? W * 0.62 : W * (i + 0.5) / nx, H - 0.2, nz === 1 ? D * 0.62 : D * (j + 0.5) / nz);
       shell.add(warm);
     }
-    const cityGlow = new THREE.PointLight('#8a6bff', 1.6, 3, 2); cityGlow.position.set(0.35, wy, wz); shell.add(cityGlow);
+    const cityGlow = new THREE.PointLight(s.view ? s.view.glow : '#8a6bff', 1.6, 3, 2); cityGlow.position.set(0.35, wy, wz); shell.add(cityGlow);
 
     // the pieces of each wall, hidden when the camera swings round behind that wall
     s.wallB = []; s.wallL = []; s.hidB = s.hidL = false;
@@ -732,6 +734,7 @@ window.Room = (() => {
     if (hl !== s.hidL) { s.hidL = hl; s.wallL.forEach(o => { o.visible = !hl; }); }
     for (const p of s.items) if (p.wall && p.obj) p.obj.visible = !(p.wall === 'back' ? hb : hl);
     if (s.shellMats) for (const m of s.shellMats) if (m.userData.tick) m.userData.tick(m, s.t);
+    if (s.view) s.view.tick(s.t);
   }
 
   // Grid, footprint marker and selection brackets
@@ -852,7 +855,7 @@ window.Room = (() => {
     lights.sort((a, b) => b.intensity - a.intensity);
     lights.forEach((l, i) => { l.visible = i < (s.phone ? 4 : 8); });
   }
-  const serialize = s => ({ v: 1, size: s.size.id, paper: s.paper || undefined, floor: s.floorF || undefined, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
+  const serialize = s => ({ v: 1, size: s.size.id, paper: s.paper || undefined, floor: s.floorF || undefined, view: s.viewF || undefined, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
 
   // Light bouncing off the room's own walls, floor and furniture: a cube picture of the room taken from
   // its middle becomes the environment, so a red brick room glows warm and the mirror shows the room.
@@ -1219,7 +1222,7 @@ window.Room = (() => {
     t('move').classList.toggle('on', !!(P && P.p));
   }
   function buildTabs(s) {
-    const cats = ['All', ...RoomItems.categories.filter(c => !['Room size', 'Walls', 'Floors'].includes(c))];
+    const cats = ['All', ...RoomItems.categories.filter(c => !['Room size', 'Walls', 'Floors', 'Windows'].includes(c))];
     s.ui.tabs.innerHTML = cats.map(c => `<button type="button" role="tab" data-cat="${esc(c)}" aria-selected="${c === s.cat}">${c === 'All' ? svg('grid') : ''}<span>${esc(c)}</span></button>`).join('');
   }
   function renderStrip(s) {
@@ -1267,9 +1270,9 @@ window.Room = (() => {
             <span class="rm-plan" aria-hidden="true"><i style="width:${Math.round(z.w / big.w * 100)}%;height:${Math.round(z.d / big.d * 100)}%"></i></span>
             <span class="rm-inv-txt"><b>${esc(z.name)}</b><small>${z.w} × ${z.d} m, ${z.area} m²</small></span>${btn}</li>`;
         }).join('')}</ul>
-        ${['wall', 'floor'].map(k => `<h4 class="rm-sub">${k === 'wall' ? 'Walls' : 'Floor'}</h4>
+        ${['view', 'wall', 'floor'].map(k => `<h4 class="rm-sub">${{ view: 'Window', wall: 'Walls', floor: 'Floor' }[k]}</h4>
         <ul class="rm-fin">${RoomItems.finishes(k).map(d => {
-          const own = finishOwned(d), cur = d.id === ((k === 'wall' ? s.paper : s.floorF) || (k === 'wall' ? 'wall-plaster' : 'floor-oak'));
+          const own = finishOwned(d), cur = d.id === ((k === 'wall' ? s.paper : k === 'floor' ? s.floorF : s.viewF) || { wall: 'wall-plaster', floor: 'floor-oak', view: 'view-city' }[k]);
           return `<li class="${cur ? 'on' : ''}${own ? '' : ' locked'}"><button type="button" ${own ? `data-finish="${d.id}"` : 'data-shopfin="1"'} aria-pressed="${cur}" title="${esc(d.name)}">
             <span class="rm-thumb"><img alt="" data-thumb="${d.id}"></span><b>${esc(d.name)}</b><small>${cur ? 'In use' : own ? 'Use' : `${d.price.toLocaleString('en-US')} coins`}</small></button></li>`;
         }).join('')}</ul>`).join('')}`;
@@ -1357,7 +1360,7 @@ window.Room = (() => {
   function setFinish(s, id) {
     const d = def(id);
     if (!d || !d.finish || !finishOwned(d)) return;
-    const key = d.finish.kind === 'wall' ? 'paper' : 'floorF';
+    const key = { wall: 'paper', floor: 'floorF', view: 'viewF' }[d.finish.kind];
     if ((s[key] || null) === (d.base ? null : d.id)) return;
     s[key] = d.base ? null : d.id;
     s.scene.remove(s.shell);

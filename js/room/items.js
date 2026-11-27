@@ -5,7 +5,7 @@
 (() => {
   const CELL = 0.25;
   const TAU = Math.PI * 2;
-  const CATEGORIES = ['Desks', 'Chairs', 'Beds & Sofas', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs', 'Walls', 'Floors', 'Room size'];
+  const CATEGORIES = ['Desks', 'Chairs', 'Beds & Sofas', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs', 'Walls', 'Floors', 'Windows', 'Room size'];
   // Room sizes in metres. room-s is free and every player has it; the others are shop items.
   const SIZES = [
     { id: 'room-s', label: 'S', w: 4.2, d: 3.8, h: 2.6, price: 0 },
