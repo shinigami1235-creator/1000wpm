@@ -58,12 +58,13 @@ composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.22, 0.
 
 const COLS = { Lime: '#8cff58', Ice: '#5cc8ff', Amber: '#ffb000', Violet: '#b48cff' };
 let colour = COLS.Lime, faceOverride = '', bots = [];
+const LOOK = (() => { try { return JSON.parse(new URLSearchParams(location.search).get('look') || '{}'); } catch (e) { return {}; } })();
 const ids = Object.keys(BotKit.BOTS);
 function build() {
   bots.forEach(b => b.dispose()); bots = [];
   document.getElementById('tags').innerHTML = '';
   ids.forEach((id, i) => {
-    const b = BotKit.create(THREE, id, { color: colour });
+    const b = BotKit.create(THREE, id, { color: colour, ...LOOK });
     b.group.position.set((i - 2.5) * 3.1, 0, 0); b.group.rotation.y = -0.35; scene.add(b.group); bots.push(b);
     const tag = document.createElement('div'); tag.className = 'tag'; tag.innerHTML = `<b style="color:${colour}">${b.name}</b><span>${b.role} · ${b.division}</span>`;
     document.getElementById('tags').appendChild(tag); b.tag = tag;
@@ -93,7 +94,7 @@ const clock = new THREE.Clock();
 let auto = true;
 renderer.setAnimationLoop(() => { if (auto) draw(clock.getElapsedTime(), clock.getDelta()); });
 // for recording: stop the clock and draw a given time
-window.botView = { at: (t, f, hitAt) => { auto = false; faceOverride = f || ''; if (hitAt != null && t >= hitAt && t < hitAt + 0.02) bots.forEach((b, i) => b.hit(new THREE.Vector3(i % 2 ? 1 : -1, 0, 0.3), hitAt)); draw(t, 1 / 30); return renderer.domElement.toDataURL('image/jpeg', 0.92); }, cam: (p, l) => { camera.position.set(...p); camera.lookAt(...l); } };
+window.botView = { at: (t, f, hitAt) => { auto = false; faceOverride = f || ''; if (hitAt != null && t >= hitAt && t < hitAt + 0.02) bots.forEach((b, i) => b.hit(new THREE.Vector3(i % 2 ? 1 : -1, 0, 0.3), hitAt)); draw(t, 1 / 30); return renderer.domElement.toDataURL('image/jpeg', 0.92); }, cam: (p, l) => { camera.position.set(...p); camera.lookAt(...l); }, emote: (k, t) => bots.forEach(b => b.emote(k, t)), bots: () => bots, fire: t => bots.forEach(b => b.fire(t)) };
 window.ready = true;
 </script>
 </body>
