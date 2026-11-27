@@ -413,6 +413,7 @@ Router.register('duel', (() => {
       const n = Math.ceil(s);
       if (st.phase === 'count' && n > 0) banner(String(n), 'count', 1100);
       if (n > 0 && n <= 3 && n !== countWas && snd) snd.play('tick');
+      if (st.phase === 'break' && s < 1.7 && scene) scene.rise();
       countWas = n;
     }
     st.sides.forEach((s, k) => {

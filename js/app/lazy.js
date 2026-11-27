@@ -40,7 +40,7 @@ window.Lazy = (() => {
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
       js: ['js/app/wordflow.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
     'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/camdir.js', 'js/app/fight-moves.js', 'js/app/arena-audio.js', 'js/app/duel-arena.js', 'js/app/duel3d.js', 'js/app/duel.js'], pre: ['three', 'gltf', 'model-full'] },
-    'page:party': { need: ['net'], js: ['js/app/wordflow.js', 'js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/camdir.js', 'js/app/fight-moves.js', 'js/app/arena-audio.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
+    'page:party': { need: ['net'], js: ['js/app/wordflow.js', 'js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/camdir.js', 'js/app/fight-moves.js', 'js/app/arena-audio.js', 'js/app/party-arena.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:u': { need: ['net'], js: ['js/app/players.js'] },
     'page:commons': { need: ['net'], css: ['css/commons.css'], js: ['js/app/player-card.js', 'js/app/commons.js'] },
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },

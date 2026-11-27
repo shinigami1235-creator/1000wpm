@@ -55,6 +55,7 @@ window.DuelScene = (() => {
       setHp: (side, f) => { pend.hp[side] = f; if (impl) impl.setHp(side, f); },
       ko: side => impl && impl.ko(side),
       revive: () => impl && impl.revive(),
+      rise: () => impl && impl.rise(),
       phase: (name, round) => impl && impl.phase(name, round),
       result: w => impl && impl.result(w),
       director: () => (impl ? impl.director() : null),
@@ -233,7 +234,8 @@ window.DuelScene = (() => {
     // one light that flashes where a hit lands, so the hit lights the bodies and the floor round it
     const hitLight = new THREE.PointLight('#ffffff', 0, 9, 1.6); scene.add(hitLight);
     let hitLightK = 0;
-    function flashLight(at, col, k) { if (reduce) k *= 0.4; hitLight.position.copy(at); hitLight.color.copy(col); hitLightK = Math.max(hitLightK, k); }
+    function flashLight(at, col, k) { if (reduce) k *= 0.4; hitLight.position.copy(at).add(_fl.set(0, 0.6, 2.2)); hitLight.color.copy(col); hitLightK = Math.max(hitLightK, Math.min(6, k)); }
+    const _fl = new V();
 
     // ---------- the word as the weapon ----------
     // Each finished word leaves the attacker's card as its own letters. They fly an arc,
@@ -726,6 +728,8 @@ window.DuelScene = (() => {
       f.card.children.forEach(c => { if (c !== grp) c.visible = false; });
       f.broken = { grp, list, t: 0 };
     }
+    // a knocked fighter gets up before the next round starts
+    function rise() { F.forEach(f => { if (f.op && f.mv.down() && !f.lost) { f.mv.act('getup'); snd('getup'); } }); }
     // a new round: knocked fighters get up, cards come back together and drop onto their pads
     function revive() {
       F.forEach((f, i) => {
@@ -847,7 +851,9 @@ window.DuelScene = (() => {
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
-    renderer.setAnimationLoop(() => {
+    let loopErr = 0;
+    renderer.setAnimationLoop(() => { try { frame(); } catch (e) { if (loopErr++ < 3) console.error('arena frame', e); } });
+    function frame() {
       if (!alive || document.hidden || !visible) { last = performance.now(); return; }
       const nowT = performance.now();
       const real = Math.min(0.05, (nowT - last) / 1000); last = nowT;
@@ -997,7 +1003,7 @@ window.DuelScene = (() => {
       drawBeams(dt);
       drawStatus(dt);
       hitLightK = Math.max(0, hitLightK - real * 14);
-      hitLight.intensity = hitLightK * 6;
+      hitLight.intensity = hitLightK * 2.2;
       if (arena) arena.update(t, dt, camera);
       // the camera: the director picks the shot, then shake and the punch-in on big hits on top
       shake = Math.max(0, shake - real * 2.5);
@@ -1008,6 +1014,11 @@ window.DuelScene = (() => {
         threats.sort((a, b) => a - b);
         lineA.copy(fp[1]); lineB.copy(fp[0]);
         dir.update(rt, real, { threatAt: threats.length ? threats[0] : Infinity, line: [lineA, lineB], subjects: { a: fc[0], b: fc[1] } });
+        // camera test probe (tests set window.__camProbe): the shot, a spell on its way to you, both fighters on screen
+        if (window.__camProbe) {
+          const P2 = v => { tmp.copy(v).project(camera); return Math.abs(tmp.x) <= 1 && Math.abs(tmp.y) <= 1 && tmp.z < 1; };
+          (window.__camLog ||= []).push({ t: +rt.toFixed(3), shot: dir.shot(), wind: threats.length > 0, both: P2(fc[0]) && P2(fc[1]), q: camera.quaternion.toArray().map(x => +x.toFixed(4)), cam: camera.position.toArray().map(x => +x.toFixed(2)) });
+        }
       } else {
         camera.position.set(0, 4.8, Math.max(17, 8.6 / (tanV(camera.fov) * camera.aspect) + 1.5)); camera.lookAt(0, 2.5, 0);
       }
@@ -1016,7 +1027,7 @@ window.DuelScene = (() => {
       if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
       if (fx) fx.update(dt);
       composer.render();
-    });
+    }
     const smoothU = x => x * x * (3 - 2 * x);
     // tests: hold fighter i in a move at time t (frozen), or let go
     let frozen = false;
@@ -1089,8 +1100,8 @@ window.DuelScene = (() => {
       renderer.domElement.remove();
     }
 
-    return { shot, cast, react, aura, setLook, setHp, ko, revive, phase, result, screen, warm, dispose, director: () => dir, debugPose,
-      info: () => ({ fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
+    return { shot, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
+      info: () => ({ warming, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
   }
 
   return { mount };

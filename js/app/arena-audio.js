@@ -16,10 +16,10 @@ window.ArenaAudio = (() => {
   // level per effect, set by ear against the combat sounds so hits sit under the shots and the big
   // moments (KO, slam, kill) reach the top without clipping the compressor
   const LEVEL = {
-    whoosh: 0.55, jab: 0.8, heavy: 0.85, block: 0.7, guard: 0.5, stagger: 0.7, knock: 0.9, ko: 0.8, getup: 0.45, step: 0.5,
-    charge: 0.42, release: 0.6, bell: 0.55, tick: 0.35, go: 0.5, cheer: 0.5, ooh: 0.42, gasp: 0.4, fanfare: 0.42, lose: 0.45,
-    bossCharge: 0.4, bossSlam: 0.9, bossLunge: 0.5, bossRoar: 0.55, spit: 0.5, whip: 0.55, quake: 0.7, beam: 0.5, sever: 0.75,
-    shatter: 0.7, teamHit: 0.6, unitCast: 0.45, heal: 0.45, shield: 0.45, revive: 0.5, reveal: 0.6,
+    whoosh: 0.55, jab: 0.8, heavy: 0.85, block: 0.7, guard: 1.2, stagger: 0.7, knock: 0.9, ko: 0.6, getup: 0.45, step: 0.9,
+    charge: 0.42, release: 0.6, bell: 0.55, tick: 1.0, go: 0.5, cheer: 0.5, ooh: 0.42, gasp: 0.8, fanfare: 0.7, lose: 0.8,
+    bossCharge: 0.4, bossSlam: 0.9, bossLunge: 1.0, bossRoar: 0.55, spit: 1.6, whip: 0.55, quake: 0.7, beam: 1.0, sever: 0.75,
+    shatter: 0.7, teamHit: 0.6, unitCast: 1.4, heal: 0.7, shield: 0.8, revive: 0.8, reveal: 0.6,
   };
   const GAP = { whoosh: 45, jab: 30, step: 80, tick: 60, ooh: 900, gasp: 900, cheer: 600, teamHit: 60, unitCast: 70 };
 
@@ -202,5 +202,14 @@ window.ArenaAudio = (() => {
     function dispose() { stop(); removeEventListener('wpm-sound', onSound); if (own) setTimeout(() => { try { own.close(); } catch (e) {} }, 1800); own = null; }
     return { play, combat, crowd, swell, stop, dispose, ctx };
   }
-  return { create, LEVEL };
+  // renders one effect through a compressor like the live bus, for loudness checks in tests
+  async function render(name, arg, secs = 2.5) {
+    const sr = 44100, c = new OfflineAudioContext(1, sr * secs, sr);
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.18;
+    const bus = c.createGain(); bus.connect(comp); comp.connect(c.destination);
+    const k = kit(c, bus); k.to(name); k.S[name](0.01, arg);
+    return (await c.startRendering()).getChannelData(0);
+  }
+  return { create, render, LEVEL, NAMES: () => Object.keys(LEVEL) };
 })();
