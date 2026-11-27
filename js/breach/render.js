@@ -219,7 +219,7 @@ window.Breach3D = (() => {
       m.visible = false; scene.add(m); rings.push({ m, life: 0 });
     }
     // a comet: thin at the tail, full at the head, so perspective doesn't make the near end a wall of light
-    const coreG = new THREE.CylinderGeometry(0.02, 0.003, 1, 6, 1, true), glowG = new THREE.CylinderGeometry(0.065, 0.006, 1, 8, 1, true);
+    const coreG = new THREE.CylinderGeometry(0.02, 0.003, 1, 6, 1, true), glowG = new THREE.CylinderGeometry(0.05, 0.005, 1, 8, 1, true);
     for (let i = 0; i < 18; i++) {
       const m = new THREE.Mesh(glowG, addMat(Theme.hex('accent'), 1.8));
       m.visible = false; scene.add(m);
@@ -396,11 +396,10 @@ window.Breach3D = (() => {
       L.s.visible = true;
     }
     ring(p, col, 0.6 * big);
-    const DBG = window._b3d || {};
-    if (!DBG.noFlash) { flash(p, '#ffffff', 1.1 * big, 0.08, 1); flash(p, col, 2.2 * big, 0.3, 1.4); }
-    if (!DBG.noShock) shock(p, col, big);
+    flash(p, '#ffffff', 0.8 * big, 0.08, 1); flash(p, col, 1.8 * big, 0.3, 1.4);
+    shock(p, col, big);
     if (!CALM) sparks(p, '#ffffff', Math.round(10 * big), 1.3);
-    if (!DBG.noPulse) { shotPos ||= new THREE.Vector3(); shotPos.set(p.x, p.y - 1.2, p.z); shotI = 1.8; }
+    shotPos ||= new THREE.Vector3(); shotPos.set(p.x, p.y - 1.2, p.z); shotI = 1.8;
   }
   function ring(p, col, size = 1) {
     if (!ready) return;
@@ -1145,7 +1144,7 @@ window.Breach3D = (() => {
     // glitch in: jitter and scale up when spawned or teleporting
     let s = 1;
     if (f.glitch > 0) { s = 1 - f.glitch * 0.6; if (!CALM) a.root.position.x += (Math.random() - 0.5) * 0.3 * f.glitch; }
-    if (f.dying && !(window._b3d || {}).noShatter) {
+    if (f.dying) {
       // the hologram comes apart: every piece flies out from the middle, spinning, and fades
       const k = 1 - Math.max(0, f.dying) / 0.35;
       if (!a.shards) {
@@ -1161,14 +1160,14 @@ window.Breach3D = (() => {
         sh.c.rotation.set(sh.r.x * e, sh.r.y * e, sh.r.z * e);
       }
       s = 1 + k * 0.12;
-      a.mat.uniforms.uFlash.value = (1 - k) * 0.5;
+      a.mat.uniforms.uFlash.value = (1 - k) * 0.28;
       a.mat.uniforms.uAlpha.value *= 1 - k * 0.85;
       a.lm.opacity *= 1 - k;
     } else if (f.flash > 0) {
       // each hit knocks it back a little and lights it up
       const k = f.flash / 0.06;
       a.body.position.z = -0.14 * k; a.body.rotation.x = -0.12 * k;
-      a.mat.uniforms.uFlash.value = 0.25 + 0.35 * k;
+      a.mat.uniforms.uFlash.value = 0.12 + 0.16 * k;
     } else if (a.body.rotation.x) { a.body.rotation.x *= 0.7; a.body.position.z *= 0.7; }
     if (a.type === 'sniper') {
       const k = f.windup || 0;
