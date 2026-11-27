@@ -163,6 +163,8 @@ fx.update(dt)                                       // every frame, with the hit
 fx.clear(), fx.dispose(), fx.info()
 ```
 
+Since 28 Nov 2026 every spell is told in five beats: a cast circle under you (`sigil`), the cast, travel (`comet`), a layered hit (`impact`: white core, coloured bloom, sparks, embers, smoke, a shockwave, a light pulse and a burn on the floor when it lands low) and the aftermath. The pieces are pooled: 360 smoke puffs, 28 floor burns in two instanced meshes, 64 lit crystals (data spike, cryo lock) and one point light that the biggest current hit borrows (`lights: false` leaves it out). A device whose frames run over 34 ms gets thinner smoke and burns. Every cast sound has a wind-up, a body and a room tail; Combo shield and Frenzy mode have their own. `tools/bots/spells.html` frames each spell like the World Boss and steps time by hand: `spellLab.shoot(id, [t...])`, `spellLab.bench()` (CPU per update), `spellLab.renderBench()`.
+
 `caster` and `target` are adapters, so an effect can be aimed at a boss or at another player:
 
 ```js
