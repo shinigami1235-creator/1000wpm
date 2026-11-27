@@ -1473,7 +1473,8 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .fw.t-block  { --kc: #ff6b78; }
 .fw.t-assist { --kc: #3ee6ff; }
 .fw.t-dodge  { --kc: #ffd23d; }
-.fw.t-return { --kc: #6bffb8; }
+.fw.t-return, .fw.t-packet { --kc: #6bffb8; }
+.fw.t-crowd  { --kc: #f2c230; }
 .fw.t-add    { --kc: #c58bff; }
 .fw.t-heal, .fw.t-revive, .fw.t-cover { --kc: #8fe8a0; }
 .fw.t-fix    { --kc: #ffb36b; }
@@ -1483,7 +1484,8 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .fw.done.was-block i.ok, .fw.done.was-assist i.ok { color: var(--cyan); }
 /* coming, not open yet: the colour without the timer, and it can already be typed (it waits armed) */
 .fw.tag.soon { color: color-mix(in srgb, var(--kc) 70%, var(--ink-3)); }
-.fw-lbl { position: absolute; left: 0; top: -.62em; font: 600 .34em/1 var(--f-label); letter-spacing: .08em; color: var(--kc); white-space: nowrap; pointer-events: none; }
+.fw-lbl { position: absolute; left: 0; top: -.5em; font: 700 .42em/1 var(--f-label); letter-spacing: .06em; color: var(--kc); white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.fw-lines { padding-top: .3em; height: calc(var(--fw-lines, 3) * 1.6em + .3em); }
 .fw.tag.soon.first { text-decoration: underline dotted color-mix(in srgb, var(--kc) 60%, transparent); text-underline-offset: .28em; }
 .fw.done.was-spell i.ok { color: #ff9bf5; }
 /* the raid's shield on the arena while a block attack winds up */
