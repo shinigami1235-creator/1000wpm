@@ -29,6 +29,8 @@
 //     plus c.u (0 to 1 through the shot or part), c.x and c.t
 //   onPart(name, index, part) runs as each part starts (the scene starts its slow motion there)
 //   duringThreat: the shot may play while an attack at you winds up (a slow-motion dodge of it)
+//   anySide: the shot may sit on either side of the line (a shot of the boss's face) but, unlike free,
+//            still cuts back when an attack at you is coming
 //   dir.want(name, { len, pri, x })      ask for a shot; x is handed to its pose as c.x
 //   dir.update(t, dt, c)                 c: { threatAt: seconds of the next hit at you or Infinity,
 //                                         line: [bossV3, youV3], occluders: [{ c: V3, r }], subjects: { name: V3 } }
@@ -86,12 +88,12 @@ window.CamDirector = (() => {
 
     function solve(name, t, c, out) {
       const whole = def(name), pa = name === cur.name ? partAt(whole, t - cur.at) : partAt(whole, 0), s = pa.part;
-      s.free = s.free ?? whole.free;
+      s.free = s.free ?? whole.free; s.anySide = s.anySide ?? whole.anySide;
       out.fov = s.fov ?? whole.fov ?? (shots.game && def('game').fov) ?? camera.fov;
       s.pose({ ...c, x: cur.x, t, u: name === 'game' ? 0 : pa.u }, out);
       if (s.hand) { out.pos.x += Math.sin(t * 2.3) * s.hand; out.pos.y += Math.sin(t * 1.9 + 1) * s.hand * 0.8; }
       // 180-degree rule: mirror a shot that strays across the line, unless it may
-      if (c.line && !s.free && name !== 'game') {
+      if (c.line && !s.free && !s.anySide && name !== 'game') {
         const [a, b] = c.line, home = c.homeSide;
         if (home && sideOf(out.pos, a, b) !== home) {
           // reflect the camera across the line in the ground plane

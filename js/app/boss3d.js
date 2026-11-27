@@ -1112,13 +1112,13 @@ window.BossScene = (() => {
           const r = fitD(bossH(), 0.75, 40) * (1 + 0.25 * u), a = ease(u) * 1.2 + 0.5; o.set(root.position.x + Math.sin(a) * r, 5.5 + 3 * u, root.position.z + Math.cos(a) * r); l.copy(anchorCore); l.y -= 2 * u; },
           { len: 3.4, cut: 1, slow: 0.4, omega: 4 })] },
         // the kernel open: low in front of it as it drops onto one claw, looking up at the bared core
-        kneel: { pri: 3, free: true, parts: [P((u, o, l) => {
+        kneel: { pri: 3, anySide: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.7, 0.85, 38) * (1 - 0.08 * u);
           o.copy(root.position).addScaledVector(bF, d).addScaledVector(bS, d * 0.5); o.y = 1.0 + 0.6 * u; l.copy(anchorCore); l.y += 0.5; },
           { len: 1.7, slow: 0.45, cut: 1, omega: 9, fov: 38 })] },
         // a phase change: up close on its head as it curls up and the power surges, then the crane
         // from the floor as it roars (the scale shot)
-        roar: { pri: 3, free: true, parts: [P((u, o, l) => {
+        roar: { pri: 3, anySide: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.35, 0.8, 34) * (1 - 0.12 * u);
           o.copy(anchorHead).addScaledVector(bF, d).addScaledVector(bS, -d * 0.35); o.y = anchorHead.y - 2.4 - 0.4 * u; l.copy(anchorHead); l.y -= 2.2; },
           { len: 0.85, slow: 0.6, cut: 1, omega: 10, fov: 34 }), P((u, o, l) => {
@@ -1126,7 +1126,7 @@ window.BossScene = (() => {
           o.copy(root.position).addScaledVector(bF, d).addScaledVector(bS, 2.5); o.y = 0.6 + H * 0.35 * smooth(u); l.copy(anchorHead); l.y -= H * 0.08; },
           { len: 2.0, cut: 1, omega: 6 })] },
         // the fight's opening: low on the visor, then rising to the whole arena
-        intro: { pri: 2, free: true, parts: [P((u, o, l) => {
+        intro: { pri: 2, anySide: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.3, 0.75, 32);
           o.copy(anchorHead).addScaledVector(bF, d * (1 - 0.1 * u)).addScaledVector(bS, d * 0.25); o.y = anchorHead.y - 2.6 + 0.5 * u; l.copy(anchorHead); l.y -= 2.3; },
           { len: 1.2, cut: 1, omega: 8, fov: 32 }), P((u, o, l) => {
