@@ -1139,7 +1139,9 @@ window.BossScene = (() => {
     function threatAt(t) {
       let h = Infinity;
       for (const x of evs) if (x.type === 'slam' && !x.side && !x.cut && x.h > t) h = Math.min(h, x.h);
-      for (const l of locks) if (l.slot === RAID && !l.fired && l.h > t) h = Math.min(h, l.h);
+      // a lock-on on you counts as coming from the moment it shows (its dodge word is up the whole time),
+      // so a cutaway already playing cuts straight back instead of covering its first second
+      for (const l of locks) if (l.slot === RAID && !l.fired && l.h > t) h = Math.min(h, l.h, t + 1);
       return h;
     }
     function play(kind, x = null, pri) {
