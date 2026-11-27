@@ -65,7 +65,8 @@ window.RaidFlight = (() => {
     const fpos = new V();
     let sortieK = -1, sortieT = -9;
     const focus = t => {
-      if (sortieK >= 0 && t - sortieT < 1.6 && t >= sortieT) return centre(sortieK, fpos);
+      // it turns on a flank squad diving at it; your squad's dives catch it facing them, side or back on
+      if (sortieK > 0 && t - sortieT < 1.6 && t >= sortieT) return centre(sortieK, fpos);
       return lastRun >= 0 && t - lastRunT < 1.3 && t >= lastRunT ? S[lastRun].pos : null;
     };
     function centre(k, out) {
@@ -164,7 +165,7 @@ window.RaidFlight = (() => {
         const k = squadOf[i] < 0 ? 0 : squadOf[i];
         // your squad holds the front (the view follows it round); the others swing out to the boss's
         // sides and round behind it, slowly, each on its own side
-        const a = k === 0 ? 0.2 * Math.sin(t * 0.19) : (k === 1 ? 1 : -1) * (0.35 + 1.15 * (0.5 + 0.5 * Math.sin(t * 0.09 + k * 2.3)));
+        const a = k === 0 ? 0.2 * Math.sin(t * 0.19) : (k === 1 ? 1 : -1) * (0.6 + 1.9 * (0.5 + 0.5 * Math.sin(t * 0.11 + k * 2.3)));   // out to its side and round behind it
         tmp.copy(s.home).sub(boss); const c = Math.cos(a), sn = Math.sin(a);
         tgt.set(tmp.x * c - tmp.z * sn, tmp.y, tmp.x * sn + tmp.z * c).add(boss);
         const calm = i === YOU ? 0.45 : 1;

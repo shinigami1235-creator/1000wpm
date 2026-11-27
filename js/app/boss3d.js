@@ -888,7 +888,7 @@ window.BossScene = (() => {
       // only the last second before a hit at your squad: attacks come often, and the raid keeps circling
       const sl = own(t), lk = locks.find(l => l.slot === RAID && t > l.h - 1.0 && t < l.h + 0.4);
       const hold = !!(sl && !sl.cut && t > sl.h - 1.0 && t < sl.h + 0.4) || !!lk || dead;
-      if (t > orbit.next) { orbit.want = (Math.random() < 0.3 ? -Math.sign(orbit.want || 1) : Math.sign(orbit.want || 1)) * rnd(0.09, 0.2); orbit.next = t + rnd(5, 9); }
+      if (t > orbit.next) { orbit.want = (Math.random() < 0.3 ? -Math.sign(orbit.want || 1) : Math.sign(orbit.want || 1)) * rnd(0.12, 0.25); orbit.next = t + rnd(5, 9); }
       orbit.w += ((hold ? 0 : orbit.want) - orbit.w) * Math.min(1, dt * (hold ? 3 : 0.8));
       orbit.phi += orbit.w * dt;
       env.rotation.y = -orbit.phi;
@@ -1509,7 +1509,7 @@ window.BossScene = (() => {
       wave(root.position, 1, 14, 0.9, WHITE, 0.7);
     }
     function menaceTick(t, dt) {
-      const quiet = dead || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
+      const quiet = dead || Math.abs(bossTurn) > 0.8 || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
         t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5;
       if (!dead) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
       if (quiet) { men.next = Math.max(men.next, t + 0.6); return; }
@@ -1925,7 +1925,7 @@ window.BossScene = (() => {
     }
 
     // ---------- loop ----------
-    let at = 0, last = nowS(), bossTurn = 0;
+    let at = 0, last = nowS(), bossTurn = 0, bossYaw = 0;
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
@@ -1986,14 +1986,22 @@ window.BossScene = (() => {
       {
         // an attack faces its target, a lock-on faces its bot, and in between it turns to whoever
         // is diving at it
-        const sl = current(t, 'slam'), lk = !sl && locks.find(l => t < l.h + 0.3);
-        let want = 0, rate = 2.2;
-        if (sl && !sl.cut && t < sl.h + 0.6) { const a = sl.at || aim; want = Math.atan2(a.x - root.position.x, a.z - root.position.z); rate = sl.side ? 4 : 5; }
+        // Gid, 27 Nov 2026: the boss keeps its own facing in the arena while your squad flies round
+        // it, so the view shows its side or its back until it turns on someone. bossYaw is where it
+        // faces in the arena; the view has turned by orbit.phi, so on screen that's bossYaw - phi.
+        // at your squad it swings round only for the last stretch of the wind-up, so the turn itself is
+        // the warning; at a flank squad it turns from the start. With two attacks going, yours wins.
+        let sl = null;
+        for (const x of evs) if (x.type === 'slam' && !x.cut && t >= x.s && t < x.h + 0.6 && (x.side || t > x.h - (x.kind === 'laser' ? 2.2 : 1.8)))
+          if (!sl || (sl.side && !x.side) || (!!sl.side === !!x.side && x.h < sl.h)) sl = x;
+        const lk = !sl && locks.find(l => t < l.h + 0.3);
+        let want = null, rate = 2.2;
+        if (sl) { const a = sl.at || aim; want = Math.atan2(a.x - root.position.x, a.z - root.position.z); rate = sl.side ? 4 : 6; }
         else if (lk) { const p = raidPos[lk.slot]; want = Math.atan2(p.x - root.position.x, p.z - root.position.z); rate = 4; }
-        else if (flight && !reduce) { const f = flight.focus(t); if (f) want = Math.atan2(f.x - root.position.x, f.z - root.position.z); }
-        if (reduce) want = 0;
-        let d = want - bossTurn; d = Math.atan2(Math.sin(d), Math.cos(d));
-        bossTurn += d * Math.min(1, dt * rate);
+        else if (flight && !reduce) { const f = flight.focus(t); if (f) { want = Math.atan2(f.x - root.position.x, f.z - root.position.z); rate = 1.8; } }
+        if (reduce || !BOT) bossYaw = orbit.phi;
+        else if (want !== null) { const d = want + orbit.phi - bossYaw; bossYaw += Math.atan2(Math.sin(d), Math.cos(d)) * Math.min(1, dt * rate); }
+        const r = bossYaw - orbit.phi; bossTurn = Math.atan2(Math.sin(r), Math.cos(r));
       }
       root.rotation.y = mv.face + bossTurn + Math.sin(at * 0.3) * 0.05 * still;
       // it leans into a dash
@@ -2471,7 +2479,7 @@ window.BossScene = (() => {
     applyPal(1);
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
-    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w }) };
+    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }) };
   }
 
   return { mount };
