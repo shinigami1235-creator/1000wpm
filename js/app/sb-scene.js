@@ -365,6 +365,7 @@ window.SuperScene = (() => {
       artPos, pal, lightPool, camPos: camera.position,
       juice: { shake: k => juice.shake(k), stop: ms => juice.stop(ms), flash: k => { if (canFlash()) flashAmt = Math.max(flashAmt, k); }, tint: (h, k) => juice.tint(h, k), glitch: (k, s2) => juice.glitch(k, s2) },
       shed: (at, n, c, p, sz) => shed(at, n, c, p, sz),
+      put: (p, sx, sy, sz, rx, ry, rz, c, k) => put(p, sx, sy, sz, rx, ry, rz, c, k),
       sfx: (n, a) => { if (opts.sfx !== false && window.SuperAudio) SuperAudio.play(n, a); },
       // where a blocked attack stops: Art's barrier, a little in front of him
       shieldAt: out => out.set(artPos.x, 2.2, artPos.z - 3.2),
@@ -499,15 +500,23 @@ window.SuperScene = (() => {
     }
 
     // ---------- camera ----------
-    const camBase = new V(0, 6.4, 31), camLook = new V(0, 7.6, -3), lookCur = camLook.clone();
+    // the broadcast camera: CamDirector plays the shots in sb-cam.js. dirSlow is the slow motion a shot asks for
+    let dirSlow = 1, dirSlowUntil = 0, snapAt = 0;
+    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, setSlow: (k, len) => { dirSlow = k; dirSlowUntil = performance.now() + len * 1000; } });
+    // the next moment an attack at Art lands, in real seconds: no cutaway may hide one
+    const THREAT = new Set(['block', 'packet', 'weak', 'decoy', 'fix']);
+    function threatAt(nowMs) {
+      if (!snap || !snap.targets) return Infinity;
+      let m = Infinity;
+      for (const x of snap.targets) if (THREAT.has(x.kind) && x.left != null) m = Math.min(m, x.left - (nowMs - snapAt));
+      return m === Infinity ? Infinity : nowMs / 1000 + Math.max(0, m) / 1000;
+    }
     function fit() {
       const w = host.clientWidth || 800, h = host.clientHeight || 600;
       renderer.setSize(w, h, false);
       composer.setSize(w, h);
       bloom.resolution.set(w / 2, h / 2);
       camera.aspect = w / h;
-      const half = THREE.MathUtils.degToRad(42 / 2);
-      camBase.z = Math.max(31, 19 / (Math.tan(half) * camera.aspect));
       camera.updateProjectionMatrix();
     }
     const ro = new ResizeObserver(fit); ro.observe(host);
@@ -543,7 +552,7 @@ window.SuperScene = (() => {
 
     // ---------- snapshots ----------
     function apply(s) {
-      snap = s;
+      snap = s; snapAt = performance.now();
       if (s.phase !== phase) { phase = s.phase; palette(phase - 1, false); }
       enraged = !!s.enraged;
       finishing = s.status === 'finish';
@@ -551,7 +560,8 @@ window.SuperScene = (() => {
       if (s.status !== 'won' && dead && s.status !== 'lost') { dead = false; }
       lost = s.status === 'lost';
       neckOpen = s.b && s.b.neck ? 1 : 0;
-      if (bossId === 'leviathan') {
+      if (model && model.packets) model.packets(s.targets.filter(x => x.kind === 'packet').map((x, i) => ({ id: x.id, left: x.left, total: x.total, i })), clock.t);
+      if (bossId === 'leviathan' && !model) {
         const weak = s.targets.find(x => x.kind === 'weak'), decoy = s.targets.find(x => x.kind === 'decoy');
         if (weak && weakI < 0) weakI = clamp(frontI, 2, SEG - 3);
         if (!weak) weakI = -1;
@@ -578,6 +588,12 @@ window.SuperScene = (() => {
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (model) model.event(n, d, t);
+      if (n === 'countdown') cam.want('intro');
+      if (n === 'phase') cam.want('phase', model && model.face ? model.face : 'core');
+      if (n === 'sever') cam.want('sever', d.head);
+      if (n === 'neck' && d.on) cam.want('neck');
+      if (n === 'weak' && d.hit) cam.want('weak');
+      if (n === 'win') cam.want('kill');
       if (n === 'hit') {
         const crit = !!d.crit, big = d.src === 'sever' || d.src === 'weak' || (d.src === 'spell' && d.last);
         const land = () => {
@@ -650,7 +666,7 @@ window.SuperScene = (() => {
         if (d.attack === 'lunge' || d.attack === 'sweep') { diveUntil = 0; if (n === 'blockFail') lungeAt = t; }
       }
       if (n === 'block') { if (d.attack === 'overflow') towerChargeUntil = 0; if (d.attack === 'lunge' || d.attack === 'sweep') diveUntil = 0; }
-      if (n === 'compile') { screenPulse = 1; juice.tint('#ff4d5e', 0.5); wave(v1.copy(anchors.core), C('#ff4d5e'), 2, 16, 0.6, false); }
+      if (n === 'compile') { screenPulse = 1; juice.tint('#ff4d5e', 0.5); if (!model) wave(v1.copy(anchors.core), C('#ff4d5e'), 2, 16, 0.6, false); }
       if (n === 'fix') screenPulse = Math.max(screenPulse, 0.4);
       if (n === 'phase') {
         juice.shake(0.6); juice.glitch(0.7, 0.8); juice.stop(120); recoil = 1;
@@ -681,7 +697,7 @@ window.SuperScene = (() => {
       let dt = Math.min(0.05, rdt); lastT = nowMs;
       if (!visible || document.hidden) return;
       if (paused) dt = 0;
-      dt *= slowK * (nowMs < slowUntil ? 0.3 : 1);
+      dt *= slowK * (nowMs < slowUntil ? 0.3 : 1) * (nowMs < dirSlowUntil ? dirSlow : 1);
       const stopped = nowMs < stopUntil;
       const adt = stopped ? 0 : dt * (finishing ? 0.55 : 1);
       clock.t += adt;
@@ -700,7 +716,7 @@ window.SuperScene = (() => {
       if (dead) deadT = Math.min(3, deadT + dt);
       nB = 0;
       for (const pl of pools) pl.w = 0;
-      if (model) { model.update(t, adt, { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); }
+      if (model) { model.update(t, adt, { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's marker
@@ -726,10 +742,10 @@ window.SuperScene = (() => {
       // camera: a slow drift, a moderate shake and a push in on the finish
       shake = Math.max(0, shake - rdt * 1.8);
       const sh = Math.min(SHAKE_MAX, shake) * shakeK();
-      const push = finishing ? 4 : 0;
-      camera.position.set(camBase.x + Math.sin(t * 0.21) * 0.5 + Math.sin(nowMs * 0.041) * sh, camBase.y + Math.sin(t * 0.17) * 0.25 + Math.sin(nowMs * 0.037 + 1) * sh * 0.7 + kick * 0.15 * shakeK(), camBase.z - push);
-      lookCur.lerp(v1.set(anchors.core.x * 0.25, camLook.y, camLook.z), Math.min(1, dt * 2));
-      camera.lookAt(lookCur);
+      // the director picks the shot (sb-cam.js); shake goes on top of whatever it chose
+      cam.update(nowMs / 1000, rdt, threatAt(nowMs), finishing);
+      camera.position.x += Math.sin(nowMs * 0.041) * sh;
+      camera.position.y += Math.sin(nowMs * 0.037 + 1) * sh * 0.7 + kick * 0.15 * shakeK();
       if (debugCam) { camera.position.copy(debugCam.p); camera.lookAt(debugCam.l); if (camera.fov !== debugCam.f) { camera.fov = debugCam.f; camera.updateProjectionMatrix(); } }
       // post
       tintAmt = Math.max(0, tintAmt - rdt * 1.6); post.uniforms.uTintAmt.value = Math.max(tintAmt, enraged ? 0.22 + Math.sin(nowMs / 300) * 0.06 : 0);
@@ -786,7 +802,7 @@ window.SuperScene = (() => {
       bloom.dispose(); if (composer.dispose) composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
-    function info() { return { boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
+    function info() { return { shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
     return { apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 

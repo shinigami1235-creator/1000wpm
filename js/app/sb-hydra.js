@@ -177,8 +177,22 @@ SuperModels.hydra = function (THREE, K, ctx) {
   // ---------- slam (the tidal wave) and the body ----------
   let slam = null, bodyLift = 0, bodyShake = 0, wave = null;
   let neckOpen = false, chestOpen = 0;
-  let roarT = -9, dead = false, deadT = 0, finishing = false;
-  const waveRing = [];   // spray points along the wave front
+  let roarT = -9, dead = false, deadT = 0, finishing = false, bigFlash = 0;
+  // the wave: an arc of water rolling out from the hull toward Art, foam on its crest
+  const waveMat = K.own(new THREE.ShaderMaterial({
+    uniforms: { uT: { value: 0 }, uA: { value: 0 }, uC: { value: C('#9fe8ff') }, uHot: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; uniform float uT; void main(){ vUv = uv; vec3 p = position; p.y += sin(uv.x * 40.0 + uT * 6.0) * 0.06 * uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }',
+    fragmentShader: `uniform float uT; uniform float uA; uniform vec3 uC; uniform float uHot; varying vec2 vUv;
+      void main(){ float crest = smoothstep(0.55, 1.0, vUv.y); float body = smoothstep(0.0, 0.5, vUv.y) * (1.0 - crest * 0.4);
+        float foam = smoothstep(0.6, 0.95, sin(vUv.x * 90.0 + uT * 9.0 + sin(vUv.x * 13.0) * 3.0) * 0.5 + 0.5) * crest;
+        float ends = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+        vec3 c = mix(uC * 0.35, uC, crest) + vec3(1.0) * foam * 0.8;
+        c = mix(c, vec3(1.0, 0.45, 0.5), uHot);
+        gl_FragColor = vec4(c * (body + crest) * ends * uA, 1.0); }`,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  const waveMesh = new THREE.Mesh(K.own(new THREE.CylinderGeometry(1, 1, 1, 48, 1, true, -0.8, 1.6).translate(0, 0.5, 0)), waveMat);
+  waveMesh.visible = false; waveMesh.renderOrder = 5; group.add(waveMesh);
 
   function startAct(s, kind, ms, t) {
     s.act = kind; s.actT = t; s.actLen = ms / 1000; s.strikeT = -1; s.fired = false;
@@ -209,7 +223,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
         s.act = 'mendGo'; s.actT = t; if (s.orb) { s.orb.pop(); s.orb = null; }
         mouthWorld('patch', v1);
         for (const id of ['fork', 'root']) if (st[id].up) { K.fx.beam(v1, st[id].pos, '#f2c230', 0.35, 0.7, { grow: 0.25 }); K.fx.burst(st[id].pos, 26, '#ffe08a', { speed: 5, g: -2, life: 1, size: 0.3 }); st[id].flash = 1; }
-        K.fx.shock(v2.copy(BODY).setY(4), C('#f2c230'), 2, 14, 0.8, { flat: false, face: ctx.camPos });
+        K.fx.shock(v2.copy(BODY).setY(6), C('#f2c230'), 2, 10, 0.7, { flat: false, face: ctx.camPos, w: 0.12, k: 0.7 });
         K.fx.light(v1, '#f2c230', 30, 3);
       }
     }
@@ -225,8 +239,9 @@ SuperModels.hydra = function (THREE, K, ctx) {
     if (n === 'hit') {
       const id = d.at && d.at.startsWith('head:') ? d.at.slice(5) : null;
       const imp = Math.min(2.4, 0.35 + (d.amount || 0) * 0.012) * (d.crit ? 1.5 : 1);
-      if (id && st[id]) { st[id].kbV += imp * 2.2; st[id].flash = 1; }
+      if (id && st[id]) { st[id].kbV += imp * 2.2; st[id].flash = Math.max(st[id].flash, d.crit ? 0.9 : 0.4); }
       else for (const k in st) st[k].kbV += imp * 0.5;
+      if (d.crit || d.src === 'sever' || d.src === 'counter') bigFlash = d.src === 'counter' ? 1 : 0.6;
     }
     if (n === 'win') { dead = true; deadT = 0; for (const id in st) endAct(st[id], null, t); if (slam) { if (slam.mark) slam.mark.off(); slam = null; } }
   }
@@ -254,7 +269,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
       K.fx.shock(v2.copy(at).setY(0.1), C(hitArt ? '#ff4d5e' : '#3ee6ff'), 1, 9, 0.6);
       K.fx.light(at, hitArt ? '#ff4d5e' : '#9fe8ff', 50, 4);
     }
-    slam = null; wave = null;
+    slam = null; wave = null; waveMesh.visible = false;
   }
   function sever(id, t) {
     const s = st[id]; if (!s) return;
@@ -289,7 +304,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     if (slam) {
       const u = (t - slam.t0) / slam.len;
       // rise over the first 40% (anticipation), crash at 48%, the wave rolls the rest of the way
-      lift = u < 0.4 ? easeIn(u / 0.4) * 3.2 : u < 0.48 ? 3.2 * (1 - easeIn((u - 0.4) / 0.08)) : 0;
+      lift = u < 0.4 ? ease(u / 0.4) * 5 + Math.sin(t * 40) * 0.1 * u : u < 0.48 ? 5 * (1 - easeIn((u - 0.4) / 0.08)) : 0;
       if (u >= 0.48 && !slam.slammed) {
         slam.slammed = true; bodyShake = 1;
         ctx.juice.shake(0.7); ctx.juice.stop(90); ctx.sfx('slam');
@@ -308,6 +323,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     body.updateMatrixWorld();
 
     // the wave rolling at Art: a ring of spray running over the water
+    if (!wave) waveMesh.visible = false;
     if (wave) {
       const u = clamp((t - wave.t0) / wave.len, 0, 1);
       const R = wave.r0 + (art.distanceTo(v1.copy(BODY).setY(art.y)) - wave.r0 - 1.5) * u;
@@ -317,7 +333,8 @@ SuperModels.hydra = function (THREE, K, ctx) {
         v1.set(BODY.x + Math.cos(a) * R, 0.2, BODY.z + Math.sin(a) * R);
         K.fx.spark(v1, v2.set(rnd(-1, 1), rnd(4, 8), rnd(1, 3)), C(u > 0.7 ? '#ffd0d0' : '#bfefff', 0.9), { size: 0.4, end: 0.1, life: 0.5, g: 16, floor: 0.05 });
       }
-      if (Math.random() < dt * 8) K.fx.shock(v1.copy(BODY).setY(0.08), C('#9fe8ff'), R * 0.95, R * 1.05, 0.25, { w: 0.15, k: 0.6 });
+      waveMesh.visible = true; waveMesh.position.set(BODY.x, 0, BODY.z); waveMesh.scale.set(R, 2.6 * (1 - u * 0.25) + Math.sin(t * 7) * 0.1, R);
+      waveMat.uniforms.uT.value = t; waveMat.uniforms.uA.value = Math.min(1, u * 6); waveMat.uniforms.uHot.value = smooth((u - 0.6) / 0.4) * 0.5;
       ctx.lightPool(0, v2.set(0, 0, BODY.z + R), '#9fe8ff', 1.2);
     }
 
@@ -325,14 +342,15 @@ SuperModels.hydra = function (THREE, K, ctx) {
     chestOpen += ((neckOpen ? 1 : 0) - chestOpen) * Math.min(1, dt * 4);
     for (const c of chest) { c.m.position.x = c.sd * (0.95 + chestOpen * 1.5); c.m.rotation.y = c.sd * (0.25 + chestOpen * 0.7); }
     const deathGlow = dead ? clamp(deadT / 2.6, 0, 1) : 0;
-    const cK = (neckOpen ? 2.4 + Math.sin(t * 14) * 0.4 : 1) + S.hit * 1.2 + (finishing ? 1.4 + Math.sin(t * 9) * 0.6 : 0) + deathGlow * 3;
+    bigFlash = Math.max(0, bigFlash - dt * 5);
+    const cK = (neckOpen ? 2.4 + Math.sin(t * 14) * 0.4 : 1) + bigFlash + (finishing ? 1.4 + Math.sin(t * 9) * 0.6 : 0) + deathGlow * 3;
     coreMat.color.copy(C(neckOpen || finishing ? '#ffffff' : '#bfffe0', 1.4 * cK));
     coreGem.rotation.set(t * 0.7, t * 1.1, 0);
     coreHalo.scale.setScalar(0.8 + chestOpen * 0.5 + (finishing ? 0.3 + Math.sin(t * 9) * 0.1 : 0) + deathGlow);
     coreShell.uniforms.uT.value = t; coreShell.uniforms.uC.value.copy(ctx.pal.a).multiplyScalar(1 + chestOpen + deathGlow * 2);
     // seams follow the phase colour; the hull cracks open with light as it dies
     const heat = dead ? smooth((deadT - 0.6) / 2.2) * (deadT < 6 ? 1 : 0) : finishing ? 0.25 + Math.sin(t * 6) * 0.08 : 0;
-    for (const m of [hullMat, boneMat]) { m.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(m === hullMat ? 1.2 : 0.6); m.userData.u.uRim.value.copy(ctx.pal.a).multiplyScalar(0.3); m.userData.u.uFlash.value = S.hit * 0.6; m.userData.u.uHeat.value = heat; }
+    for (const m of [hullMat, boneMat]) { m.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(m === hullMat ? 1.2 : 0.6); m.userData.u.uRim.value.copy(ctx.pal.a).multiplyScalar(0.3); m.userData.u.uFlash.value = bigFlash * 0.5; m.userData.u.uHeat.value = heat; }
     if (dead && deadT > 2.6 && !body.userData.boom) {
       body.userData.boom = true;
       core.getWorldPosition(v1);
@@ -573,5 +591,5 @@ SuperModels.hydra = function (THREE, K, ctx) {
   }
 
   function dispose() { /* the kit owns every geometry and material */ }
-  return { group, props, update, event, anchor, worldOf, attacker, subj, reset, dispose, height: 16, focus: new V(0, 7, -5), info: () => ({ acts: Object.fromEntries(Object.entries(st).map(([k, s]) => [k, s.act])), slam: !!slam }) };
+  return { group, props, update, event, anchor, worldOf, attacker, subj, reset, dispose, height: 16, width: 38, focus: new V(0, 7.6, -3), face: 'root', info: () => ({ acts: Object.fromEntries(Object.entries(st).map(([k, s]) => [k, s.act])), slam: !!slam }) };
 };

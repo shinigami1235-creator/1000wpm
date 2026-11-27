@@ -59,8 +59,8 @@ window.SuperKit = (() => {
             vec3 hot = mix(uSeam, vec3(1.0, 0.95, 0.85) * 2.2, uHeat);
             totalEmissiveRadiance += hot * s * run * (1.0 + uFlash * 1.5 + uHeat * 1.5);
             float fr = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 4.0);
-            totalEmissiveRadiance += uRim * fr * (1.0 + uFlash * 3.0);
-            totalEmissiveRadiance += vec3(1.0) * uFlash * 0.25;
+            totalEmissiveRadiance += uRim * fr * (1.0 + uFlash * 1.5);
+            totalEmissiveRadiance += vec3(1.0) * uFlash * 0.12;
             diffuseColor.rgb *= 1.0 - uHeat * 0.5;
           }`);
       };
