@@ -17,7 +17,7 @@
 .lab-switch { display: flex; align-items: center; gap: 8px; font: 400 13px/1.2 var(--f-label); color: var(--ink); cursor: pointer; }
 .lab-switch input, .lab-theme input { accent-color: var(--accent); width: 16px; height: 16px; }
 .lab-anims { flex-wrap: wrap; }
-.lab-once { display: flex; gap: 6px; }
+.lab-once { display: flex; flex-wrap: wrap; gap: 6px; }
 .lab-actions { grid-template-columns: 1fr 1fr 1fr; }
 .lab-actions .btn { width: 100%; }
 .lab-note { margin: 0; min-height: 1.2em; font: 400 12px/1.4 var(--f-mono); color: var(--ink-2); word-break: break-all; }

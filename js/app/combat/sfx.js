@@ -15,6 +15,7 @@ Combat.Audio = (() => {
     'data-spike': 0.6, 'safe-mode': 0.64, 'binary-rain': 2.05, 'echo-pulse': 0.73, 'glitch-blade': 0.95, 'cryo-lock': 0.89, 'electro-storm': 2.06,
     'hyper-thread': 0.77, 'packet-storm': 4.4, 'neon-nova': 1.79, 'system-purge': 2.01, 'void-sphere': 0.24, 'kernel-panic': 3.52, 'root-access': 1.02,
     'quantum-split': 1.4, 'zero-day': 1.09, 'combo-shield': 0.9, frenzy: 0.45,
+    'op-attack': 1.6, 'op-cover': 1.0, 'op-heal': 2.2, 'op-revive': 1.8, 'op-dodge': 4.0, 'op-hit': 1.0, 'op-down': 0.7, 'op-victory': 2.0,
   };
   const GAP = { tick: 40, blip: 35, pulse: 60, shot1: 25, shot2: 25 };
 
@@ -258,6 +259,16 @@ Combat.Audio = (() => {
         hiss(t + 0.25, 0.6, 500, 0.6, 0.3, 'lowpass', 0.01, 2400, v);
         tone(t + 0.25, 'sawtooth', 220, 180, 0.35, 0.08, 0.005, d);
       },
+
+      // ---- operator actions (28 Nov 2026), played with Operator's onAct ----
+      'op-attack'(t) { hiss(t, 0.04, 5000, 1, 0.3, 'highpass', 0.001); for (let i = 0; i < 4; i++) tone(t + i * 0.012, 'square', R(1800, 3200), 900, 0.02, 0.06, 0.001); tone(t, 'sine', 140, 60, 0.12, 0.35, 0.002); },
+      'op-cover'(t) { const v = wet(0.35); tone(t, 'sine', 300, 600, 0.08, 0.12, 0.002, v); hiss(t + 0.06, 0.05, 3000, 2, 0.28, 'bandpass', 0.001); tone(t + 0.06, 'triangle', 1180, 1170, 0.4, 0.07, 0.002, v); tone(t + 0.06, 'sine', 160, 80, 0.15, 0.3, 0.002); },
+      'op-heal'(t) { const v = wet(0.55); [523, 659, 784, 1047, 1319].forEach((f, i) => tone(t + i * 0.06, 'sine', f, f, 0.6, 0.06, 0.01, v)); hiss(t, 0.8, 5000, 0.8, 0.05, 'bandpass', 0.3, 9000); },
+      'op-revive'(t) { const v = wet(0.6); riser(t, 0.6, 300, 4000, 0.14); tone(t + 0.3, 'sine', 196, 392, 0.8, 0.12, 0.3, v); chime(t + 0.6, [784, 988, 1175, 1568], 0.9, 0.05, 0.06, v, 'sine'); },
+      'op-dodge'(t) { hiss(t, 0.2, 600, 0.8, 0.3, 'bandpass', 0.02, 4000); tone(t + 0.02, 'sine', 400, 220, 0.12, 0.08, 0.002); },
+      'op-hit'(t) { tone(t, 'sine', 120, 45, 0.25, 0.5, 0.002); hiss(t, 0.12, 1800, 0.7, 0.32, 'lowpass', 0.001, 300); tone(t, 'square', 220, 110, 0.1, 0.05, 0.001); },
+      'op-down'(t) { tone(t, 'sawtooth', 330, 70, 0.7, 0.07, 0.01); tone(t + 0.1, 'sine', 90, 40, 0.5, 0.35, 0.01); hiss(t + 0.35, 0.2, 800, 0.7, 0.18, 'lowpass', 0.01, 200); },
+      'op-victory'(t) { const v = wet(0.5); [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.09, 'triangle', f, f, 0.35, 0.09, 0.005, v)); chime(t + 0.36, [1047, 1319, 1568], 0.8, 0.07, 0.01, v); },
 
       // ---- the sound each spell hit makes ----
       crack(t) { hiss(t, 0.08, 5000, 1, 0.35, 'highpass', 0.001); tone(t, 'triangle', 2600, 1300, 0.1, 0.1, 0.001); tone(t, 'sine', 140, 50, 0.2, 0.4); },

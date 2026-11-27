@@ -19,7 +19,7 @@ Router.register('hangar', (() => {
   const esc = s => UI.esc(String(s));
   // the categories, each with where the camera goes: [turn of the bot, camera height, distance, look height]
   const TABS = [
-    ['Colour', [0.0, 1.4, 11.5, 0.1]], ['Face', [0.0, 0.5, 7.2, 0.15]], ['Head', [0.25, 2.6, 8.8, 0.7]], ['Back', [Math.PI, 1.6, 10, 0.2]],
+    ['Colour', [0.0, 1.4, 11.5, 0.1]], ['Face', [0.0, 0.6, 8.4, 0.1]], ['Head', [0.25, 2.6, 8.8, 0.7]], ['Back', [Math.PI, 1.6, 10, 0.2]],
     ['Arm', [0.75, 0.9, 8.5, -0.1]], ['Trail', [-0.5, 2.2, 15, -0.6]], ['Moves', [0.0, 1.6, 12.5, 0.4]], ['Marks', [-0.6, 1.2, 9.5, 0.1]],
   ];
   let el = null, store = null, tab = 'Colour', hist = [], hi = 0, stage = null;
