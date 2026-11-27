@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Room item bake</title>
+<!-- Renders the room's item cut-outs (assets/room/items/*.webp) with three.js: the old 3D room
+     items, the boss figures from BossKit and the trophies, medals and badges built here, lit to sit
+     in the tier pictures (dim, a warm lamp from the left, a teal rim from behind on the right).
+     tools/room-bake.py drives it in headless Chrome and trims each PNG. -->
+<base href="../">
+<script type="importmap">
+{ "imports": { "three": "./lib/three/build/three.module.min.js", "three/addons/": "./lib/three/examples/jsm/" } }
+</script>
+<style>html, body { margin: 0; background: #333; }</style>
+</head>
+<body>
+<script src="js/app/theme.js"></script>
+<script src="js/state.js"></script>
+<script src="js/room/load-3d.js"></script>
+<script src="js/app/bosskit.js"></script>
+<script src="js/app/operator3d.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const SIZE = 720;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(SIZE, SIZE, false);
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const key = new THREE.DirectionalLight('#ffc28a', 2.4), rim = new THREE.DirectionalLight('#38f0d0', 3.2), fill = new THREE.HemisphereLight('#b8d0d8', '#0c1012', 0.35);
+scene.add(key, key.target, rim, rim.target, fill);
+const camera = new THREE.PerspectiveCamera(18, 1, 0.01, 100);
+
+// ---------------------------------------------------------------- built here
+const M = (o) => new THREE.MeshStandardMaterial(o);
+const gold = M({ color: '#f0b440', metalness: 1, roughness: 0.22 }), silver = M({ color: '#c9d2d6', metalness: 1, roughness: 0.22 }),
+  bronze = M({ color: '#b0683a', metalness: 1, roughness: 0.32 }), black = M({ color: '#141618', metalness: 0.3, roughness: 0.45 }),
+  plate = M({ color: '#2a2e31', metalness: 0.8, roughness: 0.35 });
+const glow = c => M({ color: '#000', emissive: c, emissiveIntensity: 1.1, roughness: 0.4 });
+const RB = (w, h, d, r, m) => new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), m);
+function base(w = 0.09, h = 0.035, m = black, round = false) {
+  const g = new THREE.Group();
+  const b = round ? new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2 * 1.06, h, 48), m) : RB(w, h, w * 0.8, 0.004, m);
+  b.position.y = h / 2; g.add(b);
+  const tag = RB(w * 0.55, h * 0.4, 0.002, 0.001, gold); tag.position.set(0, h * 0.5, round ? w / 2 * 1.02 : w * 0.4 + 0.001); if (!round) g.add(tag);
+  return g;
+}
+function lathe(pts, m, seg = 64) { return new THREE.Mesh(new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg), m); }
+function cup(metal, h = 0.2) {
+  const g = base(0.085, 0.04);
+  const stem = lathe([[0.0, 0], [0.022, 0], [0.02, 0.008], [0.008, 0.02], [0.006, 0.05], [0.012, 0.062], [0.0, 0.064]], metal); stem.position.y = 0.04; g.add(stem);
+  const bowl = lathe([[0.0, 0], [0.012, 0], [0.03, 0.012], [0.042, 0.04], [0.048, 0.075], [0.05, 0.09], [0.046, 0.09], [0.044, 0.078], [0.038, 0.044], [0.0, 0.03]], metal); bowl.position.y = 0.1; g.add(bowl);
+  for (const s of [-1, 1]) { const hnd = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.0045, 12, 32, Math.PI), metal); hnd.position.set(s * 0.044, 0.16, 0); hnd.rotation.z = s > 0 ? -Math.PI / 2 : Math.PI / 2; g.add(hnd); }
+  g.scale.setScalar(h / 0.19);
+  return g;
+}
+function medal(metal, ribbon) {
+  const g = base(0.07, 0.03);
+  metal = metal.clone(); metal.roughness = 0.38;
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.11, 12), black); post.position.y = 0.085; g.add(post);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.006, 48), metal); disc.rotation.x = Math.PI / 2; disc.position.set(0, 0.1, 0.006); g.add(disc);
+  const star = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.009 : 0.02; star[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); }
+  const st = new THREE.Mesh(new THREE.ExtrudeGeometry(star, { depth: 0.003, bevelEnabled: false }), metal); st.position.set(0, 0.1, 0.009); g.add(st);
+  const rib = M({ color: ribbon, roughness: 0.7 });
+  for (const s of [-1, 1]) { const r = RB(0.016, 0.05, 0.002, 0.001, rib); r.position.set(s * 0.01, 0.142, 0.004); r.rotation.z = s * 0.35; g.add(r); }
+  return g;
+}
+function crystal(c) {
+  const g = base(0.07, 0.025, black, true);
+  const m = M({ color: c, emissive: c, emissiveIntensity: 0.5, metalness: 0.1, roughness: 0.1, transparent: true, opacity: 0.85 });
+  const x = new THREE.Mesh(new THREE.OctahedronGeometry(0.04, 0), m); x.scale.set(0.7, 1.9, 0.7); x.position.y = 0.105; x.rotation.y = 0.5; g.add(x);
+  const l = new THREE.PointLight(c, 0.4, 0.3); l.position.set(0, 0.1, 0.05); g.add(l);
+  return g;
+}
+function badge(c, chevrons = 2, gem = false) {
+  const g = base(0.075, 0.028);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.05, 12), black); post.position.y = 0.05; g.add(post);
+  const hex = new THREE.Shape(); for (let i = 0; i < 6; i++) { const a = Math.PI / 2 + i * Math.PI / 3; hex[i ? 'lineTo' : 'moveTo'](Math.cos(a) * 0.04, Math.sin(a) * 0.04); }
+  const h = new THREE.Mesh(new THREE.ExtrudeGeometry(hex, { depth: 0.008, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 2 }), plate); h.position.y = 0.11; g.add(h);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.037, 0.0025, 8, 6), glow(c)); ring.rotation.z = Math.PI / 6 + Math.PI / 2; ring.position.set(0, 0.11, 0.011); g.add(ring);
+  for (let i = 0; i < chevrons; i++) {
+    const s = new THREE.Shape(); s.moveTo(-0.02, 0); s.lineTo(0, 0.014); s.lineTo(0.02, 0); s.lineTo(0.02, -0.006); s.lineTo(0, 0.008); s.lineTo(-0.02, -0.006);
+    const ch = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: 0.003, bevelEnabled: false }), glow(c)); ch.position.set(0, 0.096 + i * 0.014 - (chevrons - 1) * 0.004, 0.011); g.add(ch);
+  }
+  if (gem) { const d = new THREE.Mesh(new THREE.OctahedronGeometry(0.008, 0), glow(c)); d.position.set(0, 0.142, 0.012); g.add(d); }
+  return g;
+}
+function keycapTrophy(metal, label) {
+  const g = base(0.08, 0.04);
+  const k = RB(0.06, 0.04, 0.06, 0.01, metal); k.position.y = 0.075; g.add(k);
+  const top = RB(0.046, 0.012, 0.046, 0.006, metal); top.position.y = 0.098; g.add(top);
+  return g;
+}
+function bossFigure(id) {
+  const g = base(0.11, 0.03, black, true);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.0018, 8, 64), glow(id === 'syntax' ? '#ff3a3a' : '#39ff88')); ring.rotation.x = Math.PI / 2; ring.position.y = 0.03; g.add(ring);
+  const b = BossKit.create({ ...THREE, RoundedBoxGeometry }, id, {});
+  b.pose && b.pose('idle', 1); b.update && b.update(1.2, 0.016);
+  b.group.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(b.group, true), s = 0.17 / (box.max.y - box.min.y);
+  b.group.scale.multiplyScalar(s); b.group.updateMatrixWorld(true);
+  const box2 = new THREE.Box3().setFromObject(b.group, true);
+  b.group.position.y += 0.03 - box2.min.y;
+  g.add(b.group);
+  return g;
+}
+function drone() {
+  const g = new THREE.Group(), body = M({ color: '#2a2f34', metalness: 0.6, roughness: 0.35 });
+  const core = RB(0.07, 0.025, 0.07, 0.01, body); g.add(core);
+  const top = RB(0.045, 0.012, 0.05, 0.006, M({ color: '#d9dee2', metalness: 0.2, roughness: 0.4 })); top.position.y = 0.017; g.add(top);
+  const cam = new THREE.Mesh(new THREE.SphereGeometry(0.012, 24, 16), black); cam.position.set(0, -0.012, 0.03); g.add(cam);
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.006, 24), glow('#3ee6ff')); lens.position.set(0, -0.012, 0.0421); g.add(lens);
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const arm = RB(0.06, 0.008, 0.012, 0.003, body); arm.position.set(x * 0.035, 0, z * 0.035); arm.rotation.y = x * z > 0 ? -Math.PI / 4 : Math.PI / 4; g.add(arm);
+    const mot = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.014, 16), body); mot.position.set(x * 0.058, 0.006, z * 0.058); g.add(mot);
+    const prop = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.001, 32), M({ color: '#8a9aa0', transparent: true, opacity: 0.25, roughness: 0.3 })); prop.position.set(x * 0.058, 0.015, z * 0.058); g.add(prop);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.003, 8, 8), glow(z > 0 ? '#39ff88' : '#ff3a4a')); led.position.set(x * 0.058, -0.003, z * 0.058 + 0.009); g.add(led);
+  }
+  return g;
+}
+async function operatorFigure() {
+  await Operator.loadModels(THREE, 'full');
+  const op = Operator.create(THREE, Operator.defaults('male'), {});
+  op.at('idle', 0.4);
+  return op.group;
+}
+
+// ---------------------------------------------------------------- the jobs
+// dir: where the camera sits, seen from the item; fx: extra light settings
+const NEW = {
+  'cup-gold': () => cup(gold), 'cup-silver': () => cup(silver, 0.18), 'cup-bronze': () => cup(bronze, 0.165),
+  'medal-gold': () => medal(gold, '#c1272d'), 'medal-silver': () => medal(silver, '#2a5fd0'), 'medal-bronze': () => medal(bronze, '#2a8a4a'),
+  'crystal-violet': () => crystal('#b45cff'), 'crystal-red': () => crystal('#ff3a4a'), 'crystal-cyan': () => crystal('#3ee6ff'), 'crystal-gold': () => crystal('#ffcf4a'),
+  'badge-green': () => badge('#39ff88', 1), 'badge-cyan': () => badge('#3ee6ff', 2), 'badge-violet': () => badge('#b45cff', 3), 'badge-gold': () => badge('#ffcf4a', 3, true), 'badge-red': () => badge('#ff3a4a', 2, true),
+  'key-gold': () => keycapTrophy(gold), 'key-silver': () => keycapTrophy(silver),
+  drone,
+};
+for (const id of BossKit.IDS) NEW['fig-' + id] = () => bossFigure(id);
+
+let L = null;
+async function build(id) {
+  if (id === 'operator') return operatorFigure();
+  if (NEW[id]) return NEW[id]();
+  L ||= await RoomItems.load();
+  return RoomItems.create(id, L);
+}
+
+window.bake = async (id, o = {}) => {
+  const obj = await build(id);
+  if (!obj) throw new Error('no item ' + id);
+  scene.add(obj);
+  obj.updateMatrixWorld(true);
+  if (obj.userData.tick) obj.userData.tick(o.t || 2, 0);
+  const box = new THREE.Box3().setFromObject(obj, true), ctr = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+  const dir = new THREE.Vector3(...(o.dir || [0.22, 0.12, 1])).normalize();
+  let dist = sz.length() / 2 / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2));
+  const corners = []; for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+  for (let k = 0; k < 4; k++) {
+    camera.position.copy(ctr).addScaledVector(dir, dist); camera.lookAt(ctr); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+    let ext = 0; for (const p of corners) { const q = p.clone().project(camera); ext = Math.max(ext, Math.abs(q.x), Math.abs(q.y)); }
+    dist *= ext / 0.92;
+  }
+  camera.position.copy(ctr).addScaledVector(dir, dist); camera.lookAt(ctr); camera.near = dist / 50; camera.far = dist * 10; camera.updateProjectionMatrix();
+  const span = Math.max(sz.x, sz.y, sz.z) * 3;
+  key.position.copy(ctr).add(new THREE.Vector3(-1.1, 1.1, 1.0).multiplyScalar(span)); key.target.position.copy(ctr);
+  rim.position.copy(ctr).add(new THREE.Vector3(1.2, 0.5, -1.0).multiplyScalar(span)); rim.target.position.copy(ctr);
+  key.intensity = o.key ?? 2.4; rim.intensity = o.rim ?? 3.2; scene.environmentIntensity = o.env ?? 0.35; fill.intensity = o.fill ?? 0.35;
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/png');
+  scene.remove(obj);
+  return { url, h: sz.y };
+};
+window.build = build; window.THREE = THREE;
+window.bakeReady = true;
+</script>
+</body>
+</html>
