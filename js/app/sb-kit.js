@@ -402,7 +402,7 @@ window.SuperKit = (() => {
     return {
       armor, glow, shellMat, geo, environment, own, scope, C, rnd, srnd, clamp,
       fx: { spark, burst, suck, beam, shock, mark, orb, light: lightAt },
-      update, clear, dispose, info: () => ({ sparks: P.length }),
+      update, clear, dispose, info: () => ({ sparks: P.length, beams: beams.filter(b => b.g.visible).map(b => +(b.t / b.life).toFixed(2)), orbs: orbs.filter(o => o.g.visible).map(o => +o.size.toFixed(2)) }),
     };
   }
   return { create };

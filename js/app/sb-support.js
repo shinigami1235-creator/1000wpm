@@ -25,7 +25,7 @@ window.SuperSupport = (() => {
           vec2 p = vec2(vUv.x * 14.0, vUv.y * 7.0);
           vec2 h = hexd(p); float edge = smoothstep(0.38, 0.48, h.x);
           float rise = step(vUv.y, uRise * 1.1 - fract(sin(h.y * 12.7) * 43758.5) * 0.1);
-          float fade = smoothstep(1.0, 0.75, vUv.y) * smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x);
+          float fade = smoothstep(0.85, 0.4, vUv.y) * smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x);
           float ring = 0.0; float d = length((vUv - uHit) * vec2(2.0, 1.0)); ring = smoothstep(0.5, 0.0, d) * uFlash;
           float shimmer = 0.6 + 0.4 * sin(uT * 3.0 + vUv.y * 9.0 + h.y);
           vec3 c = uC * (edge * 0.9 + 0.08) * shimmer * uA + uC * ring * (0.5 + edge) * 1.5 + vec3(1.0) * ring * edge * 0.6;
@@ -107,7 +107,7 @@ window.SuperSupport = (() => {
     function update(t, dt, s) {
       const sh = s && s.art ? s.art.shield : 0;
       if (sh !== shields) { if (sh > shields) barRise = 0; shields = sh; }
-      const wantA = shields ? 0.12 + shields * 0.07 : 0;
+      const wantA = shields ? 0.06 + shields * 0.04 : 0;
       barA += (Math.max(wantA, barFlash * 0.4) - barA) * Math.min(1, dt * 4);
       barRise = Math.min(1, barRise + dt * 1.6);
       barFlash = Math.max(0, barFlash - dt * 2.4);
