@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hangar</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --bg: #070908; --panel: #0d1210; --line: #1d2822; --ink: #dfe8e2; --dim: #8a978f; --acc: #8cff58; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 1fr auto; height: 100%; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--acc); }
+  #picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { background: #111714; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #33463b; }
+  button.on { border-color: var(--acc); color: var(--acc); }
+  #view { position: relative; min-height: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #nameTag { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); font: 600 18px system-ui; letter-spacing: .12em; text-transform: uppercase; pointer-events: none; text-shadow: 0 0 12px currentColor; }
+  #info { position: absolute; left: 16px; bottom: 14px; color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+  #info b { display: block; color: var(--ink); font-size: 16px; letter-spacing: .1em; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  #tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #tabs button { flex: 1; border: 0; border-radius: 0; background: none; padding: 12px 6px; border-bottom: 2px solid transparent; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  #tabs button.on { border-bottom-color: var(--acc); }
+  #pane { padding: 14px 16px; overflow: auto; flex: 1; }
+  .row { margin-bottom: 18px; }
+  .row > label, .row > .lab { display: block; color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sw { width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
+  .sw.on { border-color: #fff; }
+  .shell i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .hint { color: var(--dim); font-size: 12px; margin: 6px 0 0; }
+  input[type=text] { width: 100%; background: #070a09; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; letter-spacing: .06em; text-transform: uppercase; }
+  input[type=range] { width: 100%; accent-color: var(--acc); }
+  .stick { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  footer { grid-column: 1 / -1; display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
+  footer .sp { flex: 1; }
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto 46vh 1fr auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>Hangar</h1><div id="picker"></div></header>
+  <div id="view"><div id="nameTag"></div><div id="info"></div></div>
+  <aside><div id="tabs"></div><div id="pane"></div></aside>
+  <footer><button id="undo">Undo</button><button id="redo">Redo</button><span class="sp"></span><button id="reset">Reset this bot</button></footer>
+</div>
+<script type="module">
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const THREE = { ...T, RoundedBoxGeometry };
+const KIT_URL = '../../js/app/botkit.js';
+await new Promise((ok, no) => { const s = document.createElement('script'); s.src = KIT_URL; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+const $ = id => document.getElementById(id);
+const { OPTIONS, STICKERS, BOTS } = BotKit;
+
+// ---------- looks, saved per bot ----------
+const GLOWS = ['#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
+const SCREENS = ['', '#ffffff', '#9ff3ff', '#ffd27a', '#ff9be0', '#c6ffa8'];
+const fresh = () => ({ color: '#8cff58', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', name: '', stickers: ['syntax'], wear: 0.3 });
+const KEY = 'stormtyper-hangar';
+let store = { active: 'orbit', bots: {} };
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.bots) store = s; } catch (e) {}
+const look = () => (store.bots[store.active] = store.bots[store.active] || fresh());
+let hist = [JSON.stringify(store)], hi = 0;
+function commit() {
+  const s = JSON.stringify(store); if (s === hist[hi]) return;
+  hist = hist.slice(0, hi + 1); hist.push(s); hi = hist.length - 1;
+  try { localStorage.setItem(KEY, s); } catch (e) {}
+}
+function load(s) { store = JSON.parse(s); try { localStorage.setItem(KEY, s); } catch (e) {} build(); ui(); }
+$('undo').onclick = () => { if (hi > 0) load(hist[--hi]); };
+$('redo').onclick = () => { if (hi < hist.length - 1) load(hist[++hi]); };
+$('reset').onclick = () => { store.bots[store.active] = fresh(); commit(); build(); ui(); };
+
+// ---------- the stand ----------
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(1.5, devicePixelRatio)); view.prepend(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#070908');
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // so chrome has something to reflect
+scene.environmentIntensity = 0.35;
+scene.add(new THREE.HemisphereLight('#dfe8ff', '#1a1e24', 0.9));
+const key = new THREE.DirectionalLight('#ffffff', 1.6); key.position.set(4, 7, 8); scene.add(key);
+const rimL = new THREE.DirectionalLight('#9fdcff', 1.2); rimL.position.set(-6, 3, -6); scene.add(rimL);
+const stand = new THREE.Group(); scene.add(stand); stand.position.y = -2.1;
+const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.5, 0.25, 64), new THREE.MeshStandardMaterial({ color: '#121715', roughness: 0.4, metalness: 0.6 })); stand.add(pad);
+const padRing = new THREE.Mesh(new THREE.TorusGeometry(2.32, 0.03, 8, 96), new THREE.MeshBasicMaterial({ color: '#8cff58', toneMapped: false })); padRing.rotation.x = Math.PI / 2; padRing.position.y = 0.13; stand.add(padRing);
+const grid = new THREE.GridHelper(60, 30, '#16201b', '#0f1512'); grid.position.y = -2.25; scene.add(grid);
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200); camera.position.set(0, 1.6, 11.5); camera.lookAt(0, 0, 0);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.22, 0.9)); composer.addPass(new OutputPass());
+
+let bot = null, spin = -0.5, tryFace = '', tryUntil = 0;
+function build() {
+  if (bot) bot.dispose();
+  const L = look();
+  bot = BotKit.create(THREE, store.active, { color: L.color, shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, marks: { stickers: L.stickers, wear: L.wear } });
+  scene.add(bot.group);
+  padRing.material.color.set(L.color).multiplyScalar(1.6);
+  $('nameTag').textContent = L.name; $('nameTag').style.color = L.color;
+  $('info').innerHTML = `<b>${bot.name}</b>${bot.role} · ${bot.division}`;
+}
+
+// ---------- the panel ----------
+const TABS = ['Colour', 'Face', 'Parts', 'Marks'];
+let tab = 'Colour';
+$('tabs').innerHTML = TABS.map(t => `<button data-tab="${t}">${t}</button>`).join('');
+$('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; ui(); } };
+$('picker').innerHTML = Object.entries(BOTS).map(([id, b]) => `<button data-bot="${id}">${b.name}</button>`).join('');
+$('picker').onclick = e => { const b = e.target.closest('[data-bot]'); if (b) { store.active = b.dataset.bot; commit(); build(); ui(); } };
+const optBtns = (key, list) => `<div class="opts">${list.map(([v, n]) => `<button data-set="${key}" data-v="${v}" class="${String(look()[key]) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+const SHELL_DOT = { white: '#d8dce2', gunmetal: '#4d535c', black: '#1f2226', chrome: 'linear-gradient(135deg,#fff,#8a929c)', twotone: 'linear-gradient(90deg,#d8dce2 50%,#2a3039 50%)' };
+function ui() {
+  const L = look();
+  document.querySelectorAll('[data-bot]').forEach(b => b.classList.toggle('on', b.dataset.bot === store.active));
+  document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  let h = '';
+  if (tab === 'Colour') {
+    h += `<div class="row"><span class="lab">Glow</span><div class="opts">${GLOWS.map(c => `<button class="sw ${L.color === c ? 'on' : ''}" style="background:${c}" data-set="color" data-v="${c}" title="${c}"></button>`).join('')}</div></div>`;
+    h += `<div class="row"><span class="lab">Shell</span><div class="opts">${OPTIONS.shell.map(([v, n]) => `<button class="shell ${L.shell === v ? 'on' : ''}" data-set="shell" data-v="${v}"><i style="background:${SHELL_DOT[v]}"></i>${n}</button>`).join('')}</div></div>`;
+  } else if (tab === 'Face') {
+    h += `<div class="row"><span class="lab">Eyes</span>${optBtns('eyes', OPTIONS.eyes)}</div>`;
+    h += `<div class="row"><span class="lab">Screen colour</span><div class="opts">${SCREENS.map(c => `<button class="sw ${L.screen === c ? 'on' : ''}" style="background:${c || 'conic-gradient(' + L.color + ' 0 50%, #fff 0)'}" data-set="screen" data-v="${c}" title="${c || 'Matches the glow'}"></button>`).join('')}</div></div>`;
+    h += `<div class="row"><span class="lab">Try a face</span><div class="opts">${['happy', 'angry', 'hurt', 'heart', 'x'].map(f => `<button data-try="${f}">${f === 'x' ? 'Offline' : f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div></div>`;
+  } else if (tab === 'Parts') {
+    const sg = OPTIONS.sig[store.active];
+    h += `<div class="row"><span class="lab">${sg[0]}</span>${optBtns('sig', [[0, sg[1]], [1, sg[2]]])}</div>`;
+    h += `<div class="row"><span class="lab">Back</span>${optBtns('back', OPTIONS.back)}<p class="hint">Back parts fit every bot.</p></div>`;
+  } else {
+    h += `<div class="row"><label for="nm">Name</label><input id="nm" type="text" maxlength="12" value="${L.name.replace(/"/g, '')}" placeholder="${bot ? bot.name : ''}"></div>`;
+    h += `<div class="row"><span class="lab">Stickers</span>${Object.entries(STICKERS).map(([k, n]) => `<label class="stick"><input type="checkbox" data-stick="${k}" ${L.stickers.includes(k) ? 'checked' : ''}> ${n}</label>`).join('')}<p class="hint">One sticker for each boss your bot helped repair. Pick which ones show.</p></div>`;
+    h += `<div class="row"><label for="wear">Battle wear</label><input id="wear" type="range" min="0" max="100" value="${Math.round(L.wear * 100)}"><p class="hint">Scratches build up over fights. Slide to 0 to repaint.</p></div>`;
+  }
+  $('pane').innerHTML = h;
+  const nm = $('nm');
+  if (nm) { nm.oninput = () => { L.name = nm.value.replace(/[^a-z0-9 _-]/gi, '').slice(0, 12); $('nameTag').textContent = L.name; }; nm.onchange = () => commit(); }
+  const wr = $('wear'); if (wr) { wr.oninput = () => { L.wear = wr.value / 100; build(); }; wr.onchange = () => commit(); }
+}
+$('pane').addEventListener('click', e => {
+  const b = e.target.closest('[data-set]');
+  if (b) { const L = look(), k = b.dataset.set; L[k] = k === 'sig' ? +b.dataset.v : b.dataset.v; commit(); build(); ui(); return; }
+  const tr = e.target.closest('[data-try]'); if (tr) { tryFace = tr.dataset.try; tryUntil = clock.getElapsedTime() + 1.6; }
+});
+$('pane').addEventListener('change', e => {
+  const c = e.target.closest('[data-stick]'); if (!c) return;
+  const L = look(); L.stickers = L.stickers.filter(x => x !== c.dataset.stick); if (c.checked) L.stickers.push(c.dataset.stick);
+  commit(); build();
+});
+
+// drag to turn
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', e => { drag = e.clientX; renderer.domElement.setPointerCapture(e.pointerId); });
+renderer.domElement.addEventListener('pointermove', e => { if (drag != null) { spin += (e.clientX - drag) * 0.01; drag = e.clientX; } });
+renderer.domElement.addEventListener('pointerup', () => { drag = null; });
+
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(view);
+const clock = new THREE.Clock();
+function draw(t) {
+  if (drag == null && !window.hangarFixed) spin += 0.004;
+  bot.group.rotation.y = spin;
+  bot.update(t, 1 / 60, { face: t < tryUntil ? tryFace : undefined });
+  stand.rotation.y = spin;
+  composer.render();
+}
+build(); ui(); resize();
+renderer.setAnimationLoop(() => { if (!window.hangarFixed) draw(clock.getElapsedTime()); });
+// for recording
+window.hangar = {
+  pick: id => { store.active = id; build(); ui(); },
+  set: o => { Object.assign(look(), o); build(); ui(); },
+  tab: t => { tab = t; ui(); },
+  at: (t, sp, face) => { window.hangarFixed = true; spin = sp; tryFace = face || ''; tryUntil = face ? t + 1 : 0; draw(t); },
+};
+window.ready = true;
+</script>
+</body>
+</html>
