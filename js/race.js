@@ -700,7 +700,7 @@ window.RaceView = (() => {
       const Lt = project(-ROAD * 1.22, y0 + 1500, z, P.camX1);
       const s = L.sc * W / 2;            // pixels per world unit
       if (s * 2000 < 6) return;
-      const top = Lt.y, pw = Math.max(2, 90 * s), bh = Math.max(3, 360 * s);
+      const top = Lt.y, pw = Math.max(2, 80 * s), bh = Math.max(3, (finish ? 360 : 250) * s);
       const lane = col(T, T.lane);
       for (const X of [L.x, R.x]) {
         if (X + pw < 0 || X - pw > W) continue;
@@ -713,6 +713,11 @@ window.RaceView = (() => {
       bg.addColorStop(0, '#2a3430'); bg.addColorStop(0.15, '#121a17'); bg.addColorStop(1, '#070b09');
       ctx.fillStyle = bg; ctx.fillRect(L.x - pw / 2, top - bh * 0.1, R.x - L.x + pw, bh);
       ctx.fillStyle = lane; ctx.fillRect(L.x - pw / 2, top - bh * 0.1, R.x - L.x + pw, Math.max(1, bh * 0.04));
+      ctx.fillRect(L.x - pw / 2, top + bh * 0.86, R.x - L.x + pw, Math.max(1, bh * 0.03));
+      // a row of small lamps along the underside
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6;
+      for (let x = L.x + pw; x < R.x - pw; x += Math.max(8, 260 * s)) stamp(ctx, glow('#fff1c8'), x, top + bh * 0.92, 60 * s, 30 * s);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       if (finish) {
         // checkered banner
         const cells = 16, cw = (R.x - L.x) / cells, chh = bh * 0.5;
