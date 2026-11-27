@@ -37,7 +37,7 @@ Router.register('boss', (() => {
   const CHARGE_DMG = 50;
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
-  const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, guard: 2.5, return: 3, heal: 4, add: 5 };
+  const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, assist: 2.5, return: 3, heal: 4, add: 5 };
   // attacks on you show as a red phrase in your own word line, late enough to be a scare and early
   // enough for your speed (The Typing of the Dead, Gid 26 Nov 2026); the rest stay as corner chips
   const THREAT = new Set(['block', 'dodge']);
@@ -49,11 +49,16 @@ Router.register('boss', (() => {
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
 
   let el, scene, offs = [], timers = [], keys = null;
-  // defend mode (Art, 27 Nov 2026): while a block attack winds up, the typing area turns into the
-  // raid's shield. You lock your own segment, then cover teammates who haven't locked theirs.
-  let defend = null, coveredMe = {}, myCovers = {}, defOver = {};
+  // the raid's shield (Art, 27 Nov 2026): each raider locks their own segment with their block words,
+  // then covers teammates who haven't locked theirs; every segment locked is a full team block
+  let coveredMe = {}, myCovers = {};
   let st = null;
   let stack = [], hist = [], typed = '', target = null, clean = true, combo = 0, best = 0;
+  // Gid, 27 Nov 2026: one line of words and nothing else to type. A block, a dodge, a packet, a bug,
+  // a squad call or an earned spell turns the next free words of your line into its own words, tagged
+  // (tags[i] goes with stack[i]); typing them in order does the thing. A tag whose moment has passed
+  // just drops off and the word counts as a normal hit, so nothing vanishes under you.
+  let tags = [], inLine = new Set(), runs = {}, assistN = {};
   let sess = null, recorded = false, feed = [], others = [], lastOther = 0, lastNum = 0, lastStage = -1, lastPhase = -1;
   let mech = [], mechKey = '', sent = new Set(), done = new Set(), mine = new Set(), warned = {};
   let wordTimes = [], staggerAt = 0, critLeft = 0, jamUntil = 0, lockUntil = 0, lastKeyAt = 0, weakWas = false, shieldWas = false;
@@ -122,7 +127,7 @@ Router.register('boss', (() => {
   }
 
   function resetFight() {
-    defend = null; coveredMe = {}; myCovers = {}; defOver = {};
+    coveredMe = {}; myCovers = {}; tags = []; inLine = new Set(); runs = {}; assistN = {};
     newSession();
     feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     flow = null;
@@ -203,14 +208,14 @@ Router.register('boss', (() => {
     TIPS = tipsFor(NAME);
     if (window.Combat && Combat.create) {
       // CTRL division perks count here (js/app/ops.js); duels never pass them
-      me = Combat.create({ perks: window.Ops ? Ops.perks() : null, targetHp: () => (st && st.maxHp ? st.hp / st.maxHp : null) });
+      me = Combat.create({ earn: true, perks: window.Ops ? Ops.perks() : null, targetHp: () => (st && st.maxHp ? st.hp / st.maxHp : null) });
       cSnd = Combat.Audio.create({ ctx: () => A.out().ac, out: () => A.out().bus, on: () => A.on });
       wireCombat();
     }
     words = window.WordBank ? WordBank.stream({ theme: 'mix', difficulty: STACK_DIFF[0] }) : null;
     resetFight();
     try { seenTips = new Set(training ? [] : JSON.parse(localStorage.getItem('wpm-boss-tips') || '[]')); } catch (e) { seenTips = new Set(); }
-    stack = moreWords(80);
+    stack = moreWords(80); tags = []; inLine = new Set(); runs = {}; assistN = {};
     // One centred column: HP, the arena, the attack slots, the word stack and a slim
     // strip with your numbers. The scoreboard, the live feed and the rest of your
     // stats sit in a drawer that Tab or the Scoreboard button opens.
@@ -237,6 +242,7 @@ Router.register('boss', (() => {
         <section class="boss-stage" data-k="stage" aria-label="The boss">
           <div class="kb-loading" data-k="loading">Loading</div>
           <div class="wb-tint" data-k="tint" aria-hidden="true"></div>
+          <div class="wb-shieldbar" data-k="shield" hidden><span class="wd-cells" data-k="dcells"></span><b data-k="dcount"></b></div>
           <div class="wb-smear" data-k="smear" aria-hidden="true"></div>
           <div class="wb-break" data-k="brk" hidden><span>Break the punch</span><div class="wb-break-bar"><i data-k="brkfill"></i></div><b data-k="brkt"></b></div>
           <div class="wb-lbox" data-k="lbox" aria-hidden="true"></div>
@@ -265,12 +271,7 @@ Router.register('boss', (() => {
         </section>
         <section class="boss-type" aria-label="Your word stack">
           <div class="wb-mech" data-k="mechrow"><div class="wb-chips" data-k="chips"></div></div>
-          <div class="wb-defend" data-k="defend" hidden aria-live="polite">
-            <div class="wd-head"><b data-k="dname"></b><span class="wd-time"><i data-k="dtime"></i></span><em data-k="dleft"></em></div>
-            <div class="wd-main" data-k="dmain"></div>
-            <div class="wd-help" data-k="dhelp"></div>
-            <div class="wd-shield"><span class="wd-cells" data-k="dcells"></span><b data-k="dcount"></b></div>
-          </div>
+
           <div class="typebox boss-words" data-k="box" tabindex="-1">
             <div class="boss-queue" data-k="queue"></div>
             <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
@@ -425,22 +426,7 @@ Router.register('boss', (() => {
   // A special word (attack, packet, bug or spell) that leaves while you're typing it stays your
   // target as long as your letters still match it, so finishing it isn't counted as typos; the
   // space then clears it as TOO LATE without spending the stack word or the combo.
-  function retarget() {
-    const vanished = target && target.kind && !target.gone && (target.kind === 'spell'
-      ? !spellTargets().some(x => x.id === target.id) : !mech.some(m => m.id === target.id));
-    if (vanished || (target && target.gone)) {
-      if (typed && target.word.startsWith(typed)) { if (!target.gone) target = { ...target, gone: true }; return; }
-      target = null;
-    }
-    if (target && wordOf(target).startsWith(typed)) return;
-    const m = mech.find(x => x.word.startsWith(typed)) || spellTargets().find(x => x.word.startsWith(typed));
-    if (m) { target = m; return; }
-    // defending: your own line waits, so letters go to the first word you can type for the shield
-    if (defend) { const d = mech.find(x => x.kind === 'block' || x.kind === 'guard'); if (d) { target = d; return; } }
-    if (stack[0].startsWith(typed)) { target = { stack: true }; return; }
-    // a slip in the first letters of a spell word was more likely meant for the stack
-    if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
-  }
+  function retarget() { target = { stack: true }; }
   function onChar(ch) {
     if (!st || st.defeatedAt || counting()) return;
     const t = performance.now();
@@ -449,24 +435,18 @@ Router.register('boss', (() => {
     if (!sess.first) sess.first = t;
     else if (t - sess.last < 5000) sess.active += t - sess.last;
     sess.last = t;
-    if (ch === ' ') {
-      // a two-word block keeps its space
-      if (target && target.kind && target.word.startsWith(typed + ' ')) { typed += ' '; renderQueue(); return; }
-      if (typed) submit();
-      return;
-    }
+    if (ch === ' ') { if (typed) submit(); return; }
     sess.keys++;
     if (!typed) wordT0 = t;
     typed += ch;
     retarget();
-    const w = wordOf(target);
+    const w = stack[0];
     const good = typed.length <= w.length && ch === w[typed.length - 1];
     if (good) sess.good++;
     else clean = false;
     if (me) me.key(good);
     TT.click(false);
     renderQueue();
-    paintChips(true);
   }
   function onBack(whole) {
     if (!typed) return;
@@ -477,75 +457,12 @@ Router.register('boss', (() => {
   }
   function submit() {
     if (!typed || !st || st.defeatedAt) return;
-    // an exact match wins, so a stack word that starts an attack word still counts
-    const exact = mech.find(m => m.word === typed);
-    const spellHit = !exact && spellTargets().find(x => x.word === typed);
-    if (exact) target = exact;
-    else if (spellHit) target = spellHit;
-    else if (typed === stack[0] && !defend) target = { stack: true };
-    else if ((target && target.gone) || (gone.has(typed) && performance.now() - gone.get(typed) < 3000)) {
-      // an attack word that just left the row: clear it without spending the stack word
-      typed = ''; target = null; clean = true;
-      pop('TOO LATE', 'white');
-      renderQueue(); paintChips(true);
-      return;
-    } else if (!target) retarget();
     sess.keys++;                      // the space
     const t = now();
-    if (target && target.kind === 'spell') { castSpell(target.spell, clean && typed === target.word); return; }
-    if (target && target.kind) {
-      const m = target, ok = typed === m.word && t < m.due;
-      if (!ok) misses.push({ typed, word: m.word, late: t >= m.due });
-      if (THREAT.has(m.kind) && flow) flow.push(m.word, typed, ok, true);
-      typed = ''; target = null;
-      if (ok) {
-        sess.good++;
-        if (me) me.word({ letters: 0, clean });
-        else { combo = clean ? combo + 1 : 0; best = Math.max(best, combo); }
-        streak(t);
-        mine.add(m.id);
-        if (m.who && squad) {
-          squad.act(m, t);
-        } else if (m.kind === 'block') {
-          sess.blocks++;
-          WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0, tier });
-          if (scene) scene.block(m.id);
-          A.uncut();
-          sfx('blockOk');
-          pop('BLOCKED', 'cyan');
-          pushFeed({ text: `You blocked the ${R.ATTACK_NAME[m.ev.kind]}`, cls: 'you' });
-          milestone('blocks', sess.blocks);
-        } else if (m.kind === 'guard') {
-          sess.covers++;
-          myCovers[m.ev.id] = (myCovers[m.ev.id] || 0) + 1;
-          WorldBossNet.sendCover(m.ev.id, m.rid, m.word);
-          if (defend && defend.L) defend.L[m.rid] = 'You';
-          sfx('blockOk');
-          pop('COVERED', 'cyan');
-          pushFeed({ text: `You covered ${m.name}`, cls: 'you' });
-        } else if (m.kind === 'return') {
-          sess.returns++;
-          WorldBossNet.sendReturn(m.id, m.word);
-          if (scene) scene.returnShot(m.id);
-          sfx('returned');
-          pop('SENT BACK', 'cyan');
-        } else if (m.kind === 'add') {
-          sess.adds++;
-          WorldBossNet.sendAddKill(m.id, m.word);
-          if (scene) scene.killAdd(m.id, true);
-          sfx('addKill');
-        }
-      } else {
-        sess.missed++;
-        if (me) me.miss('wrong'); else combo = 0;
-        TT.click(true);
-      }
-      clean = true;
-      tick(); renderQueue(); paintYou();
-      return;
-    }
-    const word = stack.shift();
-    const ok = typed === word;
+    syncTags();
+    const word = stack.shift(), tag = tags.shift() || null;
+    const ok = typed === word, wasClean = clean;
+    if (tag) { tagged(word, tag, ok, wasClean, t); after(word, ok, tag.kind); return; }
     if (ok && squad && squad.down()) {
       // down: clean words bring you back sooner and deal no damage
       sess.good++; sess.letters += word.length; sess.words++;
@@ -581,13 +498,129 @@ Router.register('boss', (() => {
       if (me) me.miss('wrong'); else combo = 0;
       misses.push({ typed, word });
     }
+    after(word, ok, null);
+  }
+  // the common end of every word: history, the flow, a fresh line
+  function after(word, ok, kind) {
     hist.push({ word, ok });
     if (hist.length > 3) hist.shift();
-    if (flow) flow.push(word, typed, ok);
+    if (flow) flow.push(word, typed, ok, kind || false);
     typed = ''; target = null; clean = true;
     if (stack.length < 40) stack.push(...moreWords(60));
-    renderQueue();
-    paintYou();
+    tick(); renderQueue(); paintYou();
+  }
+  // a tagged word. A spell or a block can be a few words: each one has to be right, and the last one
+  // fires it (a typo anywhere fizzles the spell or breaks the block). The rest fire on their own word.
+  function tagged(word, tag, ok, wasClean, t) {
+    const m = tag.src ? mech.find(x => x.id === tag.src) : null;
+    if (tag.of > 1) {
+      const r = runs[tag.src] ||= { ok: true };
+      r.ok = r.ok && ok && (tag.kind !== 'spell' || wasClean);
+      if (tag.part < tag.of - 1) { if (ok) countWord(wasClean); else missWord(word); return; }
+      delete runs[tag.src];
+      ok = r.ok;
+    }
+    if (tag.kind === 'spell') { castSpell(tag.spell, ok && wasClean); return; }
+    if (!ok) { missWord(word); return; }
+    countWord(wasClean);
+    if (tag.kind === 'assist') { assist(tag, t); return; }
+    if (m && t < m.due) act(m, t);
+  }
+  function countWord(c) {
+    sess.good++;
+    if (me) me.word({ letters: 0, clean: c });
+    else { combo = c ? combo + 1 : 0; best = Math.max(best, combo); }
+  }
+  function missWord(word) {
+    sess.missed++;
+    if (me) me.miss('wrong'); else combo = 0;
+    misses.push({ typed, word });
+    TT.click(true);
+  }
+  // what a tagged word does once it's typed in time
+  function act(m, t) {
+    streak(t);
+    mine.add(m.id);
+    if (m.who && squad) {
+      squad.act(m, t);
+    } else if (m.kind === 'block') {
+      sess.blocks++;
+      WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0, tier });
+      if (scene) scene.block(m.id);
+      A.uncut();
+      sfx('blockOk');
+      pop('BLOCKED', 'cyan');
+      pushFeed({ text: `You blocked the ${R.ATTACK_NAME[m.ev.kind]}`, cls: 'you' });
+      milestone('blocks', sess.blocks);
+    } else if (m.kind === 'return') {
+      sess.returns++;
+      WorldBossNet.sendReturn(m.id, m.word);
+      if (scene) scene.returnShot(m.id);
+      sfx('returned');
+      pop('SENT BACK', 'cyan');
+    } else if (m.kind === 'add') {
+      sess.adds++;
+      WorldBossNet.sendAddKill(m.id, m.word);
+      if (scene) scene.killAdd(m.id, true);
+      sfx('addKill');
+    }
+  }
+  // a cover word: the server locks whichever teammate's segment is still open; if none is, the word
+  // still counted as yours and that's all
+  function assist(tag, t) {
+    assistN[tag.ev.id] = (assistN[tag.ev.id] || 0) + 1;
+    WorldBossNet.sendCover(tag.ev.id, tag.k, tag.word).then(r => {
+      if (!el || !r || !r.ok) return;
+      sess.covers++;
+      myCovers[tag.ev.id] = (myCovers[tag.ev.id] || 0) + 1;
+      sfx('blockOk');
+      pop('COVERED', 'cyan');
+      pushFeed({ text: `You covered ${r.name}`, cls: 'you' });
+    });
+  }
+
+  // ---------- the line ----------
+  function syncTags() { while (tags.length < stack.length) tags.push(null); if (tags.length > stack.length) tags.length = stack.length; }
+  // turns the next free run of words (never the one you're on) into these words, tagged
+  function place(words, tag, from = 1) {
+    if (stack.length < 40) stack.push(...moreWords(60));
+    syncTags();
+    for (let i = Math.max(1, from); i + words.length <= stack.length; i++) {
+      let free = true;
+      for (let j = 0; j < words.length; j++) if (tags[i + j]) { free = false; break; }
+      if (!free) continue;
+      words.forEach((w, j) => { stack[i + j] = w; tags[i + j] = { ...tag, part: j, of: words.length }; });
+      return i;
+    }
+    return -1;
+  }
+  // each frame: new attacks, packets, bugs and squad calls take over words; ones that are over drop their tags
+  function syncLine(t, isDown) {
+    syncTags();
+    const live = new Map(mech.map(m => [m.id, m]));
+    for (let i = 1; i < tags.length; i++) {
+      const g = tags[i]; if (!g || g.kind === 'spell') continue;
+      const m = live.get(g.src);
+      // a cover word placed behind your block waits while the block is still to type
+      if (!m && g.kind === 'assist' && g.ev && live.has(g.ev.id)) continue;
+      if (!m) { tags[i] = null; if (runs[g.src]) delete runs[g.src]; continue; }
+      g.due = m.due; g.total = m.total;
+    }
+    if (isDown) return;
+    for (const m of mech) {
+      if (inLine.has(m.id)) continue;
+      const tag = { kind: m.kind, src: m.id, due: m.due, total: m.total, ev: m.ev, k: m.k, word: m.word };
+      const at = place(m.word.split(' '), tag);
+      if (at >= 0) {
+        inLine.add(m.id);
+        if (m.kind === 'block') {
+          sfx('warn');
+          // your first cover word goes straight after your block words, so it's already waiting there
+          const id = `a:${m.ev.id}:0`, cw = R.coverWord(m.ev, 'you#0');
+          if (!inLine.has(id) && place([cw], { kind: 'assist', src: id, ev: m.ev, k: 0, word: cw, due: m.due, total: m.total }, at + m.word.split(' ').length) >= 0) inLine.add(id);
+        }
+      }
+    }
   }
   // six quick words in a row stagger the boss and the next three hits crit
   function streak(t) {
@@ -620,14 +653,15 @@ Router.register('boss', (() => {
       const b = q('cbox'); if (b) { b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); }
     });
     me.on('miss', e => { if (el && e.from >= 10) cSfx('break'); });
-    me.on('spellOffer', o => {
+    // a combo milestone earns a spell: its words go a few words ahead in your line and wait there
+    me.on('spellEarned', e => {
       if (!el) return;
-      avoid = new Set(o.spells.map(x => x.word.split(' ')[0]));
-      stack = [stack[0], ...stack.slice(1).filter(w => !avoid.has(w))];
-      if (stack.length < 40) stack.push(...moreWords(60));
+      const sp = e.spell;
+      if (place(sp.word.split(' '), { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color }, 3) < 0) return;
       cSfx('offer');
       tip('spell');
-      renderQueue(); paintChips(true);
+      pushFeed({ text: `Combo ${e.combo}: ${sp.word} is in your line`, cls: 'mile' });
+      renderQueue();
     });
     me.on('offerEnd', () => {
       if (!el) return;
@@ -644,15 +678,13 @@ Router.register('boss', (() => {
   }
   // a spell word typed in full: cast it, or fizzle on a typo
   function castSpell(sp, ok) {
-    typed = ''; target = null; clean = true;
     const r = me.cast(sp.word, { clean: ok, shield: !!(st && st.shield) });
-    if (!r) { renderQueue(); paintChips(true); return; }
+    if (!r) return;
     if (r.fizzled) {
       sess.missed++;
       cSfx('fizzle');
       pop('FIZZLED', 'red');
       pushFeed({ text: `${sp.word} fizzled on a typo`, cls: 'alert' });
-      renderQueue(); paintChips(true); paintYou();
       return;
     }
     sess.good++; sess.casts++;
@@ -678,7 +710,7 @@ Router.register('boss', (() => {
     }));
     if (!r.hits.length) pushFeed({ text: `You cast ${sp.word}`, cls: 'you' });
     streak(t);
-    renderQueue(); paintChips(true); paintYou(); paintMe(t);
+    paintMe(t);
   }
   // cryo lock: the attack winding up now, or the next one, waits longer for you
   function freezeNext(ms) {
@@ -749,15 +781,12 @@ Router.register('boss', (() => {
   function renderQueue() {
     const box = q('queue'); if (!box) return;
     if (!flow) flow = WordFlow.create(box, { lines: 3 });
-    const mineNow = !target || target.stack;
-    // an attack on you is the next phrase in your line, in red, with its own timer
-    const th = st && !st.defeatedAt ? mech.find(m => THREAT.has(m.kind)) : null;
-    if (th) {
-      const onTh = target && target.kind && target.id === th.id;
-      const tw = { ms: th.total, el: Math.max(0, th.total - (th.due - now())) };
-      if (onTh || !typed) flow.render({ cur: th.word, typed: onTh ? typed : '', mine: true, next: stack.slice(0, 50), threat: { i: 0, ...tw } });
-      else flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: [th.word, ...stack.slice(1, 50)], threat: { i: 1, ...tw } });
-    } else flow.render({ cur: stack[0], typed: mineNow ? typed : '', mine: mineNow, next: stack.slice(1, 50) });
+    // the special words are in the line itself, styled by what they do, each run with its own timer
+    syncTags();
+    const t = now();
+    const tg = tags.slice(0, 51).map(g => g && { kind: g.kind, color: g.color, first: g.part === 0, last: g.part === g.of - 1,
+      ms: g.total && g.due ? g.total : 0, el: g.total && g.due ? Math.max(0, g.total - (g.due - t)) : 0 });
+    flow.render({ cur: stack[0], typed, mine: true, next: stack.slice(1, 51), tags: tg });
     if (me && q('track') && !q('track').dataset.key) paintTrack(me.state());
     q('combo').textContent = combo;
     q('box').classList.toggle('locked', now() < lockUntil);
@@ -774,38 +803,23 @@ Router.register('boss', (() => {
     return s;
   }
 
-  // ---------- defend mode ----------
+  // ---------- the raid's shield ----------
+  // a strip on the arena while a block attack winds up: one cell per raider, lit as each segment locks
   const hashOf = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
-  const KIND_LABEL = { dodge: 'Dodge', cover: 'Shield', revive: 'Revive', heal: 'Heal', return: 'Send back', add: 'Delete' };
-  let defendFor = null;
-  function renderDefend(t) {
-    const box = q('defend'); if (!box) return;
-    const on = !!defend && !!st && !st.defeatedAt;
-    if (el) el.classList.toggle('is-defending', on);
-    if (!on) { if (!box.hidden) box.hidden = true; defendFor = null; return; }
-    const d = defend, e = d.e, of = d.of, L = d.L || {};
-    if (box.hidden) box.hidden = false;
-    if (defendFor !== e.id) {
-      // a new attack: one cell per raider, yours marked
-      defendFor = e.id;
-      q('dname').textContent = `Incoming ${R.ATTACK_NAME[e.kind]}`;
+  let shieldFor = null;
+  function renderShield(t) {
+    const box = q('shield'); if (!box) return;
+    const e = st && !st.defeatedAt ? R.eventsAt(st, t, 0).find(x => x.type === 'slam' && t >= x.start && t < x.hit + (grace[x.id] || 0) + 900) : null;
+    if (!e) { if (!box.hidden) box.hidden = true; shieldFor = null; return; }
+    box.hidden = false;
+    if (shieldFor !== e.id) {
+      shieldFor = e.id;
       q('dcells').innerHTML = st.raiders.map(r => `<i data-r="${esc(r.id)}"${r.you ? ' class="me"' : ''}></i>`).join('');
     }
-    const left = Math.max(0, d.due - t), tot = Math.max(1, d.due - e.start);
-    q('dtime').style.transform = `scaleX(${(left / tot).toFixed(3)})`;
-    q('dleft').textContent = (left / 1000).toFixed(1) + 's';
+    const L = (st.locked && st.locked[e.id]) || {};
     let n = 0;
     for (const c of q('dcells').children) { const k = !!L[c.dataset.r]; c.classList.toggle('on', k); if (k) n++; }
-    q('dcount').textContent = `${n} of ${of} blocked`;
-    // your own segment, then the teammates you can cover
-    const own = mech.find(m => m.kind === 'block' && m.ev.id === e.id);
-    const typing = m => target && target.id === m.id;
-    q('dmain').innerHTML = own
-      ? `<small>Your block</small><span class="wd-word">${lettersHtml(own.word, typing(own) ? typed : '', typing(own))}</span>`
-      : `<small>${coveredMe[e.id] ? `${esc(coveredMe[e.id])} covered you` : 'You blocked it'}</small>`;
-    const help = mech.filter(m => m.kind === 'guard' || (m.kind !== 'block' && KIND_LABEL[m.kind]));
-    q('dhelp').innerHTML = help.length ? help.map(m => `<span class="wd-g${typing(m) ? ' cur' : ''}${m.kind !== 'guard' ? ' other' : ''}"><small>${esc(m.kind === 'guard' ? `Cover ${m.name}` : KIND_LABEL[m.kind])}</small><span class="wd-gw">${lettersHtml(m.word, typing(m) ? typed : '', typing(m))}</span></span>`).join('')
-      : '';
+    q('dcount').textContent = `${n} of ${st.raiders.length} blocked`;
   }
   // every segment locked: the whole raid blocked it
   function teamBlock(e) {
@@ -857,20 +871,12 @@ Router.register('boss', (() => {
           if (scene) scene.block(e.id);
         }
         const safe = mine.has(e.id) || !!coveredMe[e.id];
-        // the screen turns into the shield as soon as the wind-up starts (Art: "the screen could change")
-        if (t < due && !safe && !isDown && t >= e.start + 400) {
-          list.push({ kind: 'block', id: e.id, word: bw, due, total: Math.min(Math.max(win, due - e.start - 400), due - e.start), ev: e });
-          const left = Math.ceil((due - t) / 1000);
-          if (t >= due - win && warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
-        }
-        // once yours is locked, cover the teammates who haven't locked theirs, a few at a time
-        if (t < due && safe && !isDown && t >= e.start + R.COVER_AFTER) {
-          const open = st.raiders.filter(r => !r.you && !L[r.id]).sort((a, b) => hashOf(e.id + a.id) - hashOf(e.id + b.id)).slice(0, 3);
-          for (const r of open) list.push({ kind: 'guard', id: `g:${e.id}:${r.id}`, word: R.coverWord(e, r.id), due, total: due - e.start - R.COVER_AFTER, ev: e, rid: r.id, name: r.name });
-          if (!open.length) defOver[e.id] = 1;   // nothing left for you to lock: back to your own line
-        }
-        if (t >= e.start && t < due && !isDown && !defend && !defOver[e.id]) defend = { e, due, L, of: st.raiders.length };
-        if (defend && defend.e.id === e.id) { defend.L = L; defend.due = due; }
+        // the block words take over the next words in your line as the wind-up starts
+        if (t < due && !safe && !isDown && t >= e.start) list.push({ kind: 'block', id: e.id, word: bw, due, total: due - e.start, ev: e });
+        // once yours is locked, up to two cover words follow: each locks a teammate who hasn't locked theirs
+        const k = assistN[e.id] || 0;
+        if (t < due - 300 && safe && !isDown && k < 2 && st.raiders.some(r => !r.you && !L[r.id]))
+          list.push({ kind: 'assist', id: `a:${e.id}:${k}`, word: R.coverWord(e, 'you#' + k), due, total: due - e.start - R.COVER_AFTER, ev: e, k });
         if (t >= due && !done.has(e.id)) {
           done.add(e.id);
           if (squad) squad.raidHit(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
@@ -928,24 +934,16 @@ Router.register('boss', (() => {
       const m = list[i];
       if (m.kind === 'dodge') { const w = winMs(m.word); if (t < m.due - w) list.splice(i, 1); else m.total = Math.min(m.total, w); }
     }
-    if (defend && (t >= defend.due || (squad && squad.down()) || defOver[defend.e.id])) defend = null;
     list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
-    for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
-    renderDefend(t);
+    syncLine(t, isDown);
+    renderShield(t);
     if (st.brk) { const n = q('brkt'); if (n) { const left = Math.max(0, (st.brk.hit - t) / 1000); n.textContent = left.toFixed(1) + 's'; } }
     const th = mech.find(m => THREAT.has(m.kind));
     if (!!th !== threatOn) { threatOn = !!th; A.threat(threatOn); }
     if ((th ? th.id : null) !== threatId) { threatId = th ? th.id : null; threatAt = t; renderQueue(); }
-    // an attack word that left the row takes what was typed with it; a spell isn't in the row and
-    // clears itself when its offer ends (offerEnd), so it's left alone here
-    if (target && target.kind && target.kind !== 'spell' && !target.gone && !mech.some(m => m.id === target.id)) {
-      // left while you were typing it: keep it as a ghost so the rest of the word isn't typos (retarget)
-      if (typed && target.word.startsWith(typed)) target = { ...target, gone: true };
-      else { target = null; typed = ''; }
-      renderQueue();
-    }
+
     // weak point and shield
     const weak = R.weakMult(st, t) > 1 && !st.defeatedAt;
     if (weak !== weakWas) {
@@ -969,9 +967,8 @@ Router.register('boss', (() => {
   function paintChips(force) {
     const row = q('chips'); if (!row || !st) return;
     const t = now();
-    const spells = st.defeatedAt ? [] : spellTargets();
-    const max = spells.length ? 3 : 5;
-    const rest = mech.filter(m => !THREAT.has(m.kind)), show = rest.slice(0, max);
+    // everything typable is in your line now, so this row only says when the next attack comes
+    const spells = [], max = 0, rest = [], show = [];
     const key = mech.length + (st.brk ? 'b' : '') + ':' + show.map(m => m.id).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
     if (force || key !== mechKey) {
       mechKey = key;
@@ -1828,6 +1825,9 @@ Router.register('boss', (() => {
       phase: () => st && st.phase,
       mech: () => mech.map(m => ({ kind: m.kind, id: m.id, word: m.word, due: m.due - now() })),
       stack: () => stack[0],
+      line: n => stack.slice(0, n || 6),
+      sess: () => ({ ...sess }),
+      feed: () => feed.map(f => f.text),
       typed: () => typed,
       me: () => ({ ...sess, combo, best, critLeft, jam: Math.max(0, jamUntil - now()), lock: Math.max(0, lockUntil - now()) }),
       scene: () => scene && scene.info(),

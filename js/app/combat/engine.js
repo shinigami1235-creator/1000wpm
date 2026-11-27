@@ -12,6 +12,10 @@
 //   me.cast(text, { clean, shield })    typed a spell word -> null if no such offer, { fizzled } on a typo, or a cast
 //   me.matchOffer(prefix)               the offered spell whose word starts with prefix
 //   me.tick(now)                        ends statuses and offers on time
+//   earn: true (World Boss, Gid 27 Nov 2026): a combo milestone earns one spell instead of opening an
+//   offer. It's picked at random, leaning toward the stronger ones the more accurate you've been
+//   (spellEarned { spell, combo }); the page puts its words into your line and it waits there until you
+//   type it: clean casts it, a typo fizzles it. me.earned() lists the spells waiting.
 //   me.status(name), me.consume(name), me.statuses(), me.state(), me.reset(), me.debug
 //   me.on(event, fn)                    events: hit combo tierUp tierDown spellOffer offerEnd spellCast fizzle miss ward guard status perk
 //
@@ -38,7 +42,7 @@ Combat.create = function create(opts = {}) {
   const allowed = opts.spells ? new Set(opts.spells) : null;
   const KEYS = 60, RECENT = 8;
 
-  let keys = [], recent = [], statuses = {}, offer = null, lastWordAt = 0;
+  let keys = [], recent = [], statuses = {}, offer = null, lastWordAt = 0, earned = [];
 
   function acc() { return keys.length ? keys.reduce((a, b) => a + b, 0) / keys.length : 1; }
   function key(ok) { keys.push(ok ? 1 : 0); if (keys.length > KEYS) keys.shift(); }
@@ -97,6 +101,19 @@ Combat.create = function create(opts = {}) {
     bus.emit('spellOffer', { ...offer, spells: out });
     return offer;
   }
+  // one spell for reaching combo n: the higher your accuracy, the more the draw leans to the rare ones
+  function earnSpell(n) {
+    const maxR = n >= 100 && n % 100 === 0 ? 4 : n >= 50 ? 3 : n >= 25 ? 2 : 1;
+    const all = pool(maxR).filter(s => s.rarity < 4 || maxR === 4);
+    if (!all.length) return null;
+    const k = Math.max(0, (acc() - 0.8) * 15);   // 80% accuracy: every spell equal; 100%: weight rarity cubed
+    const w = all.map(s => Math.pow(s.rarity, k)), tot = w.reduce((a, b) => a + b, 0);
+    let r = rng() * tot, s = all[all.length - 1];
+    for (let i = 0; i < all.length; i++) { r -= w[i]; if (r <= 0) { s = all[i]; break; } }
+    earned.push(s.id); if (earned.length > 3) earned.shift();
+    bus.emit('spellEarned', { spell: s, combo: n });
+    return s;
+  }
   function closeOffer(reason) {
     if (!offer) return;
     const o = offer; offer = null;
@@ -114,7 +131,7 @@ Combat.create = function create(opts = {}) {
     bus.emit('combo', { ...st, from: r.from, reason });
     if (r.up) bus.emit('tierUp', { tier: r.tier, name: st.name, combo: r.combo });
     if (r.down) bus.emit('tierDown', { tier: r.tier, name: st.name, combo: r.combo, from: r.from, reason });
-    if (r.combo > r.from && offerAt(r.combo)) makeOffer(r.combo);
+    if (r.combo > r.from && offerAt(r.combo)) { if (opts.earn) earnSpell(r.combo); else makeOffer(r.combo); }
     return st;
   }
   function slip(reason) {
@@ -167,15 +184,16 @@ Combat.create = function create(opts = {}) {
 
   // ---------- casting ----------
   function cast(text, { clean = true, shield = false } = {}) {
-    if (!offer) return null;
     const s = Combat.spellByWord(text);
-    if (!s || !offer.spells.includes(s.id)) return null;
+    const fromEarned = !!s && earned.includes(s.id);
+    if (!fromEarned && (!offer || !s || !offer.spells.includes(s.id))) return null;
+    if (fromEarned) earned.splice(earned.indexOf(s.id), 1);
     if (!clean) {
       bus.emit('fizzle', { spell: s });
       slip('fizzle');
       return { fizzled: true, spell: s };
     }
-    closeOffer('cast');
+    if (!fromEarned) closeOffer('cast');
     const e = s.effect;
     if (e.status) start(e.status, e);
     if (e.crits) start('crits', { charges: e.crits, ms: 20000 });
@@ -199,7 +217,7 @@ Combat.create = function create(opts = {}) {
     if (offer && now() >= offer.until) closeOffer('time');
   }
   function reset() {
-    combo.reset(); keys = []; recent = []; offer = null;
+    combo.reset(); keys = []; recent = []; offer = null; earned = [];
     for (const k in statuses) end(k);
     statuses = {};
   }
@@ -214,6 +232,7 @@ Combat.create = function create(opts = {}) {
     key, word, miss, hurt, cast, matchOffer, tick, reset, state,
     status, consume, statuses: () => Object.keys(statuses).map(status).filter(Boolean), start, end,
     offer: () => offer && { ...offer, left: Math.max(0, offer.until - now()) },
+    earned: () => earned.slice(),
     closeOffer,
     acc,
     tiers: combo.tiers,

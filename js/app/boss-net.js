@@ -11,8 +11,9 @@
 //                                                             A server must check mult against the player's combo, statuses
 //                                                             and casts rather than trust it (see COMBAT.md).
 //   WorldBossNet.sendBlock(attackId, text, opt) -> Promise<{ ok }> the counter word typed before the hit
-//   WorldBossNet.sendCover(attackId, raiderId, text) -> Promise<{ ok }> lock a teammate's shield segment
-//                                                             with their cover word (WorldBossRules.coverWord)
+//   WorldBossNet.sendCover(attackId, k, text) -> Promise<{ ok, name }> your k-th cover word for that attack
+//                                                (WorldBossRules.coverWord(e, 'you#' + k)) locks the segment
+//                                                of a teammate who hasn't locked theirs; name is who
 //                                                             opt.grace: ms past the hit still allowed (cryo lock, up to 6000)
 //   WorldBossNet.sendReturn(shotId, word)   -> Promise<{ ok }> a thrown word sent back
 //   WorldBossNet.sendAddKill(addId, word)   -> Promise<{ ok }> an add destroyed
@@ -345,10 +346,13 @@ window.WorldBossNet = (() => {
         if (!e || t >= e.hit + grace || text !== want) return { ok: false };
         return { ok: block('you', e) };
       },
-      async sendCover(id, forId, text) {
+      async sendCover(id, k, text) {
         const t = now(), e = st && R.eventsAt(st, t, 0).find(x => x.type === 'slam' && x.id === id);
-        if (!e || t >= e.hit || t < e.start + R.COVER_AFTER || text !== R.coverWord(e, forId)) return { ok: false };
-        return { ok: cover('you', e, forId) };
+        if (!e || t >= e.hit || t < e.start + R.COVER_AFTER || text !== R.coverWord(e, 'you#' + k)) return { ok: false };
+        const L = (st.locked && st.locked[e.id]) || {}, open = st.raiders.filter(r => r.id !== 'you' && !L[r.id]);
+        if (!open.length) return { ok: false };
+        const r = open[Math.floor(Math.random() * open.length)];
+        return { ok: cover('you', e, r.id), name: nameOf(r) };
       },
       async sendReturn(id, word) {
         const t = now();
@@ -425,7 +429,7 @@ window.WorldBossNet = (() => {
     now: () => (impl.now ? impl.now() : Date.now()),
     sendDamage: (letters, opts) => impl.sendDamage(letters, opts),
     sendBlock: (id, text, opts) => impl.sendBlock(id, text, opts),
-    sendCover: (id, forId, text) => impl.sendCover(id, forId, text),
+    sendCover: (id, k, text) => impl.sendCover(id, k, text),
     sendReturn: (id, word) => impl.sendReturn(id, word),
     sendAddKill: (id, word) => impl.sendAddKill(id, word),
     onState: fn => impl.onState(fn),

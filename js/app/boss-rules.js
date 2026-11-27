@@ -220,7 +220,7 @@ window.WorldBossRules = (() => {
   // Every segment locked before the hit is a full team block.
   //   coverWord(e, raiderId)  the word that covers raiderId against attack e
   //   COVER_AFTER             ms after an attack starts before anyone can cover someone else
-  const COVER_AFTER = 1500;
+  const COVER_AFTER = 800;
   function coverWord(e, raiderId) { return pickWords(rng(`${e.id}|c|${raiderId}`), 1, 3, 5, new Set(), 0)[0]; }
 
   // ---------- damage ----------

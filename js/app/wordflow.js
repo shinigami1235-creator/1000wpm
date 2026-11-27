@@ -9,7 +9,11 @@
 //                                             fog: how many words from the current one are blurred (a duel debuff)
 //                                             threat: { i, ms, el } an attack's counter phrase at index i (0 = cur),
 //                                             red with red slashes and a timer that runs ms (el already gone)
-//   flow.push(word, typed, ok, threat)        after a word is submitted
+//                                             tags: [tag|null, ...] by index (0 = cur), for the World Boss's
+//                                             special words: { kind, ms, el, color } styles the word by kind
+//                                             (block, assist, dodge, return, add, heal, revive, cover, spell)
+//                                             and runs a timer under it when ms is set
+//   flow.push(word, typed, ok, threat)        after a word is submitted (threat: true or the tag's kind)
 //   flow.clear()
 window.WordFlow = (() => {
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,16 +34,23 @@ window.WordFlow = (() => {
     let done = [];
     let last = null;
     function paint(st) {
-      const { cur, typed = '', mine = true, next = [], pens = null, fog = 0, threat = null } = st;
+      const { cur, typed = '', mine = true, next = [], pens = null, fog = 0, threat = null, tags = null } = st;
       const fg = i => (i < fog ? ' fog' : '');
       // the timer and the slashes run as CSS animations started in the past (a negative delay),
       // so a repaint on every key carries on from where they were
-      const th = i => (threat && threat.i === i ? ' threat' : '');
-      const thAttr = i => (threat && threat.i === i ? ` style="--tw:${Math.round(threat.ms)}ms;--te:-${Math.round(threat.el)}ms"` : '');
-      const thFx = i => (threat && threat.i === i ? '<b class="fw-slash" aria-hidden="true"></b><b class="fw-tbar" aria-hidden="true"></b>' : '');
+      const tg = i => tags && tags[i];
+      const th = i => (threat && threat.i === i ? ' threat' : '') + (tg(i) ? ` tag t-${tg(i).kind}${tg(i).first ? ' first' : ''}${tg(i).last ? ' last' : ''}` : '');
+      const thAttr = i => {
+        if (threat && threat.i === i) return ` style="--tw:${Math.round(threat.ms)}ms;--te:-${Math.round(threat.el)}ms"`;
+        const g = tg(i); if (!g) return '';
+        const v = [g.ms ? `--tw:${Math.round(g.ms)}ms;--te:-${Math.round(g.el)}ms` : '', g.color ? `--sc:${g.color}` : ''].filter(Boolean).join(';');
+        return v ? ` style="${v}"` : '';
+      };
+      const thFx = i => (threat && threat.i === i ? '<b class="fw-slash" aria-hidden="true"></b><b class="fw-tbar" aria-hidden="true"></b>'
+        : tg(i) && tg(i).ms ? '<b class="fw-tbar" aria-hidden="true"></b>' : '');
       const pen = i => (pens && pens[i] ? `<em class="fw-pen">${esc(pens[i])}</em>` : '');
       box.innerHTML = `<div class="fw-lines" style="--fw-lines:${lines}">` +
-        done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}${d.threat ? ' was-threat' : ''}">${letters(d.word, d.typed, false)}</span>`).join('') +
+        done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}${d.threat ? ' was-threat' : ''}${typeof d.threat === 'string' ? ' was-' + d.threat : ''}">${letters(d.word, d.typed, false)}</span>`).join('') +
         `<span class="fw cur${mine ? '' : ' wait'}${pen(0) ? ' pen' : ''}${fg(0)}${th(0)}" aria-current="${mine}"${thAttr(0)}>${pen(0)}${thFx(0)}${letters(cur, mine ? typed : '', mine)}</span>` +
         next.map((w, i) => pen(i + 1) ? `<span class="fw pen">${pen(i + 1)}<s>${esc(w)}</s></span>` : `<span class="fw${fg(i + 1)}${th(i + 1)}"${thAttr(i + 1)}>${thFx(i + 1)}${esc(w)}</span>`).join('') + '</div>';
     }
@@ -60,7 +71,7 @@ window.WordFlow = (() => {
     }
     return {
       render,
-      push(word, typed, ok, threat) { done.push({ word, typed, ok, threat: !!threat }); if (done.length > 120) done = done.slice(-120); },
+      push(word, typed, ok, threat) { done.push({ word, typed, ok, threat: typeof threat === 'string' ? threat : !!threat }); if (done.length > 120) done = done.slice(-120); },
       clear() { done = []; if (last) render(last); },
     };
   }
