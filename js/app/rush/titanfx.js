@@ -60,7 +60,7 @@ window.RushTitanFX = (() => {
       vertexShader: pMat.vertexShader,
       fragmentShader: `varying vec3 vC; varying float vA;
         void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d) * 2.0; if (r > 1.0) discard;
-          float a = vA * smoothstep(1.0, 0.2, r) * 0.8; gl_FragColor = vec4(vC, a); }`,
+          float a = vA * pow(1.0 - r, 1.6) * 0.9; gl_FragColor = vec4(vC, a); }`,
       transparent: true, depthWrite: false,
     }));
     const smoke = new THREE.Points(sGeo, sMat); smoke.frustumCulled = false; root.add(smoke);
@@ -161,8 +161,9 @@ window.RushTitanFX = (() => {
         _o.position.copy(d.p); _o.rotation.set(d.r.x, d.r.y, d.r.z); _o.scale.setScalar(d.s * Math.min(1, k * 4));
         _o.updateMatrix(); debrisMesh.setMatrixAt(i, _o.matrix);
       }
-      debrisMesh.count = ND;
-      debrisMesh.instanceMatrix.needsUpdate = true;
+      debrisMesh.count = n ? ND : 0;   // nothing drawn while no debris is flying
+      if (n || debrisMesh.userData.n) debrisMesh.instanceMatrix.needsUpdate = true;
+      debrisMesh.userData.n = n;
       return n;
     }
 
@@ -369,14 +370,18 @@ window.RushTitanFX = (() => {
     function nova(at, r, col, secs = 0.7) { novaMesh.position.copy(at); novaMat.uniforms.uCol.value.copy(C(col, 2)); novaT = 0; novaSecs = secs; novaR = r; novaMesh.visible = true; }
 
     // ---------- light pulses ----------
-    const light = new THREE.PointLight('#ffffff', 0, 28, 1.6); light.visible = false; root.add(light);
-    let lightK = 0;
-    function flash(at, col, k = 1) { light.position.copy(at); light.color.set(col); lightK = Math.max(lightK, k * (calm ? 0.6 : 1)); light.visible = true; }
+    // a soft glow at the spot, and the caller's lights lifted for a moment (o.onFlash), instead of a point
+    // light: one more light in every lit material cost a quarter of the frame on slow machines
+    const flashSpr = o.glowTex ? new THREE.Sprite(own(new THREE.SpriteMaterial({ map: o.glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }))) : null;
+    if (flashSpr) { flashSpr.visible = false; root.add(flashSpr); }
+    let lightK = 0, flashCol = new THREE.Color();
+    function flash(at, col, k = 1) { lightK = Math.max(lightK, k * (calm ? 0.6 : 1)); flashCol.set(col); if (flashSpr) { flashSpr.position.copy(at); flashSpr.material.color.copy(flashCol).multiplyScalar(1.6); } }
 
     let clock = 0;
     function update(dt) {
       clock += dt;
-      pLive = stepCloud(pv, pPos, pSize, pA, NP, dt, pGeo) + stepCloud(sv, sPos, sSize, sA, NS, dt, sGeo);
+      const a = stepCloud(pv, pPos, pSize, pA, NP, dt, pGeo), b = stepCloud(sv, sPos, sSize, sA, NS, dt, sGeo);
+      points.visible = a > 0; smoke.visible = b > 0; pLive = a + b;
       stepDebris(dt);
       for (const r of rings) {
         if (!r.on) continue;
@@ -392,7 +397,7 @@ window.RushTitanFX = (() => {
         if (!T.on) { T.fade -= dt / 0.3; T.m.material.uniforms.uA.value = Math.max(0, T.fade); if (T.fade <= 0) T.m.visible = false; }
       }
       stepTrails(dt);
-      if (novaMesh.visible) { novaT += dt / novaSecs; const e = 1 - Math.pow(1 - Math.min(1, novaT), 3); novaMesh.scale.setScalar(0.3 + novaR * e); novaMat.uniforms.uA.value = (1 - Math.min(1, novaT)) * 1.3; if (novaT >= 1) novaMesh.visible = false; }
+      if (novaMesh.visible) { novaT += dt / novaSecs; const e = 1 - Math.pow(1 - Math.min(1, novaT), 3); novaMesh.scale.setScalar(0.3 + novaR * e); novaMat.uniforms.uA.value = (1 - Math.min(1, novaT)) * (calm ? 0.8 : 1.3); if (novaT >= 1) novaMesh.visible = false; }
       for (const S of scorches) {
         if (!S.on) continue;
         S.t += dt;
@@ -401,14 +406,18 @@ window.RushTitanFX = (() => {
         if (S.t > 2.6) { S.on = false; S.m.visible = false; }
       }
       if (beamMesh.visible) { beamMat.uniforms.uT.value = clock; if (!beamOn) { beamMat.uniforms.uA.value -= dt / 0.25; if (beamMat.uniforms.uA.value <= 0) beamMesh.visible = false; } }
-      if (light.visible) { lightK = Math.max(0, lightK - dt * 4); light.intensity = lightK * 30; if (lightK <= 0) light.visible = false; }
+      if (lightK > 0) {
+        lightK = Math.max(0, lightK - dt * 4);
+        if (flashSpr) { flashSpr.visible = lightK > 0; flashSpr.material.opacity = Math.min(1, lightK); flashSpr.scale.setScalar(4 + 6 * lightK); }
+        if (o.onFlash) o.onFlash(flashCol, lightK);
+      }
     }
     function setScale(px) { pMat.uniforms.uScale.value = px * 0.5; }
     function clear() {
       for (const p of pv) p.life = 0; for (const p of sv) p.life = 0; for (const d of dv) d.life = 0;
       rings.forEach(r => { r.on = false; r.m.visible = false; }); scorches.forEach(S => { S.on = false; S.m.visible = false; }); teles.forEach(T => { T.on = false; T.m.visible = false; });
       trails.forEach(T => { T.on = false; T.mesh.visible = false; T.pts.length = 0; }); beamOn = false; beamMesh.visible = false;
-      lightK = 0; light.visible = false; novaMesh.visible = false;
+      lightK = 0; if (flashSpr) flashSpr.visible = false; if (o.onFlash) o.onFlash(flashCol, 0); novaMesh.visible = false;
     }
     function dispose() { scene.remove(root); keep.forEach(x => x.dispose && x.dispose()); }
     return { root, tele, teleOff, burst, debris, ring, scorch, nova, flash, beam, beamOff, trail, update, clear, dispose, setScale, info: () => ({ particles: pLive, debris: dv.filter(d => d.life > 0).length }) };

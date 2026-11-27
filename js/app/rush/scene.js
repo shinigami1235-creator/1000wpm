@@ -56,7 +56,7 @@ window.RushScene = (() => {
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
       'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
-      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan']) ctl[n] = (...a) => call(n, ...a);
+      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
 
@@ -240,11 +240,21 @@ window.RushScene = (() => {
       const at = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => M.compose(P0.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), Sc.set(sx, sy, sz)).clone();
       const box = own(new THREE.BoxGeometry(1, 1, 1)), cyl = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 10)), oct = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 8));
       const solid = [], lit = [];
-      const mat = own(new THREE.MeshStandardMaterial({ color: new THREE.Color(b.base).lerp(new THREE.Color('#3a3f45'), 0.75), metalness: 0.45, roughness: 0.62, flatShading: true, envMap: env, envMapIntensity: 0.8 }));
+      const mat = own(new THREE.MeshLambertMaterial({ color: new THREE.Color(b.base).lerp(new THREE.Color('#3a3f45'), 0.75), flatShading: true }));
       const glowMat = own(new THREE.MeshBasicMaterial({ color: C(b.color, 2.2) }));
       // the floor: dark, polished, picking up the titan's colour from the environment
-      const floorMat = own(new THREE.MeshStandardMaterial({ color: new THREE.Color(b.base).multiplyScalar(1.2), metalness: 0.8, roughness: 0.4, envMap: env, envMapIntensity: 0.22 }));
-      const floor = new THREE.Mesh(own(new THREE.PlaneGeometry(140, 140)), floorMat); floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; group.add(floor);
+      // the floor: dark with a pool of the titan's light round where it stands, painted once into a texture
+      // (a full-screen lit floor cost too much on slow machines for what it showed)
+      const pool = new THREE.Color(b.color), base = new THREE.Color(b.base);
+      const floorTex = canvasTex(256, 256, (c, w, h) => {
+        c.fillStyle = '#' + base.clone().multiplyScalar(1.15).getHexString(); c.fillRect(0, 0, w, h);
+        const g = c.createRadialGradient(w / 2, h * 0.47, 0, w / 2, h * 0.47, w * 0.5);
+        const rgba = (k, a) => `rgba(${Math.round(pool.r * 255 * k)},${Math.round(pool.g * 255 * k)},${Math.round(pool.b * 255 * k)},${a})`;
+        g.addColorStop(0, rgba(0.55, 0.5)); g.addColorStop(0.18, rgba(0.4, 0.28)); g.addColorStop(0.5, rgba(0.25, 0.08)); g.addColorStop(1, rgba(0, 0));
+        c.fillStyle = g; c.fillRect(0, 0, w, h);
+      });
+      const floor = new THREE.Mesh(own(new THREE.PlaneGeometry(90, 90)), own(new THREE.MeshBasicMaterial({ map: floorTex })));
+      floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.02, -8); group.add(floor);
       const shadow = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, color: '#000000' })));
       shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.012; shadow.scale.set(11, 9, 1); shadow.renderOrder = 1; group.add(shadow);
       let anim = () => {};
@@ -282,7 +292,7 @@ window.RushScene = (() => {
         anim(0); group.add(im);
       } else if (id === 'king') {
         // a hall of columns with gold capitals, and a carpet to the throne
-        const gold = own(new THREE.MeshStandardMaterial({ color: '#c9982f', metalness: 0.95, roughness: 0.28, flatShading: true, envMap: env }));
+        const gold = own(new THREE.MeshStandardMaterial({ color: '#c9982f', metalness: 0.9, roughness: 0.32, flatShading: true, envMap: env, envMapIntensity: 0.7 }));
         const goldList = [];
         for (const z of [-3, -9, -15]) for (const sx of [-1, 1]) {
           const x = sx * (10.5 + (z === -15 ? 2 : 0));
@@ -403,14 +413,16 @@ window.RushScene = (() => {
       // with its own lights since the rest of the arena is lines and glow
       kit(b) {
         const root = new THREE.Group(), P = {};
-        const env = b.kit === 'syntax' ? null : envFor(b);
-        const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color, detail: true, env });
+        const plain = !!window.__rushPlain;   // tests only: the titans as they were, for frame-time comparisons
+        const env = b.kit === 'syntax' || plain ? null : envFor(b);
+        const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color, detail: !plain, env });
         // mover: the titan's own offsets for its entrance, lunges and glitches, under the scene's sway and recoil
         const mover = new THREE.Group(); root.add(mover); mover.add(k.group);
         const hemi = new THREE.HemisphereLight('#c8d2da', '#06080a', b.kit === 'syntax' ? 0.55 : 0.7);
         const key = new THREE.DirectionalLight('#ffffff', b.kit === 'syntax' ? 1.5 : 2.4); key.position.set(-6, 10, 9);
         const rim = new THREE.DirectionalLight(b.color, 2.2); rim.position.set(5, 7, -8);
         root.add(hemi, key, rim);
+        P.lights = { hemi, hemi0: hemi.intensity, hc: hemi.color.clone() };
         if (bucket) bucket.push({ dispose: () => k.dispose && k.dispose() });
         const H = BossKit.BOSSES[b.kit].height;
         P.kit = k;
@@ -751,7 +763,9 @@ window.RushScene = (() => {
     }) : null;
     const v1 = new V(), v2 = new V(), v3 = new V(), c1 = new THREE.Color();
     // the titans' own effects (js/app/rush/titanfx.js) and the hooks they shake, slow and tint the view with
-    const tfx = window.RushTitanFX ? RushTitanFX.create(THREE, scene, { calm, reduce }) : null;
+    const tfx = window.RushTitanFX ? RushTitanFX.create(THREE, scene, { calm, reduce, glowTex,
+      // a blow's flash lifts the titan's fill light toward the flash's colour for a moment
+      onFlash: (col, k) => { const L = fig && fig.P.lights; if (!L) return; L.hemi.intensity = L.hemi0 + k * 1.6; L.hemi.color.copy(L.hc).lerp(col, Math.min(1, k)); } }) : null;
     let slowUntil = 0;
     const juice = {
       shake: k => { shake = Math.max(shake, k); },
@@ -1130,7 +1144,7 @@ window.RushScene = (() => {
       hurt: () => { shake = Math.max(shake, 0.6); tintAmt = Math.max(tintAmt, calm ? 0.45 : 0.75); tintHex = '#ff4d5e'; },
       defeat: () => {
         if (!fig) return;
-        if (fig.P.T) { fig.P.T.die(); want('kill'); juice.slow(0.7); }
+        if (fig.P.T) { threatMs = Infinity; fig.P.T.die(); want('kill'); juice.slow(0.7); }
         else if (fx) fx.cast('neon-nova', { caster, target, hits: [], effect: {} });
         dying = 0; windOn = false; shake = Math.max(shake, 1); glitchK = 1; glitchUntil = nowS() + 0.8;
         pool.forEach(p => { p.id = ''; p.g.visible = false; });
@@ -1148,6 +1162,9 @@ window.RushScene = (() => {
       preview: list => { if (fig && fig.P.T) { fig.P.T.preview(list); sigClear(); windOn = false; } },
       titan: () => (fig && fig.P.T ? { mode: fig.P.T.mode(), attack: fig.P.T.attack(), shot: director ? director.shot() : 'game', cam: camera.position.toArray().map(x => +x.toFixed(2)), threat: threatMs, base: camBase.toArray().map(x => +x.toFixed(2)), fov: +camera.fov.toFixed(1), log: director ? director.log() : [] } : null),
       screen,
+      internals: () => ({ scene, fig, renderer, tfx, THREE, camera }),   // tests only
+      // tests only: the cost of drawing one frame, timed with the GPU finished, best of five batches
+      bench: (n = 4) => { const gl = renderer.getContext(), px = new Uint8Array(4), sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); let best = Infinity; for (let b = 0; b < 5; b++) { sync(); const t0 = performance.now(); for (let i = 0; i < n; i++) { composer.render(); sync(); } best = Math.min(best, (performance.now() - t0) / n); } return +best.toFixed(1); },
       review: o => { reviewCam = o || null; if (!o) { camera.fov = 44; camera.updateProjectionMatrix(); } },
       info: () => ({ frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
       dispose,

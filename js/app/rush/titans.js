@@ -139,10 +139,10 @@ window.RushTitans = (() => {
           hit: L => { front(24, v1); quake(v1, 1.1); tfx.debris(v1, 10, { col: col2, speed: 8, size: 0.28 }); J.glitch(0.7, 0.25); }, snd: ['glitchCharge', 'siegeSlam'] },
       },
       brute: {
-        piston: { tele: ['lane', 0.9], lunge: 1.6, trail: 'handR', charge: k => { charge(fist('R', v1), k); if (Math.random() < k * 0.6) tfx.burst(at('foreR', 0, -1, -0.8, v2), 1, { kind: 'steam', col: '#c7c2bb', speed: 1.5, size: 1, life: 0.9, up: 1 }); },
-          hit: L => { fist('R', v1); tfx.ring(v1, 0.3, 4, 0.35, col, { tilt: Math.PI / 2, y: v1.y, k: 2.6 }); tfx.burst(v1, 34, { col, speed: 11, dir: v3.set(0, 0, 1), spread: 0.6, life: 0.5 }); tfx.burst(v1, 10, { kind: 'steam', col: '#c9c4bd', speed: 5, size: 1.6, life: 1.1, dir: v3, spread: 0.6 }); tfx.flash(v1, col, 1.2); J.shake(0.75); J.stop(90); }, snd: ['pistonCharge', 'pistonPunch'] },
+        piston: { tele: ['lane', 0.9], lunge: 1.6, trail: 'handR', charge: k => { charge(fist('R', v1), k); if (Math.random() < k * 0.6) tfx.burst(at('foreR', 0, -1, -0.8, v2), 1, { kind: 'steam', col: '#a39d95', speed: 1.5, size: 1.1, life: 0.9, up: 1, alpha: 0.3 }); },
+          hit: L => { fist('R', v1); tfx.ring(v1, 0.3, 4, 0.35, col, { tilt: Math.PI / 2, y: v1.y, k: 2.6 }); tfx.burst(v1, 34, { col, speed: 11, dir: v3.set(0, 0, 1), spread: 0.6, life: 0.5 }); tfx.burst(v1, 10, { kind: 'steam', col: '#aaa49c', speed: 5, size: 1.8, life: 1.2, dir: v3, spread: 0.6, alpha: 0.32 }); tfx.flash(v1, col, 1.2); J.shake(0.75); J.stop(90); }, snd: ['pistonCharge', 'pistonPunch'] },
         vent: { tele: ['fan', 0.7], lunge: 0, charge: k => { steamK = 1 + k * 5; kit.heat(k * 0.8); },
-          hit: L => { steamK = 9; at('chest', 0, S.chestH / 2 + 1.6, -S.chestD * 0.3, v1); for (let i = 0; i < 6; i++) later(i * 0.05, () => { v2.copy(v1); tfx.burst(v2, 8, { kind: 'steam', col: '#d8d2ca', speed: 12, dir: v3.set(rnd(-0.4, 0.4), 0.15, 1), spread: 0.3, size: 2, life: 1.3, grow: 3.4 }); tfx.burst(v2, 10, { col, speed: 10, dir: v3, spread: 0.4, life: 0.5 }); }); J.shake(0.5); }, snd: ['steamBuild', 'steamBlast'] },
+          hit: L => { steamK = 9; at('chest', 0, S.chestH / 2 + 1.6, -S.chestD * 0.3, v1); for (let i = 0; i < 6; i++) later(i * 0.05, () => { v2.copy(v1); tfx.burst(v2, 10, { kind: 'steam', col: '#b3ada5', speed: 12, dir: v3.set(rnd(-0.4, 0.4), 0.15, 1), spread: 0.35, size: 2.2, life: 1.4, grow: 3.6, alpha: 0.32 }); tfx.burst(v2, 10, { col, speed: 10, dir: v3, spread: 0.4, life: 0.5 }); }); J.shake(0.5); }, snd: ['steamBuild', 'steamBlast'] },
         pound: { tele: ['ring'], lunge: 0.5, charge: k => { charge(fist('L', v1), k); charge(fist('R', v2), k); kit.heat(k); },
           hit: L => { front(24, v1); quake(v1, 1.35); later(0.12, () => tfx.ring(v1, 1, 10, 0.9, col, { k: 1.5 })); }, snd: ['siegeCharge', 'pound'] },
       },
@@ -393,9 +393,9 @@ window.RushTitans = (() => {
       kit.mix(L);
       kit.update(t, dt);
       // steam from the Brute's vents, more as it builds
-      if (id === 'brute' && mode !== 'enter') {
+      if (id === 'brute' && mode !== 'enter' && !(mode === 'die' && dieT > 1.9)) {
         steamK += (1 - steamK) * Math.min(1, dt * 1.5);
-        if (Math.random() < 0.25 * steamK) for (const sx of [-1, 1]) { at('chest', sx * 1.6, S.chestH / 2 + 1.7, -S.chestD * 0.3 - 0.3, v1); tfx.burst(v1, 1, { kind: 'steam', col: '#cfc9c1', speed: 1.5 + steamK * 0.4, dir: v3.set(0, 1, -0.3), spread: 0.25, size: 1.1, life: 1.3, grow: 3 }); }
+        if (Math.random() < 0.25 * steamK) for (const sx of [-1, 1]) { at('chest', sx * 1.6, S.chestH / 2 + 1.7, -S.chestD * 0.3 - 0.3, v1); tfx.burst(v1, 1, { kind: 'steam', col: '#a7a199', speed: 1.5 + steamK * 0.4, dir: v3.set(0, 1, -0.3), spread: 0.35, size: 1.3, life: 1.4, grow: 3.4, alpha: 0.3 }); }
         if (mode !== 'die' && mode !== 'wind') kit.heat(Math.max(0, (steamK - 1) * 0.1));
       }
       if (id === 'half' && mode !== 'die' && mode !== 'enter' && Math.random() < 0.015) bare(0.06);

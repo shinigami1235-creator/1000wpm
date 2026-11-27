@@ -89,30 +89,39 @@ window.BossKit = (() => {
             groove = max(groove, 0.75 * max((1.0 - smoothstep(0.03, 0.065, ox)) * step(0.62, r), (1.0 - smoothstep(0.03, 0.065, oy)) * step(r, 0.3)));
             return vec3(glow, groove, r);
           }
+          #ifdef CRACKS
           float crack(vec2 u){
             vec2 p = u * 0.85 + uSeed; vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
             for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 o = vec2(float(x), float(y)); vec2 q = o + vec2(h21(i + o), h21(i + o + 7.3)) - f; float d = dot(q, q); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
             return (1.0 - smoothstep(0.0, 0.05, sqrt(d2) - sqrt(d1))) * step(0.45, h21(i + 2.2));
-          }`)
+          }
+          #endif`)
           .replace('#include <color_fragment>', `#include <color_fragment>
-          vec2 sU = projU(); vec3 pn = panel(sU); float wn = vn(sU * 2.3 + uSeed) * 0.6 + vn(sU * 7.0) * 0.4;
+          vec2 sU = projU(); vec3 pn = panel(sU); float wn = vn(sU * 2.3 + uSeed);
           diffuseColor.rgb *= (0.8 + 0.32 * pn.z) * (1.0 - 0.62 * pn.y) * (0.88 + 0.24 * wn);`)
           .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = clamp(roughnessFactor * (0.72 + 0.56 * wn) + pn.y * 0.25, 0.08, 1.0);`)
           .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          { float ck = uCrack > 0.0 ? crack(sU) * uCrack : 0.0;
+          { float ck = 0.0;
+            #ifdef CRACKS
+            ck = crack(sU) * uCrack;
+            #endif
             totalEmissiveRadiance += uSeam * uK * (pn.x * (1.0 + uPulse * 2.2) + ck * (0.35 + uHeat * 1.4 + uPulse)); }`);
+        if (S.cracks) sh.fragmentShader = '#define CRACKS\n' + sh.fragmentShader;
       };
+      m.customProgramCacheKey = () => 'bosskit-rich' + (S.cracks ? '-cracks' : '');
       return m;
     }
     const envOpt = opts.env ? { envMap: opts.env, envMapIntensity: 1 } : {};
-    const plate = own(seamed(new THREE.MeshStandardMaterial(RICH ? { color: S.metal || '#4f5962', metalness: 0.45, roughness: 0.5, flatShading: true, ...envOpt }
+    // the environment map lights only the polished trim: on the broad plates its two extra lookups a pixel
+    // cost more than they showed on slow machines, and the hemisphere and rim lights give the plates their colour
+    const plate = own(seamed(new THREE.MeshStandardMaterial(RICH ? { color: S.metal || '#4f5962', metalness: 0.45, roughness: 0.5, flatShading: true }
       : { color: S.metal || '#4f5962', metalness: 0.5, roughness: 0.55, flatShading: true })));
-    const dark = own(seamed(new THREE.MeshStandardMaterial(RICH ? { color: S.dark || '#272e34', metalness: 0.6, roughness: 0.45, flatShading: true, ...envOpt }
+    const dark = own(seamed(new THREE.MeshStandardMaterial(RICH ? { color: S.dark || '#272e34', metalness: 0.6, roughness: 0.45, flatShading: true }
       : { color: S.dark || '#272e34', metalness: 0.6, roughness: 0.5, flatShading: true }), 0.6));
     // rich only: polished trim in the titan's own metal, and plain parts (rubber cables, bolts) with no seams
     const trim = RICH ? own(new THREE.MeshStandardMaterial({ color: S.trim || '#9aa3ab', metalness: 0.95, roughness: 0.26, flatShading: true, ...envOpt })) : plate;
-    const rubber = RICH ? own(new THREE.MeshStandardMaterial({ color: '#15181b', metalness: 0.2, roughness: 0.75, ...envOpt })) : dark;
+    const rubber = RICH ? own(new THREE.MeshLambertMaterial({ color: '#15181b' })) : dark;
     const seam = own(new THREE.LineBasicMaterial({ color: G.clone().multiplyScalar(S.seam || 1.6), transparent: true, opacity: 0.9, toneMapped: false }));
     const glowCache = {};
     const glow = c => {

@@ -164,7 +164,7 @@ window.RushPage = (() => {
         name: 'run',
         live: () => !!(run && !run.done && view === 'fight' && (run.fights.length || (f && f.summary().keys))),
         pause: on => {
-          if (on) { pausedAt = now(); if (scene) scene.pause(true); return; }
+          if (on) { pausedAt = now(); if (scene) scene.pause(true); A.titanStop(); return; }
           if (!pausedAt) return;
           const ms = now() - pausedAt; pausedAt = 0;
           if (f && (f.phase === 'fight' || f.phase === 'intro')) f.shift(ms);
@@ -409,7 +409,7 @@ window.RushPage = (() => {
         case 'boostOffer': pop('Art sent you a boost', 'boost'); A.play('milestone'); break;
         case 'boost': scene.cast('glitch-blade', { hits: [{ at: 230, power: 70 }], effect: {} }); cSfx('glitch-blade'); break;
         case 'won': wait(0, () => won(p)); break;
-        case 'lost': wait(0, () => lost(p)); break;
+        case 'lost': A.titanStop(); wait(0, () => lost(p)); break;
       }
       if (name === 'move' || name === 'windup' || name === 'block' || name === 'slam' || name === 'moveDone') paintChips(true);
     }
