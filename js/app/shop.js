@@ -41,7 +41,7 @@ Router.register('shop', (() => {
       .map(g => ({ ...g, category: g.kb ? 'Keyboards' : 'Operator' }));
     // bot parts for the hangar (REWARDS.shop.bot), each with a picture of a bot wearing it
     const bot = ((window.REWARDS && REWARDS.shop && REWARDS.shop.bot) || []).filter(g => inSeason(g) || WPM.owns(g.id))
-      .map(g => ({ ...g, category: 'Bots', icon: 'bot:' + g.id, desc: g.desc || 'Try it on in the hangar first.' }));
+      .map(g => ({ ...g, category: 'Bots', icon: 'bot:' + g.id }));
     return [...gear, ...bot, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {

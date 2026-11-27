@@ -12,11 +12,11 @@
 //   f.on(name, fn)             events, listed in SUPERBOSS.md
 //   f.debug                    test hooks: phase(n), hp(frac), finish(), enrage(), artHp(n), combo(n), offer(ids), crowd()
 //
-// opts.inline = { flow: () => WordFlow } turns on the one line (Gid, 27 Nov 2026; js/app/combat/inline.js):
-// blocks, packets, weak points, bug fixes, the crowd spell and earned spells go into Art's own words past
-// the middle line, and the word at the front of the line is the only thing to type. Every timed one gets
-// the time it takes to reach it. The Hydra's line keeps its stack on, and each stack word belongs to a
-// head: typing it hits that head (state().line has the tags).
+// opts.inline = {} turns on the one line (Gid, 27 Nov 2026; js/app/combat/inline.js): Art types only
+// his stack. Blocks, packets, weak points, bug fixes, the crowd spell and earned spells light up stack
+// words two or more ahead, and typing a lit word right in time does the thing. The words never change.
+// The Hydra keeps its stack on, and each stack word belongs to a head: typing it hits that head.
+// state().line has the tags.
 //
 // Every typeable thing is a target: { id, kind, word, due }. Kinds, in the order a shared
 // first letter is matched: finish, block, packet, decoy, weak, crowd, fix, spell, head, stack.
@@ -123,13 +123,11 @@ window.SuperFight = (() => {
     }
     // the one line: what goes in it, in order
     const LINE_KINDS = new Set(['block', 'packet', 'weak', 'fix', 'crowd']);
-    const lineList = () => [...targets.filter(x => LINE_KINDS.has(x.kind)), ...earned];
+    const LABEL = { block: 'BLOCK', packet: 'SEND BACK', weak: 'WEAK POINT', fix: 'FIX', crowd: 'CROWD SPELL' };
+    const lineList = () => [...targets.filter(x => LINE_KINDS.has(x.kind)).map(x => ({ ...x, n: x.word.split(' ').length, label: LABEL[x.kind] })),
+      ...earned.map(e => ({ ...e, n: e.word.split(' ').length, label: e.word.toUpperCase() }))];
     function typeables() {
-      if (IL && status === 'fight') {
-        const h = IL.view(stack).head;
-        if (h) { const x = h.x.kind === 'spell' ? earned.find(e => e.id === h.id) : get(h.id); return x ? [x] : [{ ...h.x, gone: true }]; }
-        return stack.length ? [{ id: 'stack', kind: 'stack', word: stack[0], due: Infinity }] : [];
-      }
+      if (IL && status === 'fight') return stack.length ? [{ id: 'stack', kind: 'stack', word: stack[0], due: Infinity }] : [];
       const out = status === 'finish' && finish ? [{ id: 'finish', kind: 'finish', word: finish.phrase, due: finish.due }] : [...targets, ...spellTargets()];
       if (status === 'fight' && stackOn && stack.length) out.push({ id: 'stack', kind: 'stack', word: stack[0], due: Infinity });
       return out;
@@ -167,7 +165,7 @@ window.SuperFight = (() => {
         return;
       }
       stats.keys++;
-      if (!typed) { wordT0 = at; clean = true; if (IL) IL.hold(stack); }
+      if (!typed) { wordT0 = at; clean = true; if (IL) IL.hold(); }
       typed += ch;
       retarget();
       const w = cur && wordOf(cur);
@@ -191,12 +189,18 @@ window.SuperFight = (() => {
       const text = typed, wasClean = clean;
       stats.keys++;
       typed = ''; cur = null; clean = true;
-      // the one line: the front special leaves it whether typed right or wrong (a block typed wrong
-      // still lands); one whose moment passed while you typed it just counts as a word
-      if (IL && tg && tg.kind !== 'stack') {
-        IL.done(tg.id);
-        if (tg.kind === 'spell') { earned = earned.filter(e => e.id !== tg.id); return castSpell(tg, wasClean && tg.word === text); }
-        if (tg.gone) { if (tg.word === text) { stats.good++; me.word({ letters: 0, clean: wasClean }); emit('late', { word: text }); } else { stats.missed++; me.miss('wrong'); emit('miss', { typed: text, word: tg.word }); } return; }
+      // a lit stack word: every word of the run typed right, and the last one fires its special
+      if (IL && tg && tg.kind === 'stack') {
+        const h = IL.view(stack).head;
+        if (h) {
+          const it = h.item;
+          it.ok = it.ok && tg.word === text && (it.kind !== 'spell' || wasClean);
+          if (h.last) {
+            IL.done(it.id);
+            if (it.ok) { stats.good++; return fireLit(it, text, wasClean); }
+            if (it.kind === 'spell') earned = earned.filter(e => e.id !== it.id);
+          }
+        }
       }
       if (!tg || tg.word !== text) {
         if (tg && tg.kind === 'spell' && tg.word.length === text.length) return castSpell(tg, false);
@@ -227,6 +231,21 @@ window.SuperFight = (() => {
         }
         default: return mod.typed && mod.typed(tg, text, wasClean);
       }
+    }
+    function fireLit(it, text, wasClean) {
+      if (it.kind === 'spell') {
+        const sp = earned.find(e => e.id === it.id);
+        earned = earned.filter(e => e.id !== it.id);
+        hitStack(text, wasClean);
+        if (sp) castSpell(sp, true);
+        return;
+      }
+      const x = get(it.id);
+      if (!x) return hitStack(text, wasClean);   // its moment passed: a plain word
+      shiftStack();
+      if (x.kind === 'block') { me.word({ letters: 0, clean: wasClean }); drop(x.id); stats.blocks++; emit('block', { id: x.id, attack: x.attack, owner: x.owner }); return; }
+      if (x.kind === 'crowd') return castCrowd(x);
+      return mod.typed && mod.typed(x, text, wasClean);
     }
     // damage for a typed word from the combat layer: tier, accuracy, speed and spell buffs
     function wordHit(letters, wasClean) {
@@ -464,8 +483,8 @@ window.SuperFight = (() => {
     function lineSnap() {
       if (!IL || status !== 'fight') return null;
       const v = IL.view(stack, t());
-      const tags = v.tags.map((g, i) => { if (g) return g; const k = v.stackAt(i); const own = k >= 0 && stackOwn[k]; return own ? { kind: 'head', own, first: true, last: true } : null; });
-      return { cur: v.cur, next: v.next, tags, head: v.head ? { id: v.head.id, kind: v.head.kind, word: v.head.word } : null };
+      const tags = v.tags.map((g, i) => { if (g) return g; const own = stackOwn[i]; return own ? { kind: 'head', own, first: true, last: true } : null; });
+      return { cur: v.cur, next: v.next, tags, head: v.head ? { id: v.head.item.id, kind: v.head.item.kind } : null };
     }
 
     // ---------- reading ----------

@@ -12,7 +12,8 @@
 //                                             tags: [tag|null, ...] by index (0 = cur), for the World Boss's
 //                                             special words: { kind, ms, el, color } styles the word by kind
 //                                             (block, assist, dodge, return, add, heal, revive, cover, spell)
-//                                             and runs a timer under it when ms is set
+//                                             and runs a timer under it when ms is set; label is a
+//                                             short word shown small over it (BLOCK, HEAL KITE)
 //   flow.push(word, typed, ok, threat)        after a word is submitted (threat: true or the tag's kind)
 //   flow.clear()
 //   flow.ahead()                              how many of the next words are already planned: the rest of
@@ -53,8 +54,9 @@ window.WordFlow = (() => {
         const v = [g.ms ? `--tw:${Math.round(g.ms)}ms;--te:-${Math.round(g.el)}ms` : '', g.color ? `--sc:${g.color}` : ''].filter(Boolean).join(';');
         return v ? ` style="${v}"` : '';
       };
+      const lbl = i => (tg(i) && tg(i).label ? `<b class="fw-lbl" aria-hidden="true">${esc(tg(i).label)}</b>` : '');
       const thFx = i => (threat && threat.i === i ? '<b class="fw-slash" aria-hidden="true"></b><b class="fw-tbar" aria-hidden="true"></b>'
-        : tg(i) && tg(i).ms ? '<b class="fw-tbar" aria-hidden="true"></b>' : '');
+        : (tg(i) && tg(i).ms ? '<b class="fw-tbar" aria-hidden="true"></b>' : '') + lbl(i));
       const pen = i => (pens && pens[i] ? `<em class="fw-pen">${esc(pens[i])}</em>` : '');
       box.innerHTML = `<div class="fw-lines" style="--fw-lines:${lines}">` +
         done.map(d => `<span class="fw done${d.ok ? '' : ' miss'}${d.threat ? ' was-threat' : ''}${typeof d.threat === 'string' ? ' was-' + d.threat : ''}">${letters(d.word, d.typed, false)}</span>`).join('') +

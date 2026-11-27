@@ -18,6 +18,7 @@
 //   f.marks()                     the red pen's marks on the stack: [{ i, fake }], i counted from the current word
 //   f.key(ok)                     every key press
 //   f.submit(text, { clean, ms, target })   a finished word; target is the chip id the page aimed at
+//   f.fire(id, text, { clean, ms })         the stack word that chip id lit up was typed right: it fires
 //   f.cast(result, t)             a spell the engine cast; its hits land on time
 //     lead   () => ms (optional): how long the player needs to reach a word put past their middle line
 //            (js/app/combat/inline.js). Every attack and move waits that much longer, and a wind-up
@@ -488,6 +489,16 @@ window.RushFight = (() => {
       }
       return { kind: 'miss', ok: false, chip: aimed ? aimed.kind : null };
     }
+    // a lit word (js/app/combat/inline.js): the player typed the stack word that chip c lit up, so the
+    // stack moves on and the chip does its thing. If the chip has gone meanwhile it's a plain word.
+    function fire(id, text, o2 = {}) {
+      const t = o2.t !== undefined ? o2.t : now();
+      if (phase !== 'fight' || !text) return null;
+      const c = chips(t).find(x => x.id === id);
+      if (!c) return submit(text, o2);
+      shiftStack();
+      return onChip(c, o2.clean !== false, o2.ms || 0, t);
+    }
     function onChip(c, clean, ms, t) {
       if (sigs.includes(c)) {
         stats.keys++;
@@ -640,7 +651,7 @@ window.RushFight = (() => {
     }
 
     return {
-      start, tick, chips, stack: () => stack.slice(), key, submit, cast, state, summary, shift,
+      start, tick, chips, stack: () => stack.slice(), key, submit, fire, cast, state, summary, shift,
       marks: () => [...marks].map(([abs, fake]) => ({ i: abs - stackBase, fake })).filter(x => x.i >= 0),
       get phase() { return phase; }, plan,
       debug: {

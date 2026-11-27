@@ -27,7 +27,7 @@
           <div class="sb-hpn"><b data-a="hp">0</b><span data-a="hpp"></span></div>
           <div class="sb-enrage" data-a="enrage"></div>
         </div>
-        <div class="sb-code" data-a="code" hidden><div class="sb-code-h"><span>build.js</span><span>Fixes come up in your line</span></div><ol data-a="lines"></ol></div>
+        <div class="sb-code" data-a="code" hidden><div class="sb-code-h"><span>build.js</span><span>Fix it before it compiles</span></div><ol data-a="lines"></ol></div>
         <div class="sb-labels" data-a="labels" aria-hidden="true"></div>
         <div class="sb-pops" data-a="pops" aria-hidden="true"></div>
         <ol class="sb-ticker" data-a="ticker" aria-label="Damage"></ol>
@@ -136,7 +136,7 @@
       if (s.line) {
         if (!flow) { a('line').innerHTML = ''; flow = WordFlow.create(a('line'), { lines: 3 }); }
         // the front word changed: the old one stays on the line as typed, red if it was missed
-        const key = s.line.cur + '|' + (s.line.head ? s.line.head.id : 'stack:' + s.stack.length + ':' + s.line.next[0]);
+        const key = s.line.cur + '|' + s.line.next.slice(0, 3).join(' ');
         if (lineWas && lineWas.key !== key && lineWas.cur) { flow.push(lineWas.cur, lineWas.typed || lineWas.cur, !missed, lineWas.kind || false); missed = false; }
         lineWas = { key, cur: s.line.cur, typed: typed || (lineWas && lineWas.key === key ? lineWas.typed : ''), kind: s.line.head ? s.line.head.kind : null };
         const tags = s.line.tags.map(g => g && (g.kind === 'head' ? { ...g, color: OWN[g.own] } : g));

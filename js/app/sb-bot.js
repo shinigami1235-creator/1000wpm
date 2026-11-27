@@ -14,8 +14,8 @@ window.SuperBot = (() => {
     const can = x => x.left == null || x.left > x.word.length * keyMs() + 120;
     const soon = list => list.filter(can).sort((a, b) => (a.left ?? 1e9) - (b.left ?? 1e9))[0];
     function choose(s) {
-      // the one line: only the word at its front can be typed
-      if (s.line) { const h = s.line.head; return h ? { id: h.id, word: h.word, i: 0, kind: h.kind } : s.stack.length ? { id: 'stack', word: s.stack[0], i: 0, kind: 'stack' } : null; }
+      // the one line: Art only types his stack; lit words fire on their own
+      if (s.line) return s.stack.length ? { id: 'stack', word: s.stack[0], i: 0, kind: 'stack' } : null;
       const T = s.targets, k = kind => T.filter(x => x.kind === kind);
       let p = soon(k('block')) || soon(k('packet')) || soon(k('weak')) || soon(k('crowd')) || soon(k('spell'));
       if (!p && s.boss === 'compiler') p = soon(k('fix'));
@@ -32,7 +32,7 @@ window.SuperBot = (() => {
     }
     function alive(s) {
       if (!plan || plan.done) return false;
-      if (s.line) return (s.line.head ? s.line.head.word : s.stack[0]) === plan.word && (s.line.head ? s.line.head.id : 'stack') === plan.id;
+      if (s.line) return s.stack[0] === plan.word;
       if (plan.id === 'stack') return s.stack[0] === plan.word;
       return s.targets.some(x => x.id === plan.id);
     }

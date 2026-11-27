@@ -67,7 +67,7 @@ Router.register('hangar', (() => {
       const it = (REWARDS.shop.bot || []).find(x => x.id === b.dataset.buyid); if (!it) return;
       const r = WPM.buy(it);
       if (r.ok) { voice('heart'); stage && stage.tryFace('heart'); paint(); }
-      else if (r.reason === 'coins') { const m = q('[data-buymsg]'); if (m) m.textContent = `${it.name} costs ${UI.fmt(it.price)} coins. You have ${UI.fmt(WPM.coins())}.`; voice('sad'); }
+      else if (r.reason === 'coins') { const m = q('[data-buymsg]'); if (m) m.textContent = `You have ${UI.fmt(WPM.coins())} coins.`; voice('sad'); }
     });
     const pane = q('[data-pane]');
     pane.addEventListener('click', e => {
@@ -124,18 +124,17 @@ Router.register('hangar', (() => {
       const sg = BotKit.OPTIONS.sig[store.active];
       h += `<div class="hg-group"><span class="label">${esc(sg[0])}</span>${btns('sig', [[0, sg[1]], [1, sg[2]]])}</div>`;
       h += `<div class="hg-group"><span class="label">On its head</span>${btns('top', BotKit.OPTIONS.top)}</div>`;
-      h += `<div class="hg-group"><span class="label">Back</span>${btns('back', BotKit.OPTIONS.back)}<p class="hg-hint">Head and back parts fit every bot.</p></div>`;
+      h += `<div class="hg-group"><span class="label">Back</span>${btns('back', BotKit.OPTIONS.back)}</div>`;
     } else {
       h += `<div class="hg-group"><label class="label" for="hg-nm">Name</label><input id="hg-nm" class="field" data-nm type="text" maxlength="12" value="${esc(L.name)}" placeholder="${esc(B.name)}"></div>`;
-      h += `<div class="hg-group"><span class="label">Stickers</span>${Object.entries(BotKit.STICKERS).map(([k, n]) => `<label class="hg-stick"><input type="checkbox" data-stick="${k}" ${L.stickers.includes(k) ? 'checked' : ''}> ${esc(n)}</label>`).join('')}<p class="hg-hint">One sticker for each boss your bot helped repair. Pick which ones show.</p></div>`;
-      h += `<div class="hg-group"><label class="label" for="hg-wear">Battle wear</label><input id="hg-wear" data-wear type="range" min="0" max="100" value="${Math.round(L.wear * 100)}"><p class="hg-hint">Scratches build up over fights. Slide to 0 to repaint.</p></div>`;
+      h += `<div class="hg-group"><span class="label">Stickers</span>${Object.entries(BotKit.STICKERS).map(([k, n]) => `<label class="hg-stick"><input type="checkbox" data-stick="${k}" ${L.stickers.includes(k) ? 'checked' : ''}> ${esc(n)}</label>`).join('')}<p class="hg-hint">One for each boss your bot helped repair.</p></div>`;
+      h += `<div class="hg-group"><label class="label" for="hg-wear">Battle wear</label><input id="hg-wear" data-wear type="range" min="0" max="100" value="${Math.round(L.wear * 100)}"></div>`;
     }
     q('[data-pane]').innerHTML = h;
     // parts you're trying on and don't own yet: a Buy button for each
     const lk = BotKit.locked(L), buy = q('[data-buy]');
     buy.hidden = !lk.length;
-    buy.innerHTML = lk.length ? `<p class="hg-hint">You're trying on ${lk.map(it => esc(it.name.toLowerCase())).join(', ')}. Parts you haven't bought stay off your bot in fights.</p>
-      <div class="hg-buyrow">${lk.map(it => `<button type="button" class="btn" data-buyid="${esc(it.id)}">Buy ${esc(it.name)} ${price(it)}</button>`).join('')}</div><p class="hg-hint" data-buymsg></p>` : '';
+    buy.innerHTML = lk.length ? `<div class="hg-buyrow">${lk.map(it => `<button type="button" class="btn" data-buyid="${esc(it.id)}">Buy ${esc(it.name)} ${price(it)}</button>`).join('')}</div><p class="hg-hint" data-buymsg></p>` : '';
   }
 
   async function start() {

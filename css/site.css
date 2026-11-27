@@ -1483,6 +1483,7 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .fw.done.was-block i.ok, .fw.done.was-assist i.ok { color: var(--cyan); }
 /* coming, not open yet: the colour without the timer, and it can already be typed (it waits armed) */
 .fw.tag.soon { color: color-mix(in srgb, var(--kc) 70%, var(--ink-3)); }
+.fw-lbl { position: absolute; left: 0; top: -.62em; font: 600 .34em/1 var(--f-label); letter-spacing: .08em; color: var(--kc); white-space: nowrap; pointer-events: none; }
 .fw.tag.soon.first { text-decoration: underline dotted color-mix(in srgb, var(--kc) 60%, transparent); text-underline-offset: .28em; }
 .fw.done.was-spell i.ok { color: #ff9bf5; }
 /* the raid's shield on the arena while a block attack winds up */

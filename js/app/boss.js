@@ -14,24 +14,24 @@ Router.register('boss', (() => {
     '',
     'It now puts up firewalls and throws packets at you.',
     'It now spawns bugs that heal it.',
-    'Block words are now two words long.',
+    'Blocks now light two words.',
     'It attacks twice as often now.',
   ];
   const tipsFor = name => ({
-    slam: 'The red word in your line blocks the attack. Type it before its timer runs out.',
-    phrase: 'Type both words and the space between them to block.',
-    volley: 'Type a cyan packet before it reaches you to send it back for triple damage.',
+    slam: 'Type the red lit word before its timer runs out to block.',
+    phrase: 'Type both lit words to block.',
+    volley: 'Type the green lit word to send a packet back. Triple damage.',
     shield: 'Your hits go into the firewall until the raid breaks it. The kernel opens when it breaks.',
-    adds: `Type the amber words to delete the bugs before they heal ${name}.`,
+    adds: `Type the purple lit words to delete bugs before they heal ${name}.`,
     weak: 'The kernel is open and your hits deal double damage.',
     weak3: 'The kernel is open and your hits deal triple damage.',
     stagger: `Type six words fast to stagger ${name}. Your next three hits crit.`,
     start: 'Type the highlighted word and press Space. Each word deals one damage per letter.',
     combo: 'Words with no typo raise your combo and make your shots bigger. A typo drops it one tier.',
-    spell: 'Type the green spell word with no typo to cast it. It goes away after 15 seconds.',
+    spell: 'Type a spell\'s lit words with no typo to cast it.',
     orb: 'Every word charges your orb. It fires after six words or when you stop typing.',
-    charge: `${name} is charging a punch. Everything the raid types fills the break bar, so keep typing to break it before it lands.`,
-    laser: 'Type the red phrase before the laser fires.',
+    charge: `Keep typing to break ${name}'s punch before it lands.`,
+    laser: 'Type the red lit words before the laser fires.',
   });
   // integrity a charged punch takes from everyone when the raid doesn't break it: two of your four pips
   const CHARGE_DMG = 50;
@@ -477,6 +477,16 @@ Router.register('boss', (() => {
       if (clean) squad.cleanWord();
       TT.click(true);
     } else if (ok) {
+      hitWord(word, clean, t);
+    } else {
+      sess.missed++;
+      if (me) me.miss('wrong'); else combo = 0;
+      misses.push({ typed, word });
+    }
+    after(word, ok, null);
+  }
+  // a word typed right: its damage, the combo and the knock-back every set of words
+  function hitWord(word, clean, t) {
       sess.good++;
       sess.letters += word.length;
       sess.words++;
@@ -501,12 +511,6 @@ Router.register('boss', (() => {
       if (++setCount >= setN) { setCount = 0; if (scene) scene.setHit(clean ? 1 : 0.7); sfx('crit'); }
       milestone('combo', combo);
       if (combo && combo % 5 === 0) WPM.track('combo', { n: combo, mode: 'boss' });
-    } else {
-      sess.missed++;
-      if (me) me.miss('wrong'); else combo = 0;
-      misses.push({ typed, word });
-    }
-    after(word, ok, null);
   }
   // the common end of every word: history, the flow, a fresh line
   function after(word, ok, kind) {
@@ -523,17 +527,19 @@ Router.register('boss', (() => {
   // a tagged word. A spell or a block can be a few words: each one has to be right, and the last one
   // fires it (a typo anywhere fizzles the spell or breaks the block). The rest fire on their own word.
   function tagged(word, tag, ok, wasClean, t) {
+    // a lit word is still one of your words: it hits like any other, then does its thing
+    const hit = () => { if (squad && squad.down()) { sess.good++; if (wasClean) squad.cleanWord(); } else hitWord(word, wasClean, t); };
     const m = tag.src ? mech.find(x => x.id === tag.src) : null;
     if (tag.of > 1) {
       const r = runs[tag.src] ||= { ok: true };
       r.ok = r.ok && ok && (tag.kind !== 'spell' || wasClean);
-      if (tag.part < tag.of - 1) { if (ok) countWord(wasClean); else missWord(word); return; }
+      if (tag.part < tag.of - 1) { if (ok) hit(); else missWord(word); return; }
       delete runs[tag.src];
       ok = r.ok;
     }
-    if (tag.kind === 'spell') { castSpell(tag.spell, ok && wasClean); return; }
+    if (tag.kind === 'spell') { if (ok) hit(); else missWord(word); castSpell(tag.spell, ok && wasClean); return; }
     if (!ok) { missWord(word); return; }
-    countWord(wasClean);
+    hit();
     if (tag.kind === 'assist') {
       if (t < tag.ev.start + R.COVER_AFTER) { armed.set(tag.src, tag); pop('COVER READY', 'cyan'); sfx('blockOk'); return; }
       assist(tag, t); return;
@@ -604,15 +610,21 @@ Router.register('boss', (() => {
 
   // ---------- the line ----------
   function syncTags() { while (tags.length < stack.length) tags.push(null); if (tags.length > stack.length) tags.length = stack.length; }
-  // turns the next free run of words (never the one you're on) into these words, tagged
-  function place(words, tag, from = 1) {
+  // Gid, 27 Nov 2026 (second pass): a special never changes a word. It highlights a run of n words
+  // already in your line, at least two ahead of the one you're on, in its colour with a label and a
+  // timer; typing those words right in time does the thing. The words stay what they were, so your
+  // streak and your plan for the line never break.
+  const NEAR = 2;
+  const who = m => (m.who && m.who.handle ? ' ' + m.who.handle.toUpperCase() : '');
+  const LABEL = m => ({ block: 'BLOCK', dodge: 'DODGE', return: 'SEND BACK', add: 'BUG', assist: 'COVER', heal: 'HEAL' + who(m), revive: 'REVIVE' + who(m), cover: 'COVER' + who(m) })[m.kind] || '';
+  function place(n, tag, from = NEAR) {
     if (stack.length < 40) stack.push(...moreWords(60));
     syncTags();
-    for (let i = Math.max(1, from, WordFlow.far(flow)); i + words.length <= stack.length; i++) {
+    for (let i = Math.max(NEAR, from); i + n <= stack.length; i++) {
       let free = true;
-      for (let j = 0; j < words.length; j++) if (tags[i + j]) { free = false; break; }
+      for (let j = 0; j < n; j++) if (tags[i + j]) { free = false; break; }
       if (!free) continue;
-      words.forEach((w, j) => { stack[i + j] = w; tags[i + j] = { ...tag, part: j, of: words.length }; });
+      for (let j = 0; j < n; j++) tags[i + j] = { ...tag, part: j, of: n };
       return i;
     }
     return -1;
@@ -668,7 +680,7 @@ Router.register('boss', (() => {
       else if (t >= a.due) armed.delete(id);
     }
     if (isDown) return;
-    const far = WordFlow.far(flow), toFar = reachMs(far);
+    const far = NEAR, toFar = reachMs(far);
     for (const m of [...mech, ...soon]) {
       if (inLine.has(m.id) || mine.has(m.id) || armed.has(m.id)) continue;
       // one still to come goes in once it's within a line or so of your reach, at the word you'd get to
@@ -683,14 +695,14 @@ Router.register('boss', (() => {
       // aimed at you, so no words and no hit; anything else just isn't offered
       if (m.due && t + reachMs(at) + typeMs > m.due) { if (m.sticky) continue; if (m.kind === 'block' || m.kind === 'return') spared.add(m.id); inLine.add(m.id); tr('spared', m.kind, m.id, Math.round(toFar), Math.round(m.due - t)); continue; }
       const tag = { kind: m.kind, src: m.id, due: m.due, total: m.total, ev: m.ev, k: m.k, word: m.word, soon: !!(m.opens && m.opens > t) };
-      at = place(m.word.split(' '), tag, at);
+      at = place(m.word.split(' ').length, { ...tag, label: LABEL(m) }, at);
       tr('placed', m.kind, m.id, at, Math.round(toFar), Math.round(m.due - t));
       if (at >= 0) {
         inLine.add(m.id);
         if (m.kind === 'block') {
           // your first cover word goes straight after your block words, so it's already waiting there
           const id = `a:${m.ev.id}:0`, cw = R.coverWord(m.ev, 'you#0');
-          if (!inLine.has(id) && place([cw], { kind: 'assist', src: id, ev: m.ev, k: 0, word: cw, due: m.due, total: m.total }, at + m.word.split(' ').length) >= 0) inLine.add(id);
+          if (!inLine.has(id) && place(1, { kind: 'assist', src: id, ev: m.ev, k: 0, word: cw, due: m.due, total: m.total, label: 'COVER' }, at + m.word.split(' ').length) >= 0) inLine.add(id);
         }
       }
     }
@@ -730,10 +742,10 @@ Router.register('boss', (() => {
     me.on('spellEarned', e => {
       if (!el) return;
       const sp = e.spell;
-      if (place(sp.word.split(' '), { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color }, WordFlow.far(flow) + 1) < 0) return;
+      if (place(sp.word.split(' ').length, { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color, label: sp.word.toUpperCase() }, NEAR + 1) < 0) return;
       cSfx('offer');
       tip('spell');
-      pushFeed({ text: `Combo ${e.combo}: ${sp.word} is in your line`, cls: 'mile' });
+      pushFeed({ text: `Combo ${e.combo}: ${sp.word}`, cls: 'mile' });
       renderQueue();
     });
     me.on('offerEnd', () => {
@@ -858,7 +870,7 @@ Router.register('boss', (() => {
     syncTags();
     const t = now();
     // a word whose attack hasn't opened yet has no timer: it's coming, and you can already type it
-    const tg = tags.slice(0, 51).map(g => g && { kind: g.kind, color: g.color, first: g.part === 0, last: g.part === g.of - 1, soon: !!g.soon,
+    const tg = tags.slice(0, 51).map(g => g && { kind: g.kind, color: g.color, first: g.part === 0, last: g.part === g.of - 1, soon: !!g.soon, label: g.part === 0 ? g.label : '',
       ms: g.total && g.due && !g.soon ? g.total : 0, el: g.total && g.due && !g.soon ? Math.max(0, g.total - (g.due - t)) : 0 });
     flow.render({ cur: stack[0], typed, mine: true, next: stack.slice(1, 51), tags: tg });
     if (me && q('track') && !q('track').dataset.key) paintTrack(me.state());

@@ -28,7 +28,10 @@
 //   twins   Syntax and Echo. Type a name to aim. When one falls, the other must fall within 10 s
 //           or the first comes back at half HP.
 //
-//   const run = PartyRules.run({ seed, run: 'relay', difficulty: 'normal', players, words, counters, foeWords, art, config });
+//   const run = PartyRules.run({ seed, run: 'relay', difficulty: 'normal', players, words, counters, foeWords, art, config, lit });
+//   lit: ids of players who play with lit words (Gid, 27 Nov 2026): they only type their stream, and a
+//   counter, mite, heal, revive, shield, buff or spell lights up stream words two or more ahead
+//   (state().players[i].marks). Typing those words right does the thing. Bots type extras by name.
 //   run.input(playerId, k, t), run.advance(t), run.state(), run.on(fn), run.result()
 //   players: [{ id, name, role, bot, division?, rank? }]   division and rank: the CTRL perks (CTRL.md)
 //   words(playerId, fight) -> [word]   counters(fight) -> [word]   foeWords(fight) -> [word] (mites, cars; counters if missing)
@@ -121,7 +124,7 @@
     const recent = new Map();   // foe words popped in the last moments: a late finish is not a mistake
     const queue = [];
     const fights = [];
-    const P = new Map();
+    const P = new Map(), LIT = new Set(o.lit || []);
 
     const tierOf = c => TEAM_TIERS.reduce((t, x, i) => (c >= x.at ? i : t), 0);
     function schedule(at, fn) { let k = queue.length; while (k > 0 && queue[k - 1].at > at) k--; queue.splice(k, 0, { at, fn }); }
@@ -131,7 +134,7 @@
 
     const blank = () => ({ keys: 0, good: 0, words: 0, wrong: 0, typos: 0, chars: 0, dmg: 0, blocks: 0, buffs: 0, bestCombo: 0, spells: [], ms: 0, heals: 0, healed: 0, shields: 0, revives: 0, pops: 0, cuts: 0, downs: 0, taken: 0 });
     const teamK = 1 + Math.max(0, ...o.players.map(p => (root.Combat && root.Combat.Perks && p.division ? root.Combat.Perks.team(p.division, p.rank || 1) : 0)));
-    o.players.forEach((p, i) => P.set(p.id, { ...p, i, handle: H[p.id], hp: cfg.hp, down: false, downUntil: 0, shield: 0, healAt: 0, shieldAt: 0, target: null, stats: blank(), fightStats: [] }));
+    o.players.forEach((p, i) => P.set(p.id, { ...p, i, handle: H[p.id], hp: cfg.hp, down: false, downUntil: 0, shield: 0, healAt: 0, shieldAt: 0, target: null, stats: blank(), fightStats: [], lit: LIT.has(p.id), marks: [] }));
 
     // ---------- foes ----------
     const alive = () => foes.filter(x => x.alive);
@@ -171,7 +174,7 @@
       p.eng.on('spellOffer', x => emit({ type: 'offer', id: p.id, spells: x.spells.map(s => s.id), until: x.until, at: clock }));
       p.eng.on('offerEnd', x => emit({ type: 'offerEnd', id: p.id, reason: x.reason, at: clock }));
       p.eng.on('combo', c => { p.stats.bestCombo = Math.max(p.stats.bestCombo, c.combo); });
-      p.ty = root.NetTypist.create({ stream: () => p.list[p.idx % Math.max(1, p.list.length)] || '', extras: () => extrasFor(p) });
+      p.ty = root.NetTypist.create({ stream: () => p.list[p.idx % Math.max(1, p.list.length)] || '', extras: () => (p.lit ? [] : extrasFor(p)) });
     }
 
     // the words a player may type besides the stream, most urgent first
@@ -195,6 +198,32 @@
       const off = p.eng.offer();
       if (off) for (const id of off.spells) ex.push({ id: 'spell:' + id, word: Cb().spell(id).word, kind: 'spell', spell: id });
       return ex;
+    }
+    // lit words: each extra the player could type lights stream words from two ahead of the one they're on
+    const LIT_LABEL = { counter: 'BLOCK', foe: 'POP', revive: 'REVIVE', heal: 'HEAL', shield: 'SHIELD', buff: 'BUFF', spell: '' };
+    function syncMarks(p) {
+      if (!p.lit) return;
+      if (phase !== 'fight' || p.down) { p.marks = []; return; }
+      const ex = extrasFor(p).filter(x => x.kind !== 'aim');
+      const want = [];
+      let buff = false, spell = false;
+      for (const x of ex) {
+        if (x.kind === 'buff') { if (buff) continue; buff = true; }
+        if (x.kind === 'spell') { if (spell) continue; spell = true; }
+        want.push(x);
+      }
+      const ids = new Set(want.map(x => x.id));
+      p.marks = p.marks.filter(m => m.pos + m.n > p.idx && (ids.has(m.id) || m.pos <= p.idx));
+      const busy = i => p.marks.some(m => i >= m.pos && i < m.pos + m.n);
+      for (const x of want) {
+        if (p.marks.some(m => m.id === x.id)) continue;
+        const n = x.kind === 'spell' ? x.word.split(' ').length : 1;
+        let i = p.idx + 2;
+        while ([...Array(n).keys()].some(j => busy(i + j))) i++;
+        const who = x.who ? P.get(x.who) : null;
+        p.marks.push({ id: x.id, kind: x.kind, word: x.word, pos: i, n, ok: true,
+          label: x.kind === 'spell' ? x.word.toUpperCase() : LIT_LABEL[x.kind] + (who && who !== p ? ' ' + who.handle.toUpperCase() : '') });
+      }
     }
     const healer = p => p.role === 'support' || !has('support');
     function canHeal(p, q) { return healer(p) && q.hp < cfg.hp && clock >= p.healAt; }
@@ -460,6 +489,21 @@
         if (s.ok && s.clean) { p.downUntil = Math.max(clock, p.downUntil - cfg.rebootStep); st.chars += s.word.length + 1; emit({ type: 'rebootStep', id: p.id, until: p.downUntil, at: t }); }
         return;
       }
+      // a lit stream word: the run's words all typed right, and the last one fires its extra
+      if (p.lit && s.kind === 'stream') {
+        const m = p.marks.find(x => p.idx >= x.pos && p.idx < x.pos + x.n);
+        if (m) {
+          m.ok = m.ok && s.ok && (m.kind !== 'spell' || s.clean);
+          if (p.idx === m.pos + m.n - 1) {
+            p.marks = p.marks.filter(x => x !== m);
+            if (m.ok) {
+              p.idx++;
+              onSubmit(p, { ...s, kind: m.kind, id: m.id, word: m.word, ok: true, letters: s.letters }, t);
+              return;
+            }
+          }
+        }
+      }
       if (s.kind === 'counter') {
         if (!attack || attack.done || s.word !== attack.word) return;
         if (!s.ok) { slip(); p.eng.miss('wrong'); emit({ type: 'counterMiss', id: p.id, at: t }); return; }
@@ -571,6 +615,7 @@
       }
       clock = Math.max(clock, t);
       if (phase === 'fight') for (const p of P.values()) p.eng.tick();
+      for (const p of P.values()) syncMarks(p);
     }
 
     function input(id, k, t) {
@@ -600,6 +645,7 @@
           id: p.id, name: p.name, role: p.role, bot: !!p.bot, handle: p.handle, hp: Math.max(0, Math.round(p.hp)), down: p.down, downLeft: p.down ? Math.max(0, p.downUntil - clock) : 0,
           shield: !!p.shield, target: p.target, healIn: Math.max(0, p.healAt - clock), shieldIn: Math.max(0, p.shieldAt - clock),
           typed: p.ty ? p.ty.state().typed : '', idx: p.idx || 0,
+          marks: p.lit ? p.marks.map(m => ({ id: m.id, kind: m.kind, pos: m.pos, n: m.n, label: m.label })) : [],
           combo: p.eng ? p.eng.state().combo : 0, tier: p.eng ? p.eng.state().tier : 0, acc: p.eng ? Math.round(p.eng.acc() * 1000) / 10 : 100,
           offer: p.eng && p.eng.offer() ? p.eng.offer().spells.slice() : [], offerUntil: p.eng && p.eng.offer() ? p.eng.offer().until : 0,
           statuses: p.eng ? p.eng.statuses().map(x => x.name) : [],

@@ -14,9 +14,9 @@ Router.register('party', (() => {
   const ROLE_ICON = { striker: 'bolt', guard: 'lock', support: 'flame' };
   let el = null, off = [], view = '', run = null, words = [], scene = null, keys = null, ty = null, onDoc = null, onSound = null, onResize = null, raf = 0, lastState = null, endShown = false;
   let create = { run: 'relay', difficulty: 'normal' };
-  // the one line (Gid, 27 Nov 2026; js/app/combat/inline.js): counters, mites, heals, revives, shields,
-  // buffs and spells go into your own words past the middle line; the word at the front is what you type
-  let flow = null, line = null, lineIdx = -1, liveCps = 0, lastWordAt = 0;
+  // lit words (Gid, 27 Nov 2026): you only type your stream; counters, mites, heals, revives, shields,
+  // buffs and spells light up stream words two or more ahead (PartyRules lit, players[i].marks)
+  let flow = null;
 
   function mount(root, params) {
     TT.useWeaponSound();
@@ -214,17 +214,17 @@ Router.register('party', (() => {
   const COLORS = ['#3ee6ff', '#f2b330', '#ff7ad9'];
   const colorOf = id => { if (id === 'me') return Theme.hex('accent'); const others = run.players.filter(p => p.id !== 'me'); return COLORS[Math.max(0, others.findIndex(p => p.id === id)) % COLORS.length]; };
   const HOW = {
-    hydra: 'Each player\'s words hit a different head, and move on when it drops. A head grows back unless the others drop soon after.',
-    swarm: 'A mite\'s word shows up in your line. Type it before the mite reaches the player it flies at.',
-    snake: 'The last cars\' words show up in your line. Type them to cut the cars off. A shorter train hits softer.',
+    hydra: 'Drop all three heads close together or they grow back.',
+    swarm: 'Type a lit word to pop a mite before it lands.',
+    snake: 'Type lit words to cut cars off the tail.',
     golem: 'When the core opens, everything does double damage.',
-    twins: 'Each player\'s words hit one twin. Drop both within 12 s of each other or the first one comes back.',
+    twins: 'Drop both within 12 s of each other.',
   };
-  HOW.mites = 'Mites carry words too. They show up in your line. Type one before it lands.';
+  HOW.mites = 'Type a lit word to pop a mite before it lands.';
   const MUSIC = ['stage1', 'stage2', 'stage3', 'stage4', 'stage5', 'stage4', 'stage5', 'stage3'];
   const ROLE_HOW = {
     striker: 'Your words hit 1.3 times harder.',
-    guard: 'Type the red word to block. Type a teammate\'s name to shield them.',
+    guard: 'Type lit words to block and shield.',
     support: 'Type a teammate\'s name to heal them. Buffs show up when the meter fills.',
   };
 
@@ -277,11 +277,10 @@ Router.register('party', (() => {
       onFrame: placeTags,
     });
     el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); Net.lobbies.leave().then(() => { location.hash = '#/party'; browser(); }); });
-    line = InlineLine.create({ flow: () => flow, cps: () => { const b = (WPM.stats().avgWpm || 40) * 5 / 60; return 0.9 * (liveCps ? 0.8 * liveCps + 0.2 * b : b); } });
-    lineIdx = -1; flow = null;
+    flow = null;
     ty = NetTypist.create({
-      stream: () => { if (lineHead()) return ''; const st = lastState; if (!st || !words.length) return ''; const p = st.players.find(x => x.id === 'me'); return p ? words[p.idx % words.length] || '' : ''; },
-      extras: () => { const h = lineHead(); return h ? [h.x] : []; },
+      stream: () => { const st = lastState; if (!st || !words.length) return ''; const p = st.players.find(x => x.id === 'me'); return p ? words[p.idx % words.length] || '' : ''; },
+      extras: () => [],
     });
     const box = el.querySelector('[data-box]');
     keys = TT.captureKeys(box, { label: 'Type the words to attack', onChar: ch => key(ch), onBack: w => key(w ? 'CtrlBackspace' : 'Backspace') });
@@ -425,18 +424,13 @@ Router.register('party', (() => {
     if (view !== 'run' || !lastState || lastState.phase !== 'fight') return;
     const t = Net.match.clock();
     Net.match.input(k, t);
-    const was = ty.state().typed;
+    const r0 = lastState && lastState.players.find(x => x.id === 'me');
+    const m0 = r0 && (r0.marks || []).find(m => r0.idx >= m.pos && r0.idx < m.pos + m.n);
+    litWas = m0 ? LOOK[m0.kind] || 'add' : null;
     const r = ty.key(k, t);
     if (r && r.key) TT.click(false);
-    if (r && r.key && !was && line) line.hold(base());
-    if (r && r.back && !ty.state().typed && line) line.release();
-    if (r && r.submit) {
-      const tw = performance.now();
-      if (lastWordAt && tw - lastWordAt < 4000) { const c = 1000 * (r.submit.word.length + 1) / (tw - lastWordAt); liveCps = liveCps ? liveCps * 0.75 + c * 0.25 : c; }
-      lastWordAt = tw;
-      if (r.submit.kind !== 'stream' && line) { line.done(r.submit.id); line.release(); }
-      if (flow) flow.push(r.submit.word, r.submit.typed, r.submit.ok, r.submit.kind === 'stream' ? false : LOOK[r.submit.kind] || 'add');
-    }
+    if (r && r.submit && flow) flow.push(r.submit.word, r.submit.typed, r.submit.ok, litWas || false);
+    litWas = null;
     const cur = Net.match.current(); if (cur && cur.state) lastState = cur.state;
     paintWords();
     if (lastState) { paintTags(lastState); paintTeam(lastState); }
@@ -573,42 +567,19 @@ Router.register('party', (() => {
   }
   // what each extra looks like in the line (the World Boss's colours, wordflow.js)
   const LOOK = { counter: 'block', foe: 'add', revive: 'revive', heal: 'heal', shield: 'cover', buff: 'boost', spell: 'spell' };
-  // your stream from the current word on
-  function base() {
-    const st = lastState, p = st && st.players.find(x => x.id === 'me');
-    if (!p || !words.length) return [];
-    const out = [];
-    for (let i = 0; i < 40; i++) out.push(words[(p.idx + i) % words.length]);
-    return out;
-  }
-  // the extras that go in the line: one buff and one spell on offer (the rarest) at a time, no aiming
-  function lineList() {
-    const list = targets().filter(x => x.kind !== 'aim');
-    const out = [];
-    let buff = false, spell = false;
-    for (const x of list) {
-      if (x.kind === 'buff') { if (buff) continue; buff = true; }
-      if (x.kind === 'spell') { if (spell) continue; spell = true; }
-      const sp = x.kind === 'spell' && Combat.spell(x.spell);
-      out.push({ id: x.id, kind: LOOK[x.kind] || 'add', word: x.word, color: sp ? sp.color : undefined, x });
-    }
-    return out;
-  }
-  function lineHead() { return line && lastState && lastState.phase === 'fight' ? line.view(base()).head : null; }
+  let litWas = null;
   function paintWords() {
     const st = lastState, box = el && el.querySelector('[data-line]');
     if (!st || !box) return;
-    const p = st.players.find(x => x.id === 'me'); if (!p) return;
-    if (!words.length) return;
-    // the stream moved on: specials waiting in the line move up with it
-    if (lineIdx >= 0 && p.idx > lineIdx) for (let i = lineIdx; i < p.idx; i++) line.shift();
-    lineIdx = p.idx;
-    const b = base();
-    if (st.phase === 'fight') line.sync(lineList(), b); else line.clear();
+    const p = st.players.find(x => x.id === 'me'); if (!p || !words.length) return;
+    const base = []; for (let i = 0; i < 52; i++) base.push(words[(p.idx + i) % words.length]);
+    const tags = base.map(() => null);
+    for (const m of p.marks || []) for (let j = 0; j < m.n; j++) {
+      const i = m.pos - p.idx + j;
+      if (i >= 0 && i < tags.length) tags[i] = { kind: LOOK[m.kind] || 'add', first: j === 0, last: j === m.n - 1, label: j === 0 ? m.label : '', ms: m.kind === 'counter' && st.attack ? st.attack.land - st.attack.start : 0, el: m.kind === 'counter' && st.attack ? st.clock - st.attack.start : 0 };
+    }
     if (!flow) { box.innerHTML = ''; flow = WordFlow.create(box, { lines: 3 }); }
-    const v = line.view(b, Net.match.clock());
-    const s2 = ty.state();
-    flow.render({ cur: v.cur, typed: s2.typed, mine: true, next: v.next, tags: v.tags });
+    flow.render({ cur: base[0], typed: ty.state().typed, mine: true, next: base.slice(1), tags });
   }
   function letters(w, typed) {
     let out = '';
@@ -631,7 +602,7 @@ Router.register('party', (() => {
     if (st.attack) {
       const left = Math.max(0, (st.attack.land - st.clock) / 1000);
       const at = st.attack.target === 'team' ? 'Everyone' : st.attack.target === 'me' ? 'You' : who(st.attack.target).name;
-      chips.push(`<span class="mu-chip wait"><small>Hit on ${e(at)} in</small><b class="num">${left.toFixed(1)}s</b><em>${canCounter ? 'Type the red word to block it' : 'Your guard blocks it'}</em></span>`);
+      chips.push(`<span class="mu-chip wait"><small>Hit on ${e(at)} in</small><b class="num">${left.toFixed(1)}s</b>${canCounter ? '' : '<em>Your guard blocks it</em>'}</span>`);
     }
     if (p.down) chips.push(`<span class="mu-chip down"><small>You are down</small><b class="num">${Math.ceil(p.downLeft / 1000)}s</b><em>Each word takes a second off</em></span>`);
     if (p.role === 'support' && !st.buffOffer) chips.push(`<span class="mu-chip meter"><small>Team meter</small><b class="num">${Math.round(st.meter)}%</b></span>`);
