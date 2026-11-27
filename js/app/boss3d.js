@@ -444,14 +444,14 @@ window.BossScene = (() => {
       // lines mesh and one shell, so a bare boss costs two draw calls a bone; each plate keeps an empty
       // stand-in where it was, for the hit points pinned to it.
       const ghostCol = C(kit.glowColor || '#ff3a2e', 1.7);
-      const ghostLine = keep(new THREE.LineBasicMaterial({ color: ghostCol.clone(), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const ghostLine = keep(new THREE.LineBasicMaterial({ color: ghostCol.clone(), transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
       const ghostFill = keep(new THREE.ShaderMaterial({
         uniforms: { uCol: { value: ghostCol.clone().multiplyScalar(0.7) }, uT: { value: 0 }, uK: { value: 1 } },
         vertexShader: `varying vec3 vN; varying vec3 vV; varying float vY;
           void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vY = w.y; vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz); gl_Position = projectionMatrix * viewMatrix * w; }`,
         fragmentShader: `uniform vec3 uCol; uniform float uT; uniform float uK; varying vec3 vN; varying vec3 vV; varying float vY;
           void main(){ float f = pow(clamp(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 2.0); float scan = smoothstep(0.82, 1.0, sin(vY * 9.0 - uT * 5.0));
-            float a = (0.05 + f * 0.5 + scan * 0.12) * uK; gl_FragColor = vec4(uCol * a, a); }`,
+            float a = (0.03 + f * 0.3 + scan * 0.08) * uK; gl_FragColor = vec4(uCol * a, a); }`,
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       }));
       const ghostBy = new Map(), gm4 = new THREE.Matrix4(), gs = new V();
@@ -535,10 +535,11 @@ window.BossScene = (() => {
       if (instant) { m.visible = false; kit.shed.push(m); return true; }
       scene.attach(m);
       const out = m.getWorldPosition(vF).sub(root.position).setY(0).normalize();
-      // out to the sides and back, not at the camera, so the plates don't land over the squad
-      m.userData.vel = new V(out.x * rnd(4, 7), rnd(6, 10), out.z * rnd(1, 2.5) + rnd(-4, 1)).multiplyScalar(power);
+      // out to the sides and away from the view (the fight's frame always has the camera toward +z), so
+      // the plates never land over the squad or in front of the camera
+      m.userData.vel = new V(out.x * rnd(4, 7) + rnd(-1.5, 1.5), rnd(6, 10), rnd(-7, -2.5)).multiplyScalar(power);
       m.userData.spin = new V(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4)).multiplyScalar(power);
-      m.userData.life = rnd(2, 3.2);
+      m.userData.life = rnd(1.6, 2.6);
       kit.shed.push(m);
       if (m.userData.detail) return true;
       // Syntax Error's plates spark red and white, not the arena's green
@@ -560,7 +561,7 @@ window.BossScene = (() => {
           m.position.y = 0.9; u.vel.multiplyScalar(0.35); u.vel.y = Math.abs(u.vel.y) * 0.4; u.spin.multiplyScalar(0.5);
         }
         u.life -= dt;
-        if (u.life < 0) { m.position.y -= dt * 1.2; if (m.position.y < -3) m.visible = false; }
+        if (u.life < 0) { m.position.y -= dt * 2.2; if (m.position.y < -3) m.visible = false; }
       }
     }
     function unshed() {
