@@ -626,6 +626,33 @@ Combat.FX = (() => {
       aura('ward', true, { caster: cs });
     };
 
+    // Gid's two power-ups (28 Nov 2026): combo shield puts hex plates around you, frenzy a fast orange helix
+    SP['combo-shield'] = (e, cs) => {
+      const col = C('#7dd8ff');
+      P(cs, 'pos', t1);
+      burst(t1, 36, 7, col, 0.35, 0.7, G.hex, { drag: 2 });
+      flare(t1, col, 6, 0.3);
+      e.update = () => {
+        P(cs, 'pos', t1);
+        circle(t1.clone().setY(1.6), UP, 0.6 + ease(e.t / 0.5) * 2.2, 0.12, col, 1.5 * (1 - e.t / 0.6), 6);
+        return e.t < 0.6;
+      };
+      aura('cshield', true, { caster: cs, ms: (e.effect && e.effect.ms) || 10000 });
+    };
+    SP.frenzy = (e, cs) => {
+      const col = C('#ff7a3d');
+      P(cs, 'pos', t1);
+      flare(t1, col, 9, 0.35);
+      burst(t1, 50, 11, col, 0.4, 0.7, G.dot, { up: 0.8, drag: 2 });
+      e.update = () => {
+        P(cs, 'pos', t1);
+        const k = 1 - e.t / 0.5;
+        circle(t1.clone().setY(0.1), UP, 0.5 + e.t * 12, 0.16, col, 1.6 * k, 28);
+        return e.t < 0.5;
+      };
+      aura('frenzy', true, { caster: cs, ms: (e.effect && e.effect.ms) || 8000 });
+    };
+
     // Binary rain heals its caster (Gid, 25 Nov 2026): the zeros and ones fall on you, green
     // rings rise up you and a flare marks the heal. The caster adapter only gives pos(), so the
     // rain is sized around that point.
@@ -1101,13 +1128,20 @@ Combat.FX = (() => {
             pv = t4.copy(p);
           }
         }
-      } else if (a.name === 'hyper') {
+      } else if (a.name === 'cshield') {
         P(cs, 'pos', t1);
-        const col = C('#ffb066');
+        const col = C('#7dd8ff');
+        for (let i = 0; i < 4; i++) {
+          const ang = a.t * 1.2 + i * Math.PI / 2;
+          circle(t2.set(t1.x + Math.cos(ang) * 1.9, 1.5, t1.z + Math.sin(ang) * 1.9), t3.set(Math.cos(ang), 0, Math.sin(ang)), 0.55, 0.06, col, 1.1 * k, 6, a.t);
+        }
+      } else if (a.name === 'hyper' || a.name === 'frenzy') {
+        P(cs, 'pos', t1);
+        const fz = a.name === 'frenzy', col = C(fz ? '#ff7a3d' : '#ffb066');
         for (const s of [0, Math.PI]) {
           let pv = null;
           for (let j = 0; j <= 16; j++) {
-            const h = j / 16 * 3.6, ang = a.t * 5 + s + j * 0.6;
+            const h = j / 16 * 3.6, ang = a.t * (fz ? 8 : 5) + s + j * 0.6;
             const p = t3.set(t1.x + Math.cos(ang) * 1.3, h, t1.z + Math.sin(ang) * 1.3);
             if (pv) seg(pv, p, 0.1, s ? WHITE : col, (s ? 0.8 : 1.4) * k);
             pv = t4.copy(p);

@@ -39,7 +39,7 @@ window.RushPage = (() => {
     TT.useWeaponSound();
     let view = '', scene = null, keys = null, me = null, f = null, dir = null, run = null, plan = null;
     let typed = '', target = null, clean = true, wordT0 = 0, hist = [], over = null;
-    let timers = [], offs = [], later = [], hiddenAt = 0, comboShown = false, popT = 0, tintT = 0, chipKey = '';
+    let timers = [], offs = [], later = [], hiddenAt = 0, pausedAt = 0, comboShown = false, popT = 0, tintT = 0, chipKey = '';
     let tipQ = [], tipUntil = 0, seen = new Set(), lastBlocks = 0, tagRaf = 0, tagKey = '';
     const tags = new Map();   // signature id -> its word tag or pop-up window
     const ghostAt = new Map();
@@ -136,7 +136,7 @@ window.RushPage = (() => {
       scene = RushScene.mount(q('stage'), { onImpact });
       scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
         .catch(() => { const l = q('loading'); if (l) l.textContent = "The bosses can't load without an internet connection."; });
-      q('quit').addEventListener('click', () => endRun('quit'));
+      q('quit').addEventListener('click', () => GameGuard.confirm());
       q('over').addEventListener('click', e => { const b = e.target.closest('button[data-act]'); if (b) act(b.dataset.act); });
       keys = TT.captureKeys(q('box'), {
         label: 'Type the words to attack the boss.',
@@ -159,6 +159,20 @@ window.RushPage = (() => {
       comboShown = false;
       fightView();
       nextFight(false);
+      // leaving mid-run asks first, Esc pauses, and a run ended by leaving shows its result (js/app/game-guard.js)
+      GameGuard.start({
+        name: 'run',
+        live: () => !!(run && !run.done && view === 'fight' && (run.fights.length || (f && f.summary().keys))),
+        pause: on => {
+          if (on) { pausedAt = now(); if (scene) scene.pause(true); return; }
+          if (!pausedAt) return;
+          const ms = now() - pausedAt; pausedAt = 0;
+          if (f && (f.phase === 'fight' || f.phase === 'intro')) f.shift(ms);
+          if (me && me.shift) me.shift(ms);
+          if (scene) scene.pause(false);
+        },
+        end: leaving => { pausedAt = 0; const x = endRun('quit'); return leaving ? runSummary(x) : null; },
+      });
     }
     // the first guess at the player's speed: their recent typing on this device
     function priorWpm() { try { const s = WPM.stats(); return s.avgWpm ? Math.max(15, s.avgWpm) : 35; } catch (e) { return 35; } }
@@ -194,7 +208,7 @@ window.RushPage = (() => {
         timers.push(setInterval(tick, 50));
         const vis = () => {
           if (document.hidden) hiddenAt = now();
-          else if (hiddenAt && f && (f.phase === 'fight' || f.phase === 'intro')) { f.shift(now() - hiddenAt); hiddenAt = 0; }
+          else if (hiddenAt && !pausedAt && f && (f.phase === 'fight' || f.phase === 'intro')) { f.shift(now() - hiddenAt); hiddenAt = 0; }
         };
         document.addEventListener('visibilitychange', vis);
         offs.push(() => document.removeEventListener('visibilitychange', vis));
@@ -403,7 +417,7 @@ window.RushPage = (() => {
     function fightRecord(sum, won) {
       const s = plan.slot;
       const score = won ? D().bossScore({ n: s.n, secs: sum.secs, sizedSecs: sum.sizedSecs, acc: sum.acc, hpLeft: sum.hpLeft, bestCombo: sum.combo, casts: sum.casts, retry: plan.retry }) : 0;
-      const rec = { n: s.n, boss: plan.boss.id, title: s.title, mark: s.mark, won, retry: plan.retry, secs: +sum.secs.toFixed(1), wpm: sum.wpm, acc: sum.acc, combo: sum.combo, casts: sum.casts, dmg: sum.dmg, score, left: +sum.left.toFixed(3), keys: sum.keys, good: sum.good, letters: sum.letters };
+      const rec = { n: s.n, boss: plan.boss.id, title: s.title, mark: s.mark, won, retry: plan.retry, secs: +sum.secs.toFixed(1), wpm: sum.wpm, acc: sum.acc, combo: sum.combo, casts: sum.casts, dmg: sum.dmg, score, left: +sum.left.toFixed(3), keys: sum.keys, good: sum.good, letters: sum.letters, words: sum.words || 0, blocks: sum.blocks || 0 };
       run.fights.push(rec);
       return rec;
     }
@@ -469,6 +483,7 @@ window.RushPage = (() => {
         spells: fs.reduce((a, x) => a + x.casts, 0),
         dmg: fs.reduce((a, x) => a + x.dmg, 0),
         beaten: wonF.length,
+        words: fs.reduce((a, x) => a + (x.words || 0), 0), blocks: fs.reduce((a, x) => a + (x.blocks || 0), 0),
         fastest: fast ? { ms: Math.round(fast.secs * 1000), n: fast.n, boss: fast.boss, title: fast.title } : null,
       };
     }
@@ -504,8 +519,8 @@ window.RushPage = (() => {
       const out = {
         id: run.id, at: run.at, name: WPM.profile().name,
         bosses: T.beaten, reached: run.n, score: run.score, ms: Math.round(T.secs * 1000),
-        wpm: T.peak, avgWpm: T.avgWpm, acc: T.acc, bestCombo: T.combo, spells: T.spells, dmg: T.dmg,
-        fastest: T.fastest, retry: run.retryUsed, fights: run.fights.map(({ keys, good, letters, ...x }) => x),
+        wpm: T.peak, avgWpm: T.avgWpm, acc: T.acc, bestCombo: T.combo, spells: T.spells, dmg: T.dmg, words: T.words, blocks: T.blocks,
+        fastest: T.fastest, retry: run.retryUsed, fights: run.fights.map(({ keys, good, letters, words, blocks, ...x }) => x),
       };
       if (!T.keys) return { out, res: null, rec: null, coins: 0, xp: 0 };
       const res = RushBoard.add(out);
@@ -528,11 +543,27 @@ window.RushPage = (() => {
         const sum = f.summary();
         if (sum.keys) fightRecord({ ...sum, secs: Math.max(0.5, (now() - f.state(now()).fightAt) / 1000) }, false);
       }
+      const T = runTotals();
       const r = finishRun();
       const last = run.fights[run.fights.length - 1];
       teardownFight();
       endView(r, last, why);
+      return { r, last, T };
     }
+    // the result window when a run is ended by leaving the page (Gid, 28 Nov 2026)
+    function runSummary(x) {
+      if (!x || !x.r) return null;
+      const o = x.r.out, T = x.T;
+      return {
+        label: 'RUN OVER', title: `${o.bosses} ${o.bosses === 1 ? 'boss' : 'bosses'} beaten`,
+        sub: x.last ? `You ended the run at boss ${x.last.n}, ${x.last.title}.` : '',
+        stats: [['Time played', UI.clock(o.ms / 1000)], ['Damage dealt', o.dmg], ['Words typed right', T.words], ['Score', o.score],
+          ['wpm', o.avgWpm], ['Accuracy', o.acc + '%'], ['Best combo', o.bestCombo], ['Blocks', T.blocks], ['Spells cast', o.spells]],
+        xp: x.r.xp, coins: x.r.coins, share: runShare(o),
+      };
+    }
+    const runShare = o => o.bosses ? `I beat ${o.bosses} ${o.bosses === 1 ? 'boss' : 'bosses'} in a row in Boss Rush on Stormtyper: ${fmt(o.score)} score, ${o.avgWpm} wpm, ${o.bestCombo} best combo. Can you beat it?`
+      : `I dealt ${fmt(o.dmg)} damage in Boss Rush on Stormtyper at ${o.avgWpm} wpm. Can you beat it?`;
     function endView(r, last, why) {
       view = 'end';
       pageEl.classList.remove('rush-live');
@@ -553,11 +584,12 @@ window.RushPage = (() => {
             </div>
             ${o ? statsHtml([
               ['wpm', o.avgWpm + (o.wpm > o.avgWpm ? ` <small>peak ${o.wpm}</small>` : '')], ['Accuracy', o.acc + '%'], ['Best combo', o.bestCombo],
-              ['Spells cast', o.spells], ['Damage dealt', fmt(o.dmg)], ['Time', UI.time(o.ms)],
+              ['Spells cast', o.spells], ['Damage dealt', fmt(o.dmg)], ['Time', UI.time(o.ms)], ['Words typed right', o.words || 0], ['Blocks', o.blocks || 0],
               ['Fastest kill', o.fastest ? `${secs(o.fastest.ms)} <small>${esc(o.fastest.title)}</small>` : '-'],
             ]) : ''}
             ${r && (r.coins || r.xp) ? `<p class="re-coins">${UI.coin()}<span><b>+${fmt(r.coins)}</b> coins and <b>+${fmt(r.xp)}</b> XP</span></p>` : ''}
             <div class="re-act"><button class="btn" type="button" data-k="again">New run <kbd>Enter</kbd></button><a class="btn out" href="#/leaderboard" data-lb>Scoreboard</a></div>
+            ${o && (o.bosses || o.dmg) ? `<div class="re-share">${GameGuard.shareHtml(runShare(o))}</div>` : ''}
             ${o && o.fights.length ? `<details class="re-fights"><summary>Every boss in this run</summary>
               <table class="board"><thead><tr><th>#</th><th>Boss</th><th class="num-col">Time</th><th class="num-col">wpm</th><th class="num-col hide-sm">Accuracy</th><th class="num-col hide-sm">Combo</th><th class="num-col">Score</th></tr></thead>
               <tbody>${o.fights.map(x => `<tr class="${x.won ? '' : 'lost'}"><td class="rank">${x.n}</td><td>${esc(x.title)}${x.retry ? ' <span class="tag">Retry</span>' : ''}${x.won ? '' : ' <span class="tag">Lost</span>'}</td>
@@ -566,6 +598,7 @@ window.RushPage = (() => {
           </section>
         </div>`;
       q('again').addEventListener('click', startRun);
+      if (o) GameGuard.wire(host, runShare(o));
       host.querySelectorAll('[data-lb]').forEach(a => a.addEventListener('click', () => TT.store.set('wpm-lb-tab', 'rush')));
       if (matchMedia('(pointer: fine)').matches) q('again').focus({ preventScroll: true });
       // the game cards stack above the results on narrow screens
@@ -584,7 +617,7 @@ window.RushPage = (() => {
 
     // ---------- the clock ----------
     function tick() {
-      if (!f || view !== 'fight') return;
+      if (!f || view !== 'fight' || pausedAt) return;
       const t = now();
       f.tick(t);
       if (!f) return;
@@ -649,7 +682,7 @@ window.RushPage = (() => {
       const pn = performance.now();
       for (const x of me.statuses()) {
         const left = x.until ? Math.max(0, Math.ceil((x.until - pn) / 1000)) + 's' : '';
-        const txt = { ward: 'Safe mode', hyper: `Hyper thread x2 <b>${left}</b>`, root: `Root access x2 <b>${left}</b>`, split: `Quantum split <b>${x.charges}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`, crits: `Crits <b>${x.charges}</b>` }[x.name];
+        const txt = { ward: 'Safe mode', hyper: `Hyper thread x2 <b>${left}</b>`, root: `Root access x2 <b>${left}</b>`, split: `Quantum split <b>${x.charges}</b>`, cshield: `Combo shield <b>${left}</b>`, frenzy: `Frenzy x3 <b>${left}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`, crits: `Crits <b>${x.charges}</b>` }[x.name];
         if (txt) bits.push(`<span class="wb-flag buff ${x.name}">${txt}</span>`);
       }
       const html = bits.join('');
@@ -709,8 +742,8 @@ window.RushPage = (() => {
       me.on('spellEarned', e => { const sp = e.spell; earned.push({ ...sp, key: 'spell:' + sp.id + ':' + Math.round(performance.now()) }); cSfx('offer'); tip('spell'); syncLine(); });
       me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
       me.on('perk', e => pop(e.name.toUpperCase(), 'white'));
-      me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
-      me.on('status', e => { if (scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, !!e.on); });
+      me.on('guard', g => { cSfx('guard'); if (scene && !g.shield) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
+      me.on('status', e => { if (scene && ['ward', 'hyper', 'root', 'split', 'cshield', 'frenzy'].includes(e.name)) scene.aura(e.name, !!e.on); });
     }
 
     // ---------- the signature's words in the arena ----------
@@ -844,6 +877,7 @@ window.RushPage = (() => {
       f = null; keys = null; over = null;
     }
     function destroy() {
+      GameGuard.stop();
       if (run && !run.done && run.fights.length + (f ? 1 : 0) > 0) {
         if (f && (f.phase === 'fight' || f.phase === 'intro')) { const sum = f.summary(); if (sum.keys) fightRecord(sum, false); }
         finishRun();

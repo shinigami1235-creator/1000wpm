@@ -520,7 +520,7 @@ window.SuperFight = (() => {
       return {
         boss: B.id, bossName: B.name, dial: T.id, dialName: T.name, won: status === 'won', ms: Math.round(fightMs()), phase,
         wpm: wpmNow(), acc: stats.keys ? Math.round(1000 * stats.good / stats.keys) / 10 : 0, keys: stats.keys, correct: stats.good,
-        bestCombo: me.state().best, casts: stats.casts, spells: [...stats.spells], dmg: stats.dmg, taken: stats.taken, blocks: stats.blocks,
+        bestCombo: me.state().best, words: stats.words, casts: stats.casts, spells: [...stats.spells], dmg: stats.dmg, taken: stats.taken, blocks: stats.blocks,
         support: sup2.length, supportCoins: sup2.reduce((a, s) => a + s.price, 0), chaos: stats.chaos, top, hpLeft: hp,
       };
     }

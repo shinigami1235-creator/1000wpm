@@ -70,6 +70,8 @@
       const list = words(r) || [];
       const s = { i, hp: cfg.hp, list, idx: 0, stats: blankStats(), recent: [], fog: 0, frozen: 0, locked: 0, corrupt: 0, corruptN: 0, immune: 0, reflect: 0 };
       s.eng = Cb().create({ rng: R(`${seed}:${r}:${i}`), now: () => clock, offerMs: cfg.offerMs,
+        // duels keep the spells they were balanced with; combo shield and frenzy stay out
+        spells: Object.keys(PVP),
         offerAt: n => cfg.offerAt.includes(n) || (n > 50 && n % 25 === 0), offerSize: n => (n < 15 ? 2 : 3) });
       s.ty = root.NetTypist.create({
         stream: () => s.list[s.idx % Math.max(1, s.list.length)] || '',

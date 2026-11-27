@@ -167,6 +167,8 @@ Combat.Audio = (() => {
         hiss(t, 2.4, 2400, 0.5, 0.7, 'lowpass', 0.003, 50); hiss(t + 0.05, 0.5, 5000, 0.6, 0.3, 'bandpass', 0.01, 600);
       },
     };
+    // the two power-ups borrow the nearest spell sound
+    S['combo-shield'] = S['safe-mode']; S.frenzy = S['hyper-thread'];
     return { S, setOut: (node, name) => { const g = c.createGain(); g.gain.value = LEVEL[name] || 1; g.connect(node); out = g; } };
   }
 

@@ -404,3 +404,8 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
 .sb-type.inline .fw-lines { font-size: calc(var(--k) * 3.8cqh); color: var(--ink-2); }
 .sb-type.inline .sb-next { display: none; }
 .fw.t-head { --kc: var(--sc, #ff8a3d); }
+/* the result card's coins and share row (Gid, 28 Nov 2026); streamer mode keeps both off the stream */
+.sb-gain { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; color: var(--ink-2); }
+.sb-gain svg { width: 20px; height: 20px; }
+.sb-gain b { font-family: var(--f-mono); color: var(--gold); }
+.sb-streamer .sb-gain, .sb-streamer .sb-share { display: none; }

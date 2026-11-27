@@ -67,6 +67,13 @@ window.Combat = window.Combat || {};
     { id: 'system-purge', word: 'system purge', rarity: 2, label: 'Clears debuffs', color: '#b6ff5c', strike: 'sweep',
       text: 'Clears your debuffs and blocks new ones for 6 seconds.', hits: [{ at: 700, power: 90 }],
       effect: { cleanse: true, status: 'purge', ms: 6000 } },
+    // Gid's power-ups (28 Nov 2026)
+    { id: 'combo-shield', word: 'combo shield', rarity: 2, label: 'Typos keep combo', color: '#7dd8ff', strike: null,
+      text: "For 10 seconds a typo or a wrong word doesn't break your combo. It just adds nothing.", hits: [],
+      effect: { status: 'cshield', ms: 10000 } },
+    { id: 'frenzy', word: 'frenzy mode', rarity: 2, label: 'x3, a miss ends it', color: '#ff7a3d', strike: null,
+      text: 'For 8 seconds your hits deal triple damage and each clean word counts twice for your combo. One miss ends it.', hits: [],
+      effect: { status: 'frenzy', ms: 8000, mult: 3 } },
     // epic, from combo 50
     { id: 'void-sphere', word: 'void sphere', rarity: 3, label: 'Black hole', color: '#b86bff', strike: 'thrum',
       text: 'A black hole pulls the target in and collapses for big damage.',

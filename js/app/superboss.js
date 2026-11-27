@@ -110,7 +110,7 @@
       if (s.art.shield) buffs.push(`<span class="sb-buff gold">Shield x${s.art.shield}</span>`);
       if (s.art.over) buffs.push(`<span class="sb-buff gold">Overclock ${Math.ceil(s.art.over / 1000)}s</span>`);
       if (s.art.slow) buffs.push(`<span class="sb-buff gold">Slow mo ${Math.ceil(s.art.slow / 1000)}s</span>`);
-      for (const b of s.art.buffs) if (['ward', 'hyper', 'root', 'split', 'crits'].includes(b.name)) buffs.push(`<span class="sb-buff">${({ ward: 'Safe mode', hyper: 'Hyper thread', root: 'Root access', split: 'Quantum split', crits: 'Crits' })[b.name]}${b.left ? ' ' + Math.ceil(b.left / 1000) + 's' : ''}</span>`);
+      for (const b of s.art.buffs) if (['ward', 'hyper', 'root', 'split', 'crits', 'cshield', 'frenzy'].includes(b.name)) buffs.push(`<span class="sb-buff">${({ ward: 'Safe mode', hyper: 'Hyper thread', root: 'Root access', split: 'Quantum split', crits: 'Crits', cshield: 'Combo shield', frenzy: 'Frenzy x3' })[b.name]}${b.left ? ' ' + Math.ceil(b.left / 1000) + 's' : ''}</span>`);
       if (s.chaos.fog) buffs.push(`<span class="sb-buff chaos">Fog ${Math.ceil(s.chaos.fog / 1000)}s</span>`);
       if (s.chaos.speed) buffs.push(`<span class="sb-buff chaos">Speed up ${Math.ceil(s.chaos.speed / 1000)}s</span>`);
       const bh = buffs.join('');
@@ -556,12 +556,16 @@
     const side = Side(q('side'), { mode: 'stream' });
     const sound = Sound();
     let fight, host, bc = SuperStream.broadcast(), raf = 0, last = 0, keys = null, recorded = false, camStream = null, micStream = null, botT = 0;
+    // the fight's clock stops while the Esc menu is open (js/app/game-guard.js)
+    let holdAt = 0, held = 0;
+    const clockNow = () => (holdAt || performance.now()) - held;
     const offs = [];
 
     function newFight() {
       if (host) host.close();
       offs.forEach(f => f()); offs.length = 0;
-      fight = SuperFight.create({ boss: B.id, dial: T.id, inline: { flow: () => arena.flow } });
+      holdAt = 0;
+      fight = SuperFight.create({ boss: B.id, dial: T.id, now: clockNow, inline: { flow: () => arena.flow } });
       host = SuperStream.host([bc], { fight, name: 'Art', sim: true, onChat: m => side.chat(m), onViewers: n => side.watching(n) });
       offs.push(fight.on('*', (n, d) => {
         arena.event(n, d);
@@ -581,19 +585,48 @@
       SuperAudio.unlock();
       fight.start();
     }
+    function save(r) {
+      if (recorded || !r.keys) return null;
+      recorded = true;
+      const words = r.correct / 5, accF = Math.max(0, (r.acc - 50) / 50);
+      const bonus = r.won ? ((SuperData.R().win || {})[T.id] || 0) : 0;
+      const res = WPM.record({ mode: 'superboss', wpm: r.wpm, acc: r.acc, correct: r.correct, keys: r.keys, ms: r.ms, won: r.won, difficulty: T.id, boss: B.id, coins: Math.round(words / 2 * accF) + bonus });
+      if (r.won) WPM.track('superboss_win', { boss: B.id, dial: T.id, ms: r.ms, wpm: r.wpm, combo: r.bestCombo });
+      if (r.bestCombo) WPM.track('combo', { n: r.bestCombo, mode: 'superboss' });
+      return res;
+    }
+    const shareText = r => r.won ? `I beat ${r.bossName} on ${r.dialName} in ${clock(r.ms)} on Stormtyper: ${r.wpm} wpm, ${r.bestCombo} best combo. Can you beat it?`
+      : `I took ${r.bossName} on ${r.dialName} to phase ${r.phase} of 3 on Stormtyper: ${fmt(Math.round(r.dmg))} damage, ${r.wpm} wpm. Can you beat it?`;
     function end(r) {
       setTimeout(() => host && host.end(), 300);
-      if (!recorded) {
-        recorded = true;
-        const words = r.correct / 5, accF = Math.max(0, (r.acc - 50) / 50);
-        const bonus = r.won ? ((SuperData.R().win || {})[T.id] || 0) : 0;
-        const res = WPM.record({ mode: 'superboss', wpm: r.wpm, acc: r.acc, correct: r.correct, keys: r.keys, ms: r.ms, won: r.won, difficulty: T.id, boss: B.id, coins: Math.round(words / 2 * accF) + bonus });
-        if (r.won) WPM.track('superboss_win', { boss: B.id, dial: T.id, ms: r.ms, wpm: r.wpm, combo: r.bestCombo });
-        if (r.bestCombo) WPM.track('combo', { n: r.bestCombo, mode: 'superboss' });
-        void res;
-      }
-      setTimeout(() => arena.result(r, `<div class="sb-card-b"><button class="btn" type="button" data-r="again">Fight again</button><a class="btn out" href="#/superboss">Pick another boss</a></div>`), r.won ? 2200 : 1600);
+      const res = save(r);
+      const gain = res ? `<p class="sb-gain">${UI.coin()}<span><b>+${fmt(res.coins)}</b> coins and <b>+${fmt(res.xp)}</b> XP</span></p>` : '';
+      setTimeout(() => {
+        arena.result(r, `${gain}<div class="sb-card-b"><button class="btn" type="button" data-r="again">Fight again</button><a class="btn out" href="#/superboss">Pick another boss</a></div><div class="sb-share">${GameGuard.shareHtml(shareText(r))}</div>`);
+        GameGuard.wire(q('arena'), shareText(r));
+      }, r.won ? 2200 : 1600);
     }
+    // leaving mid-fight asks first, Esc pauses, and ending shows the result (Gid, 28 Nov 2026)
+    GameGuard.start({
+      name: 'fight',
+      live: () => !!(fight && ['countdown', 'fight', 'finish'].includes(fight.status) && fight.result().keys > 0),
+      pause: on => {
+        if (on) { if (!holdAt) holdAt = performance.now(); arena.scene.pause(true); return; }
+        if (holdAt) { held += performance.now() - holdAt; holdAt = 0; }
+        arena.scene.pause(false);
+      },
+      end: () => {
+        holdAt = 0;
+        const r = fight.result(), res = save(r);
+        return {
+          label: 'FIGHT ENDED', title: `You left ${r.bossName}`, sub: `${r.dialName} difficulty, phase ${r.phase} of 3`,
+          stats: [['Time played', clock(r.ms)], ['Damage dealt', Math.round(r.dmg)], ['Words typed right', r.words],
+            ['wpm', r.wpm], ['Accuracy', r.acc + '%'], ['Best combo', r.bestCombo], ['Blocks', r.blocks], ['Spells cast', r.casts], ['Support received', r.support]],
+          xp: res ? res.xp : 0, coins: res ? res.coins : 0, share: shareText(r),
+        };
+      },
+      after: () => { newFight(); if (keys) keys.focus(); },
+    });
     q('arena').addEventListener('click', e => { if (e.target.closest('[data-r="again"]')) { newFight(); if (keys) keys.focus(); } });
 
     // typing
@@ -713,6 +746,7 @@
       },
     };
     return () => {
+      GameGuard.stop();
       cancelAnimationFrame(raf); clearInterval(bg); clearInterval(botT);
       document.removeEventListener('keydown', forward);
       document.removeEventListener('keydown', exitKey);

@@ -3,7 +3,10 @@
 // #/play/race passes ['race'] as params to the play page.
 window.Router = (() => {
   const pages = {};
-  let view = null, cur = null, curName = '';
+  let view = null, cur = null, curName = '', curHash = '';
+  // a fight in progress (js/app/game-guard.js) can hold a route change: guard(want) returns true to let
+  // it through, or false and calls leave(want) itself once the player has said yes
+  let guard = null;
 
   function register(name, page) { pages[name] = page; }
   // a page whose scripts load on first visit (js/app/lazy.js). The stand-in shows
@@ -36,6 +39,7 @@ window.Router = (() => {
   }
 
   function go(force) {
+    curHash = location.hash;
     const { name, params } = parse();
     if (!force && cur && name === curName) { if (cur.update) cur.update(params); return; }
     if (cur) { try { cur.unmount(); } catch (e) { console.error(e); } }
@@ -55,10 +59,16 @@ window.Router = (() => {
 
   function start(v) {
     view = v;
-    addEventListener('hashchange', () => go());
+    addEventListener('hashchange', () => {
+      if (guard && location.hash !== curHash && guard(location.hash) !== true) { history.replaceState(null, '', curHash); return; }
+      go();
+    });
     if (!/^#\//.test(location.hash)) history.replaceState(null, '', '#/home');
     go();
   }
 
-  return { register, lazy, get: name => pages[name], start, reload: () => go(true), current: () => curName };
+  function leave(hash) { guard = null; if (hash && hash !== location.hash) location.hash = hash; else go(true); }
+
+  return { register, lazy, get: name => pages[name], start, reload: () => go(true), current: () => curName,
+    guard: fn => { guard = fn || null; }, leave };
 })();

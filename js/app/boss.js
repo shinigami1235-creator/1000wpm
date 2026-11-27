@@ -88,7 +88,7 @@ Router.register('boss', (() => {
   const sfx = (n, a) => A.play(n, a);
 
   function newSession() {
-    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0, covers: 0 };
+    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0, covers: 0, at: performance.now() };
     recorded = false;
   }
   // ---------- the squad (js/app/boss-squad.js) ----------
@@ -294,6 +294,7 @@ Router.register('boss', (() => {
           <span class="wb-stat"><b data-k="s-wpm">0</b> wpm</span>
           <span class="wb-stat"><b data-k="s-blocks">0</b> blocked</span>
           <button class="wb-boardbtn" type="button" data-k="boardbtn" aria-expanded="false" aria-controls="wb-drawer">Scoreboard <kbd>Tab</kbd></button>
+          <button class="wb-boardbtn wb-howbtn" type="button" data-k="howbtn" aria-controls="wb-guide">How to play</button>
         </div>
         <p class="wb-demo" data-k="demo">The other raiders are bots until the server is live.
           <span class="wb-skip" data-k="skip">Skip to phase ${[2, 3, 4, 5].map(n => `<button type="button" data-p="${n - 1}">${n}</button>`).join('')}</span></p>
@@ -356,6 +357,19 @@ Router.register('boss', (() => {
     });
     q('again').addEventListener('click', again);
     q('boardbtn').addEventListener('click', () => { drawer(); if (keys) keys.focus(); });
+    el.insertAdjacentHTML('beforeend', guideHtml());
+    q('howbtn').addEventListener('click', () => guide());
+    q('guidex').addEventListener('click', () => guide(false));
+    guide(innerWidth >= 1600 && TT.store.get('wpm-wb-guide') !== 'closed', true);
+    // leaving mid-fight asks first, Esc opens the menu, and ending shows the result (js/app/game-guard.js)
+    GameGuard.start({
+      name: training ? 'training' : 'raid',
+      live: () => !!(started && sess && sess.keys > 0 && !(st && st.defeatedAt)),
+      esc: () => !q('drawer').classList.contains('open'),
+      guide: () => guide(true),
+      end: () => { const r = record(false, false, true); return summary(r); },
+      after: () => Router.reload(),
+    });
     wireChat();
     q('close').addEventListener('click', () => { drawer(false); if (keys) keys.focus(); });
     q('drawer').addEventListener('keydown', e => { if (e.key === 'Escape') { drawer(false); if (keys) keys.focus(); } });
@@ -772,8 +786,8 @@ Router.register('boss', (() => {
     });
     me.on('ward', () => { cSfx('ward'); if (scene) scene.fxEvent('ward'); });
     me.on('perk', e => { if (!el) return; pop(e.name.toUpperCase(), 'white'); pushFeed({ text: e.id === 'sentinel' ? 'Unbreakable kept your combo tier' : 'Execution: it is below 30% HP', cls: 'you' }); });
-    me.on('guard', () => { if (!el) return; cSfx('guard'); if (scene) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: 'Quantum split kept your combo', cls: 'you' }); });
-    me.on('status', e => { if (!e.on && scene && ['ward', 'hyper', 'root', 'split'].includes(e.name)) scene.aura(e.name, false); if (el && st) paintMe(now()); });
+    me.on('guard', g => { if (!el) return; cSfx('guard'); if (scene && !g.shield) scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); pushFeed({ text: `${g.shield ? 'Combo shield' : 'Quantum split'} kept your combo`, cls: 'you' }); });
+    me.on('status', e => { if (!e.on && scene && ['ward', 'hyper', 'root', 'split', 'cshield', 'frenzy'].includes(e.name)) scene.aura(e.name, false); if (el && st) paintMe(now()); });
   }
   // a spell word typed in full: cast it, or fizzle on a typo
   function castSpell(sp, ok) {
@@ -1130,7 +1144,7 @@ Router.register('boss', (() => {
         const left = x.until ? Math.max(0, Math.ceil((x.until - pn) / 1000)) + 's' : '';
         const f = {
           ward: 'Safe mode', hyper: `Hyper thread x2 <b>${left}</b>`, root: `Root access x2 <b>${left}</b>`,
-          split: `Quantum split <b>${x.charges}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`,
+          split: `Quantum split <b>${x.charges}</b>`, cshield: `Combo shield <b>${left}</b>`, frenzy: `Frenzy x3 <b>${left}</b>`, purge: `Purge <b>${left}</b>`, 'stunned-target': `Kernel panic <b>${left}</b>`,
         }[x.name];
         if (f) bits.push(`<span class="wb-flag buff ${x.name}">${f}</span>`);
       }
@@ -1799,6 +1813,7 @@ Router.register('boss', (() => {
           <span><b>${best}</b> best combo</span>
           <span><b>${sess.casts}</b> ${sess.casts === 1 ? 'spell' : 'spells'} cast</span>
         </div>
+        <div class="wb-res-share">${GameGuard.shareHtml(shareLine(mineR ? mineR.damage : sess.dmg, true))}</div>
         ${r && bonus ? `<p class="wb-bonus">Coins include ${[
           r.blockCoins ? `${r.blockCoins} for ${sess.blocks} ${sess.blocks === 1 ? 'block' : 'blocks'}` : '',
           r.killCoins ? `${r.killCoins} for being there at the end` : '',
@@ -1809,6 +1824,7 @@ Router.register('boss', (() => {
         <table class="boss-board"><thead><tr><th>#</th><th>Operator</th><th class="r">Damage</th><th class="r">Blocks</th><th class="r">Share</th></tr></thead><tbody>${rows(st.raiders, 3)}</tbody></table>
         ${squadTable()}
       </div>`;
+    GameGuard.wire(box, shareLine(mineR ? mineR.damage : sess.dmg, true));
     if (instant) q('again').focus({ preventScroll: true });
     requestAnimationFrame(showWhole);
   }
@@ -1874,7 +1890,7 @@ Router.register('boss', (() => {
   // Blocks earn 3 coins and 6 XP each (up to 60 coins) and being there at the end earns 20 coins.
   // With spaced set, the block bonus coins and XP follow 1.6s apart.
   let owed = [], owedT = [];
-  function record(atKill, spaced) {
+  function record(atKill, spaced, quiet) {
     if (recorded || !sess || !sess.keys) return null;
     recorded = true;
     const min = Math.max(sess.active, 1000) / 60000;
@@ -1904,9 +1920,92 @@ Router.register('boss', (() => {
         owedT.push(setTimeout(() => { owed = owed.filter(x => x !== f); f(); }, 1600 * (i + 1)));
       });
     } else give.forEach(f => f());
-    if (!atKill && window.Toast) Toast('t-level', `${UI.icon('bolt', 'green')}<span>World boss: <b>${fmt(sess.dmg || sess.letters)}</b> damage, <b>+${r.xp + r.bonusXp}</b> XP</span>`, 4500);
+    if (!atKill && !quiet && window.Toast) Toast('t-level', `${UI.icon('bolt', 'green')}<span>World boss: <b>${fmt(sess.dmg || sess.letters)}</b> damage, <b>+${r.xp + r.bonusXp}</b> XP</span>`, 4500);
     return r;
   }
+  // ---------- the result when you end the raid yourself (Gid, 28 Nov 2026) ----------
+  function shareLine(dmg, kill) {
+    const t = UI.clock((performance.now() - sess.at) / 1000);
+    return kill ? `${NAME} is down. I dealt ${fmt(Math.round(dmg))} damage with a ${best} combo on Stormtyper. Can you beat it?`
+      : `I dealt ${fmt(Math.round(dmg))} damage to ${NAME} in ${t} with a ${best} combo on Stormtyper. Can you beat it?`;
+  }
+  function summary(r) {
+    if (!sess) return null;
+    const min = Math.max(sess.active, 1000) / 60000;
+    const sq = squad ? squad.stats() : null;
+    const left = st ? Math.max(0, 100 * st.hp / st.maxHp) : 0;
+    return {
+      label: training ? 'TRAINING OVER' : 'RAID OVER',
+      title: `You left the ${training ? 'training raid' : 'raid'}`,
+      sub: st ? `${NAME}, phase ${st.phase + 1} of ${NPH()}: ${R.PHASES[st.phase].name}, ${left < 1 ? left.toFixed(2) : left.toFixed(1)}% HP left` : NAME,
+      stats: [
+        ['Time played', UI.clock((performance.now() - sess.at) / 1000)],
+        ['Damage dealt', Math.round(sess.dmg || sess.letters)],
+        ['Words typed right', sess.words],
+        ['wpm', sess.keys ? Math.round(((sess.letters + sess.words) / 5) / min) : 0],
+        ['Accuracy', sess.keys ? Math.round(100 * sess.good / sess.keys) + '%' : '-'],
+        ['Best combo', best],
+        ['Blocks', sess.blocks],
+        ['Covers', sess.covers],
+        ['Sent back', sess.returns],
+        ['Bugs deleted', sess.adds],
+        ['Spells cast', sess.casts],
+        sq ? ['Saves and heals', `${sq.saves}<small>${fmt(sq.heals)} healed</small>`] : null,
+      ],
+      xp: r ? r.xp + (r.bonusXp || 0) : 0,
+      coins: r ? r.coins + (r.bonus || 0) : 0,
+      share: shareLine(sess.dmg || sess.letters, false),
+    };
+  }
+
+  // ---------- How to play: the empty space left of the column (Gid, 28 Nov 2026) ----------
+  function guide(on, first) {
+    const g = q('guide'); if (!g) return;
+    const open = on === undefined ? g.hidden : !!on;
+    g.hidden = !open;
+    q('howbtn').setAttribute('aria-expanded', open);
+    // on a wide screen the choice sticks; on a narrow one the guide covers the fight, so it's never saved
+    if (!first && innerWidth >= 1600) TT.store.set('wpm-wb-guide', open ? 'open' : 'closed');
+    if (!open && keys) keys.focus();
+  }
+  function guideHtml() {
+    const lit = (cls, word, what) => `<li><span class="fw ${cls} gd-w">${word}</span><span>${what}</span></li>`;
+    const tiers = Combat && Combat.TIERS ? Combat.TIERS : null;
+    return `<aside class="wb-guide" id="wb-guide" data-k="guide" aria-label="How to play" hidden>
+      <h2>How to play <button class="wb-guide-x" type="button" data-k="guidex" aria-label="Close How to play">&times;</button></h2>
+      <p>Type the highlighted word and press Space. Each word deals one damage per letter. Everyone online hits the same boss.</p>
+      <h3>Combo</h3>
+      <p>Every word with no typo adds one to your combo. Higher combos multiply your damage. A typo or a wrong word drops you one level.</p>
+      <ul class="gd-tiers">${(tiers || [[10, 'Pulse', 1.5], [25, 'Surge', 2], [50, 'Overdrive', 3], [100, 'Meltdown', 5], [200, 'Zero limit', 8]].map(x => ({ at: x[0], name: x[1], mult: x[2] })))
+        .filter(t => t.at > 0).map(t => `<li><b>${t.at}</b><span>${esc(t.name)}</span><i>x${t.mult}</i></li>`).join('')}</ul>
+      <h3>Lit words</h3>
+      <p>Some words in your line light up. Their colour says what typing them does.</p>
+      <ul class="gd-key">
+        ${lit('t-block', 'block', 'An attack aimed at you. Type it before its timer runs out.')}
+        ${lit('t-dodge', 'dodge', 'A lock-on. Type it to step out of the way.')}
+        ${lit('t-assist', 'cover', "Locks a teammate's part of the raid shield.")}
+        ${lit('t-return', 'return', 'Sends a packet back for triple damage.')}
+        ${lit('t-add', 'debug', `Deletes a bug before it heals ${esc(NAME)}.`)}
+        ${lit('t-heal', 'heal', 'Heals, covers or revives a squadmate.')}
+        ${lit('t-spell', 'spell', 'A spell you earned. Type it with no typo to cast it.')}
+      </ul>
+      <h3>Spells</h3>
+      <p>Combos of 10, 25, 50 and 100 earn spells, rarer the higher you go. A typo in a spell word fizzles it.</p>
+      <ul>
+        <li><b>Combo shield</b>: for 10 seconds typos don't break your combo. They just add nothing.</li>
+        <li><b>Frenzy mode</b>: for 8 seconds your hits deal triple damage and clean words count twice for your combo. One miss ends it.</li>
+      </ul>
+      <h3>Play better</h3>
+      <ul>
+        <li>Accuracy beats speed. One typo costs a whole combo level.</li>
+        <li>Red words first. A hit that lands takes a quarter of your integrity.</li>
+        <li>Six words in a row, fast, staggers ${esc(NAME)} and your next three hits crit.</li>
+        <li>When the kernel opens, push. Your hits deal double, and triple in the late phases.</li>
+      </ul>
+      <p class="gd-esc"><kbd>Esc</kbd> opens the menu, where you can end the raid. <kbd>Tab</kbd> opens the scoreboard.</p>
+    </aside>`;
+  }
+
   // pays a bonus still waiting on its timer, when the page goes away first
   function payOwed() {
     owedT.forEach(clearTimeout); owedT = [];
@@ -1950,6 +2049,7 @@ Router.register('boss', (() => {
   }
 
   function unmount() {
+    GameGuard.stop();
     if (coverOff) { coverOff(); coverOff = null; }
     if (!started) { el = null; WorldBossNet.use(WorldBossNet.LocalDemo); return; }
     started = false;

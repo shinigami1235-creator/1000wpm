@@ -135,6 +135,10 @@ Combat.create = function create(opts = {}) {
     return st;
   }
   function slip(reason) {
+    // Frenzy (Gid, 28 Nov 2026): one miss ends it
+    if (status('frenzy')) end('frenzy');
+    // Combo shield: until its timer runs out a typo or a wrong word keeps the combo, it just adds nothing
+    if (status('cshield') && reason !== 'hurt') { bus.emit('guard', { reason, left: 0, shield: true }); return combo.state(); }
     if (consume('split')) { bus.emit('guard', { reason, left: status('split') ? status('split').charges : 0 }); return combo.state(); }
     // Sentinel: one slip every so often keeps its tier
     if (guardMs && reason !== 'hurt' && combo.state().combo > 0 && now() - guardAt >= guardMs) {
@@ -151,7 +155,12 @@ Combat.create = function create(opts = {}) {
   // a word that hit. clean: no wrong key was pressed while typing it
   function word({ letters = 0, clean = true, ms = 0, useCrit = true } = {}) {
     let st;
-    if (clean) st = after(combo.add(), 'word');
+    if (clean) {
+      let r = combo.add();
+      // in a frenzy each clean word counts twice for the combo
+      if (status('frenzy')) { const r2 = combo.add(); r = { ...r2, from: r.from, up: r.up || r2.up }; }
+      st = after(r, 'word');
+    }
     else st = slip('typo');
     const wpm = ms > 0 && letters ? (letters + 1) / 5 / (ms / 60000) : 0;
     const hp = opts.targetHp ? opts.targetHp() : null;
@@ -231,6 +240,8 @@ Combat.create = function create(opts = {}) {
     bus, on: bus.on, off: bus.off,
     key, word, miss, hurt, cast, matchOffer, tick, reset, state,
     status, consume, statuses: () => Object.keys(statuses).map(status).filter(Boolean), start, end,
+    // a paused fight moves its timed statuses and the open spell offer on, so a pause doesn't eat them
+    shift(ms) { for (const k in statuses) if (statuses[k].until) statuses[k].until += ms; if (offer) offer.until += ms; },
     offer: () => offer && { ...offer, left: Math.max(0, offer.until - now()) },
     earned: () => earned.slice(),
     closeOffer,
