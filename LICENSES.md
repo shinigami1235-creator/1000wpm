@@ -18,6 +18,10 @@ The time zone to country table in the same file comes from the IANA time zone da
 
 `lib/three/` holds three.js 0.170.0 (the minified build and the 20 addon files the site imports), copied from the npm package so no visitor loads code from a CDN. MIT licence, in `lib/three/LICENSE`.
 
+`lib/three/examples/jsm/postprocessing/N8AOPass.js` is N8AO 2.1.0 (ambient occlusion for the room), bundled with esbuild without its pmndrs `postprocessing` half. CC0 1.0 (public domain), by N8programs.
+
+`assets/room/tex/` holds the room's wall and floor textures, made in code for this site (pbrgen.py from the code-textures skill), so there is no licence to keep.
+
 ## Fonts
 
 `fonts/` holds Chakra Petch (400, 600, 700), JetBrains Mono (400, 600) and Share Tech Mono (400) from the Fontsource npm packages, served from the site so no visitor's address goes to Google. All three are under the SIL Open Font License 1.1, in `fonts/LICENSE-*.txt`. `css/fonts.css` lists them.

@@ -406,6 +406,7 @@ window.Room = (() => {
         import('three/addons/postprocessing/RenderPass.js'),
         import('three/addons/postprocessing/UnrealBloomPass.js'),
         import('three/addons/postprocessing/OutputPass.js'),
+        import('three/addons/postprocessing/SMAAPass.js'),
       ]);
     } catch (e) {
       if (S === s) s.ui.load.textContent = 'The 3D room needs an internet connection.';
@@ -413,7 +414,7 @@ window.Room = (() => {
     }
     if (S !== s) return;
     s.L = L;
-    const [{ OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = addons;
+    const [{ OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }, { SMAAPass }] = addons;
     const THREE = s.THREE = L.THREE;
     const K = s.K = L.K;
     const phone = matchMedia('(max-width: 720px), (pointer: coarse)').matches;
@@ -448,8 +449,8 @@ window.Room = (() => {
       g.addColorStop(0, '#11231a'); g.addColorStop(0.6, '#07100b'); g.addColorStop(1, '#030504');
       c.fillStyle = g; c.fillRect(0, 0, w, h);
     });
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const pmrem = s.pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = s.roomEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.16;
 
     const camera = s.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 90);
@@ -465,13 +466,27 @@ window.Room = (() => {
     controls.zoomSpeed = 0.8;
     renderer.domElement.style.touchAction = 'none';
 
-    // the composer's own target needs samples, or post-processing throws away the antialiasing
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: lvl === 'low' ? 0 : 4 });
+    // high and medium: N8AO ambient occlusion renders the scene (it replaces the render pass) and SMAA
+    // smooths the edges, since hardware antialiasing doesn't reach through the occlusion. low: 4x MSAA.
+    s.hd = !phone && lvl !== 'low';
+    s.hdTex = lvl !== 'low';   // the texture sets in assets/room/tex, about 2 MB, fetched only here
+    let N8AOPass = null;
+    if (s.hd) try { ({ N8AOPass } = await import('three/addons/postprocessing/N8AOPass.js')); } catch (e) { s.hd = false; }
+    if (S !== s) return;
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: s.hd || lvl === 'low' ? 0 : 4 });
     const composer = s.composer = new EffectComposer(renderer, rt);
-    composer.addPass(new RenderPass(scene, camera));
+    if (N8AOPass) {
+      const ao = s.ao = new N8AOPass(scene, camera, 1, 1);
+      Object.assign(ao.configuration, { aoRadius: 0.55, distanceFalloff: 0.6, intensity: 2.6, gammaCorrection: false, halfRes: lvl !== 'high', screenSpaceRadius: false });
+      ao.setQualityMode(lvl === 'high' ? 'High' : 'Medium');
+      composer.addPass(ao);
+    } else composer.addPass(new RenderPass(scene, camera));
     s.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.55, 1.35);
     composer.addPass(s.bloom);
     composer.addPass(new OutputPass());
+    if (s.ao) composer.addPass(s.smaa = new SMAAPass(1, 1));
+    // the room page's own detail: woven fabric normals, then the room lights itself (captureEnv)
+    if (s.hdTex) K.hdSet('weave').then(t => K.useWeave(t.normal)).catch(() => {});
 
     // ---------- load the saved room or lay out the starter items ----------
     const saved = visit ? visit.layout || null : WPM.getRoom();
@@ -551,6 +566,7 @@ window.Room = (() => {
 
   // the first frame clears the crash flag; every frame feeds the quality governor
   function frameDone(s) {
+    if (!s.envDone) { s.envDone = true; captureEnv(s); }
     if (!s.aq) return;
     if (!s.drawn) { s.drawn = true; s.aq.loaded(); s.aq.watch(s.renderer.domElement); }
     s.aq.frame(performance.now());
@@ -563,6 +579,9 @@ window.Room = (() => {
     if (s.dirty && !s.visit) { try { if (s.placing) cancelPlacing(s, true); WPM.setRoom(serialize(s)); } catch (e) {} }
     S = null;
     s.alive = false;
+    clearTimeout(s.envT);
+    if (s.cubeRT) s.cubeRT.dispose();
+    if (s.envMap) s.envMap.dispose();
     s.off.forEach(f => { try { f(); } catch (e) {} });
     if (s.ro) s.ro.disconnect();
     if (s.renderer) {
@@ -584,7 +603,7 @@ window.Room = (() => {
 
     // floor
     // the floor and walls carry the bought finish (home-items.js); the uv of each surface is in metres
-    const wood = RoomItems.finishMat(K, s.floorF, 'floor', W, D);
+    const wood = RoomItems.finishMat(K, s.floorF, 'floor', W, D, s.hdTex);
     const slabM = K.std('#0b100d', 0.85);
     const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.012, D), [slabM, slabM, wood, slabM, slabM, slabM]);
     floor.position.set(W / 2, -0.006, D / 2); floor.receiveShadow = true;
@@ -600,7 +619,7 @@ window.Room = (() => {
     const e4 = K.box(0.004, 0.004, D + T, K.glow(GREEN, 0.8)); e4.position.set(W + 0.002, -0.248, (D - T) / 2); shell.add(e4);
 
     // walls
-    const wallM = RoomItems.finishMat(K, s.paper, 'wall');
+    const wallM = RoomItems.finishMat(K, s.paper, 'wall', 1, 1, s.hdTex);
     s.shellMats = [wood, wallM];
     const bgeo = new THREE.BoxGeometry(W + T, H, T), bp = bgeo.attributes.position, buv = bgeo.attributes.uv;
     for (let i = 0; i < buv.count; i++) buv.setXY(i, bp.getX(i) + (W + T) / 2 - T, bp.getY(i) + H / 2);
@@ -835,7 +854,27 @@ window.Room = (() => {
   }
   const serialize = s => ({ v: 1, size: s.size.id, paper: s.paper || undefined, floor: s.floorF || undefined, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
 
+  // Light bouncing off the room's own walls, floor and furniture: a cube picture of the room taken from
+  // its middle becomes the environment, so a red brick room glows warm and the mirror shows the room.
+  // Taken again a moment after anything changes.
+  function captureEnv(s, now) {
+    clearTimeout(s.envT);
+    if (!now) { s.envT = setTimeout(() => captureEnv(s, true), 700); return; }
+    if (!s.alive || !s.renderer || !s.hd) return;
+    const THREE = s.THREE;
+    if (!s.cubeRT) { s.cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType }); s.cubeCam = new THREE.CubeCamera(0.05, 40, s.cubeRT); }
+    s.cubeCam.position.set(W / 2, 1.2, D / 2);
+    const hid = [s.marker, s.brackets, s.grid, s.wallGrid].filter(o => o && o.visible); hid.forEach(o => { o.visible = false; });
+    const walls = [...(s.wallB || []), ...(s.wallL || [])]; walls.forEach(o => { o.userData.v = o.visible; o.visible = true; });
+    s.scene.environment = s.roomEnv; s.scene.environmentIntensity = 0.16;
+    s.cubeCam.update(s.renderer, s.scene);
+    hid.forEach(o => { o.visible = true; }); walls.forEach(o => { o.visible = o.userData.v; });
+    if (s.envMap) s.envMap.dispose();
+    s.envMap = s.pmrem.fromCubemap(s.cubeRT.texture).texture;
+    s.scene.environment = s.envMap; s.scene.environmentIntensity = 0.55;
+  }
   function markDirty(s) {
+    captureEnv(s);
     s.dirty = true;
     s.ui.dot.hidden = false;
     renderStrip(s);

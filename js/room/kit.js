@@ -37,11 +37,35 @@
       m.userData.glass = true;
       return m;
     });
-    K.fabric = (color, bump = 1) => memo(`fab|${color}|${bump}`, () => new THREE.MeshPhysicalMaterial({
+    K.fabric = (color, bump = 1) => memo(`fab|${color}|${bump}`, () => K.weaveUp(new THREE.MeshPhysicalMaterial({
       color, roughness: 0.92, sheen: 1, sheenRoughness: 0.45,
       sheenColor: new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.35),
       bumpMap: K.weaveTex(), bumpScale: bump,
-    }));
+    })));
+    // In the room page the woven fabric gets a real normal map (K.useWeave), in place of the bump
+    K.weaveUp = m => {
+      if (K.weave) { m.normalMap = K.weave; m.normalScale.set(0.7, 0.7); m.bumpMap = null; m.needsUpdate = true; }
+      return m;
+    };
+    K.useWeave = tex => {
+      const t = tex.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3); t.needsUpdate = true;
+      K.weave = t;
+      for (const [k, m] of mats) if (k.startsWith('fab|')) K.weaveUp(m);
+    };
+
+    // ---------- high-detail texture sets (albedo, normal, ORM) from assets/room/tex, fetched only by the room page ----------
+    const hdSets = new Map();
+    K.hdSet = name => {
+      if (!hdSets.has(name)) hdSets.set(name, (async () => {
+        const tl = new THREE.TextureLoader();
+        const ld = (f, srgb) => new Promise((ok, no) => tl.load(`assets/room/tex/${name}/${f}.webp`, t => {
+          t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = K.aniso; if (srgb) t.colorSpace = THREE.SRGBColorSpace; ok(t);
+        }, undefined, no));
+        const [map, normal, orm] = await Promise.all([ld('albedo', true), ld('normal'), ld('orm')]);
+        return { map, normal, orm };
+      })().catch(e => { hdSets.delete(name); throw e; }));
+      return hdSets.get(name);
+    };
     K.leather = color => memo(`lea|${color}`, () => new THREE.MeshPhysicalMaterial({
       color, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.5, bumpMap: K.grainTex(), bumpScale: 0.6,
     }));

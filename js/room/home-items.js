@@ -13,7 +13,9 @@
   const tex = (K, key, w, h, draw, srgb = true) => K.canvasTex(key, w, h, draw, { srgb });
   const noise = (c, w, h, r, n, a, s = 2) => { for (let i = 0; i < n; i++) { const v = r() * 255 | 0; c.fillStyle = `rgba(${v},${v},${v},${a})`; c.fillRect(r() * w, r() * h, s * r() + 0.5, s * r() + 0.5); } };
 
-  const paint = (color, rough = 0.9) => K => ({ color, rough, bump: K.plasterTex(), bumpScale: 0.8, tile: 1.2 });
+  const paint = (color, rough = 0.9) => K => ({ color, rough, bump: K.plasterTex(), bumpScale: 0.8, tile: 1.2, pbr: { set: 'plaster', tile: 2.4, rough: 0.95 } });
+  // a printed or painted pattern keeps its own picture and takes the plaster's surface
+  const onPlaster = f => K => ({ ...f(K), pbr: { set: 'plaster', tile: 2.4, map: false, normal: 0.6 } });
 
   function brick(K) {
     const draw = bump => (c, w, h) => {
@@ -28,7 +30,7 @@
       }
       if (!bump) noise(c, w, h, r, 3000, 0.12);
     };
-    return { map: tex(K, 'wf-brick', 512, 512, draw(false)), bump: tex(K, 'wf-brickb', 512, 512, draw(true), false), bumpScale: 2.5, rough: 0.9, tile: 1.2 };
+    return { map: tex(K, 'wf-brick', 512, 512, draw(false)), bump: tex(K, 'wf-brickb', 512, 512, draw(true), false), bumpScale: 2.5, rough: 0.9, tile: 1.2, pbr: { set: 'brick', tile: 1.2, normal: 1.2 } };
   }
   function panel(K) {
     const map = tex(K, 'wf-panel', 512, 512, (c, w, h) => {
@@ -45,7 +47,7 @@
       }
     });
     const bump = tex(K, 'wf-panelb', 512, 64, (c, w, h) => { c.fillStyle = '#a0a0a0'; c.fillRect(0, 0, w, h); c.fillStyle = '#202020'; for (let i = 0; i < 8; i++) c.fillRect(i * w / 8, 0, 4, h); }, false);
-    return { map, bump, bumpScale: 2, rough: 0.6, tile: 1.2 };
+    return { map, bump, bumpScale: 2, rough: 0.6, tile: 1.2, pbr: { set: 'panel', tile: 1.2, rough: 0.8 } };
   }
   function stripes(K) {
     return { map: tex(K, 'wf-stripes', 256, 256, (c, w, h) => {
@@ -62,7 +64,7 @@
       noise(c, w, h, r, 9000, 0.18, 1.5);
       c.fillStyle = 'rgba(40,40,40,.5)'; c.fillRect(0, 0, w, 2); c.fillRect(0, h / 2, w, 2);
       for (const [x, y] of [[0.17, 0.25], [0.67, 0.25], [0.17, 0.75], [0.67, 0.75]]) { c.fillStyle = '#4a4c4c'; c.beginPath(); c.arc(x * w, y * h, 6, 0, TAU); c.fill(); }
-    }), bump: K.plasterTex(), bumpScale: 1.5, rough: 0.95, tile: 1.2 };
+    }), bump: K.plasterTex(), bumpScale: 1.5, rough: 0.95, tile: 1.2, pbr: { set: 'concrete', tile: 1.6 } };
   }
   function subway(K) {
     const draw = bump => (c, w, h) => {
@@ -76,7 +78,7 @@
         c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(x + 3, y + 2, tw - 12, 2);
       }
     };
-    return { map: tex(K, 'wf-subway', 512, 512, draw(false)), bump: tex(K, 'wf-subwayb', 512, 512, draw(true), false), bumpScale: 1.5, rough: 0.2, tile: 1.2 };
+    return { map: tex(K, 'wf-subway', 512, 512, draw(false)), bump: tex(K, 'wf-subwayb', 512, 512, draw(true), false), bumpScale: 1.5, rough: 0.2, tile: 1.2, pbr: { set: 'subway', tile: 1.2, rough: 0.35 } };
   }
   function retro(K) {
     return { map: tex(K, 'wf-retro', 512, 512, (c, w, h) => {
@@ -146,7 +148,7 @@
         c.fillStyle = 'rgba(20,12,6,.85)'; c.fillRect(0, y, w, 2);
       }
     });
-    return { map, bump: K.floorBump(), bumpScale: 1.2, rough: p.rough, tile: 2 };
+    return { map, bump: K.floorBump(), bumpScale: 1.2, rough: p.rough, tile: 2, pbr: { set: key, tile: 2, rough: 0.85 } };
   }
   function herringbone(K) {
     // planks 4 widths long; plank k lies flat at (k, k), the next stands at (k, k + 1), and each
@@ -167,14 +169,14 @@
       };
       for (let k = 0; k < S; k++) { plank(k, k, n, 1); plank(k, k + 1, 1, n); }
     });
-    return { map, rough: 0.5, tile: 0.8 };
+    return { map, rough: 0.5, tile: 0.8, pbr: { set: 'herring', tile: 0.8, rough: 0.8 } };
   }
   function checker(K) {
     const map = tex(K, 'ff-checker', 512, 512, (c, w, h) => {
       for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { c.fillStyle = (x + y) % 2 ? '#16181a' : '#ecebe6'; c.fillRect(x * w / 4, y * h / 4, w / 4, h / 4); }
       c.strokeStyle = 'rgba(120,120,120,.6)'; c.lineWidth = 2; for (let i = 0; i <= 4; i++) { c.beginPath(); c.moveTo(i * w / 4, 0); c.lineTo(i * w / 4, h); c.moveTo(0, i * h / 4); c.lineTo(w, i * h / 4); c.stroke(); }
     });
-    return { map, rough: 0.25, tile: 1.2 };
+    return { map, rough: 0.25, tile: 1.2, pbr: { set: 'tiles4', tile: 1.2, map: false, rough: 0.6 } };
   }
   function marble(K) {
     const map = tex(K, 'ff-marble', 1024, 1024, (c, w, h) => {
@@ -190,12 +192,12 @@
       c.strokeStyle = 'rgba(150,150,150,.7)'; c.lineWidth = 3;
       for (let i = 0; i <= 2; i++) { c.beginPath(); c.moveTo(i * w / 2, 0); c.lineTo(i * w / 2, h); c.moveTo(0, i * h / 2); c.lineTo(w, i * h / 2); c.stroke(); }
     });
-    return { map, rough: 0.12, tile: 1.2 };
+    return { map, rough: 0.12, tile: 1.2, pbr: { set: 'marble', tile: 1.2, rough: 0.5 } };
   }
   function carpet(K) {
     const map = tex(K, 'ff-carpet', 512, 512, (c, w, h) => { const r = K.rng(9); c.fillStyle = '#5b6066'; c.fillRect(0, 0, w, h); noise(c, w, h, r, 30000, 0.22, 2); });
     const bump = tex(K, 'ff-carpetb', 512, 512, (c, w, h) => { const r = K.rng(10); c.fillStyle = '#808080'; c.fillRect(0, 0, w, h); noise(c, w, h, r, 30000, 0.5, 2); }, false);
-    return { map, bump, bumpScale: 3, rough: 1, tile: 0.8, sheen: true };
+    return { map, bump, bumpScale: 3, rough: 1, tile: 0.8, sheen: true, pbr: { set: 'carpet', tile: 0.6 } };
   }
   function polished(K) {
     const map = tex(K, 'ff-polished', 1024, 1024, (c, w, h) => {
@@ -205,7 +207,7 @@
       noise(c, w, h, r, 20000, 0.12, 1.5);
       c.fillStyle = 'rgba(30,30,30,.6)'; c.fillRect(0, 0, w, 3); c.fillRect(0, 0, 3, h);
     });
-    return { map, rough: 0.28, metal: 0.05, tile: 3 };
+    return { map, rough: 0.28, metal: 0.05, tile: 3, pbr: { set: 'polished', tile: 2.5, rough: 0.35 } };
   }
   function terrazzo(K) {
     const map = tex(K, 'ff-terrazzo', 1024, 1024, (c, w, h) => {
@@ -239,18 +241,18 @@
     ['wall-blush', 'Blush paint', 300, paint('#e2b3ae')],
     ['wall-navy', 'Navy paint', 400, paint('#24304a')],
     ['wall-charcoal', 'Charcoal paint', 400, paint('#24282a')],
-    ['wall-stripes', 'Sage stripes', 600, stripes],
-    ['wall-dots', 'Pink polka dots', 600, dots],
-    ['wall-retro', '70s waves', 900, retro],
+    ['wall-stripes', 'Sage stripes', 600, onPlaster(stripes)],
+    ['wall-dots', 'Pink polka dots', 600, onPlaster(dots)],
+    ['wall-retro', '70s waves', 900, onPlaster(retro)],
     ['wall-panel', 'Oak panels', 1200, panel],
     ['wall-subway', 'White subway tiles', 1200, subway],
     ['wall-brick', 'Red brick', 1400, brick],
     ['wall-concrete', 'Raw concrete', 1400, concrete],
-    ['wall-hex', 'Glowing hex', 2200, hex],
-    ['wall-stars', 'Night sky', 2500, starry],
+    ['wall-hex', 'Glowing hex', 2200, onPlaster(hex)],
+    ['wall-stars', 'Night sky', 2500, onPlaster(starry)],
   ];
   const FLOORS = [
-    ['floor-oak', 'Oak planks', 0, K => ({ map: K.floorTex(), bump: K.floorBump(), bumpScale: 1.2, rough: 0.48, tile: 2 }), true],
+    ['floor-oak', 'Oak planks', 0, K => ({ map: K.floorTex(), bump: K.floorBump(), bumpScale: 1.2, rough: 0.48, tile: 2, pbr: { set: 'oak', tile: 2, rough: 0.8 } }), true],
     ['floor-ash', 'Pale ash planks', 900, K => planks(K, 'ash', 'ash')],
     ['floor-walnut', 'Walnut planks', 1200, K => planks(K, 'walnut', 'walnut')],
     ['floor-herring', 'Herringbone oak', 1800, herringbone],
@@ -263,7 +265,7 @@
   ];
 
   // The material for a finish. repeat is how many texture copies fit across the surface's uv.
-  function finishMat(K, id, kind, repeatU = 1, repeatV = 1) {
+  function finishMat(K, id, kind, repeatU = 1, repeatV = 1, hd = false) {
     const it = RoomItems.get(id);
     const f = it && it.finish && it.finish.kind === kind ? it.finish : RoomItems.get(kind === 'wall' ? 'wall-plaster' : 'floor-oak').finish;
     const o = f.make(K);
@@ -276,6 +278,14 @@
       ...(o.sheen ? { sheen: 1, sheenRoughness: 0.6, sheenColor: new THREE.Color('#9aa0a6') } : {}),
     });
     m.userData.tick = o.tick || null;
+    // the room page swaps in the high-detail texture set once it has loaded; shop pictures keep the drawn one
+    if (hd && o.pbr) K.hdSet(o.pbr.set).then(t => {
+      const pt = o.pbr.tile || o.tile, c = x => { const y = x.clone(); y.repeat.set(repeatU / pt, repeatV / pt); y.needsUpdate = true; return y; };
+      if (o.pbr.map !== false) m.map = c(t.map);
+      m.normalMap = c(t.normal); m.normalScale.setScalar(o.pbr.normal ?? 1);
+      m.roughnessMap = c(t.orm); m.roughness = o.pbr.rough ?? 1;
+      m.bumpMap = null; m.needsUpdate = true;
+    }).catch(() => {});
     return m;
   }
 
