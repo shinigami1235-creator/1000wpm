@@ -369,7 +369,8 @@ window.BotKit = (() => {
       if (kind === 'hit') bot.hit(new V(Math.random() < 0.5 ? -1 : 1, 0, -0.6), t);
       else if (kind === 'cast') castAt = t;
     }
-    function update(dt) {
+    const wv = new V();
+    function update(dt, uo = {}) {   // uo.vel: how the actor is moving in the world, so the bot leans into it
       t += dt;
       const sc = t - castAt, lunge = sc < 0.4 ? Math.sin(sc / 0.4 * Math.PI) * 0.9 : 0;   // a dart forward on a cast
       let y = hover, face, tilt = 0, turn = 0;
@@ -379,6 +380,7 @@ window.BotKit = (() => {
       bot.group.position.set(0, y, lunge);
       bot.group.rotation.set(0, turn, tilt);
       vel.set(0, 0, (lunge - prevZ) / Math.max(1e-3, dt) + (anim === 'type' ? 2.5 : 0)); prevZ = lunge;
+      if (uo.vel) { wv.copy(uo.vel).applyAxisAngle(new V(0, 1, 0), -group.rotation.y); vel.add(wv); }
       bot.update(t, dt, { vel, face });
     }
     function at(name, tt) { anim = name; t = tt; update(0); }

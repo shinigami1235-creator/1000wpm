@@ -76,6 +76,7 @@ window.BossScene = (() => {
       feed: () => impl && impl.feed(),
       crew: list => { pending.crew = list; if (impl) impl.crew(list); },
       act: (who, kind) => impl && impl.act(who, kind),
+      raidInfo: () => impl && impl.raidInfo(),
       // with no scene (WebGL off or still loading) the release lands at once
       release: (tier, power, onLand) => { if (impl && impl.live()) impl.release(tier, power, onLand); else if (onLand) onLand(null, null); },
       defeat: instant => { pending.defeated = true; if (impl) impl.defeat(!!instant); },
@@ -498,6 +499,10 @@ window.BossScene = (() => {
     // opts.raid: how many raider markers to show (a party shows its 1 to 3 teammates); all 40 by default
     const SHOWN = opts.raid != null ? Math.max(0, Math.min(RAID, opts.raid)) : RAID;
     const raidPos = Array.from({ length: RAID + 1 }, () => new V());   // last one is you
+    // with the bots flying (js/app/raid-flight.js), raidPos is where each one is right now, homePos its
+    // post in the formation, and aim the centre of the target zone the boss's attacks land on
+    const homePos = Array.from({ length: RAID + 1 }, () => new V()), aim = new V();
+    let flight = null;
     const markMat = keep(new THREE.MeshBasicMaterial({ color: '#ffffff' }));
     const marks = new THREE.InstancedMesh(keep(new THREE.OctahedronGeometry(0.32)), markMat, RAID + 1);
     marks.frustumCulled = false;
@@ -537,6 +542,8 @@ window.BossScene = (() => {
       youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
       // with operators standing there, shots leave from their chests
       if (OPS) for (const p of raidPos) p.y = BOT ? BotKit.HOVER : 1.9;
+      raidPos.forEach((p, i) => { homePos[i].copy(p); if (flight) flight.home(i, p); });
+      aim.copy(homePos[RAID]);
     }
     const ONSCREEN = 11;   // slots below this are drawn; the rest of the raid is off screen
     // raiders a blow knocks flat: knockAt[i] is when, and they get up again 1.4 s later
@@ -570,6 +577,10 @@ window.BossScene = (() => {
       crowd.meshes.forEach(m => scene.add(m));
       for (let i = 0; i < RAID; i++) crowdTint.push(BOT ? raidCol(i).clone().multiplyScalar(1.5) : new THREE.Color('#ffffff').lerp(raidCol(i), 0.32));
       marks.visible = false;
+      if (BOT && window.RaidFlight) {
+        flight = RaidFlight.create(THREE, scene, { slots: RAID + 1, you: RAID, squads: [[RAID, 0, 1, 2], [3, 4, 5, 6], [7, 8, 9, 10]], hover: BotKit.HOVER, animated: Math.min(ONSCREEN, SHOWN) });
+        homePos.forEach((p, i) => { if (p.lengthSq()) flight.home(i, p); });
+      }
     }
     // the squad mates take the three spots nearest you
     function setCrew(list) {
@@ -581,21 +592,22 @@ window.BossScene = (() => {
       const c = crew.find(x => x.id === who);
       if (!c) return;
       if (kind === 'type') c.typeAt = nowS();
-      else if (kind === 'cast' || kind === 'hit') { if (!c.down) c.op.once(kind); }
-      else if (kind === 'down') c.down = true;
-      else if (kind === 'up') c.down = false;
+      else if (kind === 'cast' || kind === 'hit') { if (!c.down) c.op.once(kind); if (flight && kind === 'cast' && c.id !== 'you') flight.run(c.slot, nowS()); }
+      else if (kind === 'down') { c.down = true; if (flight) flight.setDown(c.slot, true); }
+      else if (kind === 'up') { c.down = false; if (flight) flight.setDown(c.slot, false); }
     }
     const opM = new THREE.Matrix4(), opQ = new THREE.Quaternion(), opS = new V(), opP = new V(), opE = new THREE.Euler();
     function opsTick(t, dt) {
       if (!OPS) return;
       for (const c of crew) {
         const p = raidPos[c.slot];
-        c.op.group.position.set(p.x, 0, p.z);
+        c.op.group.position.set(p.x, BOT ? p.y - BotKit.HOVER : 0, p.z);
         // mates keep typing; you type while your words are landing
         if (c.id !== 'you' && t - c.typeAt > 1.6 && Math.random() < dt * 2) c.typeAt = t;
-        const anim = c.down ? 'defeat' : won ? 'victory' : t - c.typeAt < 1.3 ? 'type' : 'idle';
+        const dn = c.down || (flight && flight.isDown(c.slot));
+        const anim = dn ? 'defeat' : won ? 'victory' : t - c.typeAt < 1.3 ? 'type' : 'idle';
         c.op.play(anim);
-        c.op.update(dt);
+        c.op.update(dt, flight ? { vel: flight.vel(c.slot) } : undefined);
       }
       const used = new Set(crew.map(c => c.slot));
       if (BOT) {   // the rest of the raid: simple bots, every part sharing one matrix
@@ -605,8 +617,10 @@ window.BossScene = (() => {
           const p = raidPos[i];
           const ku = t - knockAt[i], kk = ku < 0.15 ? ease(ku / 0.15) : ku < 0.8 ? 1 : ku < 1.4 ? 1 - smooth((ku - 0.8) / 0.6) : 0;
           const fu = t - flinchAt, fk = fu < 0.35 ? Math.sin(fu / 0.35 * Math.PI) * (0.5 + 0.5 * Math.sin(i * 2.3)) : 0;
-          opP.set(p.x, Math.sin(t * 2.1 + i * 1.3) * 0.12 + Math.sin(t * 9 + i) * 0.06 * markGlow[i] + fk * 0.35, p.z + kk * 1.8);
-          opQ.setFromEuler(opE.set(-kk * 0.9, Math.PI + Math.sin(i * 1.7) * 0.25, kk * (i % 2 ? 1.2 : -1.2)));
+          opP.set(p.x, (flight ? p.y - BotKit.HOVER : 0) + Math.sin(t * 2.1 + i * 1.3) * 0.12 + Math.sin(t * 9 + i) * 0.06 * markGlow[i] + fk * 0.35, p.z + (flight ? 0 : kk * 1.8));
+          const fv = flight ? flight.vel(i) : opP, dn = flight && flight.isDown(i) ? 1 : 0;
+          const kd = Math.max(kk, dn);
+          opQ.setFromEuler(opE.set(-kd * 0.9 + (flight ? clamp(-fv.z * 0.05, -0.4, 0.4) : 0), Math.PI + Math.sin(i * 1.7) * 0.25, kd * (i % 2 ? 1.2 : -1.2) + (flight ? clamp(fv.x * 0.05, -0.45, 0.45) : 0)));
           const bs = 0.62 + (i % 5) * 0.02; opS.setScalar(bs);
           opP.y += BotKit.HOVER * (1 - bs);   // the hover height is in the geometry, so scaling would lower it
           opM.compose(opP, opQ, opS);
@@ -997,7 +1011,7 @@ window.BossScene = (() => {
           sh.on = true; sh.id = s.id; sh.launch = s.l; sh.arrive = s.a; sh.ret = -1; sh.lane = s.lane;
           partG[3].updateMatrixWorld();
           sh.from.set(2.1, -6.8, 0.8).applyMatrix4(armRG.matrixWorld).add(v1.set((s.lane - 1.5) * 1.4, (s.lane % 2) * 1.6, 0));
-          sh.to.copy(raidPos[RAID]).add(v1.set((s.lane - 1.5) * 1.6, 1.6 + (s.lane % 2) * 0.8, 0.5));
+          sh.to.copy(aim).add(v1.set((s.lane - 1.5) * 1.6, 1.6 + (s.lane % 2) * 0.8, 0.5));
           sh.g.visible = true; sh.pos.copy(sh.from);
           burst(sh.from, 8, 5, CYAN);
         }
@@ -1018,7 +1032,7 @@ window.BossScene = (() => {
     function current(t, type) { for (const x of evs) if (x.type === type && t >= x.s && t <= x.e) return x; return null; }
     function impact(x) {
       const you = blocked.has(x.id) || frozen.has(x.id);
-      const at = raidPos[RAID];
+      const at = aim;
       if (x.cut) { act('you', 'cast'); return; }   // a broken charge: nothing lands
       shake = Math.max(shake, you ? 0.8 : 1.1);
       stopUntil = Math.max(stopUntil, performance.now() + (you ? 150 : 110));
@@ -1027,15 +1041,19 @@ window.BossScene = (() => {
         // the blow hits your barrier: a cyan crack across it, sparks, and the boss thrown back
         const bt = nowS();
         barrierHitAt = bt;
-        v2.copy(raidPos[RAID]); v2.z -= 3; v2.y = 3;
+        v2.copy(aim); v2.z -= 3; v2.y = 3;
         burst(v2, 70, 18, CYAN, 1.2, 4); burst(v2, 40, 14, WHITE, 1.4, 6);
         flare(v2, CYAN, 9, 0.3, canFlash() ? 1.3 : 0.6);
-        wave(v1.copy(raidPos[RAID]).setY(0.3), 0.4, 14, 0.7, CYAN, 0.9);
+        wave(v1.copy(aim).setY(0.3), 0.4, 14, 0.7, CYAN, 0.9);
         if (!reduce) slowUntil = Math.max(slowUntil, performance.now() + 260);
         setTimeout(() => { if (!dead) stagger(); }, 90);
       }
       // the ones who didn't block it go flat
-      { const t = nowS(), pk = (x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25) * (you ? 0.3 : 1); for (let i = 0; i < ONSCREEN; i++) if (Math.random() < pk) knockAt[i] = t + Math.random() * 0.08; }
+      { const t = nowS(), pk = (x.kind === 'charge' ? 0.8 : x.kind === 'slam' || x.kind === 'laser' ? 0.35 : 0.25) * (you ? 0.3 : 1);
+        // with the bots flying, the ones too slow to dodge (decided when the hit got close) are the ones hit
+        const late = flight ? flight.lateFor(x.id, pk) : null;
+        for (let i = 0; i < ONSCREEN; i++) if (late ? late.has(i) : Math.random() < pk) { knockAt[i] = t + Math.random() * 0.08; if (flight) flight.knock(i, t, x.kind === 'charge' || x.kind === 'slam' || x.kind === 'laser'); }
+        if (flight && !you) flight.knock(RAID, t, false); }
       if (kit) {
         // the blow lands where the fists are: rings and dust from each fist, chunks of armour
         // shaken loose, a flash, a held frame and a short slow-motion beat for the big ones
@@ -1116,6 +1134,7 @@ window.BossScene = (() => {
       const b = bolts[boltI = (boltI + 1) % BOLTS];
       b.on = true; b.h = h; b.t = 0;
       b.from.copy(raidPos[ri]).setY(raidPos[ri].y + 0.4);
+      if (flight && !you && ri < ONSCREEN && Math.random() < (h.tier >= 1 ? 0.5 : 0.12)) flight.strafe(ri, nowS());
       b.target = h.weak && !shieldF ? -2 : pickBlock(you);
       b.shield = !!h.shield && shieldF !== null;
       b.dur = you ? 0.17 : rnd(0.16, 0.24);
@@ -1246,6 +1265,7 @@ window.BossScene = (() => {
       wave(raidPos[RAID], 0.5, 6, 0.6, CYAN, 0.9);
     }
     function stagger() {
+      if (flight) flight.strike(nowS());
       recoilV -= 2.6; headJerk = 1; reelAt = nowS(); jolt = 0;
       adv = Math.max(0, adv - 0.45);
       if (!reduce) mv.z -= 1.6;
@@ -1342,7 +1362,7 @@ window.BossScene = (() => {
         shieldF = f;
       }
     }
-    function setWeak(on) { weakOn = on; }
+    function setWeak(on) { if (on && !weakOn && flight) flight.strike(nowS()); weakOn = on; }
 
     function defeat(instant) {
       if (dead) return;
@@ -1544,7 +1564,7 @@ window.BossScene = (() => {
       const ln = current(t, 'slam');
       if (ln && ln.kind === 'lunge' && t >= ln.h - 0.12 && t < ln.h + 0.45 && !reduce) {
         kit.fists[1].at.getWorldPosition(vA);
-        root.localToWorld(vB.copy(raidPos[RAID])); vB.y += 0.8;
+        root.localToWorld(vB.copy(aim)); vB.y += 0.8;
         for (let k = 0; k < 3; k++) kit.arcs.add(vA, vB, 0.06, 1.4, 16);
         if (Math.random() < 0.5) burst(vB, 6, 6, RED, 1, 6);
       }
@@ -1738,6 +1758,11 @@ window.BossScene = (() => {
       armLG.rotation.set(cur.lx, 0, cur.lz);
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
       if (kit) driveKit(t, at, adt);
+      if (flight) {
+        const sl = dead ? null : current(t, 'slam');
+        flight.update(t, adt, { boss: root.position, aim, threat: sl && !sl.cut ? { id: sl.id, kind: sl.kind, h: sl.h, blocked: !!sl.blocked } : null }, raidPos);
+        youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
+      }
       opsTick(t, adt);
       root.updateMatrixWorld(true);
       partG.forEach((g, i) => g.getWorldQuaternion(partQ[i]));
@@ -1853,7 +1878,7 @@ window.BossScene = (() => {
         tele.visible = teleFill.visible = true;
         // the ring marks the danger zone, and the fill grows to meet it at the moment of the hit
         const R = 5.6, blink = w > 0.8 && !reduce ? 0.5 + 0.5 * Math.sin(t * 40) : 1;
-        tele.position.set(raidPos[RAID].x, 0.06, raidPos[RAID].z); tele.scale.setScalar(R + Math.sin(t * (6 + 14 * w)) * 0.1 * still);
+        tele.position.set(aim.x, 0.06, aim.z); tele.scale.setScalar(R + Math.sin(t * (6 + 14 * w)) * 0.1 * still);
         teleFill.position.copy(tele.position); teleFill.scale.setScalar(Math.max(0.05, R * 0.97 * ease(w)));
         tele.material.opacity = (0.5 + 0.45 * w) * blink;
         teleFill.material.opacity = 0.14 + 0.3 * w;
@@ -1861,20 +1886,20 @@ window.BossScene = (() => {
         teleFill.material.color.copy(blocked.has(sl.id) ? CYAN : RED).multiplyScalar(0.4);
         if (sl.kind === 'beam' || sl.kind === 'laser') {
           beam.visible = true;
-          setBeam(anchorCore, raidPos[RAID], sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
+          setBeam(anchorCore, aim, sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
           beamMat.opacity = 0.25 + 0.35 * w;
         }
       } else { tele.visible = teleFill.visible = false; }
       if (t < beamUntil) {
         beam.visible = true;
         const u = (beamUntil - t) / beamLen;
-        setBeam(anchorCore, raidPos[RAID], beamW * u + 0.2);
+        setBeam(anchorCore, aim, beamW * u + 0.2);
         beamMat.opacity = 0.9 * u;
       } else if (!(sl && !sl.cut && (sl.kind === 'beam' || sl.kind === 'laser') && t < sl.h)) beam.visible = false;
       const su = t - sweepT0;
       if (su < 0.45) {
         sweepBar.visible = true;
-        sweepBar.position.set(16 - 32 * ease(su / 0.35), 0.8, raidPos[RAID].z);
+        sweepBar.position.set(16 - 32 * ease(su / 0.35), 0.8, aim.z);
         sweepMat.opacity = 0.85 * (1 - su / 0.45);
       } else sweepBar.visible = false;
 
@@ -2076,7 +2101,7 @@ window.BossScene = (() => {
         barrier.visible = a > 0.01;
         if (barrier.visible) {
           barrierMat.opacity = a;
-          barrier.position.copy(raidPos[RAID]); barrier.position.z -= 3; barrier.position.y = 3.2;
+          barrier.position.copy(aim); barrier.position.z -= 3; barrier.position.y = 3.2;
           barrier.scale.setScalar(5.5 + (hu < 0.35 ? 1.2 * (1 - hu / 0.35) : 0));
           barrier.rotation.set(0, 0, t * 0.4);
         }
@@ -2113,6 +2138,7 @@ window.BossScene = (() => {
     function dispose() {
       renderer.setAnimationLoop(null);
       crew.forEach(c => c.op.dispose()); crew.length = 0;
+      if (flight) flight.dispose();
       if (crowd) crowd.dispose();
       if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
@@ -2140,6 +2166,7 @@ window.BossScene = (() => {
       if (!fx || dead) { if (onLand) onLand(null, null); return; }
       const from = orbPos(new V());
       act('you', 'cast');
+      if (flight) { if (tier >= 3 && power >= 0.6) flight.strike(nowS()); else if (tier >= 1) flight.strafe(RAID, nowS()); }
       const ti = -2, sh = shieldF !== null;   // a release always goes for the core
       fx.release(tier, power, from, out => aimAt(ti, sh, from, out), at => {
         recoilV -= 0.3 + 1.4 * power;
@@ -2157,7 +2184,9 @@ window.BossScene = (() => {
 
     setFrac(1, true);
     applyPal(1);
-    return { breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    // for tests: where the raid's bots are, the target zone's centre, who is down
+    const raidInfo = () => ({ st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = current(nowS(), 'slam'); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
+    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
   }
 
   return { mount };
