@@ -173,21 +173,8 @@ window.BossScene = (() => {
     grid.material.transparent = true; grid.material.opacity = 0.32; grid.material.color = pal.b.clone();
     keep(grid.geometry); keep(grid.material);
     env.add(grid);
-    // the arena's atmosphere (28 Nov 2026): two layers of low haze drifting over the floor, and dust
-    // motes hanging in the air (a lit floor was tried and read as a grey slab with a hard edge)
-    const hazeCv = document.createElement('canvas'); hazeCv.width = hazeCv.height = 256;
-    {
-      // soft blotches that tile: blurred random discs drawn with wrap-around
-      const g = hazeCv.getContext('2d'); g.filter = 'blur(14px)';
-      for (let i = 0; i < 46; i++) { const x = rnd(0, 256), y = rnd(0, 256), r = rnd(18, 60), a = rnd(0.12, 0.4);
-        for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) { g.fillStyle = `rgba(255,255,255,${a})`; g.beginPath(); g.arc(x + ox, y + oy, r, 0, 6.29); g.fill(); } }
-    }
-    const hazeTex = keep(new THREE.CanvasTexture(hazeCv)); hazeTex.wrapS = hazeTex.wrapT = THREE.RepeatWrapping; hazeTex.repeat.set(5, 5);
-    const hazes = [[0.4, 0.07], [1.3, 0.045]].map(([y, op], i) => {
-      const t = i ? hazeTex.clone() : hazeTex; if (i) { keep(t); t.repeat.set(3.4, 3.4); t.needsUpdate = true; }
-      const m = new THREE.Mesh(keep(new THREE.CircleGeometry(70, 40)), keep(new THREE.MeshBasicMaterial({ map: t, color: pal.b.clone(), transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
-      m.rotation.x = -Math.PI / 2; m.position.y = y; m.userData.op = op; env.add(m); return m;
-    });
+    // the arena's atmosphere (28 Nov 2026): dust motes hanging in the air (a lit floor and low haze were
+    // tried: the floor read as a grey slab with a hard edge, the haze washed the floor green)
     const DUST = 220, dustPos = new Float32Array(DUST * 3), dustSeed = new Float32Array(DUST);
     for (let i = 0; i < DUST; i++) { dustPos.set([rnd(-34, 34), rnd(0.5, 22), rnd(-28, 20)], i * 3); dustSeed[i] = rnd(0, 6.28); }
     const dustGeo = keep(new THREE.BufferGeometry()); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3).setUsage(THREE.DynamicDrawUsage));
@@ -200,7 +187,6 @@ window.BossScene = (() => {
         if (dustPos[k + 1] > 22) dustPos[k + 1] = 0.5;
       }
       dustGeo.attributes.position.needsUpdate = true;
-      hazes[0].material.map.offset.set(t * 0.006, t * 0.004); hazes[1].material.map.offset.set(-t * 0.004, t * 0.007);
     }
     const floorRings = [[6.5, 6.8, 1.1], [9.5, 9.6, 0.8], [14, 14.08, 0.5]].map(([a, b, k]) => {
       const m = new THREE.Mesh(keep(new THREE.RingGeometry(a, b, 96)), keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), side: THREE.DoubleSide, transparent: true, opacity: k })));
@@ -1290,9 +1276,10 @@ window.BossScene = (() => {
       wallMat.color.copy(pal.a);
       floorRings.forEach(r => r.material.color.copy(pal.a).multiplyScalar(1.1));
       boxMat.uniforms.uColA.value.copy(pal.a); boxMat.uniforms.uColC.value.copy(pal.c);
+      // Syntax Error's chips are its own red and white, not the arena's colour
+      if (kit && kit.tips) { boxMat.uniforms.uColA.value.set('#ff2a3a').multiplyScalar(1.3); boxMat.uniforms.uColC.value.set('#ffd2c8'); }
       pilMat.uniforms.uColA.value.copy(pal.b); pilMat.uniforms.uColC.value.copy(pal.a);
       shardMat.color.copy(pal.a);
-      hazes.forEach(h => h.material.color.copy(pal.b).lerp(pal.a, 0.25));
       dustMat.color.copy(pal.a).multiplyScalar(0.7);
       rings.forEach(r => { if (!r.userData.gone) r.material.color.copy(r.userData.alt ? pal.c : pal.a).multiplyScalar(1.8); });
       bloom.strength = pal.bloom * 0.75;
@@ -1642,7 +1629,7 @@ window.BossScene = (() => {
     // code rain: streaks that fall on the targets, and the targets on the floor
     const RS = 28;
     const rainMat = keep(new THREE.MeshBasicMaterial({ color: C('#ff3a3a', 2.6), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    const rainMesh = new THREE.InstancedMesh(keep(new THREE.BoxGeometry(0.14, 4.2, 0.14)), rainMat, RS); rainMesh.frustumCulled = false; scene.add(rainMesh);
+    const rainMesh = new THREE.InstancedMesh(keep(new THREE.BoxGeometry(0.24, 3.6, 0.24)), rainMat, RS); rainMesh.frustumCulled = false; scene.add(rainMesh);
     const retMesh = new THREE.InstancedMesh(keep(new THREE.RingGeometry(0.8, 1.0, 40)), keep(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 1.8), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })), 10);
     retMesh.frustumCulled = false; scene.add(retMesh);
     // guide lines: the scan line's path across the floor, and the grab's lines from its talons to the squad
@@ -1733,7 +1720,7 @@ window.BossScene = (() => {
               if (!blk) decal(p, 2.2, rnd(0, 6.28), 1, 5);
             }
             if (rn >= RS) break;
-            const gather = w > 0.35 && fu < 1, hi = 24 + (i % 3) * 3;
+            const gather = w > 0.3 && fu < 1, hi = 13 + (i % 3) * 1.6;
             if (!gather) continue;
             const y = fu < 0 ? hi + Math.sin(t * 3 + i) * 0.8 : hi + (0.6 - hi) * easeIn(fu);
             const blk = x.side ? x.outcome === 'block' : blocked.has(x.id);
@@ -3119,7 +3106,7 @@ window.BossScene = (() => {
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
     return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
-      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [...hazes, dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
+      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }
 
   return { mount };
