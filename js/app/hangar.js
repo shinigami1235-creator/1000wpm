@@ -10,8 +10,8 @@ Router.register('hangar', (() => {
   const GLOWS = ['theme', '#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
   const SCREENS = ['', '#ffffff', '#9ff3ff', '#ffd27a', '#ff9be0', '#c6ffa8'];
   const SHELL_DOT = { white: '#d8dce2', gunmetal: '#4d535c', black: '#1f2226', chrome: 'linear-gradient(135deg,#fff,#8a929c)', twotone: 'linear-gradient(90deg,#d8dce2 50%,#2a3039 50%)',
-    mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: 'linear-gradient(135deg,#fff,#ffd9f6 55%,#d9e6f2)', rose: 'linear-gradient(135deg,#f4cbbb,#c98b78)', gold: 'linear-gradient(135deg,#ffe28a,#c79a2e)' };
-  const RAINBOW = 'conic-gradient(#ff5c8a,#ffd23d,#3effc8,#5cc8ff,#8c7bff,#ff5c8a)';
+    mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: 'linear-gradient(135deg,#fff,#ffd9f6 55%,#d9e6f2)', rose: 'linear-gradient(135deg,#f4cbbb,#c98b78)', gold: 'linear-gradient(135deg,#ffe28a,#c79a2e)',
+    cherry: 'radial-gradient(circle at 35% 30%,#ff8a92,#d8343f 60%)', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: 'linear-gradient(135deg,#4a5ca8,#141b3d)', holo: 'linear-gradient(135deg,#e8f0ff,#9ffcff 40%,#ffd9f6 70%,#c9d4ff)' };
   const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0 });
   const voice = mood => { if (window.IdleAudio && store) IdleAudio.bot(store.active, mood); };
   // a bought part's price tag, or nothing if it's free or yours
@@ -23,7 +23,7 @@ Router.register('hangar', (() => {
   const load = () => { const s = TT.store.get(KEY, null); return s && s.bots ? s : { active: fight(), bots: {} }; };
   const fight = () => { const d = window.Ops && Ops.division(); return (d && BotKit.DIV_BOT[d.id]) || null; };
   const look = () => (store.bots[store.active] = { ...fresh(), ...(store.bots[store.active] || {}) });
-  const glowOf = L => (!L.color || L.color === 'theme' ? Theme.hex('accent') : L.color === 'rainbow' ? '#ff5cf0' : L.color);
+  const glowOf = L => (!L.color || L.color === 'theme' ? Theme.hex('accent') : BotKit.FX[L.color] ? BotKit.FX[L.color].base : L.color);
   function commit() {
     const s = JSON.stringify(store); if (s === hist[hi]) return;
     hist = hist.slice(0, hi + 1); hist.push(s); hi = hist.length - 1;
@@ -110,9 +110,8 @@ Router.register('hangar', (() => {
     const btns = (key, list) => `<div class="seg hg-wrap">${list.map(([v, n]) => { const lk = lockOf(key, v); return `<button type="button" data-set="${key}" data-v="${v}" class="${String(L[key]) === String(v) ? 'on' : ''}${lk ? ' locked' : ''}">${esc(n)}${lk ? price(lk) : ''}</button>`; }).join('')}</div>`;
     let h = '';
     if (tab === 'Colour') {
-      const rb = lockOf('color', 'rainbow');
       h += `<div class="hg-group"><span class="label">Glow</span><div class="hg-sw">${GLOWS.map(c => `<button type="button" class="hg-dot ${(L.color || 'theme') === c ? 'on' : ''}" style="background:${c === 'theme' ? Theme.hex('accent') : c}" data-set="color" data-v="${c}" aria-label="${c === 'theme' ? 'Theme colour' : c}" title="${c === 'theme' ? 'Theme colour' : c}"></button>`).join('')}
-        <button type="button" class="hg-dot rainbow ${L.color === 'rainbow' ? 'on' : ''}${rb ? ' locked' : ''}" style="background:${RAINBOW}" data-set="color" data-v="rainbow" aria-label="Rainbow glow${rb ? `, ${rb.price} coins` : ''}" title="Rainbow glow${rb ? `: ${UI.fmt(rb.price)} coins` : ''}"></button></div></div>`;
+        ${Object.entries(BotKit.FX).map(([v, f]) => { const lk = lockOf('color', v); return `<button type="button" class="hg-dot ${L.color === v ? 'on' : ''}${lk ? ' locked' : ''}" style="background:${f.swatch}" data-set="color" data-v="${v}" aria-label="${f.name} glow${lk ? `, ${lk.price} coins` : ''}" title="${f.name} glow${lk ? `: ${UI.fmt(lk.price)} coins` : ''}"></button>`; }).join('')}</div></div>`;
       h += `<div class="hg-group"><span class="label">Shell</span><div class="seg hg-wrap">${BotKit.OPTIONS.shell.map(([v, n]) => { const lk = lockOf('shell', v); return `<button type="button" data-set="shell" data-v="${v}" class="${L.shell === v ? 'on' : ''}${lk ? ' locked' : ''}"><i class="hg-shell" style="background:${SHELL_DOT[v]}"></i>${esc(n)}${lk ? price(lk) : ''}</button>`; }).join('')}</div></div>`;
     } else if (tab === 'Face') {
       h += `<div class="hg-group"><span class="label">Eyes</span>${btns('eyes', BotKit.OPTIONS.eyes)}</div>`;
@@ -167,7 +166,7 @@ Router.register('hangar', (() => {
     function build() {
       if (bot) bot.dispose();
       const L = look();
-      bot = BotKit.create(THREE, store.active, { color: L.color === 'rainbow' ? 'rainbow' : glowOf(L), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, top: L.top, blush: !!L.blush, marks: { stickers: L.stickers, wear: L.wear } });
+      bot = BotKit.create(THREE, store.active, { color: BotKit.FX[L.color] ? L.color : glowOf(L), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, top: L.top, blush: !!L.blush, marks: { stickers: L.stickers, wear: L.wear } });
       scene.add(bot.group); padRing.material.color.set(glowOf(L)).multiplyScalar(1.6);
     }
     build();

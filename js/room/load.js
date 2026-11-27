@@ -6,7 +6,7 @@
   css.rel = 'stylesheet';
   css.href = base + 'room.css';
   document.head.appendChild(css);
-  const files = ['kit.js', 'items.js', 'gift-items.js', 'room.js'];
+  const files = ['aq.js', 'kit.js', 'items.js', 'gift-items.js', 'room.js'];
   if (!window.KB_LAYOUTS) files.unshift('../keyboards.js');
   for (const f of files) {
     const s = document.createElement('script');

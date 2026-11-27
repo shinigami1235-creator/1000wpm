@@ -51,16 +51,28 @@ window.BotKit = (() => {
   // what the hangar offers; the first of each is the default
   const OPTIONS = {
     shell: [['white', 'White'], ['gunmetal', 'Gunmetal'], ['black', 'Matte black'], ['chrome', 'Chrome'], ['twotone', 'Two-tone'],
-      ['mint', 'Mint'], ['sky', 'Sky'], ['lilac', 'Lilac'], ['peach', 'Peach'], ['pearl', 'Pearl'], ['rose', 'Rose gold'], ['gold', 'Gold']],
+      ['mint', 'Mint'], ['sky', 'Sky'], ['lilac', 'Lilac'], ['peach', 'Peach'], ['pearl', 'Pearl'], ['rose', 'Rose gold'], ['gold', 'Gold'],
+      ['cherry', 'Cherry'], ['lime', 'Lime'], ['bubblegum', 'Bubblegum'], ['midnight', 'Midnight'], ['holo', 'Holo']],
     eyes: [['own', 'Its own'], ['round', 'Round'], ['square', 'Square'], ['slit', 'Slit'], ['visor', 'Visor'],
-      ['dots', 'Dots'], ['big', 'Sparkle'], ['sleepy', 'Sleepy'], ['wink', 'Wink'], ['star', 'Stars'], ['heart', 'Hearts']],
-    back: [['none', 'None'], ['wings', 'Wings'], ['pack', 'Thruster pack'], ['jets', 'Twin jets'], ['cape', 'Cape'], ['balloon', 'Heart balloon']],
-    top: [['none', 'None'], ['bow', 'Bow'], ['cap', 'Cap'], ['flower', 'Flower'], ['party', 'Party hat'], ['antenna', 'Antenna ball'], ['headphones', 'Headphones'], ['propeller', 'Propeller cap'], ['crown', 'Crown']],
+      ['dots', 'Dots'], ['big', 'Sparkle'], ['sleepy', 'Sleepy'], ['wink', 'Wink'], ['star', 'Stars'], ['heart', 'Hearts'],
+      ['anime', 'Anime'], ['squint', 'Squint'], ['glasses', 'Glasses'], ['cyclops', 'Cyclops']],
+    back: [['none', 'None'], ['wings', 'Wings'], ['pack', 'Thruster pack'], ['jets', 'Twin jets'], ['cape', 'Cape'], ['balloon', 'Heart balloon'],
+      ['angel', 'Angel wings'], ['bat', 'Bat wings'], ['backpack', 'Backpack'], ['rocket', 'Rocket']],
+    top: [['none', 'None'], ['bow', 'Bow'], ['cap', 'Cap'], ['flower', 'Flower'], ['party', 'Party hat'], ['antenna', 'Antenna ball'], ['headphones', 'Headphones'], ['propeller', 'Propeller cap'], ['crown', 'Crown'],
+      ['cat', 'Cat ears'], ['horns', 'Horns'], ['sprout', 'Sprout'], ['beanie', 'Beanie'], ['chef', 'Chef hat'], ['wizard', 'Wizard hat'], ['halo', 'Halo']],
     sig: {
       orbit: ['Halo', 'Single ring', 'Double ring'], pixel: ['Antennas', 'Twin spikes', 'Dish'], nova: ['Blades', 'Long', 'Swept back'],
       kite: ['Hat', 'Straw hat', 'Hood'], beep: ['Ears', 'Long', 'Floppy'], raze: ['Legs', 'Blades', 'Pistons'],
     },
   };
+  // glows that change colour over time (bought): [hue at t, saturation, lightness] and a swatch
+  const FX = {
+    rainbow: { base: '#ff5cf0', swatch: 'conic-gradient(#ff5c8a,#ffd23d,#3effc8,#5cc8ff,#8c7bff,#ff5c8a)', name: 'Rainbow', at: (t, s) => [(t * 0.08 + s) % 1, 1, 0.55] },
+    ember: { base: '#ff6a1f', swatch: 'radial-gradient(circle at 40% 35%,#ffe066,#ff6a1f 55%,#c41c1c)', name: 'Ember', at: (t, s) => [0.02 + 0.06 * (0.5 + 0.5 * Math.sin(t * 7 + s * 9) * Math.sin(t * 2.3)), 1, 0.52] },
+    frost: { base: '#7fe8ff', swatch: 'radial-gradient(circle at 40% 35%,#fff,#7fe8ff 55%,#3b7dff)', name: 'Frost', at: (t, s) => [0.53 + 0.05 * Math.sin(t * 1.4 + s), 1, 0.62 + 0.14 * Math.sin(t * 2.1 + s)] },
+    galaxy: { base: '#9b6bff', swatch: 'conic-gradient(#3b2bff,#9b6bff,#ff5cd6,#5cc8ff,#3b2bff)', name: 'Galaxy', at: (t, s) => [0.62 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.7 + s)), 1, 0.6] },
+  };
+
   const SHELLS = {
     white: [['#d8dce2', 0.38, 0.25], ['#aeb4bd', 0.45, 0.3]],
     gunmetal: [['#4d535c', 0.32, 0.75], ['#30353c', 0.4, 0.7]],
@@ -74,6 +86,11 @@ window.BotKit = (() => {
     pearl: [['#f4f1ec', 0.18, 0.35, '#ffd9f6'], ['#d9e6f2', 0.22, 0.4]],
     rose: [['#e8b4a0', 0.2, 1.0], ['#c98b78', 0.26, 1.0]],
     gold: [['#e9c25a', 0.18, 1.0], ['#c79a2e', 0.24, 1.0]],
+    cherry: [['#d8343f', 0.24, 0.15], ['#9e1f2c', 0.3, 0.2]],
+    lime: [['#c8f06a', 0.4, 0.1], ['#93c43a', 0.45, 0.15]],
+    bubblegum: [['#ff9ccf', 0.35, 0.1], ['#e86aa8', 0.4, 0.15]],
+    midnight: [['#22306a', 0.28, 0.7], ['#141b3d', 0.35, 0.6]],
+    holo: [['#e8f0ff', 0.15, 0.4, '#9ffcff'], ['#c9d4ff', 0.2, 0.5]],
   };
   // battle marks: one sticker per kind of boss repaired, drawn as a small badge
   const STICKERS = { syntax: 'Syntax Error', titan: 'Siege Titan', warden: 'Firewall Warden', king: 'Kernel King', streak: '10-win streak', founder: 'Season 1' };
@@ -81,8 +98,10 @@ window.BotKit = (() => {
   // a shop picture for a bought part: a little bot wearing it (an SVG data URL)
   function icon(it) {
     const acc = (window.Theme && Theme.hex('accent')) || '#8cff58';
-    const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a' };
+    const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a', cherry: '#d8343f', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: '#22306a', holo: '#e8f0ff' };
     const body = it.part === 'shell' ? shellC[it.v] || '#d8dce2' : '#d8dce2';
+    const FXG = { rainbow: ['#ff5c8a', '#ffd23d', '#3effc8', '#8c7bff'], ember: ['#c41c1c', '#ff6a1f', '#ffe066', '#ff6a1f'], frost: ['#3b7dff', '#7fe8ff', '#ffffff', '#7fe8ff'], galaxy: ['#3b2bff', '#9b6bff', '#ff5cd6', '#5cc8ff'] };
+    const fxg = FXG[it.part === 'color' && it.v] || FXG.rainbow;
     const glowC = it.part === 'color' ? 'url(#rb)' : acc;
     let eyes = `<rect x="78" y="96" width="12" height="12" rx="3" fill="${acc}"/><rect x="110" y="96" width="12" height="12" rx="3" fill="${acc}"/>`;
     if (it.part === 'eyes') {
@@ -93,6 +112,10 @@ window.BotKit = (() => {
         wink: `<path d="M76 104q8 -8 16 0" stroke="${acc}" stroke-width="4" fill="none"/><rect x="110" y="96" width="12" height="12" rx="3" fill="${acc}"/>`,
         star: `<path d="M84 92l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7zM116 92l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z" fill="${acc}"/>`,
         heart: `<path d="M84 110l-8-8a5 5 0 0 1 8-6a5 5 0 0 1 8 6zM116 110l-8-8a5 5 0 0 1 8-6a5 5 0 0 1 8 6z" fill="${acc}"/>`,
+        anime: `<ellipse cx="84" cy="102" rx="7" ry="10" fill="${acc}"/><ellipse cx="116" cy="102" rx="7" ry="10" fill="${acc}"/><circle cx="86" cy="97" r="3" fill="#000"/><circle cx="118" cy="97" r="3" fill="#000"/><circle cx="82" cy="107" r="1.6" fill="#000"/><circle cx="114" cy="107" r="1.6" fill="#000"/>`,
+        squint: `<path d="M77 95l13 7-13 7M123 95l-13 7 13 7" stroke="${acc}" stroke-width="4" fill="none" stroke-linejoin="round"/>`,
+        glasses: `<rect x="74" y="93" width="20" height="18" rx="3" stroke="${acc}" stroke-width="3" fill="none"/><rect x="106" y="93" width="20" height="18" rx="3" stroke="${acc}" stroke-width="3" fill="none"/><path d="M94 100h12" stroke="${acc}" stroke-width="3"/><circle cx="84" cy="102" r="3" fill="${acc}"/><circle cx="116" cy="102" r="3" fill="${acc}"/>`,
+        cyclops: `<circle cx="100" cy="102" r="11" fill="${acc}"/><circle cx="103" cy="98" r="4" fill="#000"/>`,
       };
       eyes = E[it.v] || eyes;
     }
@@ -106,15 +129,26 @@ window.BotKit = (() => {
       headphones: `<path d="M56 100a44 44 0 0 1 88 0" stroke="#2a2f37" stroke-width="8" fill="none"/><rect x="48" y="92" width="16" height="26" rx="6" fill="#2a2f37"/><rect x="136" y="92" width="16" height="26" rx="6" fill="#2a2f37"/>`,
       propeller: '<path d="M68 66a32 26 0 0 1 64 0z" fill="#ffcf4a"/><path d="M100 40v-8" stroke="#222" stroke-width="4"/><path d="M76 30h48" stroke="#ff6fa8" stroke-width="6" stroke-linecap="round"/>',
       crown: '<path d="M70 66l4-26 13 14 13-20 13 20 13-14 4 26z" fill="#f2c230"/>',
+      cat: `<path d="M66 74l6-34 22 22zM134 74l-6-34-22 22z" fill="#d8dce2"/><path d="M72 64l3-15 10 10zM128 64l-3-15-10 10z" fill="#ff9ccf"/>`,
+      horns: '<path d="M74 66q-14-18-4-36q4 18 16 28zM126 66q14-18 4-36q-4 18-16 28z" fill="#d8343f"/>',
+      sprout: '<path d="M100 64v-20" stroke="#4fbf6a" stroke-width="4"/><path d="M100 46q-20-2-22-18q18 0 22 18zM100 46q20-2 22-18q-18 0-22 18z" fill="#6fdc7e"/>',
+      beanie: `<path d="M62 72a38 34 0 0 1 76 0z" fill="#5cc8ff"/><rect x="60" y="66" width="80" height="12" rx="4" fill="#3a8fd0"/><circle cx="100" cy="34" r="9" fill="#fff"/>`,
+      chef: '<rect x="76" y="50" width="48" height="20" fill="#f4f4f4"/><circle cx="84" cy="44" r="13" fill="#f4f4f4"/><circle cx="100" cy="38" r="15" fill="#f4f4f4"/><circle cx="116" cy="44" r="13" fill="#f4f4f4"/>',
+      wizard: `<path d="M100 6l-6 4 26 56h-46l22-48z" fill="#3b2bff"/><ellipse cx="98" cy="66" rx="40" ry="7" fill="#3b2bff"/><path d="M96 40l3 6 6 1-5 4 1 6-5-3-5 3 1-6-5-4 6-1z" fill="#f2c230"/>`,
+      halo: '<ellipse cx="100" cy="44" rx="30" ry="8" stroke="#f2c230" stroke-width="5" fill="none"/>',
     };
     const top = it.part === 'top' ? TOPS[it.v] || '' : '';
     const BACKS = {
       jets: `<rect x="28" y="96" width="18" height="40" rx="8" fill="#aeb4bd"/><rect x="154" y="96" width="18" height="40" rx="8" fill="#aeb4bd"/><path d="M30 138l7 22 7-22zM156 138l7 22 7-22z" fill="${acc}"/>`,
       cape: `<path d="M60 92l-24 74h128l-24-74z" fill="${acc}" opacity=".55"/>`,
       balloon: '<path d="M158 98v-40" stroke="#222" stroke-width="2"/><path d="M158 62l-16-16a10 10 0 0 1 16-12a10 10 0 0 1 16 12z" fill="#ff5d8f"/>',
+      angel: '<path d="M60 100q-30-30-50-10q10 8 8 16q10 2 12 12q14-2 30-8zM140 100q30-30 50-10q-10 8-8 16q-10 2-12 12q-14-2-30-8z" fill="#f4f4f4"/>',
+      bat: '<path d="M60 96l-44-18q8 14 2 26q10-6 14 6q8-8 14 2q4-10 14-6zM140 96l44-18q-8 14-2 26q-10-6-14 6q-8-8-14 2q-4-10-14-6z" fill="#2a2f37"/>',
+      backpack: `<rect x="134" y="84" width="34" height="48" rx="10" fill="#e8a23a"/><rect x="138" y="110" width="26" height="14" rx="4" fill="#c27f1e"/><circle cx="151" cy="96" r="3" fill="${acc}"/>`,
+      rocket: `<path d="M150 60q10 14 10 44h-20q0-30 10-44z" fill="#e8ecf2"/><path d="M140 96l-8 14h8zM160 96l8 14h-8z" fill="#d8343f"/><circle cx="150" cy="82" r="5" fill="#5cc8ff"/><path d="M144 106l6 24 6-24z" fill="${acc}"/>`,
     };
     const back = it.part === 'back' ? BACKS[it.v] || '' : '';
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="#ff5c8a"/><stop offset=".33" stop-color="#ffd23d"/><stop offset=".66" stop-color="#3effc8"/><stop offset="1" stop-color="#8c7bff"/></linearGradient></defs>
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
       <rect width="200" height="200" fill="#050a07"/>${back}<circle cx="100" cy="104" r="44" fill="${body}"/><path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
       <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
@@ -140,12 +174,17 @@ window.BotKit = (() => {
     else if (kind === 'sleepy') { for (let x = 0; x < 8; x++) { const y = 4 + Math.round(Math.abs(x - 3.5) * -0.45 + 1.5); add(x, y); if (x > 0 && x < 7) add(x, y - 1); } }
     else if (kind === 'wink') { if (side < 0) { for (let x = 0; x < 8; x++) { const y = Math.round(2 + Math.abs(x - 3.5) * 0.75); add(x, 8 - y); add(x, 9 - y); } } else for (let x = 1; x < 7; x++) for (let y = 1; y < 7; y++) if (!((x === 1 || x === 6) && (y === 1 || y === 6))) add(x, y); }
     else if (kind === 'star') { const m = ['...##...', '...##...', '########', '.######.', '..####..', '.##..##.', '##....##']; m.forEach((r, y) => [...r].forEach((ch, x) => { if (ch === '#') add(x, y); })); }
+    else if (kind === 'anime') { for (let x = 1; x < 7; x++) for (let y = 0; y < 8; y++) { const d = Math.hypot((x - 3.5) * 1.25, (y - 3.5) * 0.9); if (d < 3.6 && !(x >= 4 && x <= 5 && y >= 1 && y <= 2) && !(x === 2 && y === 5)) add(x, y); } }
+    else if (kind === 'squint') { for (let i = 0; i < 4; i++) { const x = side < 0 ? 1 + i : 6 - i; add(x, 1 + i); add(x, 7 - i); } add(side < 0 ? 5 : 2, 4); }
+    else if (kind === 'glasses') { for (let i = 0; i < 8; i++) { add(i, 1); add(i, 7); add(0, i); add(7, i); } for (let x = 3; x < 5; x++) for (let y = 3; y < 6; y++) add(x, y); }
     return c;
   }
   function drawFace(ctx, kind, col, blush) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = col;
     if (kind === 'visor') { ctx.fillRect(5, 8, 22, 3); ctx.globalAlpha = 0.45; ctx.fillRect(5, 11, 22, 1); ctx.globalAlpha = 1; }
+    else if (kind === 'cyclops') { for (let x = 0; x < 12; x++) for (let y = 0; y < 12; y++) { const d = Math.hypot(x - 5.5, y - 5.5); if (d < 5.8 && !(d < 2.4 && x >= 5 && y <= 6 && x <= 8 && y >= 3)) ctx.fillRect(10 + x, 3 + y, 1, 1); } }
+    else if (kind === 'glasses') { for (const [side, x0] of [[-1, 6], [1, 18]]) for (const [x, y] of eyeCells(kind, side)) ctx.fillRect(x0 + x, 6 + y - 1, 1, 1); ctx.fillRect(14, 7, 4, 1); }
     else for (const [side, x0] of [[-1, 6], [1, 18]]) for (const [x, y] of eyeCells(kind, side)) ctx.fillRect(x0 + x, 6 + y - 1, 1, 1);
     // pink cheeks under the eyes
     if (blush && kind !== 'x') { ctx.fillStyle = '#ff7fb6'; for (const x0 of [3, 25]) { ctx.fillRect(x0, 14, 4, 2); ctx.fillRect(x0 + 1, 13, 2, 1); } }
@@ -178,8 +217,8 @@ window.BotKit = (() => {
     const def = BOTS[id] || BOTS.orbit, sc = opts.scale || 1;
     const V = THREE.Vector3, keep = [], own = x => (keep.push(x), x);
     const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-    const rainbow = opts.color === 'rainbow';
-    const GLOW = new THREE.Color(rainbow ? '#ff5cf0' : opts.color || '#8cff58');
+    const fx = FX[opts.color] || null, rainbow = !!fx;
+    const GLOW = new THREE.Color(fx ? fx.base : opts.color || '#8cff58');
     const hdr = k => GLOW.clone().multiplyScalar(k);
     const group = new THREE.Group(); group.name = 'bot-' + id;
     const body = new THREE.Group(); group.add(body);   // tilts and spins inside the group
@@ -202,7 +241,7 @@ window.BotKit = (() => {
     const ctx = cv.getContext('2d'), tex = own(new THREE.CanvasTexture(cv));
     tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
     const faceCol = opts.screen || '#' + GLOW.clone().lerp(new THREE.Color('#ffffff'), 0.55).getHexString();
-    const EYES = { round: 'calm', square: 'square', slit: 'slit', visor: 'visor', dots: 'dots', big: 'big', sleepy: 'sleepy', wink: 'wink', star: 'star', heart: 'heart' };
+    const EYES = { round: 'calm', square: 'square', slit: 'slit', visor: 'visor', dots: 'dots', big: 'big', sleepy: 'sleepy', wink: 'wink', star: 'star', heart: 'heart', anime: 'anime', squint: 'squint', glasses: 'glasses', cyclops: 'cyclops' };
     const rest = EYES[opts.eyes] || def.face;   // the resting face
     const screenMat = own(new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false }));
     let faceNow = '';
@@ -381,6 +420,43 @@ window.BotKit = (() => {
       }
     }
 
+    if (['angel', 'bat', 'backpack', 'rocket'].includes(opts.back)) {
+      const anchor = new THREE.Group(); body.add(anchor); anchor.position.set(...(BACK[id] || [0, 0, -1])); parts.back = anchor;
+      const pm = (c, r = 0.5, m = 0.1) => own(new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, side: THREE.DoubleSide }));
+      if (opts.back === 'angel' || opts.back === 'bat') {
+        parts.wings = [];
+        const angel = opts.back === 'angel', m = angel ? pm('#f4f4f4', 0.7) : pm('#2a2f37', 0.6, 0.2);
+        for (const s of [-1, 1]) {
+          const w = new THREE.Group(); anchor.add(w); w.position.set(s * 0.2, 0.15, -0.1); w.rotation.y = -s * 0.35; parts.wings.push({ w, s });
+          if (angel) for (let i = 0; i < 5; i++) {   // five feathers fanned out, longest at the top
+            const f = mesh(new THREE.CapsuleGeometry(0.12, 0.55 + i * 0.12, 4, 10), m, w);
+            f.scale.z = 0.35; f.rotation.z = s * (0.5 + i * 0.28); f.position.set(s * (0.35 + i * 0.1), 0.05 + i * 0.04, -i * 0.02);
+            f.position.x += Math.sin(f.rotation.z * s) * 0.25 * s;
+          } else {
+            const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(1.4, 0.55); shape.quadraticCurveTo(1.2, 0.1, 1.35, -0.3);
+            shape.quadraticCurveTo(1.0, -0.15, 0.95, -0.45); shape.quadraticCurveTo(0.65, -0.25, 0.5, -0.5); shape.quadraticCurveTo(0.3, -0.2, 0, -0.1);
+            const wm = mesh(new THREE.ShapeGeometry(shape, 8), m, w); wm.scale.x = s;
+            const bone = mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.5, 6), dark, w); bone.rotation.z = s * -1.18; bone.position.set(s * 0.7, 0.28, 0.01);
+          }
+        }
+      } else if (opts.back === 'backpack') {
+        const m = pm('#e8a23a', 0.7), m2 = pm('#c27f1e', 0.7);
+        const bag = mesh(rbox(0.85, 0.95, 0.45, 0.14), m, anchor); bag.position.set(0, -0.05, -0.2);
+        const pocket = mesh(rbox(0.6, 0.38, 0.14, 0.06), m2, anchor); pocket.position.set(0, -0.25, -0.46);
+        const flap = mesh(rbox(0.87, 0.3, 0.48, 0.1), m2, anchor); flap.position.set(0, 0.32, -0.2);
+        const tag = mesh(new THREE.SphereGeometry(0.06, 10, 8), glow, anchor); tag.position.set(0, 0.2, -0.46);
+      } else {
+        const r = new THREE.Group(); anchor.add(r); r.position.set(0, 0.1, -0.35); parts.rocket = r;
+        const m = pm('#e8ecf2', 0.3, 0.4), red = pm('#d8343f', 0.35);
+        mesh(new THREE.CylinderGeometry(0.24, 0.24, 1.0, 20), m, r);
+        const nose = mesh(new THREE.ConeGeometry(0.24, 0.45, 20), red, r); nose.position.y = 0.72;
+        const win = mesh(new THREE.CircleGeometry(0.1, 16), own(new THREE.MeshBasicMaterial({ color: '#5cc8ff' })), r); win.position.set(0, 0.2, -0.241); win.rotation.y = Math.PI;
+        for (let i = 0; i < 3; i++) { const a = i * Math.PI * 2 / 3, fin = mesh(new THREE.BoxGeometry(0.03, 0.35, 0.22), red, r); fin.position.set(Math.sin(a) * 0.27, -0.38, Math.cos(a) * 0.27); fin.rotation.y = a; }
+        const fl = mesh(new THREE.ConeGeometry(0.16, 0.6, 12), glowSoft, r); fl.position.y = -0.82; fl.rotation.x = Math.PI;
+        (parts.flames ||= []).push(fl);
+      }
+    }
+
     // ---------- the top slot (bought): something on the bot's head ----------
     // where the top of each head is, and how wide it is there
     const TOP = { orbit: [0, 0.97, 0, 0.85], pixel: [0, 0.68, -0.05, 0.9], nova: [0, 0.9, -0.05, 0.8], kite: [0, sig ? 1.15 : 1.32, sig ? -0.1 : -0.42, 0.7], beep: [0, 0.88, 0.02, 0.7], raze: [0, 0.78, 0, 0.9] };
@@ -429,6 +505,45 @@ window.BotKit = (() => {
         const prop = new THREE.Group(); top.add(prop); prop.position.y = tw * 0.5 + 0.12; parts.prop = prop;
         for (const s of [-1, 1]) { const bl = mesh(new THREE.BoxGeometry(0.5, 0.02, 0.1), mat(s < 0 ? '#ff6fa8' : '#5cc8ff'), prop); bl.position.x = s * 0.26; bl.rotation.x = s * 0.3; }
         mesh(new THREE.SphereGeometry(0.05, 8, 6), glow, prop);
+      } else if (k === 'cat' || k === 'horns') {
+        const m = k === 'cat' ? shell : mat('#d8343f'), inner = mat('#ff9ccf');
+        for (const s of [-1, 1]) {
+          const e = new THREE.Group(); top.add(e); e.position.set(s * tw * 0.5, k === 'cat' ? 0 : -0.12, 0); e.rotation.z = -s * (k === 'cat' ? 0.3 : 0.5);
+          if (k === 'cat') {
+            const ear = mesh(new THREE.ConeGeometry(0.3, 0.55, 4), m, e); ear.position.y = 0.24; ear.rotation.y = Math.PI / 4; ear.scale.z = 0.55;
+            const ein = mesh(new THREE.ConeGeometry(0.18, 0.36, 4), inner, e); ein.position.set(0, 0.2, 0.08); ein.rotation.y = Math.PI / 4; ein.scale.z = 0.4;
+          } else {   // a curved horn: a stack of shrinking cones bent outwards
+            let y = 0, x = 0;
+            for (let i = 0; i < 4; i++) { const r = 0.12 * (1 - i * 0.22), c = mesh(new THREE.CylinderGeometry(r * 0.78, r, 0.16, 12), m, e); c.position.set(x, y + 0.08, 0); c.rotation.z = -s * i * 0.25; y += 0.14; x += s * i * 0.035; }
+            const tip = mesh(new THREE.ConeGeometry(0.05, 0.14, 12), m, e); tip.position.set(x + s * 0.04, y + 0.06, 0); tip.rotation.z = -s * 0.9;
+          }
+        }
+        if (k === 'cat') parts.ears2 = top;
+      } else if (k === 'sprout') {
+        const g = mat('#6fdc7e'), st = mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.35, 6), mat('#4fbf6a'), top); st.position.y = 0.12;
+        const lv = new THREE.Group(); top.add(lv); lv.position.y = 0.3; parts.sprout = lv;
+        for (const s of [-1, 1]) { const l = mesh(new THREE.SphereGeometry(0.16, 12, 8), g, lv); l.scale.set(1, 0.3, 0.55); l.position.x = s * 0.15; l.rotation.z = s * 0.45; }
+      } else if (k === 'beanie') {
+        const m = mat('#5cc8ff'), cuff = mat('#3a8fd0');
+        const dome = mesh(new THREE.SphereGeometry(tw * 0.62, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), m, top); dome.position.y = -0.12; dome.scale.y = 1.15;
+        const c = mesh(new THREE.CylinderGeometry(tw * 0.64, tw * 0.64, 0.16, 24), cuff, top); c.position.y = -0.08;
+        const pom = new THREE.Group(); top.add(pom); pom.position.y = tw * 0.6; parts.pom = pom;
+        mesh(new THREE.SphereGeometry(0.13, 12, 10), mat('#ffffff'), pom);
+      } else if (k === 'chef') {
+        const m = own(new THREE.MeshStandardMaterial({ color: '#f4f4f4', roughness: 0.85 }));
+        const band = mesh(new THREE.CylinderGeometry(tw * 0.45, tw * 0.45, 0.28, 24), m, top); band.position.y = 0.04;
+        for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, puff = mesh(new THREE.SphereGeometry(tw * 0.28, 14, 10), m, top); puff.position.set(Math.sin(a) * tw * 0.3, 0.32, Math.cos(a) * tw * 0.3); }
+        mesh(new THREE.SphereGeometry(tw * 0.32, 14, 10), m, top).position.y = 0.42;
+      } else if (k === 'wizard') {
+        const m = own(new THREE.MeshStandardMaterial({ color: '#3b2bff', roughness: 0.7, side: THREE.DoubleSide }));
+        const brim = mesh(new THREE.CylinderGeometry(tw * 0.85, tw * 0.85, 0.04, 28), m, top); brim.position.y = -0.04;
+        const hat = new THREE.Group(); top.add(hat); parts.hatTip = hat;
+        let y = 0, r = tw * 0.5;
+        for (let i = 0; i < 4; i++) { const h = 0.26, c = mesh(new THREE.CylinderGeometry(r * 0.72, r, h, 20), m, hat); c.position.set(-i * i * 0.025, y + h / 2, 0); y += h * 0.95; r *= 0.72; }
+        const star = mesh(new THREE.OctahedronGeometry(0.09), own(new THREE.MeshBasicMaterial({ color: new THREE.Color('#f2c230').multiplyScalar(1.4), toneMapped: false })), hat); star.position.set(0.05, 0.25, tw * 0.42);
+      } else if (k === 'halo') {
+        const h = new THREE.Group(); top.add(h); h.position.y = 0.32; parts.goldHalo = h;
+        const r = mesh(new THREE.TorusGeometry(tw * 0.55, 0.045, 10, 40), own(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd23d').multiplyScalar(1.5), toneMapped: false })), h); r.rotation.x = Math.PI / 2 - 0.45;
       } else if (k === 'crown') {
         const g = own(new THREE.MeshStandardMaterial({ color: '#f2c230', roughness: 0.2, metalness: 1 }));
         const r = tw * 0.5;
@@ -542,8 +657,14 @@ window.BotKit = (() => {
       if (parts.back) parts.back.rotation.x = Math.sin(t * 2.1 + seed) * 0.05 + lean.x * 0.6;
       if (parts.legs) parts.legs.forEach(L => { L.hip.rotation.x = -0.25 + Math.sin(t * 3 + L.ph) * 0.12 - lean.x * 0.6; L.knee.rotation.x = 0.35 + Math.sin(t * 3 + L.ph + 1) * 0.15; });
       // the bought parts move too
-      if (rainbow) { GLOW.setHSL((t * 0.08 + seed) % 1, 1, 0.55); if (!hurt) glow.color.copy(hdr(1.6)); glowSoft.color.copy(hdr(1.0)); }
+      if (rainbow) { GLOW.setHSL(...fx.at(t, seed)); if (!hurt) glow.color.copy(hdr(1.6)); glowSoft.color.copy(hdr(1.0)); }
       if (parts.prop) parts.prop.rotation.y = t * 14;
+      if (parts.wings) parts.wings.forEach(({ w, s }) => { w.rotation.y = -s * (0.35 + Math.sin(t * 5 + seed) * 0.3); });
+      if (parts.rocket) parts.rocket.position.y = 0.1 + Math.sin(t * 9) * 0.015;
+      if (parts.pom) parts.pom.position.x = Math.sin(t * 2.4 + seed) * 0.05 - lean.z * 0.4;
+      if (parts.sprout) parts.sprout.rotation.z = Math.sin(t * 1.8 + seed) * 0.2;
+      if (parts.hatTip) parts.hatTip.rotation.z = Math.sin(t * 1.5 + seed) * 0.06 + lean.z * 0.8;
+      if (parts.goldHalo) { parts.goldHalo.rotation.y = t * 1.2; parts.goldHalo.position.y = 0.32 + Math.sin(t * 2 + seed) * 0.04; }
       if (parts.antenna) { parts.antenna.position.x = Math.sin(t * 3.1 + seed) * 0.06 - lean.z * 0.3; parts.antenna.position.z = lean.x * 0.3; }
       if (parts.flower) parts.flower.rotation.z = Math.sin(t * 1.6 + seed) * 0.25;
       if (parts.balloon) parts.balloon.rotation.set(Math.sin(t * 1.3 + seed) * 0.12 + lean.x * 1.5, 0, Math.sin(t * 1.7) * 0.15 + lean.z * 1.5);
@@ -642,5 +763,5 @@ window.BotKit = (() => {
     return { meshes, dispose() { keep.forEach(x => x.dispose && x.dispose()); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon };
+  return { create, FX, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon };
 })();

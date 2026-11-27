@@ -7,6 +7,10 @@
   window.RoomKit = function (THREE, RB) {
     if (made && made.THREE === THREE) return made;
     const K = { THREE, RB };
+    // sharper canvas textures on desktop; phones keep 1x to save memory
+    const phoneish = matchMedia('(max-width: 720px), (pointer: coarse)').matches;
+    K.texScale = phoneish ? 1 : 2;
+    K.aniso = phoneish ? 4 : 16;
     const TAU = Math.PI * 2;
 
     // ---------- seeded random so textures and props look the same every load ----------
@@ -62,11 +66,15 @@
       let t = texs.get(key);
       if (t) return t;
       const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      draw(cv.getContext('2d'), w, h);
+      // draw at a higher resolution with the same coordinates, capped at 2048 px
+      const k = Math.max(1, Math.min(K.texScale, 2048 / Math.max(w, h)));
+      cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+      const cx = cv.getContext('2d');
+      cx.scale(k, k);
+      draw(cx, w, h);
       t = new THREE.CanvasTexture(cv);
       if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 4;
+      t.anisotropy = K.aniso;
       if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
       texs.set(key, t);
       return t;

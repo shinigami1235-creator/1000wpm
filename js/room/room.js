@@ -415,9 +415,22 @@ window.Room = (() => {
     const phone = matchMedia('(max-width: 720px), (pointer: coarse)').matches;
     s.phone = phone;
 
+    // ---------- quality ----------
+    // high: 4x MSAA, 4096 shadows, 1.5x to 2x resolution even on 1x screens
+    // medium: 4x MSAA, 2048 shadows. low (phones, weak machines): no MSAA, 1024 shadows.
+    // AdaptiveQuality lowers the resolution if frames run slow.
+    const aq = s.aq = window.AdaptiveQuality ? AdaptiveQuality.create({
+      key: 'wpm-room', fps: 60, minScale: 0.6, minDetail: 1,
+      onScale: v => { s.res = v; resize(s); },
+    }) : null;
+    const lvl = s.lvl = aq ? aq.level : phone ? 'low' : 'high';
+    s.baseRatio = phone || lvl === 'low' ? Math.min(devicePixelRatio, 1.5) : Math.min(Math.max(devicePixelRatio, lvl === 'high' ? 1.5 : 1.25), 2);
+    s.res = aq ? aq.scale : 1;
+    if (aq) aq.loading();
+
     // ---------- renderer ----------
-    const renderer = s.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.5 : 1.75));
+    const renderer = s.renderer = new THREE.WebGLRenderer({ antialias: lvl === 'low', powerPreference: 'high-performance' });
+    renderer.setPixelRatio(s.baseRatio * s.res);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = true;
@@ -448,7 +461,9 @@ window.Room = (() => {
     controls.rotateSpeed = 0.6;
     renderer.domElement.style.touchAction = 'none';
 
-    const composer = s.composer = new EffectComposer(renderer);
+    // the composer's own target needs samples, or post-processing throws away the antialiasing
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: lvl === 'low' ? 0 : 4 });
+    const composer = s.composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
     s.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.55, 1.35);
     composer.addPass(s.bloom);
@@ -496,6 +511,7 @@ window.Room = (() => {
         controls.update();
         for (const p of s.items) if (p.model.userData.tick) p.model.userData.tick(s.t, dt);
         composer.render();
+        frameDone(s);
       });
       return;
     }
@@ -521,7 +537,15 @@ window.Room = (() => {
       for (const p of s.items) if (p.model.userData.tick) p.model.userData.tick(s.t, dt);
       if (s.marker.visible) s.marker.material.opacity = 0.55 + Math.sin(s.t * 5) * 0.15;
       composer.render();
+      frameDone(s);
     });
+  }
+
+  // the first frame clears the crash flag; every frame feeds the quality governor
+  function frameDone(s) {
+    if (!s.aq) return;
+    if (!s.drawn) { s.drawn = true; s.aq.loaded(); s.aq.watch(s.renderer.domElement); }
+    s.aq.frame(performance.now());
   }
 
   function unmount() {
@@ -634,7 +658,7 @@ window.Room = (() => {
     const k = Math.sqrt(W * D / (4.2 * 3.8)), span = Math.max(4.2, Math.max(W, D));
     key.position.set(W / 2 + 1.9 * k, 6.5 * k, D / 2 + 3.6 * k); key.target.position.set(W / 2, 0, D / 2);
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    const sm = s.lvl === 'high' ? 4096 : s.lvl === 'medium' ? 2048 : 1024; key.shadow.mapSize.set(sm, sm);
     Object.assign(key.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 14 * k + 6 });
     key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03 * k;
     shell.add(key, key.target);
@@ -1249,6 +1273,8 @@ window.Room = (() => {
     if (!s.renderer || !s.alive) return;
     const r = s.root.getBoundingClientRect();
     const w = Math.max(1, r.width | 0), h = Math.max(1, r.height | 0);
+    const pr = s.baseRatio * (s.res || 1);
+    if (s.renderer.getPixelRatio() !== pr) { s.renderer.setPixelRatio(pr); s.composer.setPixelRatio(pr); }
     s.renderer.setSize(w, h, false);
     s.composer.setSize(w, h);
     s.bloom.resolution.set(w / 2, h / 2);
