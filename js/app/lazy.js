@@ -34,7 +34,7 @@ window.Lazy = (() => {
     // home draws without the network layer (and the combat code it needs); js/app/home.js loads it
     // once the browser is idle, for the player names and links on the map
     'page:home': { need: ['map', 'kb'], js: ['js/hero.js', 'js/app/home.js'] },
-    'page:type': { need: ['mt'], js: ['js/app/type.js', 'js/app/type-tabs.js'] },
+    'page:type': { need: ['mt'], css: ['css/modes.css'], js: ['js/app/type.js', 'js/app/type-tabs.js'] },
     'page:play': { need: ['race'], js: ['js/app/missions.js', 'js/app/play-picker.js', 'js/app/play.js'] },
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],

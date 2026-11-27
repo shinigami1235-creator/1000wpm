@@ -12,3 +12,37 @@
   .play-racing .race-top { margin-bottom: 10px; }
   .play-racing .race-stage { width: min(100%, max(420px, calc((100svh - 330px) * 2.4))); margin-bottom: 10px; }
 }
+
+/* ---------- typing test (js/app/type.js) ---------- */
+/* a wrong key turns the caret red for a moment */
+.typetext .caret.err { background: var(--red); box-shadow: 0 0 10px var(--red); transition: left 70ms linear, top 70ms linear, background 0s; }
+/* a word finished with no mistakes: a short line runs under it and fades */
+.typetext .w.wclean { position: relative; }
+.typetext .w.wclean::after {
+  content: ""; position: absolute; left: 0; right: .62em; bottom: .05em; height: 2px;
+  background: var(--accent); box-shadow: 0 0 6px rgba(var(--accent-rgb), .6);
+  transform-origin: left; animation: wclean 420ms var(--ease-out, ease-out) forwards; pointer-events: none;
+}
+@keyframes wclean { 0% { transform: scaleX(0); opacity: .9; } 45% { transform: scaleX(1); opacity: .7; } 100% { transform: scaleX(1); opacity: 0; } }
+
+/* the result: the stats come in one after another */
+.page-type .result-grid > * { animation: res-in 360ms var(--ease-out, ease-out) both; animation-delay: calc(120ms + var(--i, 0) * 45ms); }
+.page-type .result .big { font-variant-numeric: tabular-nums; }
+@keyframes res-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pb-banner { animation: res-in 420ms var(--ease-out, ease-out) both; }
+
+/* you against Art on one line: your speed fills it, Art's mark sits at 204 */
+.vs-bar { grid-column: 1 / -1; position: relative; height: 6px; margin: 22px 0 26px; background: rgba(var(--accent-rgb), .1); }
+.vs-fill { position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--accent); box-shadow: 0 0 10px rgba(var(--accent-rgb), .45);
+  transform-origin: left; animation: vs-grow 700ms var(--ease-out, ease-out) both; }
+@keyframes vs-grow { from { transform: scaleX(0); } }
+.vs-mk { position: absolute; top: -5px; width: 2px; height: 16px; transform: translateX(-1px); background: var(--ink-2); }
+.vs-mk b { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 400 12px/1 var(--f-label); letter-spacing: .04em; color: var(--ink-2); }
+.vs-mk.you { background: var(--accent); }
+.vs-mk.you b { top: -18px; color: var(--accent); font-family: var(--f-mono); }
+.vs-mk.art { background: var(--cyan, #3ee6ff); }
+.vs-mk.art b { color: var(--cyan, #3ee6ff); }
+@media (prefers-reduced-motion: reduce) {
+  .typetext .w.wclean::after { animation: none; opacity: 0; }
+  .page-type .result-grid > *, .pb-banner, .vs-fill { animation: none; }
+}
