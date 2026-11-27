@@ -1,4 +1,4 @@
-// A small card for another player, opened from a name or a portrait: View profile,
+// A small card for another player, opened from a name or a portrait, with a picture of their room: View profile,
 // Add friend (or Message once you are friends), Challenge to duel, Invite to party, Mute, Block and Report. Built from MultiUI's portraits and
 // tags, the duel route (#/duel/vs/<id>) and Net.lobbies.invite, so any page can use it.
 //
@@ -65,10 +65,22 @@ window.PlayerCard = (() => {
         </fieldset>
         <div class="row"><button class="btn danger sm" type="submit">Send report</button><button class="btn out sm" type="button" data-cancel>Cancel</button></div>
       </form>
+      <a class="pc-room" href="#/u/${encodeURIComponent(p.id)}/room" data-room hidden><span class="rm-thumb"><span class="tag" data-rtag></span></span></a>
       <p class="pc-msg" data-msg role="status"></p>
     </div>`);
     document.body.append(box);
     place();
+    // a small picture of their room (js/room/tier-page.js), loaded with the room's files
+    const card = box;
+    (window.Lazy ? Lazy.need('room') : Promise.resolve()).then(() => {
+      if (box !== card || !window.RoomData) return;
+      const a = card.querySelector('[data-room]'), d = RoomData.of(p);
+      a.querySelector('[data-rtag]').textContent = `${me ? 'Your room' : 'Room'} · ${RoomTiers.TIERS[d.tier].name}`;
+      a.hidden = false;
+      const v = RoomView.create(a.querySelector('.rm-thumb'), { ...d, still: true });
+      offs.push(() => v.dispose());
+      place();
+    }).catch(() => {});
     const msg = t => { if (box) box.querySelector('[data-msg]').textContent = t; };
     const q = s => box.querySelector(s);
     q('[data-x]').addEventListener('click', close);

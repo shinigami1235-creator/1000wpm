@@ -39,7 +39,7 @@ window.RoomView = (() => {
 
   // ------------------------------------------------------------------ art in SVG
   const EMBLEM = (c = 'currentColor', tick = G) => `<path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round"/><path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="${c}" stroke-width="5"/><path d="M28 36l6-8 6 8" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="square"/><path d="M32 0v7M32 57v7M3 32h7M54 32h7" stroke="${tick}" stroke-width="2.6"/>`;
-  const LAUREL = c => { let s = ''; for (const k of [-1, 1]) for (let i = 0; i < 7; i++) { const a = Math.PI * (0.62 + i * 0.1), x = 32 + k * Math.cos(a) * 26, y = 34 - Math.sin(a) * 26 + 6; s += `<ellipse cx="${(64 - x) * (k < 0 ? 1 : 0) + x * (k < 0 ? 0 : 1)}" cy="${y.toFixed(1)}" rx="3.2" ry="7" transform="rotate(${(k * (90 - a * 57.3) + (k < 0 ? 180 : 0)).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${c}"/>`; } return s + `<text x="32" y="41" text-anchor="middle" font-family="${HEAD}" font-weight="700" font-size="22" fill="${c}">A</text>`; };
+  const LAUREL = c => { let s = ''; for (const side of [-1, 1]) for (let i = 0; i < 9; i++) { const a = (90 + side * (22 + i * 16)) * Math.PI / 180, x = 32 + Math.cos(a) * 24, y = 32 + Math.sin(a) * 24; s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="3" ry="6.6" transform="rotate(${(a * 180 / Math.PI + side * 18).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${c}"/>`; } return s + `<text x="32" y="40" text-anchor="middle" font-family="${HEAD}" font-weight="700" font-size="22" fill="${c}">A</text>`; };
   const svg = (w, h, body, extra = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" ${extra}>${body}</svg>`;
   const img = (href, x, y, w, h, more = '') => `<image href="${href}" x="${x}" y="${y}" width="${w}" height="${h}" ${more}/>`;
 
@@ -75,7 +75,7 @@ window.RoomView = (() => {
     'scr-stats': d => S('#020a05', `${head('STORMTYPER', 'LV.' + d.level)}<text x="26" y="120" font-size="54" font-weight="700" fill="${G}">${d.best}<tspan fill="#eafff2" font-size="40"> wpm · ${d.acc}%</tspan></text><text x="26" y="172" font-size="26" fill="#5f7d6c"><tspan fill="${G}">cache</tspan> <tspan fill="${G}">reboot</tspan> crypto<tspan class="rv-caret" fill="${G}">_</tspan></text><rect x="26" y="208" width="428" height="12" fill="${G}" fill-opacity=".18"/><rect x="26" y="208" width="${(428 * d.xp).toFixed(0)}" height="12" fill="${G}"/>`),
     'scr-logo': () => S('#020805', `<defs><radialGradient id="sl" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="#06301a"/><stop offset="1" stop-color="#020a05"/></radialGradient></defs><rect width="480" height="270" fill="url(#sl)"/><g class="rv-drift"><g transform="translate(190 85) scale(1.6)" color="#d7f5e3">${EMBLEM()}</g></g>`),
     'scr-card': d => S('#020a05', `<rect x="26" y="48" width="160" height="160" fill="#06301a" stroke="${G}" stroke-width="3"/><g transform="translate(58 80) scale(1.5)" color="#d7f5e3">${EMBLEM()}</g><text x="210" y="70" font-size="16" letter-spacing="2" fill="#8fb3a0">OPERATOR // ${esc(String(d.name).toUpperCase().slice(0, 14))}</text><text x="210" y="118" font-family="${HEAD}" font-weight="700" font-size="44" fill="#eafff2">Level ${d.level}</text>${[['Best', d.best + ' wpm'], ['Accuracy', d.acc + '%'], ['Boss damage', d.dmgS]].map(([a, b], i) => `<text x="210" y="${158 + i * 30}" font-size="21" fill="${INK}">${a}</text><text x="454" y="${158 + i * 30}" text-anchor="end" font-size="21" fill="${G}">${esc(b)}</text>`).join('')}`),
-    'scr-code': d => S('#020a05', `${head('CTRL // FEED', 'LIVE', G)}<g font-size="21" fill="${G}"><g class="rv-scroll">${['raid 41 joined', 'firewall 26%', 'kernel open x2', 'packet returned', `${esc(d.name)} on watch`, 'node 7 online', 'boss phase 3', 'raid 42 forming', 'raid 41 joined', 'firewall 26%', 'kernel open x2', 'packet returned'].map((t, i) => `<text x="26" y="${82 + i * 34}" ${i % 4 === 3 ? 'fill="#7fa892"' : ''}>&gt; ${t}</text>`).join('')}</g></g>`),
+    'scr-code': d => S('#020a05', `<defs><clipPath id="cf"><rect x="0" y="54" width="480" height="216"/></clipPath></defs>${head('CTRL // FEED', 'LIVE', G)}<g font-size="21" fill="${G}" clip-path="url(#cf)"><g class="rv-scroll">${['raid 41 joined', 'firewall 26%', 'kernel open x2', 'packet returned', `${esc(d.name)} on watch`, 'node 7 online', 'boss phase 3', 'raid 42 forming', 'raid 41 joined', 'firewall 26%', 'kernel open x2', 'packet returned'].map((t, i) => `<text x="26" y="${82 + i * 34}" ${i % 4 === 3 ? 'fill="#7fa892"' : ''}>&gt; ${t}</text>`).join('')}</g></g>`),
     'scr-boss': d => S('#0d0204', `${head('WORLD BOSS', 'PHASE ' + d.phase, '#ffb3ba')}<text x="26" y="124" font-family="${HEAD}" font-weight="700" font-size="58" fill="#ff4d5e">SYNTAX</text><text x="26" y="168" font-size="24" fill="#ffb3ba">${fmt(d.bossHp)} HP left</text><rect x="26" y="200" width="428" height="14" fill="#ff4d5e" fill-opacity=".2"/><rect class="rv-hp" x="26" y="200" width="${(428 * d.bossHp / 1.5e6).toFixed(0)}" height="14" fill="#ff4d5e"/>`, 'red'),
     'scr-graph': d => { const r = d.runs.length > 1 ? d.runs : [0, 0], mx = Math.max(...r, 10), mn = Math.min(...r, mx - 10), pts = r.map((v, i) => `${(26 + i * 428 / (r.length - 1)).toFixed(1)},${(236 - (v - mn) / (mx - mn) * 160).toFixed(1)}`).join(' ');
       return S('#020a05', `${head('WPM // LAST ' + r.length, (r[r.length - 1] - r[0] >= 0 ? '+' : '') + (r[r.length - 1] - r[0]), G)}<g stroke="${G}" stroke-opacity=".12">${[0, 1, 2, 3].map(i => `<path d="M26 ${76 + i * 53}H454"/>`).join('')}</g><polygon points="26,236 ${pts} 454,236" fill="${G}" fill-opacity=".12"/><polyline points="${pts}" fill="none" stroke="${G}" stroke-width="5" stroke-linejoin="round"/>`); },
@@ -112,21 +112,26 @@ window.RoomView = (() => {
   const LAND = (() => { const b = atob('AAAAAAAAAAAAAAAAAAAAAAeAAAAAAAAAAAAD///4HgwAYAAAAAH/9//gCACAfAQAAAP38H/gAAI//8cAj////H/AD8P/////////3j4wH///////H///fjgAf///////Bx//HwACe/////ywAA///4AHP/////xgAAP//8AD//////4AAAH//8AB//////wAAAH//gAH/3////YAAAH/+AAHL////+QAAAH/8AAD4v///3wAAAD/4AAH/////7AAAAB+IAAP/////4AAAAA8IAAP/////4AAAgAMmAAf//8f/AAAAAAHwAAf//4ceIAAAAAAwAAf//gMOIAAAAAAfwAP//wMKcAAAAAAH8AH//gEM0AAAAAAH+AAP/AAN4AAAAAAP/gAP+AAF7wAAAAAP/4AH+AAGI/AAAAAH/4AH+AAAccgAAAAH/wAH+QAADoAAAAAD/wAH+wAAP4BAAAAB/gAH9gAAf8AAAAAB/AAD9gAA/+AAAAAB+AAD4AAA/+AAAAAB+AABwAAA/+AAAAAD8AABAAAAQ8CAAAADwAAAAAAAAMDAAAADgAAAAAAAAEGAAAADgAAAAAAAAAIAAAADAAAAAAAAAAAAAAADAAAAAAAAAA'); return (x, y) => { const i = y * 96 + x; return (b.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1; }; })();
   function drawEarth(c, w, h, t) {
     c.clearRect(0, 0, w, h);
-    const R = Math.min(w, h) * 0.42, cx = w / 2, cy = h / 2, rot = t * 0.25, tilt = 0.35;
-    c.strokeStyle = 'rgba(120,240,255,.35)'; c.lineWidth = 1;
-    c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.stroke();
-    for (let la = -60; la <= 60; la += 30) { const y = cy - Math.sin(la * Math.PI / 180) * R * Math.cos(tilt), rr = Math.cos(la * Math.PI / 180) * R; c.beginPath(); c.ellipse(cx, y, rr, rr * Math.sin(tilt), 0, 0, TAU); c.stroke(); }
-    c.fillStyle = 'rgba(140,250,255,.95)';
+    const R = Math.min(w, h) * 0.46, cx = w / 2, cy = h / 2, rot = t * 0.25, tilt = 0.35;
+    const g = c.createRadialGradient(cx - R * 0.3, cy - R * 0.3, R * 0.1, cx, cy, R);
+    g.addColorStop(0, 'rgba(90,220,255,.22)'); g.addColorStop(1, 'rgba(40,160,220,.06)');
+    c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(140,245,255,.55)'; c.lineWidth = 1.5; c.stroke();
+    c.lineWidth = 0.8; c.strokeStyle = 'rgba(120,240,255,.18)';
+    for (let la = -60; la <= 60; la += 30) { const y = cy - Math.sin(la * Math.PI / 180) * R * Math.cos(tilt), rr = Math.cos(la * Math.PI / 180) * R; c.beginPath(); c.ellipse(cx, y, rr, rr * Math.sin(tilt), 0, 0, Math.PI); c.stroke(); }
+    c.fillStyle = '#b8fbff';
+    const d = R / 22;
     for (let y = 2; y < 46; y++) for (let x = 0; x < 96; x++) {
       if (!LAND(x, y)) continue;
       const lon = (x / 96) * TAU - Math.PI + rot, lat = Math.PI / 2 - (y / 48) * Math.PI;
       const X = Math.cos(lat) * Math.sin(lon), Y = Math.sin(lat), Z = Math.cos(lat) * Math.cos(lon);
       const Y2 = Y * Math.cos(tilt) - Z * Math.sin(tilt), Z2 = Y * Math.sin(tilt) + Z * Math.cos(tilt);
-      if (Z2 < 0) continue;
-      c.globalAlpha = 0.35 + Z2 * 0.65; c.fillRect(cx + X * R - 1.2, cy - Y2 * R - 1.2, 2.4, 2.4);
+      if (Z2 < 0.02) continue;
+      c.globalAlpha = 0.25 + Z2 * 0.75; c.fillRect(cx + X * R - d / 2, cy - Y2 * R - d / 2, d, d);
     }
     c.globalAlpha = 1;
   }
+
 
   // ------------------------------------------------------------------ window views
   const SW = 1024, SH = 768, OW = 384, OH = 288;
@@ -213,7 +218,7 @@ window.RoomView = (() => {
         const px = (W - sw) / 2 - par.x * W * 0.04, py = (H - sh) / 2 - par.y * H * 0.03;
         ctx.drawImage(base, px, py, sw, sh);
         if (draw) { lc.clearRect(0, 0, OW, OH); draw(lc, OW, OH, t); const lk = Math.max(W / OW, H / OH) * 1.05; ctx.drawImage(layer, (W - OW * lk) / 2 - par.x * W * 0.02, (H - OH * lk) / 2, OW * lk, OH * lk); }
-        ctx.fillStyle = `rgba(3,7,10,${1 - T.dim * 0.85})`; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = `rgba(3,7,10,${(1 - T.dim) * 0.8 + 0.08})`; ctx.fillRect(0, 0, W, H);
         if (bg.complete && bg.naturalWidth) { const f = bg.naturalWidth / T.w; ctx.globalAlpha = 0.2; ctx.drawImage(bg, bx * f, by * f, bw * f, bh * f, 0, 0, W, H); ctx.globalAlpha = 1; }
         ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(m, 0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
@@ -266,7 +271,7 @@ window.RoomView = (() => {
       if (it.glow) el('rv-halo', '', `left:${x - it.hm * ppm * 0.7}px;top:${y - it.hm * ppm * 1.05}px;width:${it.hm * ppm * 1.4}px;height:${it.hm * ppm * 1.1}px;background:radial-gradient(closest-side,${it.glow}30,transparent)`);
     }
     function pet(at, it) {
-      if (it.mode === 'hover') { const [x, y, ppm] = at.hover; cut(x, y, it.hm * ppm, it.art, 'hover'); el('rv-floor-shadow', '', `left:${x - 14}px;top:${y + 46}px;width:28px;height:5px`); }
+      if (it.mode === 'hover') { const [x, y, ppm] = at.hover; cut(x, y, it.hm * ppm, it.art, 'hover'); }
       else { const [x, y, ppm] = at.sit; cut(x, y, it.hm * ppm, it.art, 'pet'); }
     }
     function caseItems() {
@@ -284,8 +289,8 @@ window.RoomView = (() => {
       if (it.id === 'holo-ctrl') add(`<div class="emb">${svg(68, 68, `<g transform="translate(2 2)" color="#8ff4ff">${EMBLEM('currentColor', '#8ff4ff')}</g>`)}</div>`);
       if (it.id === 'holo-rush') { add(['siege', 'warden', 'colossus', 'king', 'half', 'brute'].map((f, i) => `<img class="fig rush" style="animation-delay:${i * 3}s" src="assets/room/items/fig-${f}.webp" alt="">`).join('')); }
       if (it.id === 'holo-earth') {
-        const c = document.createElement('canvas'); c.width = c.height = 220; c.className = 'earth'; w.append(c);
-        const cx = c.getContext('2d'); drawEarth(cx, 220, 220, 1); ticks.push(t => drawEarth(cx, 220, 220, t));
+        const c = document.createElement('canvas'); c.width = c.height = 300; c.className = 'earth'; w.append(c);
+        const cx = c.getContext('2d'); drawEarth(cx, 300, 300, 1); ticks.push(t => drawEarth(cx, 300, 300, t));
       }
       add('<div class="lines"></div>');
     }
@@ -391,30 +396,42 @@ window.RoomView = (() => {
   }
   const DEMO = { name: 'You', level: 12, xp: 0.4, best: 96, avg: 88, acc: 96.4, dmgS: '1.2M', runs: [62, 70, 66, 74, 80, 77, 85, 90, 88, 96], board: [['jolt_arc93', 188], ['nim_ri61', 176], ['You', 171, true], ['reef_arc29', 160]], phase: 3, bossHp: 612480,
     streak: [...Array(35)].map((_, i) => (i * 7) % 5 > 1), streakN: 9, miss: { e: 0.05, r: 0.02, t: 0.08, a: 0.01, s: 0.04, x: 0.09 }, rush: { bosses: 7, score: 48200, beat: ['spam', 'siege', 'sign', 'warden', 'announcer', 'colossus', 'press'] }, online: 24 };
+  // every shop picture is a 4:3 scene: the item on a dark stage, never cropped
+  const strip = x => x.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+  const nest = (x, X, Y, W, H, vw, vh) => `<svg x="${X}" y="${Y}" width="${W}" height="${H}" viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="xMidYMid meet"><g font-family="${MONO}">${strip(x)}</g></svg>`;
+  const STAGE = `<defs><radialGradient id="stg" cx=".5" cy=".42" r=".7"><stop offset="0" stop-color="#13261b"/><stop offset="1" stop-color="#040806"/></radialGradient></defs><rect width="400" height="300" fill="url(#stg)"/>`;
   async function thumb(it) {
-    if (it.art) return it.art;
-    if (it.type === 'poster' && POSTERS[it.id]) return toUrl(await inline(POSTERS[it.id]().replace('<svg ', '<svg width="300" height="450" ')));
-    if (it.type === 'screen' && SCREENS[it.id]) return toUrl(SCREENS[it.id](DEMO).replace(/class="[^"]*"/g, ''));
-    if (it.type === 'banner') { const B = BANNERS[it.id]; return toUrl(svg(200, 200, `<rect width="200" height="200" fill="#16191b"/><g transform="translate(${B.full ? 0 : 40} ${B.full ? 0 : 40}) scale(${B.full ? 2 : 1.8})">${B.svg().replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g>`)); }
+    if (it.art) {
+      const im = await loadImg(it.art), c = document.createElement('canvas'); c.width = 400; c.height = 300;
+      const x = c.getContext('2d'), g = x.createRadialGradient(200, 130, 10, 200, 150, 260);
+      g.addColorStop(0, '#13261b'); g.addColorStop(1, '#040806'); x.fillStyle = g; x.fillRect(0, 0, 400, 300);
+      const k = Math.min(300 / im.width, 220 / im.height), w = im.width * k, h = im.height * k;
+      const sh = x.createRadialGradient(200, 262, 2, 200, 262, w * 0.6); sh.addColorStop(0, 'rgba(0,0,0,.6)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = sh; x.fillRect(0, 240, 400, 50);
+      x.drawImage(im, 200 - w / 2, 262 - h, w, h);
+      return c.toDataURL('image/webp', 0.86);
+    }
+    if (it.type === 'poster' && POSTERS[it.id]) return toUrl(await inline(svg(400, 300, `${STAGE}<rect x="137" y="22" width="126" height="256" fill="#15191b"/>${nest(POSTERS[it.id](), 145, 30, 110, 240, 300, 450)}`)));
+    if (it.type === 'screen' && SCREENS[it.id]) return toUrl(svg(400, 300, `${STAGE}<rect x="34" y="52" width="332" height="196" rx="6" fill="#0b0d0e" stroke="#2a2f32" stroke-width="2"/>${nest(SCREENS[it.id](DEMO).replace(/class="[^"]*"/g, ''), 44, 62, 312, 176, 480, 270)}<rect x="186" y="248" width="28" height="22" fill="#15181a"/><rect x="150" y="268" width="100" height="6" rx="3" fill="#15181a"/>`));
+    if (it.type === 'banner') { const B = BANNERS[it.id]; return toUrl(svg(400, 300, `${STAGE}<path d="M140 30h120v240l-60-22-60 22z" fill="#1d2124"/>${B.full ? nest(B.svg(), 140, 30, 120, 200, 100, 100) : nest(B.svg(), 160, 70, 80, 80, 68, 68)}`)); }
     if (it.type === 'holo') {
       const src = { 'holo-syntax': 'assets/boss/syntax-error.webp', 'holo-operator': 'assets/room/items/operator.webp', 'holo-rush': 'assets/room/items/fig-siege.webp' }[it.id];
-      const body = src ? img(src, 30, 20, 140, 160, 'preserveAspectRatio="xMidYMax meet" style="filter:url(#hf)"') : it.id === 'holo-ctrl' ? `<g transform="translate(46 46) scale(1.6)" color="#8ff4ff">${EMBLEM('currentColor', '#8ff4ff')}</g>` : `<circle cx="100" cy="100" r="62" fill="none" stroke="#8ff4ff" stroke-width="2"/><ellipse cx="100" cy="100" rx="26" ry="62" fill="none" stroke="#8ff4ff" stroke-opacity=".6"/><path d="M38 100H162M46 72H154M46 128H154" stroke="#8ff4ff" stroke-opacity=".5"/>`;
-      return toUrl(await inline(svg(200, 200, `<defs><filter id="hf"><feColorMatrix type="matrix" values="0 0 0 0 .45  0 0 0 0 .95  0 0 0 0 1  .33 .33 .33 0 0"/></filter></defs><rect width="200" height="200" fill="#04121a"/><ellipse cx="100" cy="186" rx="60" ry="8" fill="#3ee6ff" fill-opacity=".5"/>${body}`)));
+      const body = src ? img(src, 110, 40, 180, 210, 'preserveAspectRatio="xMidYMax meet" style="filter:url(#hf)"') : it.id === 'holo-ctrl' ? `<g transform="translate(144 70) scale(1.75)" color="#8ff4ff">${EMBLEM('currentColor', '#8ff4ff')}</g>` : `<circle cx="200" cy="140" r="78" fill="#3ee6ff" fill-opacity=".12" stroke="#8ff4ff" stroke-width="2"/><ellipse cx="200" cy="140" rx="32" ry="78" fill="none" stroke="#8ff4ff" stroke-opacity=".6"/><path d="M122 140H278M130 105H270M130 175H270" stroke="#8ff4ff" stroke-opacity=".5"/>`;
+      return toUrl(await inline(svg(400, 300, `<defs><filter id="hf"><feColorMatrix type="matrix" values="0 0 0 0 .45  0 0 0 0 .95  0 0 0 0 1  .33 .33 .33 0 0"/></filter><linearGradient id="hc" x2="0" y2="1"><stop offset="0" stop-color="#3ee6ff" stop-opacity="0"/><stop offset="1" stop-color="#3ee6ff" stop-opacity=".35"/></linearGradient></defs><rect width="400" height="300" fill="#04121a"/><path d="M90 20h220l-60 250h-100z" fill="url(#hc)"/><ellipse cx="200" cy="272" rx="70" ry="10" fill="#3ee6ff" fill-opacity=".55"/>${body}`)));
     }
-    const c = document.createElement('canvas'); c.width = 320; c.height = 200; const x = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = 400; c.height = 300; const x = c.getContext('2d');
     if (it.type === 'view') {
-      if (it.scene) { const { sc, base } = sceneArt(it.scene); x.drawImage(base, 0, 60, SW, SH - 120, 0, 0, 320, 200); if (sc.layer) { const l = document.createElement('canvas'); l.width = OW; l.height = OH; sc.layer(RoomScenes.K.rng(7))(l.getContext('2d'), OW, OH, 3); x.drawImage(l, 0, 0, 320, 200); } }
-      else { RoomScenes.K.drawCity(x, 320, 200, 14); }
-      x.strokeStyle = '#1a1e1c'; x.lineWidth = 10; x.strokeRect(0, 0, 320, 200); x.lineWidth = 6; x.beginPath(); x.moveTo(160, 0); x.lineTo(160, 200); x.moveTo(0, 100); x.lineTo(320, 100); x.stroke();
+      if (it.scene) { const { sc, base } = sceneArt(it.scene); x.drawImage(base, 0, 0, SW, SH, 0, 0, 400, 300); if (sc.layer) { const l = document.createElement('canvas'); l.width = OW; l.height = OH; sc.layer(RoomScenes.K.rng(7))(l.getContext('2d'), OW, OH, 3); x.drawImage(l, 0, 0, 400, 300); } }
+      else { RoomScenes.K.drawCity(x, 400, 300, 14); }
+      x.strokeStyle = '#1a1e1c'; x.lineWidth = 14; x.strokeRect(0, 0, 400, 300); x.lineWidth = 8; x.beginPath(); x.moveTo(200, 0); x.lineTo(200, 300); x.moveTo(0, 150); x.lineTo(400, 150); x.stroke();
     } else if (it.type === 'light') {
-      x.fillStyle = '#07100c'; x.fillRect(0, 0, 320, 200);
-      const g = x.createRadialGradient(160, 100, 4, 160, 100, 150);
+      x.fillStyle = '#07100c'; x.fillRect(0, 0, 400, 300);
       const col = it.sw && it.sw.startsWith('#') ? it.sw : it.c || '#2fe0c0';
-      if (it.anim === 'rainbow') { const lg = x.createLinearGradient(40, 0, 280, 0); ['#ff4d5e', '#f2c230', '#39ff88', '#3ee6ff', '#b45cff'].forEach((cc, i) => lg.addColorStop(i / 4, cc)); x.fillStyle = lg; x.shadowColor = '#fff'; }
-      else { g.addColorStop(0, col + '66'); g.addColorStop(1, 'transparent'); x.fillStyle = g; x.fillRect(0, 0, 320, 200); x.fillStyle = col; x.shadowColor = col; }
-      x.shadowBlur = 24; x.fillRect(40, 92, 240, 16);
+      if (it.anim === 'rainbow') { const lg = x.createLinearGradient(60, 0, 340, 0); ['#ff4d5e', '#f2c230', '#39ff88', '#3ee6ff', '#b45cff'].forEach((cc, i) => lg.addColorStop(i / 4, cc)); x.fillStyle = lg; x.shadowColor = '#fff'; }
+      else { const g = x.createRadialGradient(200, 150, 4, 200, 150, 190); g.addColorStop(0, col + '66'); g.addColorStop(1, 'transparent'); x.fillStyle = g; x.fillRect(0, 0, 400, 300); x.fillStyle = col; x.shadowColor = col; }
+      x.shadowBlur = 28; x.fillRect(50, 140, 300, 18);
     } else return null;
-    return c.toDataURL('image/png');
+    return c.toDataURL('image/webp', 0.86);
   }
 
   // the shop bar's small live pictures (DOM, not images): an SVG string scaled into a box

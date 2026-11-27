@@ -116,14 +116,15 @@
   function mount(host, opts = {}) {
     unmount();
     migrate();
-    const visit = opts.visit && opts.visit.profile && opts.visit.profile.id !== 'me' ? opts.visit.profile : null;
+    scrollTo(0, 0);
+    const visit = opts.visit && opts.visit.profile ? opts.visit.profile : null;
     root = document.createElement('div'); root.className = 'rm' + (visit ? ' visiting' : '');
     root.innerHTML = '<div class="rm-stage" data-stage></div>';
     host.append(root);
     const stage = root.querySelector('[data-stage]');
     const phone = matchMedia('(max-width: 760px)');
     const d = visit ? of(visit) : mine();
-    state = { visit, tab: 'view', slot: 'view', mode: 'custom', pending: null, phone };
+    state = { visit, tab: 'view', slot: 'view', mode: 'custom', pending: null, phone, touched: false };
     view = RV.create(stage, { ...d, interactive: !visit, fit: phone.matches ? 'height' : 'cover', onSlot: openSlot });
     if (phone.matches) requestAnimationFrame(() => { stage.scrollLeft = (stage.scrollWidth - stage.clientWidth) * RT.TIERS[d.tier].focus; });
     const onPhone = () => { if (!view) return; view.set({ fit: phone.matches ? 'height' : 'cover' }); };
@@ -133,6 +134,7 @@
     offs.push(WPM.on('coins', () => { paintOp(); if (state.mode === 'custom') paintItems(); }));
     offs.push(WPM.on('inventory', () => { if (state.mode === 'custom') paintItems(); }));
     offs.push(WPM.on('level', () => { paintOp(); paintMenu(); }));
+    document.addEventListener('keydown', onKey); offs.push(() => document.removeEventListener('keydown', onKey));
   }
 
   function ui(cls, html, tag = 'div') {
@@ -149,8 +151,10 @@
     const nSlots = RT.slots(t).length, earned = mine().earned.length, cap = (T.case || T.pins || []).length;
     const items = [['custom', 'Customise', `${nSlots} slots`], ['ach', 'Achievements', `${Math.min(earned, cap)} of ${cap}`], ['visit', 'Visit a room', ''], ['tiers', 'Room tiers', `${openTier()} of 5`]];
     const n = ui('rm-menu', `<h1>My Room</h1><span class="tier">Tier ${t} // ${esc(T.name)}</span>${items.map(([k, a, b]) => `<button type="button" data-m="${k}" aria-pressed="${state.mode === k}">${a}<small>${b}</small></button>`).join('')}`, 'nav');
+    n.insertAdjacentHTML('beforeend', '<button type="button" data-hide>Hide panels<small>H</small></button>');
     n.setAttribute('aria-label', 'My Room');
     n.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+    n.querySelector('[data-hide]').addEventListener('click', () => clean(true));
   }
   function setMode(m) {
     state.mode = m; state.pending = null; view.preview(null);
@@ -160,6 +164,20 @@
     if (m === 'tiers') paintTiers();
     if (m === 'ach') paintAch();
     if (m === 'visit') paintVisits();
+  }
+
+  // the room on its own, for a look or a screenshot: H or the button hides the panels
+  function clean(on) {
+    if (!root) return;
+    root.classList.toggle('clean', on);
+    let b = root.querySelector('.rm-show');
+    if (on && !b) { b = document.createElement('button'); b.type = 'button'; b.className = 'rm-show'; b.textContent = 'Show panels'; b.addEventListener('click', () => clean(false)); root.append(b); b.focus(); }
+    if (!on && b) b.remove();
+  }
+  function onKey(ev) {
+    if (!root || ev.ctrlKey || ev.metaKey || ev.altKey || /input|textarea|select/i.test(ev.target.tagName)) return;
+    if (ev.key === 'h' || ev.key === 'H') clean(!root.classList.contains('clean'));
+    if (ev.key === 'Escape' && root.classList.contains('clean')) clean(false);
   }
 
   // ---------- the operator panel
@@ -183,20 +201,20 @@
     if (!k.slots.some(s => s.id === state.slot)) state.slot = k.slots[0].id;
     const n = ui('rm-bar', `<div class="rm-tabs" role="tablist">${ks.map(x => x.slots.length
       ? `<button type="button" role="tab" data-k="${x.id}" aria-selected="${x.id === state.tab}">${esc(x.name)}</button>`
-      : `<button type="button" class="lock" disabled>${esc(x.name)} · lv ${RT.TIERS[x.from].level}</button>`).join('')}</div>
+      : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.from].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.from].level}</button>`).join('')}</div>
       ${k.slots.length > 1 ? `<div class="rm-slots">${k.slots.map((s, i) => `<button type="button" data-s="${s.id}" aria-pressed="${s.id === state.slot}">${esc(s.name || `${k.id === 'wall' ? 'Wall' : k.name.replace(/s$/, '')} ${i + 1}`)}</button>`).join('')}</div>` : ''}
       <div class="rm-items" data-items></div><p class="rm-msg" data-msg role="status"></p>`);
     n.setAttribute('aria-label', 'Customise');
-    n.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { state.tab = b.dataset.k; state.slot = null; cancelPending(); paintBar(); }));
-    n.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => { state.slot = b.dataset.s; cancelPending(); paintBar(); }));
-    view.select(state.slot);
+    n.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.tab = b.dataset.k; state.slot = null; cancelPending(); paintBar(); }));
+    n.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.slot = b.dataset.s; cancelPending(); paintBar(); }));
+    view.select(state.touched ? state.slot : null);
     paintItems();
   }
   function openSlot(sl) {
     if (state.visit) return;
     if (sl.kind === 'case') return setMode('ach');
     if (state.mode !== 'custom') setMode('custom');
-    state.tab = sl.kind; state.slot = sl.id; cancelPending(); paintBar();
+    state.touched = true; state.tab = sl.kind; state.slot = sl.id; cancelPending(); paintBar();
     sfx(false);
   }
   function equipped() { const r = load(), t = view.tier; return (r.eq[t] || {}); }
@@ -261,8 +279,7 @@
     m.querySelector('[data-buy]').addEventListener('click', () => {
       const res = WPM.buy(it);
       if (!res.ok) { msg(res.reason === 'coins' ? `You need ${fmt(it.price - WPM.coins())} more coins.` : ''); return; }
-      state.pending = null; place(id); sfx(true); paintItems(); paintOp();
-      msg(`${esc(it.name)} placed.`);
+      state.pending = null; place(id); sfx(true); paintItems(); paintOp(); msg('');
     });
     m.querySelector('[data-no]').addEventListener('click', () => { cancelPending(); paintItems(); msg(''); });
   }
@@ -272,7 +289,7 @@
     const o = openTier(), cur = view.tier, L = level();
     const n = ui('rm-sheet', `<button type="button" class="rm-x" data-x>Close</button><h2>Room tiers</h2><p>Each level tier opens a bigger room with more slots. Coins can't buy a tier.</p>
       <div class="rm-tiers">${[1, 2, 3, 4, 5].map(t => { const T = RT.TIERS[t], open = t <= o;
-        return `<button type="button" class="rm-tier${open ? '' : ' locked'}${t === cur ? ' cur' : ''}" data-t="${t}" ${open ? '' : `data-need="Level ${T.level}" aria-disabled="true"`}><span class="pic"><img src="assets/room/tiers/t${t}-s.webp" alt="" loading="lazy"></span><span class="cap">${t}. ${esc(T.name)}<small>${t === cur ? 'Your room' : open ? `${RT.slots(t).length} slots` : `${fmt(T.level - L)} levels to go`}</small></span></button>`; }).join('')}</div>`);
+        return `<button type="button" class="rm-tier${open ? '' : ' locked'}${t === cur ? ' cur' : ''}" data-t="${t}" ${open ? '' : 'aria-disabled="true"'}><span class="pic" ${open ? '' : `data-need="Level ${T.level}"`}><img src="assets/room/tiers/t${t}-s.webp" alt="" loading="lazy"></span><span class="cap">${t}. ${esc(T.name)}<small>${t === cur ? 'Your room' : open ? `${RT.slots(t).length} slots` : `${fmt(T.level - L)} levels to go`}</small></span></button>`; }).join('')}</div>`);
     n.querySelector('[data-x]').addEventListener('click', () => setMode('custom'));
     n.querySelectorAll('.rm-tier:not(.locked)').forEach(b => b.addEventListener('click', () => {
       const t = +b.dataset.t, r = load();
@@ -315,8 +332,10 @@
   // ---------- someone else's room
   function paintVisit(p, d) {
     const T = RT.TIERS[d.tier];
-    const n = ui('rm-visitbar', `<h1>${esc(p.name)}'s room</h1><p>Tier ${d.tier} // ${esc(T.name)} · Level ${p.art ? 99 : p.level || 1}</p>
-      <div class="row"><a class="btn out sm" href="#/u/${encodeURIComponent(p.id)}">Profile</a>${p.art ? '<a class="btn sm" href="#/duel/art">Challenge Art</a>' : `<a class="btn sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to a duel</a>`}<a class="btn out sm" href="#/room">My Room</a></div>`);
+    const me = p.id === 'me';
+    const n = ui('rm-visitbar', `<h1>${me ? 'Your room' : `${esc(p.name)}'s room`}</h1><p>Tier ${d.tier} // ${esc(T.name)} · Level ${p.art ? 99 : d.data.level}</p>
+      <div class="row"><a class="btn out sm" href="#/u/${encodeURIComponent(p.id)}">Profile</a>${me ? '' : p.art ? '<a class="btn sm" href="#/duel/art">Challenge Art</a>' : `<a class="btn sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to a duel</a>`}<a class="btn out sm" href="#/room">${me ? 'Customise' : 'My Room'}</a></div>`);
+    if (me) return;
     n.setAttribute('aria-label', 'Visiting');
     const mineT = activeTier(), L = level();
     if (d.tier > mineT) ui('rm-op', `<div class="l">Your room</div><div class="lv">Tier <b>${mineT}</b></div><div class="next">${LOCK}<span>${esc(T.name)} unlocks at <b>level ${T.level}</b>. You're level ${L}.</span></div>`);
