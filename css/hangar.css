@@ -17,7 +17,6 @@
 }
 .hg-fight { margin: 0; font: 400 13px/1.45 var(--f-head); color: var(--ink-2); }
 .hg-fight a { color: var(--accent); }
-.hg-tabs button { flex: 1; }
 .hg-pane { display: grid; gap: 16px; }
 .hg-group { display: grid; gap: 8px; }
 .hg-sw { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -45,3 +44,27 @@
 .hg-buy[hidden] { display: none; }
 .hg-buyrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .hg-buyrow .btn .hg-price { color: inherit; }
+
+/* 28 Nov 2026: the premium creator. Categories as a 4 x 2 grid, a card with a picture for every part,
+   a vignette over the studio and chips on the view */
+.hg-view::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55)); }
+.hg-view > .hg-name, .hg-view > .hg-info, .hg-view > .hg-viewbar { z-index: 1; }
+.hg-viewbar { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+.hg-chip { font: 400 12px/1 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: rgba(10,14,12,.7); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 12px; cursor: pointer; backdrop-filter: blur(4px); }
+.hg-chip.on { color: var(--accent); border-color: rgba(var(--accent-rgb),.6); }
+.hg-chip[hidden] { display: none; }
+.hg-bots button { display: grid; gap: 3px; text-align: left; }
+.hg-bots button b { font-weight: 600; color: inherit; }
+.hg-bots button span { font-size: 11px; color: var(--ink-3, var(--ink-2)); letter-spacing: .06em; text-transform: uppercase; }
+.hg-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.hg-tabs button { font: 400 12px/1 var(--f-label); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--bg-3); border: 1px solid var(--line-2); border-radius: var(--r); padding: 9px 4px; cursor: pointer; }
+.hg-tabs button.on { color: var(--accent); border-color: var(--accent); background: rgba(var(--accent-rgb),.1); box-shadow: inset 0 -2px 0 var(--accent); }
+.hg-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.hg-card { position: relative; display: grid; justify-items: center; gap: 4px; padding: 6px 4px 7px; background: var(--bg-3); border: 1px solid var(--line-2); border-radius: var(--r); cursor: pointer; color: var(--ink-2); font: 400 11px/1.2 var(--f-label); letter-spacing: .04em; text-align: center; transition: border-color .15s, transform .15s, background .15s; }
+.hg-card img { width: 64px; height: 64px; border-radius: calc(var(--r) - 2px); display: block; }
+.hg-card:hover { border-color: rgba(var(--accent-rgb),.55); transform: translateY(-1px); }
+.hg-card.on { color: var(--accent); border-color: var(--accent); background: rgba(var(--accent-rgb),.08); box-shadow: 0 0 10px rgba(var(--accent-rgb),.3); }
+.hg-card.locked { border-style: dashed; }
+.hg-card .hg-price { margin: 0; }
+.hg-on { font: 400 10px/1 var(--f-mono); font-style: normal; color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .hg-card { transition: none; } .hg-card:hover { transform: none; } }

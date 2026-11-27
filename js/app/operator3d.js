@@ -32,8 +32,9 @@ window.Operator = (() => {
     split: 'Twin: your shots leave from both halves and cross on the target.',
     arc: 'Storm: your shots fly as forked lightning.',
   };
-  const ANIMS = [['idle', 'Idle'], ['walk', 'Walk'], ['type', 'Typing'], ['victory', 'Victory'], ['defeat', 'Defeat']];
-  const ONCE = [['cast', 'Cast'], ['hit', 'Hit']];
+  const ANIMS = [['idle', 'Idle'], ['walk', 'Walk'], ['type', 'Typing'], ['victory', 'Victory'], ['defeat', 'Down']];
+  // one-shots played over the current animation (28 Nov 2026: attack, cover, heal, revive and dodge added)
+  const ONCE = [['attack', 'Attack'], ['cast', 'Cast'], ['cover', 'Cover'], ['heal', 'Heal'], ['revive', 'Revive'], ['dodge', 'Dodge'], ['hit', 'Hit']];
 
   // both bases wear the outfit from the 2026-11-24 Gemini sheets; colours come from there too
   const BASES = {
@@ -119,7 +120,9 @@ window.Operator = (() => {
   // ---------- poses, in degrees ----------
   // lean: spine forward; side: toward the character's left; twist: chest turned to its left
   // arm/leg: { flex: forward, abd: out to its side, twist: + rolls it inward }; elbow and knee: bend; wrist: bend forward
-  const BLANK = () => ({ lean: 0, side: 0, twist: 0, nod: 0, turn: 0, tilt: 0,
+  // shiftX/shiftZ move the hips over the floor (a dodge), lift raises them (a hop); footL/footR turn a foot
+  // from level to lying along its shin, top down (kneeling), 0 to 1
+  const BLANK = () => ({ lean: 0, side: 0, twist: 0, nod: 0, turn: 0, tilt: 0, shiftX: 0, shiftZ: 0, lift: 0, footL: 0, footR: 0,
     armL: { flex: 0, abd: 0, twist: 0 }, armR: { flex: 0, abd: 0, twist: 0 }, elbowL: 0, elbowR: 0, wristL: 0, wristR: 0, proL: 0, proR: 0,
     legL: { flex: 0, abd: 0 }, legR: { flex: 0, abd: 0 }, kneeL: 0, kneeR: 0 });
   function mixPose(a, b, w) {
@@ -161,11 +164,12 @@ window.Operator = (() => {
       p.legL = { flex: 4 + b * 10, abd: 9 }; p.legR = { flex: 4 + b * 10, abd: 9 }; p.kneeL = p.kneeR = 6 + b * 22;
       return p;
     },
+    // down: on both knees, slumped over, the arms hanging; the breathing still shows
     defeat(t) {
       const p = BLANK(), br = Math.sin(t * 1.1);
-      p.lean = 24 + br; p.side = 3; p.nod = 34; p.turn = -6;
-      p.armL = { flex: 10, abd: 5, twist: 0 }; p.armR = { flex: 12, abd: 4, twist: 0 }; p.elbowL = p.elbowR = 12;
-      p.legL = { flex: 24, abd: 6 }; p.legR = { flex: 18, abd: 6 }; p.kneeL = 42; p.kneeR = 34;
+      p.lean = 30 + br * 1.5; p.side = 4; p.nod = 30 + br; p.turn = -8; p.twist = 4;
+      p.armL = { flex: 16, abd: 9, twist: 0 }; p.armR = { flex: 24, abd: 7, twist: 0 }; p.elbowL = 22; p.elbowR = 34; p.wristL = p.wristR = 12;
+      p.legL = { flex: 4, abd: 7 }; p.legR = { flex: 2, abd: 7 }; p.kneeL = 92; p.kneeR = 95; p.footL = p.footR = 1;
       return p;
     },
     // one-shots: weight 0 to 1 and back over their length
@@ -180,14 +184,60 @@ window.Operator = (() => {
         legL: { flex: 16, abd: 6 }, legR: { flex: -14, abd: 6 }, kneeL: 14, kneeR: 6 };
       return { pose: strike > 0 ? mixPose(w, s, strike) : w, len: 1.15, base: p };
     },
+    // knocked back: the chest snaps back and wobbles, the arms come up, a step back to catch it
     hit(t) {
-      const p = { ...BLANK(), lean: -14, side: 5, nod: -18, turn: 8,
-        armL: { flex: 26, abd: 22, twist: 0 }, armR: { flex: 30, abd: 18, twist: 0 }, elbowL: 62, elbowR: 70,
-        legL: { flex: 6, abd: 6 }, legR: { flex: -8, abd: 6 }, kneeL: 14, kneeR: 10 };
-      return { pose: p, len: 0.5, base: A.idle(t) };
+      const k = Math.exp(-t * 7), wob = Math.sin(t * 30) * k;
+      const p = { ...BLANK(), lean: -16 + wob * 5, side: 6, nod: -20 + wob * 7, turn: 10, twist: 10, shiftZ: -0.06,
+        armL: { flex: 30, abd: 26, twist: 0 }, armR: { flex: 36, abd: 20, twist: 0 }, elbowL: 70, elbowR: 85, wristL: 10, wristR: 10,
+        legL: { flex: 8, abd: 7 }, legR: { flex: -10, abd: 7 }, kneeL: 18, kneeR: 14 };
+      return { pose: p, base: A.idle(t) };
+    },
+    // a typing shot with weight: both hands lift off the board and come down hard on it, then settle
+    attack(t) {
+      const p = typePose(t, [1, 1]);
+      const up = { ...p, lean: -2, nod: 4, armL: { flex: 26, abd: 18, twist: 42 }, armR: { flex: 26, abd: 18, twist: 42 }, elbowL: 112, elbowR: 112, wristL: -18, wristR: -18 };
+      const down = { ...p, lean: 9, nod: 13, armL: { flex: 8, abd: 18, twist: 42 }, armR: { flex: 8, abd: 18, twist: 42 }, elbowL: 80, elbowR: 80, wristL: 22, wristR: 22, kneeL: 12, kneeR: 12 };
+      const wind = smooth(t / 0.1), strike = ease((t - 0.1) / 0.07);
+      return { pose: strike > 0 ? mixPose(up, down, strike) : mixPose(p, up, wind), base: p };
+    },
+    // cover: forearms up and crossed in front of the face, knees bent, chin down behind them
+    cover(t) {
+      const br = Math.sin(t * 9) * 0.6;
+      const p = { ...BLANK(), lean: 8, nod: 12, twist: -4,
+        armL: { flex: 72, abd: -10, twist: 15 }, armR: { flex: 76, abd: -14, twist: 15 }, elbowL: 118 + br, elbowR: 126 + br, wristL: -8, wristR: -8, proL: 40, proR: 40,
+        legL: { flex: 18, abd: 9 }, legR: { flex: 4, abd: 9 }, kneeL: 30, kneeR: 22 };
+      return { pose: p, base: A.idle(t) };
+    },
+    // heal: one hand on the chest, the other held out with the palm open, a slow rise on the toes
+    heal(t) {
+      const f = Math.sin(t * 3) * 2;
+      const p = { ...BLANK(), lean: -3, nod: -6, turn: -6, twist: -8, lift: 0.015 + 0.01 * Math.sin(t * 3),
+        armR: { flex: 92 + f, abd: 14, twist: -10 }, elbowR: 14, wristR: -32, proR: -20,
+        armL: { flex: 34, abd: -16, twist: 30 }, elbowL: 118, wristL: 8, proL: 30,
+        legL: { flex: 4, abd: 6 }, legR: { flex: -4, abd: 6 }, kneeL: 6, kneeR: 6 };
+      return { pose: p, base: A.idle(t) };
+    },
+    // revive: down on the right knee, leaning in, the right hand reaching out over the fallen one
+    revive(t) {
+      const r = Math.sin(t * 2.2) * 3;
+      const p = { ...BLANK(), lean: 24, nod: 16, twist: -6, turn: 4, shiftZ: 0.05,
+        legL: { flex: 80, abd: 8 }, kneeL: 88, legR: { flex: -2, abd: 6 }, kneeR: 90, footR: 1,
+        armR: { flex: 58 + r, abd: 6, twist: 10 }, elbowR: 14, wristR: -22, proR: -30,
+        armL: { flex: 32, abd: 14, twist: 20 }, elbowL: 52, wristL: 0 };
+      return { pose: p, base: A.idle(t) };
+    },
+    // dodge: a quick hop to its left, leaning into it, arms out for balance
+    dodge(t) {
+      const u = clamp(t / 0.5, 0, 1), go = Math.sin(Math.min(1, u * 1.4) * Math.PI / 2);
+      const p = { ...BLANK(), shiftX: 0.34 * go, lift: Math.sin(Math.min(1, u * 2.2) * Math.PI) * 0.06, side: 10, lean: 6, twist: 8, turn: -12, nod: 4,
+        legL: { flex: 10, abd: 20 }, kneeL: 30, legR: { flex: -6, abd: 6 }, kneeR: 14,
+        armL: { flex: 12, abd: 42, twist: 0 }, elbowL: 40, armR: { flex: 26, abd: 30, twist: 0 }, elbowR: 62 };
+      return { pose: p, base: A.idle(t) };
     },
   };
-  const ONCE_LEN = { cast: 1.15, hit: 0.5 };
+  const ONCE_LEN = { cast: 1.15, hit: 0.6, attack: 0.45, cover: 1.1, heal: 1.3, revive: 1.8, dodge: 0.6 };
+  // how fast each one-shot takes over and lets go, in seconds; a dodge keeps its sideways step to the end
+  const ONCE_ENV = { hit: [0.04, 0.4], attack: [0.03, 0.18], cover: [0.12, 0.3], heal: [0.2, 0.4], revive: [0.35, 0.5], dodge: [0.06, 0.25] };
   // standing at the keyboard, after Gid's posture references (2026-11-24): back straight, upper arms
   // close to the body, elbows near 90, forearms level and angled in so the hands meet the keys about
   // shoulder width apart, eyes ahead with a small nod; each hand strikes from the wrist and elbow
@@ -665,17 +715,18 @@ window.Operator = (() => {
       // along the whole forearm, so neither the elbow nor the wrist wrings like a towel
       for (const [s, x, pro, wr] of [['Left', 1, p.proL, p.wristL], ['Right', -1, p.proR, p.wristR]]) {
         const fa = B[s + 'ForeArm'], h = B[s + 'Hand'], ax = dirs[s + 'ForeArm'];
-        if (pro) fa.quaternion.multiply(qT.setFromAxisAngle(ax, x * PRO_SIGN * pro * 0.6 * R));
-        h.quaternion.setFromAxisAngle(ax, x * PRO_SIGN * (pro || 0) * 0.4 * R).multiply(q0.setFromAxisAngle(X, -wr * R));
+        if (pro) fa.quaternion.multiply(qT.setFromAxisAngle(ax, x * PRO_SIGN * pro * 0.7 * R));
+        h.quaternion.setFromAxisAngle(ax, x * PRO_SIGN * (pro || 0) * 0.3 * R).multiply(q0.setFromAxisAngle(X, -wr * R));
       }
       limb(B.LeftUpLeg, 1, p.legL); limb(B.RightUpLeg, -1, p.legR);
+      B.Hips.position.x = rest.Hips.x + (p.shiftX || 0); B.Hips.position.z = rest.Hips.z + (p.shiftZ || 0);
       hinge(B.LeftLeg, p.kneeL); hinge(B.RightLeg, p.kneeR);
       // the lower foot sits on the floor: move the hips by the height the legs lost or gained against rest
       const reach = (L, l, kn) => { const f = l.flex * R, ab = l.abd * R; return (L.a * Math.cos(f) + L.c * Math.cos(kn * R - f)) * Math.cos(ab); };
       // a soft minimum of the two legs, so the hips glide instead of jumping when the feet swap
       const la = legs.Left.drop - reach(legs.Left, p.legL, p.kneeL), lb = legs.Right.drop - reach(legs.Right, p.legR, p.kneeR), k = 0.035;
       const lost = Math.min(la, lb) - k * Math.log(1 + Math.exp(-Math.abs(la - lb) / k));
-      B.Hips.position.y = rest.Hips.y - lost;
+      B.Hips.position.y = rest.Hips.y - lost + (p.lift || 0);
       // feet stay level with the ground whatever the leg does
       group.updateMatrixWorld(true);
       group.getWorldQuaternion(qw);
@@ -683,10 +734,111 @@ window.Operator = (() => {
         const ft = B[s + 'Foot'];
         ft.parent.getWorldQuaternion(q0);
         ft.quaternion.copy(q0.invert().multiply(qw));
+        // kneeling: the foot lies back along the floor with its top down, instead of standing level
+        const kf = s === 'Left' ? p.footL : p.footR;
+        if (kf) ft.quaternion.multiply(qT.setFromAxisAngle(X, kf * 160 * R));
       }
     }
 
     rebuild();   // after the pose code above, since placing the keyboard poses the body once
+
+    // ---------- action effects (28 Nov 2026): light that goes with each one-shot, on the operator itself ----------
+    // A hex shield for cover, rising rings and crosses for a heal, a gold column for a revive, an
+    // afterimage for a dodge, a red flash for a hit and sparks off the board for an attack. Built the
+    // first time one plays, in the operator's own space, so every page that plays it gets it.
+    let afx = null;
+    function fxLayer() {
+      if (afx || opts.tiny) return afx;
+      const g = new THREE.Group(); g.name = 'action-fx'; group.add(g);
+      const add = c => own2fx(new THREE.MeshBasicMaterial({ color: c || '#ffffff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      const parts = [];
+      const own2fx = x => (parts.push(x), x);
+      const mk = (geo, mat) => { const m = new THREE.Mesh(own2fx(geo), mat); m.visible = false; m.renderOrder = 6; g.add(m); return m; };
+      const shield = mk(new THREE.CircleGeometry(0.42, 6), add());
+      const shieldRim = mk(new THREE.RingGeometry(0.4, 0.45, 6, 1), add());
+      const floorRing = mk(new THREE.RingGeometry(0.3, 0.36, 64), add()); floorRing.rotation.x = -Math.PI / 2;
+      const floorRing2 = mk(new THREE.RingGeometry(0.5, 0.53, 64), add()); floorRing2.rotation.x = -Math.PI / 2;
+      const colMat = own2fx(new THREE.ShaderMaterial({ uniforms: { uCol: { value: new THREE.Color() }, uK: { value: 0 }, uT: { value: 0 } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform vec3 uCol; uniform float uK; uniform float uT; varying vec2 vUv; void main(){ float a = (1.0 - vUv.y) * (0.6 + 0.4 * sin(vUv.x * 40.0 + uT * 6.0)) * uK; gl_FragColor = vec4(uCol * a * 1.6, a); }',
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      const column = mk(new THREE.CylinderGeometry(0.3, 0.36, 2.3, 40, 1, true), colMat); column.position.y = 1.15;
+      const rings = [0, 1, 2].map(() => mk(new THREE.TorusGeometry(0.42, 0.012, 6, 48), add())); rings.forEach(r => { r.rotation.x = Math.PI / 2; });
+      // afterimages: a soft upright glow shaped like a body, brighter at the edges
+      const ghostMat = () => own2fx(new THREE.ShaderMaterial({ uniforms: { color: { value: new THREE.Color() }, opacity: { value: 0 } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: 'uniform vec3 color; uniform float opacity; varying vec2 vUv; void main(){ vec2 q = (vUv - 0.5) * vec2(2.4, 2.0); float body = smoothstep(1.0, 0.55, length(vec2(q.x, q.y * 0.55))); float head = smoothstep(0.32, 0.18, length(vec2(q.x, (vUv.y - 0.9) * 4.0))); float a = max(body * 0.5, head) * (0.6 + 0.4 * sin(vUv.y * 90.0)) * opacity; gl_FragColor = vec4(color * a, a); }',
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      const ghosts = [0, 1].map(() => { const m = mk(new THREE.PlaneGeometry(0.62, 1.8), ghostMat()); m.material.color = m.material.uniforms.color.value; return m; });
+      // sparks: a small point cloud in the operator's own space
+      const SN = 48, sp = new Float32Array(SN * 3), sv = new Float32Array(SN * 3), sl = new Float32Array(SN), sc = new Float32Array(SN * 3);
+      for (let i = 0; i < SN; i++) sp[i * 3 + 1] = -99;
+      const sg = own2fx(new THREE.BufferGeometry()); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3)); sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+      const dot = document.createElement('canvas'); dot.width = dot.height = 32; { const c = dot.getContext('2d'), r = c.createRadialGradient(16, 16, 0, 16, 16, 16); r.addColorStop(0, '#fff'); r.addColorStop(0.4, 'rgba(255,255,255,.5)'); r.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = r; c.fillRect(0, 0, 32, 32); }
+      const sparks = new THREE.Points(sg, own2fx(new THREE.PointsMaterial({ size: 0.06, map: own2fx(new THREE.CanvasTexture(dot)), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+      sparks.frustumCulled = false; sparks.renderOrder = 6; g.add(sparks);
+      let si = 0;
+      const spark = (x, y, z, vx, vy, vz, col, life) => { const i = si = (si + 1) % SN; sp[i * 3] = x; sp[i * 3 + 1] = y; sp[i * 3 + 2] = z; sv[i * 3] = vx; sv[i * 3 + 1] = vy; sv[i * 3 + 2] = vz; sl[i] = life; sc[i * 3] = col.r; sc[i * 3 + 1] = col.g; sc[i * 3 + 2] = col.b; };
+      afx = { g, parts, shield, shieldRim, floorRing, floorRing2, column, colMat, rings, ghosts, sparks, sg, sp, sv, sl, sc, SN, spark, all: [shield, shieldRim, floorRing, floorRing2, column, ...rings, ...ghosts] };
+      return afx;
+    }
+    const fxCol = new THREE.Color(), HEAL = new THREE.Color('#5dff9e'), GOLD = new THREE.Color('#ffd27a'), RED = new THREE.Color('#ff4d5e'), WHITE = new THREE.Color('#ffffff');
+    function fxTick(dt) {
+      if (!afx) return;
+      const F = afx;
+      F.all.forEach(m => { m.visible = false; });
+      const H = 1.8 * BASES[P.base].scale;
+      const glowHex = P.colors.glow === 'theme' ? (window.Theme ? Theme.hex('accent') : '#39ff88') : P.colors.glow;
+      fxCol.set(glowHex);
+      const show = (m, col, k) => { m.visible = k > 0.01; m.material.color.copy(col).multiplyScalar(1.5); m.material.opacity = clamp(k, 0, 1); };
+      if (once) {
+        const n = once.name, tt = once.t, len = ONCE_LEN[n], fade = clamp(Math.min(tt / 0.1, (len - tt) / 0.3), 0, 1);
+        const hx = B.Hips ? B.Hips.position.x : 0;
+        if (n === 'cover') {
+          // the plate snaps up in front of the face and flickers as it holds
+          const g2 = clamp(tt / 0.14, 0, 1), pop = 1 + (1 - g2) * 0.6;
+          F.shield.position.set(hx, H * 0.8, 0.42); F.shieldRim.position.copy(F.shield.position);
+          F.shield.scale.setScalar(pop); F.shieldRim.scale.setScalar(pop);
+          show(F.shield, fxCol, 0.22 * fade * (0.85 + 0.15 * Math.sin(tt * 40))); show(F.shieldRim, fxCol, 0.95 * fade);
+          if (tt < 0.05) for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28; F.spark(hx + Math.cos(a) * 0.4, H * 0.8 + Math.sin(a) * 0.4, 0.45, Math.cos(a) * 1.2, Math.sin(a) * 1.2, 0.3, fxCol, 0.35); }
+        } else if (n === 'heal') {
+          F.rings.forEach((r, i) => { const u = (tt * 0.9 + i / 3) % 1; r.position.set(0, u * H * 1.05, 0); r.scale.setScalar(1 - u * 0.35); show(r, HEAL, (1 - u) * fade); });
+          F.floorRing.scale.setScalar(1.3); show(F.floorRing, HEAL, 0.6 * fade);
+          if (Math.random() < dt * 30) { const a = Math.random() * 6.28; F.spark(Math.cos(a) * 0.4, Math.random() * 0.5, Math.sin(a) * 0.4, 0, 0.9 + Math.random() * 0.5, 0, HEAL, 1.2); }
+          if (Math.random() < dt * 14) F.spark(-0.2, H * 0.78, 0.55, (Math.random() - 0.5) * 0.3, 0.3, 0.6, WHITE, 0.6);   // from the open hand
+        } else if (n === 'revive') {
+          const g2 = clamp((tt - 0.25) / 0.4, 0, 1);
+          F.column.position.set(-0.05, 1.15, 0.75); F.column.scale.set(0.8, g2, 0.8); F.colMat.uniforms.uCol.value.copy(GOLD); F.colMat.uniforms.uK.value = 0.32 * fade * g2; F.colMat.uniforms.uT.value = tt; F.column.visible = g2 > 0;
+          F.floorRing.position.set(-0.05, 0.01, 0.75); F.floorRing.scale.setScalar(1 + g2 * 0.6); show(F.floorRing, GOLD, fade * g2);
+          F.floorRing2.position.set(-0.05, 0.012, 0.75); F.floorRing2.scale.setScalar(1 + ((tt * 0.8) % 1) * 1.2); show(F.floorRing2, GOLD, fade * g2 * (1 - (tt * 0.8) % 1));
+          if (g2 > 0 && Math.random() < dt * 30) F.spark(-0.05 + (Math.random() - 0.5) * 0.6, 0.05, 0.75 + (Math.random() - 0.5) * 0.6, 0, 0.8 + Math.random() * 0.6, 0, GOLD, 1.4);
+        } else if (n === 'dodge') {
+          // two fading copies left where it was
+          F.ghosts.forEach((gh, i) => { const lag = (i + 1) * 0.12; gh.position.set(Math.max(0, hx - lag * 0.9), H * 0.5, 0); gh.visible = true; gh.material.uniforms.color.value.copy(fxCol).multiplyScalar(1.4); gh.material.uniforms.opacity.value = 0.5 * (1 - tt / len) * (i ? 0.5 : 1); });
+          F.floorRing.position.set(hx, 0.01, 0); F.floorRing.scale.setScalar(1 + tt * 3); show(F.floorRing, fxCol, 0.7 * (1 - tt / len));
+        } else if (n === 'hit') {
+          F.shieldRim.position.set(hx, H * 0.72, 0.2); F.shieldRim.scale.setScalar(0.6 + tt * 2.5); show(F.shieldRim, RED, (1 - tt / 0.35));
+          if (tt < 0.04) for (let i = 0; i < 12; i++) F.spark(hx, H * 0.72, 0.2, (Math.random() - 0.5) * 2.4, Math.random() * 1.6, 0.6 + Math.random(), RED, 0.5);
+        } else if (n === 'attack' && kb && tt > 0.16 && !once.fired) {
+          once.fired = true;
+          const k2 = kb.group.position;
+          for (let i = 0; i < 14; i++) F.spark(k2.x, k2.y + 0.03, k2.z, (Math.random() - 0.5) * 1.6, 0.6 + Math.random() * 1.2, 0.4 + Math.random() * 1.2, i % 3 ? fxCol : WHITE, 0.45);
+          if (kb.flash) for (let i = 0; i < kb.flash.length; i++) kb.flash[i] = Math.max(kb.flash[i], Math.random() < 0.5 ? 1 : 0.5);
+        }
+      }
+      // sparks: drift, slow, fall a little
+      let alive = 0;
+      for (let i = 0; i < F.SN; i++) {
+        if (F.sl[i] <= 0) continue;
+        F.sl[i] -= dt; const j = i * 3;
+        if (F.sl[i] <= 0) { F.sp[j + 1] = -99; continue; }
+        alive++;
+        F.sv[j + 1] -= 0.6 * dt; F.sp[j] += F.sv[j] * dt; F.sp[j + 1] += F.sv[j + 1] * dt; F.sp[j + 2] += F.sv[j + 2] * dt;
+        F.sc[j] *= 0.99; F.sc[j + 1] *= 0.99; F.sc[j + 2] *= 0.99;
+      }
+      F.sparks.visible = alive > 0;
+      if (alive) { F.sg.attributes.position.needsUpdate = true; F.sg.attributes.color.needsUpdate = true; }
+    }
 
     // ---------- playing ----------
     let anim = 'idle', t = 0, prev = null, blend = 1, once = null;
@@ -696,8 +848,9 @@ window.Operator = (() => {
       if (prev && blend < 1) p = mixPose(poseAt(prev.name, prev.t), p, ease(blend));
       if (once) {
         const r = A[once.name](once.t), len = ONCE_LEN[once.name];
-        // the cast eases in over 0.2 s and back to idle over its last 0.45 s
-        const w = once.name === 'hit' ? Math.sin(clamp(once.t / len, 0, 1) * Math.PI) : Math.min(smooth(once.t / 0.2), 1 - smooth((once.t - (len - 0.45)) / 0.45));
+        // the cast eases in over 0.2 s and back to idle over its last 0.45 s; the others have their own pace
+        const [ei, eo] = ONCE_ENV[once.name] || [0.2, 0.45];
+        const w = Math.min(smooth(once.t / ei), 1 - smooth((once.t - (len - eo)) / eo));
         p = mixPose(p, r.pose, clamp(w, 0, 1));
       }
       apply(p);
@@ -709,19 +862,26 @@ window.Operator = (() => {
       // where shots leave from: the keyboard, its weapon
       kbWorld(out) { if (!kb || !kb.group.visible) return null; return kb.group.getWorldPosition(out); },
       play(name) { if (!A[name] || ONCE_LEN[name] || name === anim) return; prev = { name: anim, t }; anim = name; t = 0; blend = 0; },
-      once(name) { if (ONCE_LEN[name]) once = { name, t: 0 }; },
+      once(name) {
+        if (!ONCE_LEN[name]) return;
+        once = { name, t: 0 };
+        if (name !== 'cast') fxLayer();
+        if (opts.onAct) try { opts.onAct(name); } catch (e) {}
+      },
       update(dt) {
         t += dt; if (prev) { prev.t += dt; blend = Math.min(1, blend + dt / 0.25); if (blend >= 1) prev = null; }
         if (once) { once.t += dt; if (once.t > ONCE_LEN[once.name]) once = null; }
         frame();
-        kbTick(dt, anim === 'type', t);
+        kbTick(dt, anim === 'type' || (once && once.name === 'attack'), t);
+        fxTick(dt);
       },
       // hold one moment: an animation, or a one-shot at time tt over idle
       at(name, tt) {
         prev = null; once = null;
         if (ONCE_LEN[name]) { anim = 'idle'; t = tt; once = { name, t: tt }; } else { anim = name; t = tt; }
         frame();
-        kbV = anim === 'type' ? 0.98 : 0; lastStroke = [1, 1]; kbTick(1 / 60, anim === 'type', t);
+        kbV = anim === 'type' || name === 'attack' ? 0.98 : 0; lastStroke = [1, 1]; kbTick(1 / 60, kbV > 0.5, t);
+        if (ONCE_LEN[name] && name !== 'cast') { fxLayer(); fxTick(1 / 60); }
       },
       set(next) {
         const n = clean(next), rebuildNeeded = n.base !== P.base, kbChanged = n.kb.style !== P.kb.style || n.kb.color !== P.kb.color;
@@ -731,7 +891,7 @@ window.Operator = (() => {
         frame();
       },
       repaint() { paint(); if (P.kb.color === 'theme') buildKb(); },
-      dispose() { live.delete(ctl); if (built) group.remove(built); while (owned.length) owned.pop().dispose(); if (kb) kb.parts.forEach(x => x.dispose()); },
+      dispose() { live.delete(ctl); if (built) group.remove(built); while (owned.length) owned.pop().dispose(); if (kb) kb.parts.forEach(x => x.dispose()); if (afx) { group.remove(afx.g); afx.parts.forEach(x => x.dispose && x.dispose()); afx = null; } },
       // tests: hold an exact pose given in body terms, missing parts filled from a blank pose
       _pose(p) { prev = null; once = null; const b = BLANK(); for (const k in p) b[k] = typeof p[k] === 'object' ? { ...b[k], ...p[k] } : p[k]; apply(b); },
       // the model for this base finished loading: rebuild on it, keeping the animation where it was

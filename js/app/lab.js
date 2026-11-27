@@ -110,6 +110,7 @@ Router.register('lab', (() => {
     el.querySelector('[data-anim]').addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b || !op) return;
       op.play(b.dataset.v); markAnim(b.dataset.v);
+      if (op.onPlay) op.onPlay(b.dataset.v);
     });
     el.querySelectorAll('[data-once]').forEach(b => b.addEventListener('click', () => op && op.once(b.dataset.once)));
     el.querySelector('[data-save]').addEventListener('click', () => {
@@ -213,8 +214,17 @@ Router.register('lab', (() => {
     const ring = new THREE.Mesh(new THREE.RingGeometry(1.26, 1.3, 96), new THREE.MeshBasicMaterial({ color: Theme.hex('accent'), transparent: true, opacity: 0.6 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002; scene.add(ring);
 
-    op = Operator.create(THREE, P, { onModel: () => el && paintForm() });
+    // each one-shot has its sound (js/app/combat/sfx.js), made when you press it
+    let ac = null, snd = null;
+    const act = kind => {
+      if (!window.Combat || !Combat.Audio || !TT.soundOn()) return;
+      if (!ac) { try { ac = new AudioContext(); const g = ac.createGain(); g.gain.value = 0.7; const c = ac.createDynamicsCompressor(); g.connect(c).connect(ac.destination); snd = Combat.Audio.create({ ctx: () => ac, out: () => g }); } catch (e) { return; } }
+      if (ac.state === 'suspended') ac.resume();
+      snd.play(kind === 'cast' ? 'hyper-thread' : 'op-' + kind);
+    };
+    op = Operator.create(THREE, P, { onModel: () => el && paintForm(), onAct: act });
     scene.add(op.group);
+    op.onPlay = a => { if (a === 'victory' || a === 'defeat') act(a === 'victory' ? 'victory' : 'down'); };
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) op.at('idle', 0);
 
@@ -238,7 +248,7 @@ Router.register('lab', (() => {
     window._lab = { op: () => op, at: (n, t) => { hold = true; op.at(n, t); }, play: () => { hold = false; }, bg: hex => { scene.background.set(hex); }, view: (a, dist, h) => { const d = dist || camera.position.distanceTo(ctl.target); camera.position.set(Math.sin(a) * d, h || 1.25, Math.cos(a) * d); ctl.update(); renderer.render(scene, camera); } };
     stop = () => {
       live = false; renderer.setAnimationLoop(null); ro.disconnect(); ctl.dispose();
-      op.dispose(); op = null;
+      op.dispose(); op = null; if (ac) ac.close(); ac = null;
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
       renderer.dispose(); renderer.domElement.remove();
       delete window._lab;

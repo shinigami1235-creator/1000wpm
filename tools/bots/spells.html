@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spell lab</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; height: 100%; background: #050807; color: #dfe8e2; font: 13px system-ui, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #bar { position: fixed; left: 10px; right: 10px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #bar button { background: #111714; color: inherit; border: 1px solid #1f2a24; border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+  #veil { position: fixed; inset: 0; pointer-events: none; mix-blend-mode: multiply; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="veil"></div>
+<div id="bar"></div>
+<script>
+  // what the site's shell provides, cut down for a page on its own
+  window.Theme = { hex: k => ({ accent: '#39ff88', 'bg-0': '#050807' }[k] || '#39ff88'), num: k => parseInt(Theme.hex(k).slice(1), 16) };
+</script>
+<script src="../../js/app/combat/bus.js"></script>
+<script src="../../js/app/combat/spells.js"></script>
+<script src="../../js/app/combat/combo.js"></script>
+<script src="../../js/app/combat/sfx.js"></script>
+<script src="../../js/app/combat/fx3d.js"></script>
+<script src="../../js/app/bosskit.js"></script>
+<script type="module">
+// A test bench for the player's spells (js/app/combat/fx3d.js and sfx.js), framed like the World Boss:
+// the boss at the origin, you at z 16, the camera behind you. Time is stepped by hand so the same
+// moment renders the same every time:  spellLab.shoot(id, [t...]) -> data URLs,  spellLab.cast(id) live.
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const THREE = { ...T, RoundedBoxGeometry };
+const q = new URLSearchParams(location.search);
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); view.appendChild(renderer.domElement);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#06090a'); scene.fog = new THREE.Fog('#06090a', 40, 120);
+scene.add(new THREE.HemisphereLight('#9fb4c8', '#0a0c0e', 0.9));
+const key = new THREE.DirectionalLight('#ffffff', 1.4); key.position.set(6, 14, 10); scene.add(key);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: '#0b1013', roughness: 0.75, metalness: 0.2 }));
+floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const grid = new THREE.GridHelper(120, 60, '#16302a', '#0e1a17'); grid.position.y = 0.01; scene.add(grid);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 220);
+const CAM = new THREE.Vector3(0, 5.5, 30), LOOK = new THREE.Vector3(0, 7.4, 0);
+camera.position.copy(CAM); camera.lookAt(LOOK);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.22, 0.78)); composer.addPass(new OutputPass());
+
+// the boss
+const boss = BossKit.create(THREE, q.get('boss') || 'siege', { scale: 1.08 });
+scene.add(boss.group);
+const core = new THREE.Vector3(0, 8, 1.5), head = new THREE.Vector3(0, 14, 0);
+// you: a stand-in bot where your raid slot is
+const me = new THREE.Mesh(new THREE.SphereGeometry(0.8, 24, 16), new THREE.MeshStandardMaterial({ color: '#d8dce2', roughness: 0.4 }));
+me.position.set(0, 2.3, 16); scene.add(me);
+
+let shake = 0, tintK = 0, tintCol = '#000', dimK = 0, dimUntil = 0, clock = 0;
+const veil = document.getElementById('veil');
+const juice = {
+  shake: k => { shake = Math.max(shake, k); }, stop: () => {}, glitch: () => {},
+  dim: (k, secs) => { dimK = k; dimUntil = clock + secs; },
+  tint: (hex, k) => { tintCol = typeof hex === 'number' ? '#' + hex.toString(16).padStart(6, '0') : hex; tintK = Math.max(tintK, k); },
+  wave: () => {}, canFlash: () => true,
+};
+const fx = Combat.FX.create(THREE, scene, camera, { pixelHeight: () => renderer.domElement.height, juice, lights: !q.has('nolight') });
+// ?off=smoke,decalGlow,decalDark,crystals hides a layer, to measure what it costs
+for (const k of (q.get('off') || '').split(',')) if (fx._layers && fx._layers[k]) { const o = fx._layers[k]; o.layers.set(1); }
+const reacts = [];
+const caster = { pos: out => out.copy(me.position).add(new THREE.Vector3(0, 0.3, -1)) };
+const target = { size: 6, pos: out => out.copy(core), top: out => out.copy(head), base: out => out.set(0, 0, 1), react: (k, p) => reacts.push([+clock.toFixed(2), k, p]) };
+
+let sfx = null, actx = null;
+function audio() {
+  if (!actx) { actx = new AudioContext(); const g = actx.createGain(); g.gain.value = 0.6; const c = actx.createDynamicsCompressor(); g.connect(c).connect(actx.destination); sfx = Combat.Audio.create({ ctx: () => actx, out: () => g }); }
+  return sfx;
+}
+function cast(id, live) {
+  const sp = Combat.spell(id);
+  const hits = sp ? Combat.hitsFor(sp, { recent: [40, 22, 60, 35, 18, 50, 44, 30] }) : [];
+  fx.cast(id, { caster, target, hits, effect: sp ? sp.effect : {} });
+  if (live) {
+    const a = audio(); a.play(id);
+    if (sp && sp.strike) hits.forEach(h => setTimeout(() => a.play(sp.strike, h.power), h.at));
+  }
+}
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+const rng = (() => { let s = 1; return () => ((s = Math.imul(s ^ (s >>> 15), 2654435761) >>> 0) / 4294967296); })();
+function step(dt) {
+  clock += dt; fx.update(dt); boss.update && boss.update(clock, dt);
+  shake *= Math.exp(-dt * 6); tintK *= Math.exp(-dt * 3);
+  const sx = shake * 0.6;
+  camera.position.copy(CAM).add(new THREE.Vector3(Math.sin(clock * 47) * sx, Math.sin(clock * 53) * sx * 0.7, 0)); camera.lookAt(LOOK);
+  const dim = clock < dimUntil ? dimK : 0;
+  veil.style.background = `rgba(${dim > 0 ? '20,20,30' : '255,255,255'},${dim > 0 ? dim * 0.6 : 0})`;
+}
+function draw() { composer.render(); }
+let auto = !q.has('manual');
+let last = performance.now();
+renderer.setAnimationLoop(() => { if (!auto) return; const n = performance.now(), dt = Math.min(0.05, (n - last) / 1000); last = n; step(dt); draw(); });
+
+const bar = document.getElementById('bar');
+for (const s of Combat.SPELLS()) { const b = document.createElement('button'); b.textContent = s.word; b.onclick = () => cast(s.id, true); bar.appendChild(b); }
+
+window.spellLab = {
+  fx, reacts, renderer,
+  // fixed steps of 1/60 s from a clean state; one frame grabbed at each time in ts
+  shoot(id, ts, opt = {}) {
+    auto = false; fx.clear(); clock = 0; shake = 0; tintK = 0; dimUntil = 0; reacts.length = 0;
+    Math.random = rng;
+    cast(id, false);
+    const out = []; let t = 0;
+    for (const at of ts) { while (t < at - 1e-6) { step(1 / 60); t += 1 / 60; } draw(); out.push(renderer.domElement.toDataURL('image/jpeg', 0.9)); }
+    return out;
+  },
+  // ms per fx.update over a scripted run of every spell, at 60 steps a second
+  bench(ids, secs = 3) {
+    auto = false; fx.clear();
+    const list = ids || Combat.SPELLS().map(s => s.id);
+    let tot = 0, n = 0, peakSeg = 0, peakP = 0;
+    for (const id of list) {
+      cast(id, false);
+      for (let i = 0; i < secs * 60; i++) { const a = performance.now(); fx.update(1 / 60); tot += performance.now() - a; n++; const inf = fx.info(); peakSeg = Math.max(peakSeg, inf.segs); peakP = Math.max(peakP, inf.particles); }
+    }
+    return { msPerUpdate: +(tot / n).toFixed(4), peakSeg, peakP };
+  },
+  // ms per rendered frame (draw included, read back so the GPU work counts) over a cast of each spell
+  renderBench(ids, secs = 2) {
+    auto = false; fx.clear();
+    const gl = renderer.getContext(), px = new Uint8Array(4);
+    const list = ids || Combat.SPELLS().map(s => s.id);
+    let tot = 0, n = 0;
+    for (const id of list) {
+      cast(id, false);
+      for (let i = 0; i < secs * 30; i++) { step(1 / 30); const a = performance.now(); draw(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); tot += performance.now() - a; n++; }
+    }
+    return { msPerFrame: +(tot / n).toFixed(2), frames: n };
+  },
+  cam(p, l) { CAM.set(...p); LOOK.set(...l); camera.position.copy(CAM); camera.lookAt(LOOK); },
+  cast, ids: () => Combat.SPELLS().map(s => s.id),
+};
+window.ready = true;
+</script>
+</body>
+</html>

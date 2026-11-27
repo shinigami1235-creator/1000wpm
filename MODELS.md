@@ -11,7 +11,7 @@ Every place in the game where a 3D model goes. Each slot already has a code-buil
 
 ## Operators (js/app/operator3d.js)
 
-One skeleton for both bodies, with Mixamo-style bone names: Hips, Spine, Spine1, Spine2, Neck, Head, Left/Right Shoulder, Arm, ForeArm, Hand, UpLeg, Leg, Foot. Bodies come in A-pose and get rigged with the pipeline in `/home/claude/opmodel/work` (proxy auto-weights, then fixglb.py). The animations stay in code (idle, walk, typing, victory, defeat, cast, hit), so a new body needs no new clips.
+One skeleton for both bodies, with Mixamo-style bone names: Hips, Spine, Spine1, Spine2, Neck, Head, Left/Right Shoulder, Arm, ForeArm, Hand, UpLeg, Leg, Foot. Bodies come in A-pose and get rigged with the pipeline in `/home/claude/opmodel/work` (proxy auto-weights, then fixglb.py). The animations stay in code (idle, walk, typing, victory, defeat as a two-knee kneel, and the one-shots attack, cast, cover, heal, revive, dodge and hit), so a new body needs no new clips. Each one-shot except cast has its own light on the operator (hex shield, healing rings, gold column, afterimages, sparks) and calls `opts.onAct(kind)` so the page can play its sound (`Combat.Audio` 'op-<kind>'). All poses pass joint-check.
 
 | Slot | File | Height | Stand-in now | Shows in |
 |---|---|---|---|---|

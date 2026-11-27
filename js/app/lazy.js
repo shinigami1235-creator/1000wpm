@@ -47,7 +47,7 @@ window.Lazy = (() => {
     'page:shop': { js: ['js/app/botkit.js', 'js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
     'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/hangar.js'], pre: ['three'] },
-    'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
+    'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/combat/sfx.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
   // Files a 3D page fetches only once its scripts run (three.js through the import map, the model
