@@ -340,8 +340,8 @@ SuperModels.compiler = function (THREE, K, ctx) {
         K.fx.burst(v1, 200, '#ffffff', { speed: 24, g: 6, life: 1.3, size: 0.5 });
         K.fx.burst(v1, 100, ctx.pal.a, { speed: 14, g: 6, life: 1.6, size: 0.55 });
         K.fx.shock(v1, C('#ffffff'), 1, 26, 1, { flat: false, face: ctx.camPos });
-        K.fx.light(v1, '#ffffff', 140, 1.5, 80);
-        ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(1); ctx.sfx('boom');
+        K.fx.light(v1, '#ffffff', 80, 1.8, 60);
+        ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(0.6); ctx.sfx('boom');
         ctx.shed(v1, 30, C('#ffffff'), 2, 1);
       }
       if (deadT > 1.8 && deadT < 4.5 && Math.random() < dt * 14) K.fx.burst(v1.set(T.x + rnd(-14, 14), 0.4, T.z + rnd(-2, 4)), 6, '#cfefff', { speed: 6, up: 2, g: 12, life: 0.8, size: 0.4, floor: 0.05 });

@@ -274,7 +274,7 @@ window.SuperScene = (() => {
     // debris: blocks knocked off a boss, falling with gravity
     const debris = [];
     function shed(at, n, c, power = 1, size = 0.7) {
-      if (model) { n = Math.ceil(n / 3); size *= 0.7; K.fx.burst(at, n * 4, c, { speed: 9 * power, g: 9, life: 0.8, size: 0.3 }); }
+      if (model) { K.fx.burst(at, Math.min(60, n * 3), c, { speed: 9 * power, g: 9, life: 0.8, size: 0.3 }); return; }
       for (let i = 0; i < n && debris.length < 120; i++) {
         debris.push({ p: at.clone().add(v4.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))), v: new V(rnd(-6, 6), rnd(2, 9), rnd(-3, 7)).multiplyScalar(power),
           r: new V(rnd(0, 6), rnd(0, 6), 0), w: new V(rnd(-6, 6), rnd(-6, 6), rnd(-6, 6)), s: size * rnd(0.6, 1.3), c: c.clone(), life: rnd(1.2, 2.2), t: 0 });
@@ -504,15 +504,15 @@ window.SuperScene = (() => {
 
     // ---------- camera ----------
     // the broadcast camera: CamDirector plays the shots in sb-cam.js. dirSlow is the slow motion a shot asks for
-    let dirSlow = 1, dirSlowUntil = 0, snapAt = 0;
-    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, setSlow: (k, len) => { dirSlow = k; dirSlowUntil = performance.now() + len * 1000; } });
+    let dirSlow = 1, dirSlowUntil = 0, snapAt = 0, dirT = 0;
+    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
     // the next moment an attack at Art lands, in real seconds: no cutaway may hide one
     const THREAT = new Set(['block', 'packet', 'weak', 'decoy', 'fix']);
     function threatAt(nowMs) {
       if (!snap || !snap.targets) return Infinity;
       let m = Infinity;
       for (const x of snap.targets) if (THREAT.has(x.kind) && x.left != null) m = Math.min(m, x.left - (nowMs - snapAt));
-      return m === Infinity ? Infinity : nowMs / 1000 + Math.max(0, m) / 1000;
+      return m === Infinity ? Infinity : dirT + Math.max(0, m) / 1000;
     }
     function fit() {
       const w = host.clientWidth || 800, h = host.clientHeight || 600;
@@ -681,7 +681,7 @@ window.SuperScene = (() => {
         shed(anchors.core, 18, pal.a, 1.4, 0.8);
       }
       if (n === 'enrage') { juice.tint('#ff4d5e', 1); juice.glitch(0.6, 1); }
-      if (n === 'finish') { juice.dim(0.45, d.ms / 1000); juice.glitch(0.3, 0.5); }
+      if (n === 'finish') { juice.dim(model ? 0.25 : 0.45, d.ms / 1000); juice.glitch(0.3, 0.5); }
       if (n === 'finishFail') { juice.shake(0.5); juice.tint('#ff4d5e', 1); }
       if (n === 'win') { dead = true; deadT = 0; juice.shake(0.9); juice.stop(160); if (canFlash()) flashAmt = 1; shed(anchors.core, 40, C('#ffffff'), 2, 1); juice.dim(0, 0.1); }
       if (n === 'lose') { juice.tint('#ff4d5e', 1); juice.glitch(1, 1.5); juice.dim(0.5, 3); }
@@ -703,7 +703,7 @@ window.SuperScene = (() => {
       let dt = Math.min(0.05, rdt); lastT = nowMs;
       if (!visible || document.hidden) return;
       if (paused) dt = 0;
-      dt *= slowK * (nowMs < slowUntil ? 0.3 : 1) * (nowMs < dirSlowUntil ? dirSlow : 1);
+      dt *= slowK * (nowMs < slowUntil ? 0.3 : 1) * (dirT < dirSlowUntil ? dirSlow : 1);
       const stopped = nowMs < stopUntil;
       const adt = stopped ? 0 : dt * (finishing ? 0.55 : 1);
       clock.t += adt;
@@ -750,7 +750,8 @@ window.SuperScene = (() => {
       shake = Math.max(0, shake - rdt * 1.8);
       const sh = Math.min(SHAKE_MAX, shake) * shakeK();
       // the director picks the shot (sb-cam.js); shake goes on top of whatever it chose
-      cam.update(nowMs / 1000, rdt, threatAt(nowMs), finishing);
+      if (!paused) dirT += rdt;
+      cam.update(dirT, paused ? 0 : rdt, threatAt(nowMs), finishing);
       camera.position.x += Math.sin(nowMs * 0.041) * sh;
       camera.position.y += Math.sin(nowMs * 0.037 + 1) * sh * 0.7 + kick * 0.15 * shakeK();
       if (debugCam) { camera.position.copy(debugCam.p); camera.lookAt(debugCam.l); if (camera.fov !== debugCam.f) { camera.fov = debugCam.f; camera.updateProjectionMatrix(); } }

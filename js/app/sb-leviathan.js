@@ -186,7 +186,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     for (let i = 1; i < SEG; i++) {
       const u = serpS - i * GAPU;
       pathAt(u, v1);
-      if (finishing) v1.y = Math.max(0.9, v1.y * 0.25 + 0.6);
+      if (finishing) v1.y = Math.max(1.8, v1.y * 0.35 + 2);
       segKick[i] = Math.max(0, segKick[i] - dt * 2.2); segFlash[i] = Math.max(0, segFlash[i] - dt * 3);
       v1.z -= segKick[i] * 2.5 + S.kb * 1.0; v1.y += segKick[i] * 1.2;
       // a tail sweep raises the last third out of the water and swings it across
@@ -235,7 +235,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     // the roar on a phase break: rears up and opens wide
     const roar = t - roarT < 2 ? Math.sin(clamp((t - roarT) / 2, 0, 1) * Math.PI) : 0;
     if (roar > 0 && !a) { v1.y += 8 * roar; v1.z += 2 * roar; look.y += 18 * roar; jawK = Math.max(jawK, 1.2 * roar); throat = 3; }
-    if (finishing && !a) { v1.y = 2.2 + Math.sin(t * 1.5) * 0.4; v1.z += 3; jawK = 0.5 + Math.sin(t * 4) * 0.2; look.y = 0.5; }
+    if (finishing && !a) { v1.y = 4 + Math.sin(t * 1.5) * 0.5; v1.z += 3; jawK = 0.5 + Math.sin(t * 4) * 0.2; look.y = 0.5; }
     v1.y += kbHead * 2; v1.z -= kbHead * 4 + S.kb * 1.2;
     if (dead) { const u = Math.max(0, deadT - 2.6); v1.y += deadT < 2.6 ? Math.min(6, deadT * 4) : 6 - u * u * 9; look.y = 30 - deadT * 8; jawK = 1.2; if (v1.y < 0 && !head.userData.splash) { head.userData.splash = true; K.fx.burst(v2.copy(v1).setY(0.3), 200, '#cfefff', { speed: 18, up: 3, g: 16, life: 1.5, size: 0.55, spread: 3, floor: 0.05 }); K.fx.shock(v2.setY(0.08), C('#cfefff'), 2, 26, 1.2); ctx.sfx('splash'); ctx.juice.shake(0.8); } }
     head.position.lerp(v1, Math.min(1, dt * (a && a.done && a.kind !== 'sweep' ? 25 : 8)));

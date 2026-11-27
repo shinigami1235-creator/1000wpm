@@ -53,11 +53,11 @@ window.SuperKit = (() => {
           .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           {
             vec3 n = abs(normalize(vSN)); vec2 u = n.x > n.y && n.x > n.z ? vSP.yz : n.y > n.z ? vSP.xz : vSP.xy;
-            float w = 0.016 + uHeat * 0.05;
+            float w = 0.016 + uHeat * 0.025;
             float s = seamAt(u, w);
             float run = 0.75 + 0.25 * sin(uTime * 3.0 + (vSP.x + vSP.y * 1.3 + vSP.z) * 1.7);
-            vec3 hot = mix(uSeam, vec3(1.0, 0.95, 0.85) * 2.2, uHeat);
-            totalEmissiveRadiance += hot * s * run * (1.0 + uFlash * 1.5 + uHeat * 1.5);
+            vec3 hot = mix(uSeam, vec3(1.0, 0.9, 0.75) * 1.5, uHeat);
+            totalEmissiveRadiance += hot * s * run * (1.0 + uFlash * 1.5 + uHeat * 0.6);
             float fr = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 4.0);
             totalEmissiveRadiance += uRim * fr * (1.0 + uFlash * 1.5);
             totalEmissiveRadiance += vec3(1.0) * uFlash * 0.12;

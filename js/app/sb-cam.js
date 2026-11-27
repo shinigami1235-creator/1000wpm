@@ -50,7 +50,7 @@ window.SuperCam = (() => {
         { len: 0.9, cut: 1, slow: 0.45, fov: 38, pose: (c, out) => { const p = sub('core') || M().focus; out.look.copy(p); out.pos.set(p.x + (p.x < 0 ? -10 : 10), p.y + 3, p.z + 14); } },
       ] },
       kill: { pri: 5, free: true, parts: [
-        { len: 1.4, cut: 1, slow: 0.25, fov: 32, hand: 0.04, pose: (c, out) => { const p = sub('core') || M().focus; out.look.copy(p); out.pos.set(p.x + 6, p.y + 1.5, p.z + 14 - c.u * 2); } },
+        { len: 1.4, cut: 1, slow: 0.25, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('core') || M().focus, h = H(); out.look.copy(p); out.pos.set(p.x + h * 0.4, p.y + h * 0.12 + 1.5, p.z + h * 0.9 + 4 - c.u * 2); } },
         { len: 3.6, cut: 1, slow: 0.7, fov: 50, omega: 3, pose: (c, out) => { const f = M().focus, h = H(), a = -0.6 + c.u * 1.2, r = fitD(h, 0.8, 50) + 6; out.look.set(f.x, f.y * 0.7, f.z); out.pos.set(f.x + Math.sin(a) * r, f.y * 0.7 + 3 + c.u * 3, f.z + Math.cos(a) * r); } },
       ] },
     };

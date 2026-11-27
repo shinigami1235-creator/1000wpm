@@ -339,7 +339,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     }
 
     // the kernel and the chest
-    chestOpen += ((neckOpen ? 1 : 0) - chestOpen) * Math.min(1, dt * 4);
+    chestOpen += ((neckOpen || finishing || dead ? 1 : 0) - chestOpen) * Math.min(1, dt * 4);
     for (const c of chest) { c.m.position.x = c.sd * (0.95 + chestOpen * 1.5); c.m.rotation.y = c.sd * (0.25 + chestOpen * 0.7); }
     const deathGlow = dead ? clamp(deadT / 2.6, 0, 1) : 0;
     bigFlash = Math.max(0, bigFlash - dt * 5);
@@ -358,8 +358,8 @@ SuperModels.hydra = function (THREE, K, ctx) {
       K.fx.burst(v1, 120, ctx.pal.a, { speed: 16, g: 6, life: 1.8, size: 0.6 });
       K.fx.shock(v1, C('#ffffff'), 1, 30, 1.1, { flat: false, face: ctx.camPos });
       K.fx.shock(v2.copy(v1).setY(0.1), ctx.pal.a, 2, 40, 1.4);
-      K.fx.light(v1, '#ffffff', 140, 1.5, 80);
-      ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(1);
+      K.fx.light(v1, '#ffffff', 80, 1.8, 60);
+      ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(0.6);
       ctx.shed(v1, 40, C('#ffffff'), 2.2, 1);
       ctx.sfx('boom');
     }

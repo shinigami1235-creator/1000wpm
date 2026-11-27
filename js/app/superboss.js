@@ -120,7 +120,7 @@
       if (s.status === 'countdown') { c.hidden = false; const n = Math.ceil(s.countdown / 1000); if (c.dataset.n !== String(n)) { c.dataset.n = n; c.textContent = n || 'Go'; c.classList.remove('beat'); void c.offsetWidth; c.classList.add('beat'); } }
       else c.hidden = true;
       paintTargets();
-      if (B.id === 'compiler') paintCode(); else a('code').hidden = true;
+      if (B.id === 'compiler' && s.status !== 'won' && s.status !== 'lost') paintCode(); else a('code').hidden = true;
     }
     function paintTargets() {
       const typed = s.typed || '';
