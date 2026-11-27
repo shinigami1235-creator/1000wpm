@@ -131,13 +131,17 @@ import * as T from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as JC from './joint-check.js';
 import { bossSpec } from './bossrig.js';
 
 const KIT_URL = '../../js/app/bosskit.js';
 const THREE = { ...T, RoundedBoxGeometry };
 window.Theme = window.Theme || { hex: () => '#39ff88' };
-await new Promise((ok, no) => { const s = document.createElement('script'); s.src = KIT_URL; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+for (const src of [KIT_URL, KIT_URL.replace('bosskit.js', 'cannonfx.js')]) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 // the idle pose's own wrist turn, and forearm roll: a machine's forearm can turn the whole way round
@@ -164,6 +168,11 @@ const GROUP_X = 7;
 const sideRings = [-GROUP_X, GROUP_X].map(x => { const m = raid.clone(); m.material = raid.material.clone(); m.material.opacity = 0.25; m.position.x = x; scene.add(m); return m; });
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 400);
+// the game's glow (boss3d: strength 0.55, radius 0.22, threshold 0.78), so effects look as they will in a fight
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.22, 0.78);
+composer.addPass(bloom); composer.addPass(new OutputPass());
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.addEventListener('change', () => need());
@@ -302,6 +311,8 @@ const GAME_STRIKE = round(specFromPose(kit.POSES.punch));
 // ---------- the attacks ----------
 // a pose written the way the pose sheets were: arms in body terms, torso in radians, claws as
 // BossKit angles (1.5 a fist, -0.3 open)
+const spec = o => round(clampSpec({ ...IDLE_SPEC_BASE, ...o }));
+const PULL = { 'shoulderR.flex': 85, 'shoulderR.abd': -18, 'elbowR.flex': 45, 'wristR.twist': 22.9, 'clawR': 0, 'shoulderL.flex': 15, 'shoulderL.abd': 10, 'elbowL.flex': 45, 'wristL.twist': -22.9, 'clawL': 50, 'hips': -0.3, 'chest.0': -3, 'chest.1': 8, 'spine.0': 3, 'spine.1': 3, 'head.0': -15, 'head.1': -8 };
 function sheet(o) {
   const s = { ...IDLE_SPEC_BASE };
   for (const k of ['R', 'L']) {
@@ -373,18 +384,20 @@ const ATTACKS = {
       { id: 'idle', name: 'Idle', note: 'The resting pose between attacks, shared by all four. Changing it here changes it for every attack.' },
       { id: 'charge', name: 'Charge', note: 'Raises the cannon arm, aims at the group and charges the orb at the hand. Aim at (top of the view) turns the boss to the other groups.' },
       { id: 'fire', name: 'Fire', note: 'The shot and its recoil.' },
-      { id: 'pull', name: 'Pull back', note: 'Draws the cannon arm back and out to the side after the shot, clear of the bracing arm, before it settles to idle.' },
+      { id: 'pull', name: 'Pull back', note: 'The recoil after the shot: the cannon kicks up and the elbow folds before the arm drops back to idle.' },
       { id: 'recover', name: 'Recover', note: 'Where it ends up after the attack. Auto is the idle pose; set it by hand and the game settles back to idle from there.' },
     ],
-    segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'fire', 'out', 'freeze'], ['fire', 'pull', 'inOut', 'pull'], ['pull', 'recover', 'inOut', 'recover']],
+    segs: [['idle', 'charge', 'inOut', 'aim', 'spark'], ['charge', 'charge', 'out', 'charge', 'grow'], ['charge', 'fire', 'out3', 'shot', 'fire'], ['fire', 'fire', 'out', 'freeze', 'beam'], ['fire', 'pull', 'inOut', 'pull'], ['pull', 'recover', 'inOut', 'recover']],
     segName: { aim: 'Aim', charge: 'Charge', shot: 'Fire', freeze: 'Hold', pull: 'Pull back', recover: 'Recover' },
-    timing: { aim: 0.9, charge: 1.6, shot: 0.12, freeze: 0.4, pull: 0.45, recover: 0.8 },
+    timing: { aim: 0.9, charge: 0.8, shot: 0.12, freeze: 0.4, pull: 0.45, recover: 0.8 },
     timeRows: [['aim', 'Raise and aim', 0.2, 3], ['charge', 'Charge', 0.2, 6], ['shot', 'Shot and recoil', 0.04, 0.6], ['freeze', 'Hold after the shot', 0, 1.5], ['pull', 'Pull back', 0.1, 1.5], ['recover', 'Recover', 0.2, 2.5]],
     feel: { lead: 0.05 },
+    // Charge and Fire are Gid's poses (27 Nov), refitted so the elbows bend straight with no sideways kink
     defaults: () => ({
-      charge: cannonAim(63, -38, 0.3),
-      fire: sheet({ shoulderR: { flex: 75, abd: -38 }, elbowR: { flex: 10 }, ...BRACE, raw: { chest: [0.1, 0.25, 0], spine: [0.2, 0.125, 0], head: [-0.4, -0.25, 0], clawR: [-0.3, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.3 }),
-      pull: sheet({ shoulderR: { flex: 25, abd: 40 }, elbowR: { flex: 80 }, shoulderL: { flex: 20, abd: 15 }, elbowL: { flex: 40 }, raw: { chest: [0.05, 0.1, 0], spine: [0.1, 0.05, 0], head: [-0.2, -0.1, 0], clawR: [0.6, 0, 0], clawL: [0.6, 0, 0] }, hips: -0.3 }),
+      charge: spec({ 'shoulderR.flex': 62.8, 'shoulderR.abd': -32, 'shoulderR.twist': -10, 'elbowR.flex': 20.3, 'elbowR.side': 0, 'elbowR.twist': 7, 'wristR.flex': 0, 'wristR.abd': 0, 'wristR.twist': 22.9, 'clawR': 0, 'shoulderL.flex': 50.8, 'shoulderL.abd': -12.5, 'shoulderL.twist': -51, 'elbowL.flex': 30.2, 'elbowL.side': 0, 'elbowL.twist': 9.1, 'wristL.flex': 0, 'wristL.abd': 0, 'wristL.twist': -23.4, 'clawL': 50, 'pitch': 0, 'hips': -0.6, 'move': 0, 'spine.1': 8.6, 'spine.0': 11.5, 'spine.2': 0, 'chest.1': 17.2, 'chest.0': 17.2, 'chest.2': 0, 'head.0': -22.9, 'head.1': -17.2 }),
+      fire: spec({ 'shoulderR.flex': 67.9, 'shoulderR.abd': -26.4, 'shoulderR.twist': 1, 'elbowR.flex': 4.1, 'elbowR.side': 0, 'elbowR.twist': -0.4, 'wristR.flex': 0, 'wristR.abd': 0, 'wristR.twist': 23.4, 'clawR': 0, 'shoulderL.flex': -5.3, 'shoulderL.abd': -25.2, 'shoulderL.twist': -28, 'elbowL.flex': 84.1, 'elbowL.side': 0, 'elbowL.twist': 0, 'wristL.flex': 0, 'wristL.abd': 0, 'wristL.twist': -22.9, 'clawL': 50, 'pitch': 0, 'hips': -0.3, 'move': 0, 'spine.1': -2.8, 'spine.0': 4.3, 'spine.2': 0.9, 'chest.1': 14.3, 'chest.0': 5.7, 'chest.2': 0, 'head.0': -22.9, 'head.1': -14.3 }),
+      // the recoil: the shot kicks the cannon up and the elbow folds, then the arm drops to idle
+      pull: spec(PULL),
     }),
   },
   summon: {
@@ -461,6 +474,13 @@ function migrateBrace() { const C = store.attacks.cannon;
     if (sp && Object.entries(OLD_BRACE).every(([k, v]) => Math.abs(sp[k] - v) < 0.6)) { sp['shoulderL.flex'] = br.shoulderL.flex; sp['shoulderL.abd'] = br.shoulderL.abd; sp['shoulderL.twist'] = br.shoulderL.twist; sp['elbowL.flex'] = br.elbowL.flex; }
   } }
 migrateBrace();
+// Gid's Charge and Fire of 27 Nov became the defaults with the elbows refitted (no sideways bend), so
+// those saved copies give way to the defaults; his charge time was halved the same day
+{ const C = store.attacks.cannon, near = (sp, k, v) => sp && Math.abs(sp[k] - v) < 0.06;
+  if (C && C.scenes) {
+    for (const [id, side, fl] of [['charge', -11.9, 63], ['fire', -8.7, 67.9]]) { const sc = C.scenes[id]; if (sc && near(sc.spec, 'elbowR.side', side) && near(sc.spec, 'shoulderR.flex', fl)) delete sc.spec; }
+    if (C.timing && C.timing.charge === 1.6) C.timing.charge = 0.8;
+  } }
 let state = store.attacks[store.attack];
 function sceneState(id) {
   if (id === 'idle') return store.idle;
@@ -621,35 +641,38 @@ function blendInto(bone, x, bn) {
 function poseAt(target, t, lead = state.feel.lead) {
   const xa = at(t), xb = at(t + lead), Bt = target.bones;
   for (const bn in Bt) blendInto(Bt[bn], TORSO.has(bn) ? xb : xa, bn);
-  if (target === kit) setOrb(xa);
   Bt.hips.position.y = S.hover + val(xb, 'hips'); Bt.hips.position.z = val(xb, 'move') || 0;
   target.group.rotation.y = yawAt(xa);
 }
-// the cannon's orb at the right hand: a spark while aiming, growing while it charges, a flash on the shot
-const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff4a64' }));
-const orbHalo = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: '#ff2040', transparent: true, opacity: 0.22, depthWrite: false }));
-orb.add(orbHalo); orbHalo.scale.setScalar(1.7); orb.userData.jcSkip = orbHalo.userData.jcSkip = true;
-orb.position.set(0, -S.fist * 1.25, 0); B.handR.add(orb); orb.visible = false;
+// the cannon's charge and shot (js/app/cannonfx.js, shared with the game)
+const cfx = CannonFX.create(THREE, { color: '#ff2e4d' });
+scene.add(cfx.group);
+const fxClock = new THREE.Clock();
+let fxOn = false, fxActive = false, fxT = null;   // fxT: a fixed effect clock, for recording
+const muzzle = new THREE.Vector3(), aimDir = new THREE.Vector3();
 // where the shot goes: a line from the orb along the forearm while the cannon is up
 const aimLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: '#ff4a64', dashSize: 0.8, gapSize: 0.5, transparent: true, opacity: 0.8 }));
 aimLine.visible = false; scene.add(aimLine);
 function updateAimLine() {
-  aimLine.visible = !!DEF.aim && orb.visible;
+  aimLine.visible = !!DEF.aim && fxOn && !playing;
   if (!aimLine.visible) return;
   kit.group.updateMatrixWorld(true);
-  const e = new THREE.Vector3(), h = new THREE.Vector3(); B.foreR.getWorldPosition(e); orb.getWorldPosition(h);
+  const e = new THREE.Vector3(), h = muzzle.clone(); B.foreR.getWorldPosition(e);
   const d = h.clone().sub(e).normalize(), end = h.clone().add(d.multiplyScalar(40));
   if (end.y < 0) end.lerpVectors(h, end, h.y / (h.y - end.y));   // stop at the floor
   aimLine.geometry.setFromPoints([h, end]); aimLine.computeLineDistances();
 }
 function setOrb(x) {
-  if (!DEF.orb || !x || !x.fx) { orb.visible = false; return; }
-  const r = x.fx === 'grow' ? 0.3 + 1.4 * x.fu : x.fx === 'fire' ? (x.fu < 0.3 ? 2.2 : 1.6 * (1 - x.fu)) : 0.25 * x.fu;
-  orb.visible = r > 0.02; orb.scale.setScalar(Math.max(0.02, r));
+  fxOn = !!(DEF.orb && x && x.fx); fxActive = fxOn;
+  if (!fxOn) { cfx.update(null); return; }
+  kit.group.updateMatrixWorld(true);
+  B.handR.localToWorld(muzzle.set(0, -S.fist * 1.25, 0));
+  const e = new THREE.Vector3(), w = new THREE.Vector3(); B.foreR.getWorldPosition(e); B.handR.getWorldPosition(w);
+  aimDir.copy(w).sub(e).normalize();
+  cfx.update({ phase: x.fx, u: x.fu, t: fxT == null ? fxClock.getElapsedTime() : fxT, at: muzzle, dir: aimDir });
 }
 function poseKey(target, id) {
   const Pk = P[id], Bt = target.bones;
-  if (target === kit) setOrb(id === 'charge' || id === 'aimL' || id === 'aimR' ? { fx: 'grow', fu: 1 } : null);
   for (const bn in Bt) Bt[bn].rotation.set(...(Pk[bn] || IDLE[bn] || [0, 0, 0]));
   Bt.hips.position.y = S.hover + (Pk._hips || 0); Bt.hips.position.z = Pk._move || 0;
   target.group.rotation.y = DEF.aim && id !== 'idle' && id !== 'recover' ? aimYaw() : 0;
@@ -1026,13 +1049,14 @@ function renderThumb(id) {
   tc.getHelper().visible = path.visible = keyDots.visible = ghost.group.visible = false;
   handleMeshes.forEach(h => { h.visible = false; }); bendArrows.forEach(a => { a.visible = false; });
   const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
-  poseKey(kit, id); kit.group.position.y = 0; kit.group.updateMatrixWorld(true);
+  poseKey(kit, id); kit.group.position.y = 0; kit.group.updateMatrixWorld(true); setOrb(id === 'charge' ? { fx: 'grow', fu: 0.85 } : null);
   renderer.setScissorTest(true); renderer.setViewport(0, 0, 320 / pr, 220 / pr); renderer.setScissor(0, 0, 320 / pr, 220 / pr);
   renderer.render(scene, tcam);
   cardCanvases[id].getContext('2d').drawImage(renderer.domElement, 0, renderer.domElement.height - 220, 320, 220, 0, 0, 320, 220);
   renderer.setScissorTest(false); renderer.setViewport(0, 0, size.x, size.y);
   [tc.getHelper().visible, path.visible, keyDots.visible, ghost.group.visible] = vis;
   handleMeshes.forEach(hm => { hm.visible = showHandles; });
+  need();   // the main view poses itself (and its effect) again
 }
 function* refreshJob() {
   buildPath(); yield;
@@ -1146,8 +1170,10 @@ addEventListener('keydown', e => {
 function poseNow() {
   need();
   if (tc.dragging && grab && grab.kind !== 'ik') return;    // the joint being dragged keeps the gizmo's angle
-  if (!playing && Math.abs(time - marks()[cur]) < 1e-6 && EDITABLE.has(cur)) poseKey(kit, cur); else poseAt(kit, time);
+  const onKey = !playing && Math.abs(time - marks()[cur]) < 1e-6 && EDITABLE.has(cur);
+  if (onKey) poseKey(kit, cur); else poseAt(kit, time);
   kit.group.updateMatrixWorld(true);
+  setOrb(onKey ? (cur === 'charge' ? { fx: 'grow', fu: 0.85 } : null) : at(time));
   if (grab && grab.kind === 'ik' && !tc.dragging) grab.bone.localToWorld(proxy.position.set(0, -S.fist * 0.5, 0));
 }
 const clock = new THREE.Clock();
@@ -1162,7 +1188,7 @@ function frame() {
     else { time += dt * +$('speed').value; if (time > m.recover) { time = 0; pauseLeft = 0.6; } }
   }
   orbit.update();
-  if (!dirty && !playing) return;
+  if (!dirty && !playing && !fxActive) return;
   dirty = false;
   $('head').style.left = (time / m.recover * 100) + '%'; $('clock').textContent = time.toFixed(2) + ' s';
   poseNow(); dirty = false;
@@ -1181,10 +1207,10 @@ function frame() {
   if (bt.textContent !== msg) bt.textContent = msg; bt.hidden = !msg;
   const w = view.clientWidth, h = view.clientHeight, pr = renderer.getPixelRatio();
   if (renderer.domElement.width !== Math.floor(w * pr) || renderer.domElement.height !== Math.floor(h * pr)) {
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   updateAimLine();
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 // ---------- adding and deleting scenes ----------
@@ -1273,7 +1299,7 @@ window.editor = {
     const v = k => { const w = new THREE.Vector3(); B['hand' + k].localToWorld(w.set(0, -S.fist * 0.5, 0)); return w.toArray(); }; const e = new THREE.Vector3(); B.foreR.getWorldPosition(e); const r = { eR: e.toArray(), R: v('R'), L: v('L'), probs: JC.check(rig, '').map(x => x.msg).filter(m => !quiet(m)) }; poseNow(); return r; },
   R: () => R, handleWorld: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); kit.group.updateMatrixWorld(true); h.getWorldPosition(v); return v.toArray().map(x => +x.toFixed(2)); }, add: t => { time = t; addSceneAt(t); return cur; }, del: id => deleteScene(id), segs: () => SEGS, scenes: () => SCENES.map(x => x.id),
   handleScreen: name => { const h = handleMeshes.find(m => m.userData.handle === name), v = new THREE.Vector3(); h.getWorldPosition(v); v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
-  stateObj: () => state, state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, probe: () => { const o = {}; for (const bn of ["armL","foreL","foreR","handR"]) { const ms = []; B[bn].children.forEach(c => { if (c.isMesh) { c.geometry.computeBoundingBox(); const s = c.geometry.boundingBox.getSize(new THREE.Vector3()); ms.push(s.toArray().map(v => +(v * c.scale.x).toFixed(2))); } }); o[bn] = ms; } const a = new THREE.Vector3(), b2 = new THREE.Vector3(); B.foreR.getWorldPosition(a); B.handR.getWorldPosition(b2); o.foreLen = +a.distanceTo(b2).toFixed(2); B.armR.getWorldPosition(b2); o.upperLen = +a.distanceTo(b2).toFixed(2); o.H = S.height; o.fist = S.fist; return o; }, evalSpecs: list => list.map(sp => { const Pt = toPose(clampSpec(sp)); for (const bn in B) B[bn].rotation.set(...(Pt[bn] || IDLE[bn] || [0, 0, 0])); B.hips.position.y = S.hover + Pt._hips; kit.group.rotation.y = 0; kit.group.updateMatrixWorld(true); const R0 = armParts('R'), L0 = armParts('L'); const pair = (x, y) => x[2] + y[2] - segGap(x[0], x[1], y[0], y[1]); const o = { probs: JC.check(rig, '').filter(x => !quiet(x.msg)).map(x => x.msg), d: {} }; for (const [an, A, Bn, Bp] of [['R', R0, 'L', L0], ['L', L0, 'R', R0]]) for (const xa of ['upper', 'fore', 'fist']) for (const yb of ['upper', 'fore', 'fist']) o.d[an + xa + '-' + Bn + yb] = +pair(A[xa], Bp[yb]).toFixed(2); o.fistL = L0.fist[0].toArray(); o.elR = R0.fore[0].toArray(); o.wrR = R0.fore[1].toArray(); o.fistR = R0.fist[0].toArray(); return o; }), depthAt: t => { poseAt(kit, t); const d = armDepth(); poseNow(); return d; }, checkAt: t => { poseAt(kit, t); kit.group.updateMatrixWorld(true); const r = checkNow(true); poseNow(); return r; }, marks: () => marks(), play: on => { playing = on; updatePlay(); } };
+  stateObj: () => state, state: () => state, R: () => R, select, pick, exportText, refresh, checkNow, timelineProblems: () => timelineProblems, setTime: t => { time = t; need(); }, probe: () => { const o = {}; for (const bn of ["armL","foreL","foreR","handR"]) { const ms = []; B[bn].children.forEach(c => { if (c.isMesh) { c.geometry.computeBoundingBox(); const s = c.geometry.boundingBox.getSize(new THREE.Vector3()); ms.push(s.toArray().map(v => +(v * c.scale.x).toFixed(2))); } }); o[bn] = ms; } const a = new THREE.Vector3(), b2 = new THREE.Vector3(); B.foreR.getWorldPosition(a); B.handR.getWorldPosition(b2); o.foreLen = +a.distanceTo(b2).toFixed(2); B.armR.getWorldPosition(b2); o.upperLen = +a.distanceTo(b2).toFixed(2); o.H = S.height; o.fist = S.fist; return o; }, evalSpecs: list => list.map(sp => { const Pt = toPose(clampSpec(sp)); for (const bn in B) B[bn].rotation.set(...(Pt[bn] || IDLE[bn] || [0, 0, 0])); B.hips.position.y = S.hover + Pt._hips; kit.group.rotation.y = 0; kit.group.updateMatrixWorld(true); const R0 = armParts('R'), L0 = armParts('L'); const pair = (x, y) => x[2] + y[2] - segGap(x[0], x[1], y[0], y[1]); const o = { probs: JC.check(rig, '').filter(x => !quiet(x.msg)).map(x => x.msg), d: {} }; for (const [an, A, Bn, Bp] of [['R', R0, 'L', L0], ['L', L0, 'R', R0]]) for (const xa of ['upper', 'fore', 'fist']) for (const yb of ['upper', 'fore', 'fist']) o.d[an + xa + '-' + Bn + yb] = +pair(A[xa], Bp[yb]).toFixed(2); o.fistL = L0.fist[0].toArray(); o.elR = R0.fore[0].toArray(); o.wrR = R0.fore[1].toArray(); o.fistR = R0.fist[0].toArray(); o.qR = B.handR.getWorldQuaternion(new THREE.Quaternion()).toArray(); o.qL = B.handL.getWorldQuaternion(new THREE.Quaternion()).toArray(); o.fistLp = L0.fist[0].toArray(); o.elL = L0.fore[0].toArray(); o.wrL = L0.fore[1].toArray(); return o; }), depthAt: t => { poseAt(kit, t); const d = armDepth(); poseNow(); return d; }, checkAt: t => { poseAt(kit, t); kit.group.updateMatrixWorld(true); const r = checkNow(true); poseNow(); return r; }, marks: () => marks(), cam: (p, t) => { camera.position.set(...p); orbit.target.set(...t); orbit.update(); need(); }, muzzle: () => muzzle.toArray(), fxAt: (t, ft, shot) => { fxT = ft; time = t; poseNow(); updateAimLine(); composer.render(); return shot ? renderer.domElement.toDataURL('image/jpeg', 0.92) : null; }, play: on => { playing = on; updatePlay(); } };
 window.ready = true;
 </script>
 </body>
