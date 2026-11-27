@@ -140,6 +140,10 @@ window.BossScene = (() => {
     let palFrom = 0, palTo = 0, palT = 1, palAt = 0;
 
     // ---------- backdrop: a wall of falling code, a grid floor, pillars and rings ----------
+    // The fight happens in its own frame: boss at the centre, your squad toward +z, the camera behind
+    // it. The view orbits the arena (Gid, 27 Nov 2026) by turning this backdrop the other way, so the
+    // fight's own maths stays front-on while the player sees it from every side.
+    const env = new THREE.Group(); scene.add(env);
     const codeCv = document.createElement('canvas'); codeCv.width = codeCv.height = 512;
     {
       const c = codeCv.getContext('2d');
@@ -151,15 +155,16 @@ window.BossScene = (() => {
     }
     const codeTex = keep(new THREE.CanvasTexture(codeCv));
     codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping;
-    codeTex.repeat.set(7, 3);
-    const wallMat = keep(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a, transparent: true, opacity: 0.09, depthWrite: false, fog: false }));
-    const wall = new THREE.Mesh(keep(new THREE.PlaneGeometry(150, 60)), wallMat);
-    wall.position.set(0, 20, -40);
-    scene.add(wall);
+    codeTex.repeat.set(18, 3);
+    // the wall of code is a ring all the way round the arena
+    const wallMat = keep(new THREE.MeshBasicMaterial({ map: codeTex, color: pal.a, transparent: true, opacity: 0.09, depthWrite: false, fog: false, side: THREE.BackSide }));
+    const wall = new THREE.Mesh(keep(new THREE.CylinderGeometry(58, 58, 60, 64, 1, true)), wallMat);
+    wall.position.set(0, 20, 0);
+    env.add(wall);
     const grid = new THREE.GridHelper(160, 80, '#ffffff', '#ffffff');
     grid.material.transparent = true; grid.material.opacity = 0.32; grid.material.color = pal.b.clone();
     keep(grid.geometry); keep(grid.material);
-    scene.add(grid);
+    env.add(grid);
     const floorRings = [[6.5, 6.8, 1.1], [9.5, 9.6, 0.8], [14, 14.08, 0.5]].map(([a, b, k]) => {
       const m = new THREE.Mesh(keep(new THREE.RingGeometry(a, b, 96)), keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), side: THREE.DoubleSide, transparent: true, opacity: k })));
       m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.userData.k = k;
@@ -208,16 +213,17 @@ window.BossScene = (() => {
     }
 
     // pillars of data around the arena rise with each phase
-    const PIL = 22;
+    const PIL = 36;
     const pilMat = edgeMat(pal.b, pal.a, 130);
     const pillars = new THREE.InstancedMesh(seededBox(PIL, i => (i % 5 === 0 ? 1 : 0)), pilMat, PIL);
+    // all the way round, past the camera's distance so none stand between it and the fight
     const pilData = Array.from({ length: PIL }, (_, i) => {
-      const a = Math.PI * (0.05 + 0.9 * i / (PIL - 1)) + rnd(-0.04, 0.04);
-      const r = rnd(34, 46);
-      return { x: -Math.cos(a) * r, z: -Math.sin(a) * r * 0.75 + 4, w: rnd(1.6, 3.2), h: rnd(6, 22), k: rnd(0.3, 1), s: rnd(0.2, 0.6) };
+      const a = Math.PI * 2 * i / PIL + rnd(-0.06, 0.06);
+      const r = rnd(42, 52);
+      return { x: -Math.cos(a) * r, z: -Math.sin(a) * r, w: rnd(1.6, 3.2), h: rnd(6, 22), k: rnd(0.3, 1), s: rnd(0.2, 0.6) };
     });
     pillars.frustumCulled = false;
-    scene.add(pillars);
+    env.add(pillars);
     let pilH = 0.35, pilHT = 0.35;
 
     // ---------- the body: blocks laid out on a grid in the shape of a giant ----------
@@ -857,6 +863,33 @@ window.BossScene = (() => {
     };
 
     const camBase = new V(0, 5.5, 30), camLook = new V(0, 7.4, 0), lookCur = new V(0, 7.4, 0);
+    // the orbit: every so often your squad swings round to a new side of the boss, and the view goes
+    // with it at a capped speed; it holds still through a wind-up. Reduce motion keeps the fixed view.
+    const orbit = { phi: 0, target: 0, next: 6 };
+    function orbitTick(t, dt) {
+      if (reduce || !BOT) return;
+      const sl = current(t, 'slam'), hold = !!(sl && !sl.cut && t < sl.h + 0.6);
+      if (!hold && t > orbit.next) { orbit.target += (Math.random() < 0.5 ? -1 : 1) * rnd(0.6, 1.4); orbit.next = t + rnd(9, 15); }
+      if (!hold) orbit.phi += clamp(orbit.target - orbit.phi, -0.2 * dt, 0.2 * dt);
+      env.rotation.y = -orbit.phi;
+    }
+    // cutaways: a short shot from another angle on a stagger, a phase change or the kill, never
+    // while an attack is winding up
+    const cut = { at: -9, len: 0, pos: new V(), look: new V(), kind: '' };
+    function cutaway(kind, len = 1.5) {
+      if (reduce || !BOT) return;
+      const t = nowS(), sl = current(t, 'slam');
+      if (sl && !sl.cut && t < sl.h + 0.3) return;
+      if (t < cut.at + cut.len + 2) return;
+      cut.at = t; cut.len = len; cut.kind = kind;
+    }
+    function cutPose(out, look) {
+      const b = root.position, side = cut.kind === 'side' ? 1 : cut.kind === 'low' ? -1 : 0.6;
+      if (cut.kind === 'side') { out.set(b.x + 17, 6.5, b.z + 5); look.copy(anchorCore); }
+      else if (cut.kind === 'low') { out.set(b.x - 9, 1.4, b.z + 12); look.copy(anchorHead); }
+      else { out.copy(aim); out.x += 4.5 * side; out.y -= 0.8; out.z += 6; look.copy(anchorHead); }   // from among the raid, looking up
+      return out;
+    }
     let baseFov = 40;
     function fit() {
       const w = host.clientWidth || 600, h = host.clientHeight || 400;
@@ -911,7 +944,7 @@ window.BossScene = (() => {
     let adv = 0, prevX = 0, leanZ = 0;
 
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
-    const v1 = new V(), v2 = new V(), v3 = new V();
+    const v1 = new V(), v2 = new V(), v3 = new V(), v4 = new V();
 
     function attachPos(b, out) { return b.km ? out.copy(b.kl).applyMatrix4(b.km.matrixWorld) : out.copy(b.local).applyMatrix4(partG[b.part].matrixWorld); }
     function knock(b, permanent, power = 1) {
@@ -963,7 +996,7 @@ window.BossScene = (() => {
       for (const a of adds) if (a.on && a.dying < 0) a.dying = nowS();
       tele.visible = teleFill.visible = false; beam.visible = false; sweepBar.visible = false; charge = 0;
       if (!instant && up) {
-        roarAt = nowS();
+        roarAt = nowS(); cutaway('side', 1.6);
         shake = Math.max(shake, 0.9);
         wave(root.position, 2, 30, 1.6, pal.a, 0.8);
         scatter(70, 1.4);
@@ -1266,6 +1299,7 @@ window.BossScene = (() => {
     }
     function stagger() {
       if (flight) flight.strike(nowS());
+      cutaway(Math.random() < 0.5 ? 'low' : 'side', 1.4);
       recoilV -= 2.6; headJerk = 1; reelAt = nowS(); jolt = 0;
       adv = Math.max(0, adv - 0.45);
       if (!reduce) mv.z -= 1.6;
@@ -1368,6 +1402,7 @@ window.BossScene = (() => {
       if (dead) return;
       if (fx) fx.clear();
       dead = true; deadAt = nowS(); deadT = instant ? 9 : 0; won = true;
+      if (!instant) { cut.at = -9; cutaway('raid', 3.2); }
       if (!instant && !reduce) slowUntil = performance.now() + 450;
       threatK = 0;
       evs.length = 0; tele.visible = teleFill.visible = beam.visible = sweepBar.visible = false;
@@ -1687,7 +1722,7 @@ window.BossScene = (() => {
     }
 
     // ---------- loop ----------
-    let at = 0, last = nowS();
+    let at = 0, last = nowS(), bossTurn = 0;
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
@@ -1744,7 +1779,12 @@ window.BossScene = (() => {
       headJerk = Math.max(0, headJerk - adt * 2.5);
       jolt = Math.max(0, jolt - adt * 2.6);
       root.position.set(mv.x, cur.y, mv.z);
-      root.rotation.y = mv.face + Math.sin(at * 0.3) * 0.05 * still;
+      {
+        const sl = current(t, 'slam'), f = flight && !(sl && !sl.cut && t < sl.h + 0.5) && !reduce ? flight.focus(t) : null;
+        const want = f ? clamp(Math.atan2(f.x - root.position.x, f.z - root.position.z), -0.9, 0.9) : 0;
+        bossTurn += (want - bossTurn) * Math.min(1, dt * (sl ? 5 : 2.2));
+      }
+      root.rotation.y = mv.face + bossTurn + Math.sin(at * 0.3) * 0.05 * still;
       // it leans into a dash
       const vx = (mv.x - prevX) / Math.max(dt, 1e-3); prevX = mv.x;
       leanZ += (clamp(-vx * 0.025, -0.22, 0.22) * still - leanZ) * Math.min(1, dt * 8);
@@ -2080,6 +2120,7 @@ window.BossScene = (() => {
       }
       if (phase >= 4 && !dead && Math.random() < adt * 8) burst(v1.set(rnd(-20, 20), 0.2, rnd(-10, 6)), 1, 3, pal.a, 1.5, -1);
 
+      orbitTick(t, dt);
       // camera: follows the boss a little, shakes on big moments, leans in on a roar
       shake = Math.max(0, shake - adt * 2);
       const sh = shake * shakeK;
@@ -2088,10 +2129,18 @@ window.BossScene = (() => {
         camBase.x + root.position.x * 0.12 + Math.sin(at * 0.21) * 0.6 * still + Math.sin(t * 41) * sh * 0.5,
         camBase.y + Math.sin(at * 0.17) * 0.25 * still + Math.sin(t * 37 + 1) * sh * 0.4,
         camBase.z - roarK * 3);
+      // the view follows your bot a little as it flies
+      if (flight) camera.position.x += (raidPos[RAID].x - homePos[RAID].x) * 0.35;
       v1.set(root.position.x * 0.45, camLook.y + (cur.y - 0.4) * 0.5 + adv * 1.6 * still, root.position.z * 0.3);
       lookCur.lerp(v1, Math.min(1, dt * 2));
-      if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.4); camera.lookAt(vG); }
-      else camera.lookAt(lookCur);
+      if (threatK > 0.001) { v2.copy(anchorCore); v2.y += 1.5; vG.copy(lookCur).lerp(v2, threatK * 0.4); }
+      else vG.copy(lookCur);
+      const cu = t - cut.at;
+      if (cu >= 0 && cu < cut.len) {
+        const k = smooth(Math.min(cu / 0.18, (cut.len - cu) / 0.25, 1));
+        cutPose(v3, v4); camera.position.lerp(v3, k); vG.lerp(v4, k);
+      }
+      camera.lookAt(vG);
       const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK);
       // the barrier in front of the raid while your block waits for the blow, cracking when it lands
       {

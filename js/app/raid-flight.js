@@ -47,8 +47,12 @@ window.RaidFlight = (() => {
 
     function home(i, v) { const s = S[i]; s.home.copy(v); if (!s.init) { s.pos.copy(v); s.init = true; } }
     function busy(s, t) { return (s.run && t < s.run.t0 + s.run.dur) || s.downAt >= 0 || s.repairOf >= 0; }
+    let lastRun = -1, lastRunT = -9;
+    // who the boss should turn toward: the last bot to start a run at it, for a moment
+    const focus = t => lastRun >= 0 && t - lastRunT < 1.3 && t >= lastRunT ? S[lastRun].pos : null;
     function run(i, t, o2 = {}) {
       const s = S[i]; if (!s || busy(s, t)) return;
+      if (i !== YOU && squadOf[i] > 0) { lastRun = i; lastRunT = t + (o2.delay || 0); }
       const side = o2.side || (Math.random() < 0.5 ? -1 : 1);
       s.run = { t0: t + (o2.delay || 0), dur: o2.dur || 0.95, side, reach: o2.reach || 1, lift: o2.lift == null ? rnd(2.2, 4) : o2.lift };
     }
@@ -99,7 +103,9 @@ window.RaidFlight = (() => {
         if (!isAct(i)) { out[i].copy(s.home); continue; }
         // where it would be at rest: its post arcing round the boss, a weave, and the spot it last darted to
         const k = squadOf[i] < 0 ? 0 : squadOf[i];
-        const a = 0.2 * Math.sin(t * 0.19 + k * 2.1) + (k ? 0.06 * Math.sin(t * 0.37 + k) : 0);
+        // your squad holds the front (the view follows it round); the others swing out to the boss's
+        // sides and round behind it, slowly, each on its own side
+        const a = k === 0 ? 0.2 * Math.sin(t * 0.19) : (k === 1 ? 1 : -1) * (0.35 + 1.15 * (0.5 + 0.5 * Math.sin(t * 0.09 + k * 2.3)));
         tmp.copy(s.home).sub(boss); const c = Math.cos(a), sn = Math.sin(a);
         tgt.set(tmp.x * c - tmp.z * sn, tmp.y, tmp.x * sn + tmp.z * c).add(boss);
         const calm = i === YOU ? 0.45 : 1;
@@ -173,7 +179,7 @@ window.RaidFlight = (() => {
     const isDown = i => !!S[i] && S[i].downAt >= 0 && (S[i].held || lastT >= S[i].downAt);
     const vel = i => S[i] ? S[i].vel : tmp.set(0, 0, 0);
     function dispose() { beams.forEach(({ line, ring }) => { scene.remove(line); scene.remove(ring); line.geometry.dispose(); line.material.dispose(); ring.geometry.dispose(); ring.material.dispose(); }); }
-    return { home, update, run, strafe, strike, lateFor, knock, setDown, isDown, vel, dispose, S };
+    return { home, update, run, strafe, strike, lateFor, knock, setDown, isDown, vel, focus, dispose, S };
   }
   return { create };
 })();
