@@ -1045,8 +1045,8 @@ window.PartyScene = (() => {
       ids.forEach(id => teamAct(id, 'hit'));
       const from = a.from || (st && st.foes[0] && st.foes[0].id);
       // the lunge stops above and in front of the player, so it never covers them on screen
-      if (ids.length === 1) { laneAt(ids[0], v1).add(v4.set(0, 3.2, -4.2)); cre.lunge(from, v1); }
-      else cre.lunge(from, v1.set(0, 3.5, teamZ - 5));
+      if (ids.length === 1) { laneAt(ids[0], v1).add(v4.set(0, 3.8, -5.5)); cre.lunge(from, v1); }
+      else cre.lunge(from, v1.set(0, 4.5, teamZ - 7.5));
       for (const id of ids) {
         laneAt(id, v2); v2.z -= 2.4;
         burst(v2.clone().add(v4.set(0, 1.4, 0)), 18, 8, RED, { up: 0.6 }); ring(v2, RED, 3.2, 0.5); ring(v2, C('#ffffff'), 1.8, 0.3);
