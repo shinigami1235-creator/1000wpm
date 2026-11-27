@@ -321,10 +321,27 @@
     const arm = K.rbox(0.18, 0.36, B - D + 0.02, 0.07, fab); arm.position.set(D / 2 - 0.09, 0.44, 0); ch.add(arm);
     for (const sz of [-1, 1]) { const leg = K.cyl(0.02, 0.014, 0.12, legM, 12); leg.position.set(D / 2 - 0.08, 0.06, sz * ((B - D) / 2 - 0.05)); ch.add(leg); }
     ch.position.set(A / 2 - D / 2, 0, B / 2 - (B - D) / 2 + 0.0); g.add(ch);
-    const throwM = K.fabric('#d8c9a8');
-    const thr = K.cushion(0.5, 0.7, 0.03, throwM, { puff: 0.5 }); thr.rotation.set(-Math.PI / 2 + 0.05, 0, 0.3); thr.position.set(-A / 2 + 0.5, 0.48, -(B - D) / 2 + 0.05); g.add(thr);
     for (const [x, c] of [[-A / 2 + 0.35, '#e0a458'], [0.15, '#9fb7d9']]) { const p = K.cushion(0.38, 0.38, 0.12, K.fabric(c), { puff: 1.2 }); p.position.set(x, 0.63, -B / 2 + 0.34); p.rotation.x = -0.25; g.add(p); }
     return g;
+  }
+  // a sheet laid over a box W wide and L long: flat on top, rolling over the long sides and the
+  // foot end (+z) and hanging down drop metres, with small wrinkles
+  function duvetGeo(K, W, L, drop) {
+    const THREE = K.THREE, rr = 0.05, hang = drop + rr * Math.PI / 2;
+    const geo = new THREE.PlaneGeometry(W + 2 * hang, L + hang, 80, 60); geo.rotateX(-Math.PI / 2); geo.translate(0, 0, hang / 2);
+    const p = geo.attributes.position;
+    const fold = d => d <= 0 ? [0, 0] : d < rr * Math.PI / 2 ? [rr * Math.sin(d / rr), rr * (1 - Math.cos(d / rr))] : [rr + 0.006 * (d - rr * Math.PI / 2), rr + (d - rr * Math.PI / 2)];
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), dx = Math.abs(x) - W / 2, dz = z - L / 2;
+      const [ox, yx] = fold(dx), [oz, yz] = fold(dz);
+      let nx = dx > 0 ? Math.sign(x) * (W / 2 + ox) : x, nz = dz > 0 ? L / 2 + oz : z, y = -Math.max(yx, yz);
+      const top = dx <= 0 && dz <= 0;
+      y += top ? 0.008 * Math.sin(x * 23 + z * 5) * Math.sin(z * 11) : 0;
+      if (!top) { const ripple = 0.012 * Math.sin((dx > 0 ? z : x) * 28) * Math.min(1, Math.max(yx, yz) / 0.1); if (dx > dz) nx += Math.sign(x) * ripple; else nz += ripple; }
+      p.setXYZ(i, nx, y, nz);
+    }
+    geo.computeVertexNormals();
+    return geo;
   }
   function bed(K, o) {
     const g = K.group();
@@ -339,7 +356,11 @@
       const hb = K.rbox(W + 0.06, 0.55, 0.05, 0.015, wood); hb.position.set(0, 0.55, -L / 2 + 0.02); g.add(hb);
     }
     // duvet: a soft slab that drapes over the sides
-    const duv = K.cushion(W + 0.06, L * 0.68, 0.12, K.fabric(o.duvet), { puff: 0.5 }); duv.rotation.x = -Math.PI / 2; duv.position.set(0, 0.52, L * 0.15); g.add(duv);
+    // the duvet lies on the mattress and falls over the sides and the foot, with soft wrinkles
+    const duv = K.mesh(duvetGeo(K, W + 0.04, L * 0.7, 0.2), K.memo('duvet|' + o.duvet, () => { const m = K.fabric(o.duvet).clone(); m.side = K.THREE.DoubleSide; return m; }));
+    duv.position.set(0, 0.555, L * 0.15); g.add(duv);
+    const stitch = K.memo('stitch|' + o.duvet, () => new K.THREE.MeshStandardMaterial({ color: new K.THREE.Color(o.duvet).multiplyScalar(0.8), roughness: 1 }));
+    for (let i = 1; i < 4; i++) { const st = K.box(W + 0.02, 0.002, 0.004, stitch); st.position.set(0, 0.558 + 0.004 * Math.sin(i * 2.1), L * 0.15 - L * 0.35 + i * L * 0.7 / 4); g.add(st); }
     const fold = K.cushion(W + 0.04, 0.22, 0.06, K.fabric(o.fold || '#f6f4ee'), { puff: 0.8 }); fold.rotation.x = -Math.PI / 2; fold.position.set(0, 0.57, L * 0.15 - L * 0.34 + 0.08); g.add(fold);
     const np = Math.max(1, Math.round(W / 0.75));
     for (let i = 0; i < np; i++) { const p = K.cushion(Math.min(0.62, W / np - 0.08), 0.42, 0.13, K.fabric('#fbfaf6'), { puff: 1.3 }); p.rotation.x = -Math.PI / 2 + 0.35; p.position.set(-W / 2 + W / np * (i + 0.5), 0.58, -L / 2 + 0.3); g.add(p); }
@@ -385,24 +406,38 @@
     return g;
   }
   function rattanTex(K) {
-    return tex(K, 'rattan', 256, 256, (c, w, h) => {
-      c.fillStyle = '#5a3d20'; c.fillRect(0, 0, w, h);
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        c.fillStyle = (x + y) % 2 ? '#e2bd85' : '#c9a066';
-        if ((x + y) % 2) c.fillRect(x * 32 + 2, y * 32 + 8, 28, 16); else c.fillRect(x * 32 + 8, y * 32 + 2, 16, 28);
+    // a fine basket weave: 16 by 16 cells, each two strands over, two under
+    return tex(K, 'rattan', 512, 512, (c, w, h) => {
+      const n = 16, u = w / n, r = K.rng(8);
+      c.fillStyle = '#3a2412'; c.fillRect(0, 0, w, h);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const t = r(), across = (x + y) % 2 === 0;
+        const g = c.createLinearGradient(x * u, y * u, across ? x * u : (x + 1) * u, across ? (y + 1) * u : y * u);
+        const base = `rgb(${200 + t * 30 | 0},${158 + t * 24 | 0},${100 + t * 18 | 0})`;
+        g.addColorStop(0, '#7a5530'); g.addColorStop(0.25, base); g.addColorStop(0.75, base); g.addColorStop(1, '#7a5530');
+        c.fillStyle = g;
+        for (let k = 0; k < 2; k++) {
+          if (across) c.fillRect(x * u + 1, y * u + 2 + k * u / 2, u - 2, u / 2 - 4);
+          else c.fillRect(x * u + 2 + k * u / 2, y * u + 1, u / 2 - 4, u - 2);
+        }
       }
     });
   }
   function pouf(K) {
-    const g = K.group();
-    const geo = new K.THREE.SphereGeometry(0.25, 48, 24), p = geo.attributes.position;
-    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const a = Math.atan2(z, x); p.setXYZ(i, x * (1 + 0.04 * Math.cos(a * 14)), Math.max(-0.17, Math.min(0.17, y * 0.8)), z * (1 + 0.04 * Math.cos(a * 14))); }
+    const g = K.group(), THREE = K.THREE;
+    // chunky knit: twelve cable ridges running top to bottom, each a twist of two strands
+    const geo = new THREE.SphereGeometry(0.25, 96, 48), p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x);
+      const cable = Math.abs(Math.cos(a * 12)), twist = 0.5 + 0.5 * Math.sin(y * 60 + (Math.cos(a * 24) > 0 ? 0 : Math.PI));
+      const k = 1 + 0.035 * cable + 0.012 * twist * cable;
+      p.setXYZ(i, x * k, Math.max(-0.17, Math.min(0.17, y * 0.8)), z * k);
+    }
     geo.computeVertexNormals();
-    const m = K.mesh(geo, K.fabric('#d9a24a', 2)); m.position.y = 0.17; g.add(m);
+    const m = K.mesh(geo, K.memo('poufknit', () => new THREE.MeshPhysicalMaterial({ color: '#d9a24a', roughness: 0.95, sheen: 1, sheenRoughness: 0.5, sheenColor: new THREE.Color('#ffe2a8') })));
+    m.position.y = 0.17; g.add(m);
     return g;
   }
-
-  // ---------------------------------------------------------------- shelves and books
   function cubeShelf(K) {
     const g = K.group(), W = 1.1, H = 1.1, D = 0.36, t = 0.025;
     const m = K.std('#efeee9', 0.55);
@@ -485,43 +520,94 @@
   function aquarium(K) {
     const g = K.group(), THREE = K.THREE, W = 1.0, D = 0.4, TH = 0.5;
     const cab = K.rbox(W + 0.04, 0.7, D + 0.04, 0.012, K.wood('black')); cab.position.y = 0.35; g.add(cab);
-    for (const sx of [-1, 1]) { const dr = K.rbox(W / 2 - 0.02, 0.62, 0.01, 0.004, K.std('#222527', 0.4, 0.3)); dr.position.set(sx * W / 4, 0.36, D / 2 + 0.022); g.add(dr); }
-    const y0 = 0.71;
-    const water = K.memo('aqwater', () => new THREE.MeshPhysicalMaterial({ color: '#3a9ad9', transparent: true, opacity: 0.22, roughness: 0.05, transmission: 0, depthWrite: false, emissive: '#0a3a5a', emissiveIntensity: 0.4 }));
-    const w = K.box(W - 0.02, TH - 0.06, D - 0.02, water); w.position.y = y0 + (TH - 0.06) / 2; g.add(w);
-    const glass = K.box(W, TH, D, K.glass('#cfe8f0', 0.1)); glass.position.y = y0 + TH / 2; g.add(glass);
+    for (const sx of [-1, 1]) {
+      const dr = K.rbox(W / 2 - 0.03, 0.6, 0.012, 0.004, K.std('#1d2022', 0.35, 0.3)); dr.position.set(sx * W / 4, 0.36, D / 2 + 0.024); g.add(dr);
+      const hd = K.rbox(0.012, 0.12, 0.02, 0.004, K.std('#c9ccd2', 0.2, 1)); hd.position.set(sx * 0.03, 0.42, D / 2 + 0.04); g.add(hd);
+    }
+    const y0 = 0.71, IN = 0.012;
+    // a painted blue backdrop on the back glass, so the tank reads as deep water
+    const bg = tex(K, 'aqback', 512, 256, (c, w, h) => {
+      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a8fd0'); gr.addColorStop(1, '#0a2c52'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      const r = K.rng(4); c.fillStyle = 'rgba(10,40,70,.6)';
+      for (let i = 0; i < 9; i++) { const x = r() * w, hh = h * (0.3 + r() * 0.5); c.beginPath(); c.moveTo(x - 20, h); c.quadraticCurveTo(x + (r() - 0.5) * 40, h - hh, x + 6, h - hh); c.quadraticCurveTo(x + 10, h - hh * 0.5, x + 24, h); c.fill(); }
+    });
+    const back = K.mesh(new THREE.PlaneGeometry(W - IN * 2, TH - 0.02), K.memo('aqbackm', () => new THREE.MeshBasicMaterial({ map: bg, color: new THREE.Color(0.75, 0.85, 1) }))); back.position.set(0, y0 + TH / 2, -D / 2 + IN); g.add(back);
+    const water = K.memo('aqwater2', () => new THREE.MeshPhysicalMaterial({ color: '#4fb0e8', transparent: true, opacity: 0.16, roughness: 0.02, depthWrite: false, emissive: '#0d4a78', emissiveIntensity: 0.25 }));
+    const w = K.box(W - IN * 2, TH - 0.06, D - IN * 2, water); w.position.y = y0 + (TH - 0.06) / 2; g.add(w);
+    const surf = K.mesh(new THREE.PlaneGeometry(W - IN * 2, D - IN * 2, 24, 10), K.memo('aqsurf', () => new THREE.MeshPhysicalMaterial({ color: '#bfe6ff', transparent: true, opacity: 0.35, roughness: 0.05, depthWrite: false, side: THREE.DoubleSide })));
+    surf.rotation.x = -Math.PI / 2; surf.position.y = y0 + TH - 0.06; g.add(surf);
+    const glass = K.box(W, TH, D, K.glass('#cfe8f0', 0.08)); glass.position.y = y0 + TH / 2; g.add(glass);
     const frameM = K.std('#111', 0.4, 0.5);
-    for (const y of [y0, y0 + TH]) for (const sz of [-1, 1]) { const b = K.box(W, 0.012, 0.012, frameM); b.position.set(0, y, sz * D / 2); g.add(b); }
-    const lid = K.rbox(W + 0.01, 0.04, D + 0.01, 0.008, frameM); lid.position.y = y0 + TH + 0.02; g.add(lid);
-    const strip = K.box(W - 0.1, 0.004, 0.03, K.glow('#bfe6ff', 3)); strip.position.set(0, y0 + TH - 0.002, 0); g.add(strip);
-    const sand = K.box(W - 0.02, 0.05, D - 0.02, K.std('#d9c79f', 0.95)); sand.position.y = y0 + 0.025; g.add(sand);
+    for (const y of [y0, y0 + TH]) for (const sz of [-1, 1]) { const b = K.box(W, 0.014, 0.014, frameM); b.position.set(0, y, sz * D / 2); g.add(b); }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const b = K.box(0.014, TH, 0.014, frameM); b.position.set(sx * W / 2, y0 + TH / 2, sz * D / 2); g.add(b); }
+    const lid = K.rbox(W + 0.012, 0.05, D + 0.012, 0.01, frameM); lid.position.y = y0 + TH + 0.025; g.add(lid);
+    const strip = K.box(W - 0.1, 0.004, 0.04, K.glow('#d6f0ff', 3)); strip.position.set(0, y0 + TH - 0.001, 0); g.add(strip);
+    // sand with ripples, and light that wobbles across it (caustics)
+    const sandT = tex(K, 'aqsand', 256, 128, (c, w2, h2) => { const r = K.rng(2); c.fillStyle = '#c9b48a'; c.fillRect(0, 0, w2, h2); noise(c, w2, h2, r, 4000, 0.25, 1.5); });
+    const sandG = new THREE.PlaneGeometry(W - IN * 2, D - IN * 2, 40, 16), sp = sandG.attributes.position;
+    for (let i = 0; i < sp.count; i++) { const x = sp.getX(i), yy = sp.getY(i); sp.setZ(i, 0.04 + 0.012 * Math.sin(x * 22 + yy * 6) + 0.03 * (0.5 - yy / D)); }
+    sandG.computeVertexNormals();
+    const cau = tex(K, 'aqcaustic', 256, 256, (c, w2, h2) => {
+      c.fillStyle = '#000'; c.fillRect(0, 0, w2, h2); c.strokeStyle = 'rgba(200,240,255,.55)'; c.lineWidth = 2.5; const r = K.rng(12);
+      for (let i = 0; i < 40; i++) { const x = r() * w2, y = r() * h2, rr = 14 + r() * 22; c.beginPath(); for (let k = 0; k <= 7; k++) { const a = k / 7 * TAU, q = rr * (0.7 + 0.3 * Math.sin(a * 3 + i)); c.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } c.stroke(); }
+    });
+    const caus = cau.clone(); caus.wrapS = caus.wrapT = THREE.RepeatWrapping; caus.repeat.set(3, 1.2); caus.needsUpdate = true;
+    const sandM = new THREE.MeshStandardMaterial({ map: sandT, roughness: 0.95, emissive: '#9fdcff', emissiveMap: caus, emissiveIntensity: 0.5 });
+    const sand = K.mesh(sandG, sandM); sand.rotation.x = -Math.PI / 2; sand.position.y = y0; g.add(sand);
     const r = K.rng(6);
-    for (let i = 0; i < 6; i++) { const st = K.sph(0.03 + r() * 0.04, K.std(['#6b6e70', '#8a8478', '#4f5254'][i % 3], 0.9), 10, 8); st.scale.y = 0.6; st.position.set((r() - 0.5) * (W - 0.15), y0 + 0.05, (r() - 0.5) * (D - 0.12)); g.add(st); }
-    const weeds = [];
-    for (let i = 0; i < 9; i++) {
-      const h = 0.15 + r() * 0.25, x = (r() - 0.5) * (W - 0.12), z = -D / 2 + 0.05 + r() * 0.12;
-      const geo = new THREE.PlaneGeometry(0.03, h, 1, 6); geo.translate(0, h / 2, 0);
-      const m = K.mesh(geo, K.memo('weed', () => new THREE.MeshStandardMaterial({ color: '#3fa463', roughness: 0.6, side: THREE.DoubleSide }))); m.position.set(x, y0 + 0.05, z); m.rotation.y = r() * TAU; g.add(m); weeds.push({ m, ph: r() * 9 });
+    // stones, a piece of driftwood and a little castle
+    for (let i = 0; i < 9; i++) { const st = K.mesh(new THREE.IcosahedronGeometry(0.025 + r() * 0.035, 1), K.std(['#6b6e70', '#8a8478', '#4f5254', '#a39c8c'][i % 4], 0.9)); st.scale.set(1.2, 0.55 + r() * 0.3, 1); st.rotation.y = r() * TAU; st.position.set((r() - 0.5) * (W - 0.12), y0 + 0.05, (r() - 0.5) * (D - 0.12)); g.add(st); }
+    g.add(K.put(K.tube([[-0.32, y0 + 0.05, 0.02], [-0.2, y0 + 0.1, -0.03], [-0.06, y0 + 0.12, 0.0], [0.04, y0 + 0.2, -0.04]], 0.018, K.wood('walnut'), 24, 8)));
+    const castle = K.group(); castle.position.set(0.3, y0 + 0.05, -0.08); g.add(castle);
+    const stone = K.std('#b6ab96', 0.9);
+    castle.add(K.put(K.box(0.12, 0.1, 0.08, stone), 0, 0.05, 0));
+    for (const [x, hgt] of [[-0.06, 0.16], [0.06, 0.13]]) { castle.add(K.put(K.cyl(0.028, 0.03, hgt, stone, 12), x, hgt / 2, 0)); castle.add(K.put(K.mesh(new THREE.ConeGeometry(0.034, 0.05, 12), K.std('#8a3b2e', 0.7)), x, hgt + 0.025, 0)); }
+    castle.add(K.put(K.box(0.03, 0.045, 0.005, K.std('#1b1410', 0.9)), 0, 0.023, 0.041));
+    // plants: blades that curl and sway, in clumps
+    const weeds = [], wm = K.memo('weed2', () => new THREE.MeshStandardMaterial({ color: '#3fa463', roughness: 0.6, side: THREE.DoubleSide }));
+    const wm2 = K.memo('weed3', () => new THREE.MeshStandardMaterial({ color: '#6fcf5a', roughness: 0.6, side: THREE.DoubleSide }));
+    for (const [cx, cz, n] of [[-0.38, -0.1, 7], [-0.1, -0.12, 5], [0.12, -0.1, 6], [0.42, 0.05, 4]]) for (let i = 0; i < n; i++) {
+      const h = 0.14 + r() * 0.26, geo = new THREE.PlaneGeometry(0.022 + r() * 0.012, h, 1, 8); geo.translate(0, h / 2, 0);
+      const gp = geo.attributes.position; for (let k = 0; k < gp.count; k++) { const yy = gp.getY(k) / h; gp.setX(k, gp.getX(k) * (1 - yy * 0.6)); gp.setZ(k, yy * yy * 0.03); }
+      geo.computeVertexNormals();
+      const m = K.mesh(geo, r() < 0.6 ? wm : wm2); m.position.set(cx + (r() - 0.5) * 0.08, y0 + 0.05, cz + (r() - 0.5) * 0.06); m.rotation.y = r() * TAU; g.add(m); weeds.push({ m, ph: r() * 9 });
     }
-    const fish = [], fcols = ['#ff7b2e', '#ffd23d', '#3ee6ff', '#ff5d8f', '#9b6bff', '#ff7b2e'];
-    for (let i = 0; i < 6; i++) {
+    // fish: a body with a fan tail, a dorsal fin and eyes; they turn round smoothly at the glass
+    const tailShape = new THREE.Shape(); tailShape.moveTo(0, 0); tailShape.quadraticCurveTo(-0.02, 0.02, -0.035, 0.022); tailShape.quadraticCurveTo(-0.026, 0, -0.035, -0.022); tailShape.quadraticCurveTo(-0.02, -0.02, 0, 0);
+    const tailGeo = new THREE.ShapeGeometry(tailShape, 8);
+    const finShape = new THREE.Shape(); finShape.moveTo(-0.015, 0); finShape.quadraticCurveTo(0, 0.022, 0.012, 0); finShape.lineTo(-0.015, 0);
+    const finGeo = new THREE.ShapeGeometry(finShape, 6);
+    const fish = [], fcols = [['#ff7b2e', '#ffffff'], ['#ffd23d', '#3a3a3a'], ['#3ee6ff', '#1d4fd0'], ['#ff5d8f', '#ffffff'], ['#9b6bff', '#ffd23d'], ['#ff7b2e', '#111111'], ['#e8f0ff', '#ff4d5e']];
+    fcols.forEach(([main, stripe], i) => {
       const f = K.group();
-      const body = K.sph(0.022, K.std(fcols[i], 0.4), 12, 8); body.scale.set(1.6, 1, 0.55); f.add(body);
-      const tail = K.mesh(new THREE.ConeGeometry(0.018, 0.03, 4), K.std(fcols[i], 0.4)); tail.rotation.z = Math.PI / 2; tail.scale.z = 0.3; tail.position.x = -0.045; f.add(tail);
-      const eye = K.sph(0.004, K.std('#000', 0.2), 6, 4); eye.position.set(0.022, 0.006, 0.01); f.add(eye);
-      g.add(f); fish.push({ f, tail, sp: 0.25 + r() * 0.25, ph: r() * TAU, y: y0 + 0.12 + r() * 0.26, zr: 0.06 + r() * 0.08 });
-    }
+      const sk = tex(K, 'fishskin|' + i, 64, 32, (c, w2, h2) => { c.fillStyle = main; c.fillRect(0, 0, w2, h2); c.fillStyle = stripe; for (const x of [0.3, 0.62]) c.fillRect(x * w2, 0, 6, h2); c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(0, h2 * 0.65, w2, h2 * 0.35); });
+      const fm = K.memo('fishm|' + i, () => new THREE.MeshStandardMaterial({ map: sk, roughness: 0.35, metalness: 0.1 }));
+      const finM = K.memo('finm|' + i, () => new THREE.MeshStandardMaterial({ color: main, roughness: 0.4, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      const body = K.sph(0.022, fm, 20, 12); body.scale.set(1.7, 1.05, 0.55); f.add(body);
+      const tail = K.mesh(tailGeo, finM); tail.position.x = -0.034; f.add(tail);
+      const fin = K.mesh(finGeo, finM); fin.position.set(0.004, 0.02, 0); f.add(fin);
+      for (const s of [-1, 1]) { const eye = K.sph(0.0045, K.std('#0a0a0a', 0.1), 8, 6); eye.position.set(0.026, 0.006, s * 0.009); f.add(eye); const hl = K.sph(0.0015, K.glow('#ffffff', 2), 6, 4); hl.position.set(0.029, 0.008, s * 0.012); f.add(hl); }
+      const sc = 0.8 + r() * 0.5; f.scale.setScalar(sc);
+      g.add(f); fish.push({ f, tail, sp: 0.18 + r() * 0.22, ph: r() * TAU, y: y0 + 0.13 + r() * 0.25, zr: 0.05 + r() * 0.08, prev: 0 });
+    });
     const bubbles = [];
-    for (let i = 0; i < 10; i++) { const b = K.sph(0.006 + r() * 0.004, K.glass('#ffffff', 0.5), 8, 6); g.add(b); bubbles.push({ b, ph: r(), sp: 0.15 + r() * 0.1 }); }
+    for (let i = 0; i < 14; i++) { const b = K.sph(0.005 + r() * 0.005, K.glass('#ffffff', 0.55), 8, 6); g.add(b); bubbles.push({ b, ph: r(), sp: 0.12 + r() * 0.12 }); }
+    const stone2 = K.sph(0.018, K.std('#5a6a72', 0.9), 10, 8); stone2.scale.y = 0.6; stone2.position.set(W / 2 - 0.12, y0 + 0.055, -0.08); g.add(stone2);
     const light = new THREE.PointLight('#7fc8ff', 0.6, 1.8, 2); light.position.set(0, y0 + 0.3, 0.3); g.add(light);
+    const sp0 = surf.geometry.attributes.position, base = Float32Array.from(sp0.array);
     g.userData.tick = t => {
       for (const o of fish) {
-        const a = t * o.sp + o.ph, x = Math.sin(a) * (W / 2 - 0.1), dx = Math.cos(a);
-        o.f.position.set(x, o.y + Math.sin(a * 2.3) * 0.02, Math.sin(a * 1.7 + o.ph) * o.zr);
-        o.f.rotation.y = dx > 0 ? 0 : Math.PI; o.tail.rotation.y = Math.sin(t * 12 + o.ph) * 0.5;
+        const a = t * o.sp + o.ph, x = Math.sin(a) * (W / 2 - 0.12), dx = Math.cos(a), z = Math.sin(a * 1.7 + o.ph) * o.zr;
+        o.f.position.set(x, o.y + Math.sin(a * 2.3) * 0.02, z);
+        // face the way it swims, turning through the side as it reverses
+        o.f.rotation.y = Math.atan2(-Math.cos(a * 1.7 + o.ph) * o.zr * 1.7, dx * (W / 2 - 0.12));
+        o.tail.rotation.y = Math.sin(t * 12 + o.ph) * 0.5;
       }
-      for (const w of weeds) w.m.rotation.z = Math.sin(t * 1.2 + w.ph) * 0.12;
-      for (const o of bubbles) { const p = (t * o.sp + o.ph) % 1; o.b.position.set(W / 2 - 0.12 + Math.sin(p * 20 + o.ph * 9) * 0.008, y0 + 0.06 + p * (TH - 0.13), -0.08); }
+      for (const w2 of weeds) { w2.m.rotation.z = Math.sin(t * 1.2 + w2.ph) * 0.14; w2.m.rotation.x = Math.sin(t * 0.9 + w2.ph * 2) * 0.08; }
+      for (const o of bubbles) { const p = (t * o.sp + o.ph) % 1; o.b.position.set(W / 2 - 0.12 + Math.sin(p * 20 + o.ph * 9) * 0.008, y0 + 0.07 + p * (TH - 0.14), -0.08); }
+      caus.offset.set(Math.sin(t * 0.3) * 0.2, t * 0.05); sandM.emissiveIntensity = 0.4 + 0.15 * Math.sin(t * 1.7);
+      for (let i = 0; i < sp0.count; i++) sp0.setZ(i, base[i * 3 + 2] + 0.003 * Math.sin(base[i * 3] * 30 + t * 2) * Math.sin(base[i * 3 + 1] * 25 + t * 1.6));
+      sp0.needsUpdate = true;
     };
     g.userData.tick(0);
     return g;
@@ -530,31 +616,62 @@
     const g = K.group(), THREE = K.THREE;
     const pts = []; for (let i = 0; i <= 24; i++) { const a = -Math.PI / 2 + i / 24 * Math.PI * 0.8; pts.push([Math.cos(a) * 0.12, 0.12 + Math.sin(a) * 0.12]); }
     pts[0][0] = 0.06; pts.unshift([0, 0]);
-    const glass = K.lathe(pts, K.glass('#dff2f6', 0.14), 40); g.add(glass);
-    const wpts = pts.filter(p => p[1] < 0.17).map(([x, y]) => [x * 0.97, y]); wpts.push([0, 0.17]);
-    g.add(K.lathe(wpts, K.memo('bowlwater', () => new THREE.MeshPhysicalMaterial({ color: '#56b6e0', transparent: true, opacity: 0.25, roughness: 0.05, depthWrite: false })), 40));
-    const gravel = K.cyl(0.06, 0.06, 0.015, K.std('#8fb9c9', 0.9), 24); gravel.position.y = 0.012; g.add(gravel);
+    // a rolled lip at the top
+    const top = pts[pts.length - 1];
+    const glass = K.lathe(pts, K.glass('#e8f6fa', 0.12), 48); g.add(glass);
+    const lip = K.torus(top[0], 0.004, K.glass('#ffffff', 0.3), TAU, 8, 48); lip.rotation.x = Math.PI / 2; lip.position.y = top[1]; g.add(lip);
+    const wpts = pts.filter(p => p[1] < 0.175).map(([x, y]) => [x * 0.97, y + 0.002]); wpts.push([0, 0.175]);
+    g.add(K.lathe(wpts, K.memo('bowlwater2', () => new THREE.MeshPhysicalMaterial({ color: '#8fd3f0', transparent: true, opacity: 0.14, roughness: 0.02, depthWrite: false })), 48));
+    const surf = K.mesh(new THREE.CircleGeometry(wpts[wpts.length - 2][0], 40), K.memo('bowlsurf', () => new THREE.MeshPhysicalMaterial({ color: '#d8f2ff', transparent: true, opacity: 0.3, roughness: 0.02, depthWrite: false, side: THREE.DoubleSide })));
+    surf.rotation.x = -Math.PI / 2; surf.position.y = 0.175; g.add(surf);
+    // colourful pebbles in one instanced mesh
+    const r = K.rng(5), cols = ['#ff7b8a', '#7fd8ff', '#ffd23d', '#9fe8a0', '#c9b3ff', '#ffffff'];
+    const peb = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.008, 1), K.std('#ffffff', 0.4), 90), o = new THREE.Object3D(), c = new THREE.Color();
+    for (let i = 0; i < 90; i++) { const a = r() * TAU, rr = Math.sqrt(r()) * 0.07; o.position.set(Math.cos(a) * rr, 0.012 + r() * 0.012 * (1 - rr / 0.07), Math.sin(a) * rr); o.scale.set(1, 0.7, 1); o.rotation.set(r() * 3, r() * 3, 0); o.updateMatrix(); peb.setMatrixAt(i, o.matrix); peb.setColorAt(i, c.set(cols[i % cols.length])); }
+    g.add(peb);
+    const plant = K.group(); plant.position.set(-0.04, 0.02, -0.03); g.add(plant);
+    for (let i = 0; i < 4; i++) { const h = 0.06 + r() * 0.05, geo = new THREE.PlaneGeometry(0.012, h, 1, 4); geo.translate(0, h / 2, 0); const m = K.mesh(geo, K.memo('weed2', () => new THREE.MeshStandardMaterial({ color: '#3fa463', roughness: 0.6, side: THREE.DoubleSide }))); m.rotation.set(0, i * 1.3, (r() - 0.5) * 0.4); plant.add(m); }
+    // a goldfish with a long double tail
     const f = K.group(); g.add(f);
-    const body = K.sph(0.022, K.std('#ff8a1f', 0.35), 14, 10); body.scale.set(1.5, 1.05, 0.6); f.add(body);
-    const tail = K.mesh(new THREE.PlaneGeometry(0.04, 0.04), K.memo('goldtail', () => new THREE.MeshStandardMaterial({ color: '#ffb35c', side: THREE.DoubleSide, transparent: true, opacity: 0.85 }))); tail.position.x = -0.045; f.add(tail);
-    g.userData.tick = t => { const a = t * 0.7; f.position.set(Math.cos(a) * 0.06, 0.09 + Math.sin(t * 1.3) * 0.02, Math.sin(a) * 0.06); f.rotation.y = -a - Math.PI / 2; tail.rotation.y = Math.sin(t * 10) * 0.6; };
+    const gm = K.memo('goldm', () => new THREE.MeshStandardMaterial({ color: '#ff8a1f', roughness: 0.3, metalness: 0.15, emissive: '#ff5a00', emissiveIntensity: 0.12 }));
+    const body = K.sph(0.02, gm, 20, 14); body.scale.set(1.45, 1.15, 0.7); f.add(body);
+    const tm = K.memo('goldtail2', () => new THREE.MeshStandardMaterial({ color: '#ffb35c', side: THREE.DoubleSide, transparent: true, opacity: 0.8, roughness: 0.4 }));
+    const ts = new THREE.Shape(); ts.moveTo(0, 0); ts.bezierCurveTo(-0.02, 0.03, -0.05, 0.03, -0.055, 0.012); ts.lineTo(-0.035, 0); ts.lineTo(-0.055, -0.014); ts.bezierCurveTo(-0.05, -0.03, -0.02, -0.028, 0, 0);
+    const tail = K.mesh(new THREE.ShapeGeometry(ts, 10), tm); tail.position.x = -0.022; f.add(tail);
+    const fin = K.mesh(new THREE.ShapeGeometry((() => { const s2 = new THREE.Shape(); s2.moveTo(-0.012, 0); s2.quadraticCurveTo(0, 0.02, 0.01, 0); s2.lineTo(-0.012, 0); return s2; })(), 6), tm); fin.position.y = 0.02; f.add(fin);
+    for (const s of [-1, 1]) { const eye = K.sph(0.005, K.std('#111', 0.1), 8, 6); eye.position.set(0.02, 0.006, s * 0.011); f.add(eye); }
+    g.userData.tick = t => { const a = t * 0.7; f.position.set(Math.cos(a) * 0.055, 0.09 + Math.sin(t * 1.3) * 0.02, Math.sin(a) * 0.055); f.rotation.y = -a - Math.PI / 2; tail.rotation.y = Math.sin(t * 9) * 0.5; fin.rotation.x = Math.sin(t * 6) * 0.2; };
     g.userData.tick(0);
     return g;
   }
   function globe(K) {
     const g = K.group(), THREE = K.THREE;
-    const base = K.cyl(0.06, 0.075, 0.025, K.wood('walnut'), 32); base.position.y = 0.012; g.add(base);
-    const stem = K.cyl(0.008, 0.01, 0.08, K.std('#c9a24a', 0.25, 1), 12); stem.position.y = 0.065; g.add(stem);
+    const base = K.lathe([[0, 0], [0.08, 0], [0.082, 0.008], [0.07, 0.02], [0.03, 0.03], [0.012, 0.05], [0, 0.05]], K.wood('walnut'), 40); g.add(base);
+    const brass = K.std('#c9a24a', 0.22, 1);
+    const stem = K.cyl(0.007, 0.009, 0.06, brass, 12); stem.position.y = 0.075; g.add(stem);
     const tilt = K.group(); tilt.position.y = 0.21; tilt.rotation.z = 0.41; g.add(tilt);
-    const arc = K.torus(0.118, 0.005, K.std('#c9a24a', 0.25, 1), Math.PI * 1.2, 8, 40); arc.rotation.z = -Math.PI * 0.1 + Math.PI / 2; tilt.add(arc);
-    const map = tex(K, 'globe', 512, 256, (c, w, h) => {
-      c.fillStyle = '#2f6fa3'; c.fillRect(0, 0, w, h);
-      const r = K.rng(77); c.fillStyle = '#d9c47a';
-      // rough continents as overlapping blobs at fixed spots
-      for (const [cx, cy, n] of [[0.2, 0.35, 14], [0.27, 0.65, 10], [0.5, 0.3, 16], [0.53, 0.58, 12], [0.72, 0.32, 18], [0.82, 0.68, 7]]) for (let i = 0; i < n; i++) { c.beginPath(); c.arc((cx + (r() - 0.5) * 0.12) * w, (cy + (r() - 0.5) * 0.2) * h, 6 + r() * 16, 0, TAU); c.fill(); }
-      c.strokeStyle = 'rgba(255,255,255,.25)'; for (let i = 1; i < 6; i++) { c.beginPath(); c.moveTo(0, i * h / 6); c.lineTo(w, i * h / 6); c.stroke(); }
+    const arc = K.torus(0.118, 0.005, brass, Math.PI * 1.2, 8, 48); arc.rotation.z = -Math.PI * 0.1 + Math.PI / 2; tilt.add(arc);
+    for (const s of [-1, 1]) { const pin = K.sph(0.008, brass, 10, 8); pin.position.y = s * 0.114; tilt.add(pin); }
+    // land from smooth value noise, with a grid of latitude and longitude lines and a sepia ocean
+    const map = tex(K, 'globe2', 1024, 512, (c, w, h) => {
+      const r = K.rng(77), N = 16, grid = Array.from({ length: (N + 1) * (N / 2 + 1) }, () => r());
+      const at = (gx, gy) => grid[((gy % (N / 2 + 1)) * (N + 1)) + (gx % N)];
+      const smooth = t => t * t * (3 - 2 * t);
+      const noiseAt = (u, v) => { const x = u * N, y = v * N / 2, ix = Math.floor(x), iy = Math.floor(y), fx = smooth(x - ix), fy = smooth(y - iy); const a = at(ix, iy), b = at(ix + 1, iy), c0 = at(ix, iy + 1), d = at(ix + 1, iy + 1); return a + (b - a) * fx + (c0 - a) * fy + (a - b - c0 + d) * fx * fy; };
+      const img = c.createImageData(w, h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const u = x / w, v = y / h, n = noiseAt(u, v) * 0.65 + noiseAt(u * 2.3 % 1, v * 2.3 % 1) * 0.35, lat = Math.abs(v - 0.5) * 2;
+        const land = n > 0.55 - lat * 0.05, ice = lat > 0.86, i = (y * w + x) * 4;
+        const col = ice ? [236, 240, 238] : land ? (n > 0.68 ? [176, 140, 86] : [196, 176, 112]) : [62 + n * 30, 112 + n * 30, 140 + n * 30];
+        img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
+      }
+      // drawn through a spare canvas, since putImageData ignores the 2x scale canvasTex sets
+      const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h; tmp.getContext('2d').putImageData(img, 0, 0); c.drawImage(tmp, 0, 0);
+      c.strokeStyle = 'rgba(60,40,20,.35)'; c.lineWidth = 1;
+      for (let i = 1; i < 8; i++) { c.beginPath(); c.moveTo(0, i * h / 8); c.lineTo(w, i * h / 8); c.stroke(); }
+      for (let i = 0; i < 16; i++) { c.beginPath(); c.moveTo(i * w / 16, 0); c.lineTo(i * w / 16, h); c.stroke(); }
     });
-    const ball = K.mesh(new THREE.SphereGeometry(0.11, 40, 24), K.memo('globemat', () => new THREE.MeshStandardMaterial({ map, roughness: 0.4 }))); tilt.add(ball);
+    const ball = K.mesh(new THREE.SphereGeometry(0.11, 48, 32), K.memo('globemat2', () => new THREE.MeshPhysicalMaterial({ map, roughness: 0.35, clearcoat: 0.6 }))); tilt.add(ball);
     g.userData.tick = t => { ball.rotation.y = t * 0.5; };
     return g;
   }
@@ -633,34 +750,89 @@
   }
   function fireplace(K) {
     const g = K.group(), THREE = K.THREE, W = 1.2, H = 0.62, D = 0.3;
-    const body = K.rbox(W, H, D, 0.01, K.std('#e9e7e2', 0.6)); body.position.y = H / 2; g.add(body);
-    const mantel = K.rbox(W + 0.1, 0.04, D + 0.06, 0.008, K.wood('walnut')); mantel.position.y = H + 0.02; g.add(mantel);
-    const box = K.box(W * 0.7, H * 0.55, 0.02, K.std('#0b0b0c', 0.3)); box.position.set(0, H * 0.45, D / 2 - 0.005); g.add(box);
-    const logs = K.group(); logs.position.set(0, H * 0.22, D / 2 - 0.02); g.add(logs);
-    for (const [x, rz] of [[-0.08, 0.1], [0.08, -0.1], [0, 0]]) { const l = K.cyl(0.025, 0.025, 0.28, K.wood('walnut'), 12); l.rotation.set(0, 0, Math.PI / 2 + rz); l.position.set(x, x ? 0 : 0.035, 0); logs.add(l); }
-    const flameM = K.memo('flame', () => new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff8a2a').multiplyScalar(2.2), transparent: true, opacity: 0.85, toneMapped: false, depthWrite: false, side: THREE.DoubleSide }));
+    const fw = W * 0.72, fh = H * 0.56, fy = H * 0.46, fz = D / 2;
+    // the body is built round an open firebox, so the flames inside can be seen
+    const bodyM = K.std('#ecebe6', 0.55);
+    const blk = (w, h, x, y) => { const b = K.rbox(w, h, D, 0.008, bodyM); b.position.set(x, y, 0); g.add(b); };
+    blk(W, fy - fh / 2, 0, (fy - fh / 2) / 2);
+    blk(W, H - (fy + fh / 2), 0, (H + fy + fh / 2) / 2);
+    for (const sx of [-1, 1]) blk((W - fw) / 2, fh, sx * (fw + W) / 4, fy);
+    const plinth = K.rbox(W + 0.04, 0.05, D + 0.02, 0.006, K.std('#2a2c2e', 0.5)); plinth.position.y = 0.025; g.add(plinth);
+    const mantel = K.rbox(W + 0.12, 0.05, D + 0.08, 0.01, K.wood('walnut')); mantel.position.y = H + 0.025; g.add(mantel);
+    const trimM = K.std('#151617', 0.35, 0.6);
+    for (const [w, h, x, y] of [[fw + 0.05, 0.025, 0, fy + fh / 2], [fw + 0.05, 0.025, 0, fy - fh / 2], [0.025, fh, -fw / 2, fy], [0.025, fh, fw / 2, fy]]) { const t = K.box(w, h, 0.02, trimM); t.position.set(x, y, fz); g.add(t); }
+    const inner = K.box(fw, fh, 0.01, K.std('#1a0d06', 0.9)); inner.position.set(0, fy, -D / 2 + 0.04); g.add(inner);
+    for (const sx of [-1, 1]) { const wall = K.box(0.01, fh, D - 0.05, K.std('#120804', 0.9)); wall.position.set(sx * fw / 2, fy, 0.015); g.add(wall); }
+    // a bed of glowing embers, logs, and flames drawn as soft tongues that flicker
+    const bedY = fy - fh / 2 + 0.01, fzz = 0.0;
+    const ember = tex(K, 'embers', 256, 64, (c, w, h) => { const r = K.rng(9); c.fillStyle = '#100503'; c.fillRect(0, 0, w, h); for (let i = 0; i < 260; i++) { c.fillStyle = r() < 0.5 ? '#ff6a1a' : '#ffb347'; c.globalAlpha = 0.3 + r() * 0.7; c.beginPath(); c.arc(r() * w, r() * h, 1 + r() * 4, 0, TAU); c.fill(); } c.globalAlpha = 1; });
+    const emberM = new THREE.MeshStandardMaterial({ color: '#2a1408', emissive: '#ffffff', emissiveMap: ember, emissiveIntensity: 1.4, roughness: 0.9 });
+    const bedM = K.mesh(new THREE.PlaneGeometry(fw - 0.06, 0.16), emberM); bedM.rotation.x = -Math.PI / 2; bedM.position.set(0, bedY, fzz); g.add(bedM);
+    const logM = K.memo('charlog', () => new THREE.MeshStandardMaterial({ color: '#3a2416', roughness: 0.95, emissive: '#ff4a10', emissiveIntensity: 0.12 }));
+    for (const [x, rz, ry] of [[-0.1, 0.08, 0.2], [0.1, -0.08, -0.2], [0, 0, 0]]) { const l = K.cyl(0.024, 0.026, 0.32, logM, 12); l.rotation.set(0, ry, Math.PI / 2 + rz); l.position.set(x * 0.8, bedY + (x ? 0.022 : 0.058), fzz); g.add(l); }
+    const ft = tex(K, 'flame', 128, 256, (c, w, h) => {
+      const gr = c.createLinearGradient(0, h, 0, 0); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.25, 'rgba(255,170,60,1)'); gr.addColorStop(0.6, 'rgba(255,80,20,.8)'); gr.addColorStop(1, 'rgba(255,40,0,0)');
+      c.fillStyle = gr; c.beginPath(); c.moveTo(w * 0.5, 0); c.bezierCurveTo(w * 0.9, h * 0.45, w * 1.0, h * 0.8, w * 0.5, h); c.bezierCurveTo(0, h * 0.8, w * 0.1, h * 0.45, w * 0.5, 0); c.filter = 'blur(6px)'; c.fill();
+    });
+    const flameM = K.memo('flame2', () => new THREE.MeshBasicMaterial({ map: ft, color: new THREE.Color(1.6, 1.4, 1.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }));
     const flames = [];
-    for (let i = 0; i < 7; i++) { const f = K.mesh(new THREE.ConeGeometry(0.03 + (i % 3) * 0.01, 0.16, 8, 1, true), flameM); f.position.set(-0.18 + i * 0.06, H * 0.22 + 0.1, D / 2 - 0.03); g.add(f); flames.push(f); }
-    const glass = K.box(W * 0.7, H * 0.55, 0.004, K.glass('#ffffff', 0.08)); glass.position.set(0, H * 0.45, D / 2 + 0.002); g.add(glass);
-    const light = new THREE.PointLight('#ff8a3a', 1.2, 2.5, 2); light.position.set(0, H * 0.45, D / 2 + 0.2); g.add(light);
+    for (let i = 0; i < 9; i++) {
+      const h = 0.12 + (i % 3) * 0.04, f = K.mesh(new THREE.PlaneGeometry(0.07 + (i % 2) * 0.02, h), flameM);
+      f.geometry.translate(0, h / 2, 0); f.position.set(-0.2 + i * 0.05, bedY + 0.02, fzz + ((i % 2) - 0.5) * 0.02); f.rotation.y = (i % 3 - 1) * 0.4; g.add(f); flames.push({ f, ph: i * 1.7 });
+    }
+    const glass = K.box(fw, fh, 0.004, K.glass('#ffffff', 0.06)); glass.position.set(0, fy, fz + 0.012); g.add(glass);
+    // things on the mantel
+    const candle = K.group(); candle.position.set(-0.42, H + 0.05, 0.02); g.add(candle);
+    candle.add(K.put(K.cyl(0.025, 0.025, 0.1, K.std('#f4efe4', 0.6), 20), 0, 0.05, 0));
+    const cf = K.mesh(new THREE.PlaneGeometry(0.02, 0.035), flameM); cf.geometry.translate(0, 0.0175, 0); cf.position.y = 0.102; candle.add(cf);
+    const vase = K.lathe([[0, 0], [0.04, 0], [0.05, 0.06], [0.03, 0.14], [0.035, 0.16], [0, 0.16]], K.plastic('#2f7d7a', 0.25), 32); vase.position.set(0.42, H + 0.05, 0); g.add(vase);
+    const light = new THREE.PointLight('#ff8a3a', 1.2, 2.5, 2); light.position.set(0, fy, fz + 0.2); g.add(light);
     g.userData.tick = t => {
-      flames.forEach((f, i) => { const k = 0.7 + 0.3 * Math.sin(t * 9 + i * 1.7) * Math.sin(t * 5.3 + i); f.scale.set(1, k, 1); f.position.y = H * 0.22 + 0.04 + 0.08 * k; });
+      for (const o of flames) { const k = 0.75 + 0.25 * Math.sin(t * 9 + o.ph) * Math.sin(t * 5.3 + o.ph * 2); o.f.scale.set(0.9 + 0.1 * Math.sin(t * 7 + o.ph), k, 1); o.f.rotation.z = Math.sin(t * 4 + o.ph) * 0.08; }
+      cf.scale.set(1, 0.85 + 0.15 * Math.sin(t * 13), 1);
       light.intensity = 1.0 + 0.3 * Math.sin(t * 11) * Math.sin(t * 7.3);
+      emberM.emissiveIntensity = 1.2 + 0.3 * Math.sin(t * 2.3);
     };
     g.userData.tick(0);
     return g;
   }
   function arcade(K) {
     const g = K.group(), THREE = K.THREE;
-    const sideM = K.plastic('#3b2bff', 0.4), black = K.std('#121214', 0.5);
+    const black = K.std('#141416', 0.5);
     const shape = new THREE.Shape(); shape.moveTo(-0.32, 0); shape.lineTo(0.32, 0); shape.lineTo(0.32, 0.75); shape.lineTo(0.42, 0.95); shape.lineTo(0.3, 1.7); shape.lineTo(-0.32, 1.75); shape.lineTo(-0.32, 0);
     const sideGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: false });
-    for (const sx of [-1, 1]) { const s = K.mesh(sideGeo, sideM); s.rotation.y = -Math.PI / 2; s.position.x = sx * 0.3 + (sx > 0 ? 0.015 : 0.015); g.add(s); }
+    // side art: a purple-to-pink sunset, a grid and the 10000WPM mark, mapped from the side's own coordinates
+    const art = tex(K, 'arcadeside', 256, 512, (c, w, h) => {
+      const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#1a0f4a'); gr.addColorStop(0.55, '#5b2bd9'); gr.addColorStop(1, '#ff5d8f'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#ffd23d'; c.beginPath(); c.arc(w * 0.5, h * 0.58, w * 0.28, Math.PI, 0); c.fill();
+      c.fillStyle = '#1a0f4a'; for (let i = 0; i < 6; i++) c.fillRect(0, h * 0.5 + i * 12, w, 4 + i);
+      c.strokeStyle = 'rgba(62,230,255,.8)'; c.lineWidth = 2;
+      for (let i = 0; i < 8; i++) { c.beginPath(); c.moveTo(0, h * 0.62 + i * i * 4); c.lineTo(w, h * 0.62 + i * i * 4); c.stroke(); }
+      for (let i = -6; i <= 6; i++) { c.beginPath(); c.moveTo(w / 2 + i * 8, h * 0.62); c.lineTo(w / 2 + i * 60, h); c.stroke(); }
+      c.fillStyle = '#e8eef2'; c.font = `700 30px ${K.MONO}`; c.textAlign = 'center'; c.save(); c.translate(w * 0.5, h * 0.25); c.rotate(-Math.PI / 2); c.fillText('STORMTYPER', 0, 10); c.restore();
+    });
+    const sideM = K.memo('arcadesidem', () => new THREE.MeshStandardMaterial({ map: art, roughness: 0.45 }));
+    const sp = sideGeo.attributes.position, suv = sideGeo.attributes.uv;
+    for (let i = 0; i < suv.count; i++) suv.setXY(i, (sp.getX(i) + 0.32) / 0.74, sp.getY(i) / 1.75);
+    const sideGeoR = sideGeo.clone(); { const u2 = sideGeoR.attributes.uv; for (let i = 0; i < u2.count; i++) u2.setX(i, 1 - u2.getX(i)); }
+    for (const sx of [-1, 1]) {
+      const s = K.mesh(sx > 0 ? sideGeoR : sideGeo, sideM); s.rotation.y = -Math.PI / 2; s.position.x = sx * 0.3 + 0.015; g.add(s);
+      // the glowing T-moulding round the side's edge
+      const edge = K.tube(shape.getPoints(4).map(p => [sx * 0.32, p.y, p.x]), 0.006, K.glow('#3ee6ff', 2.2), 80, 6, true); g.add(edge);
+    }
     const body = K.box(0.58, 1.7, 0.6, black); body.position.set(0, 0.85, -0.04); g.add(body);
-    const panel = K.box(0.6, 0.04, 0.24, K.plastic('#151515', 0.4)); panel.position.set(0, 0.92, 0.3); panel.rotation.x = 0.2; g.add(panel);
-    const stick = K.cyl(0.006, 0.006, 0.06, K.std('#222', 0.4), 8); stick.position.set(-0.12, 0.97, 0.3); g.add(stick);
-    const knob = K.sph(0.02, K.plastic('#d8343f', 0.3), 12, 8); knob.position.set(-0.12, 1.0, 0.3); g.add(knob);
-    ['#ffd23d', '#3ee6ff', '#ff5d8f'].forEach((c, i) => { const b = K.cyl(0.016, 0.016, 0.012, K.plastic(c, 0.3), 16); b.position.set(0.04 + i * 0.06, 0.955, 0.3 - (i % 2) * 0.02); b.rotation.x = 0.2; g.add(b); });
+    const panel = K.box(0.6, 0.04, 0.24, K.plastic('#1b1b20', 0.4)); panel.position.set(0, 0.92, 0.3); panel.rotation.x = 0.2; g.add(panel);
+    const panelArt = K.box(0.58, 0.002, 0.22, K.plastic('#5b2bd9', 0.35)); panelArt.position.set(0, 0.942, 0.305); panelArt.rotation.x = 0.2; g.add(panelArt);
+    for (const px of [-0.15, 0.13]) {
+      const stick = K.cyl(0.006, 0.006, 0.06, K.std('#222', 0.4), 8); stick.position.set(px - 0.04, 0.97, 0.3); g.add(stick);
+      const knob = K.sph(0.02, K.plastic(px < 0 ? '#d8343f' : '#3ee6ff', 0.25), 16, 10); knob.position.set(px - 0.04, 1.0, 0.3); g.add(knob);
+      ['#ffd23d', '#3ee6ff', '#ff5d8f'].forEach((c, i) => { const b = K.cyl(0.013, 0.013, 0.012, K.plastic(c, 0.3), 16); b.position.set(px + 0.02 + i * 0.035, 0.955, 0.3 - (i % 2) * 0.015); b.rotation.x = 0.2; g.add(b); });
+    }
+    // coin door and speaker grille
+    const door = K.rbox(0.26, 0.3, 0.01, 0.005, K.std('#2a2b2f', 0.35, 0.7)); door.position.set(0, 0.5, 0.265); g.add(door);
+    for (const sx of [-1, 1]) { const slot = K.box(0.04, 0.05, 0.004, K.glow('#ff3a46', 2.4)); slot.position.set(sx * 0.06, 0.58, 0.272); g.add(slot); const coin = K.box(0.004, 0.02, 0.006, K.std('#111', 0.4)); coin.position.set(sx * 0.06, 0.58, 0.276); g.add(coin); }
+    const grille = K.box(0.4, 0.06, 0.004, K.memo('arcgrille', () => new THREE.MeshStandardMaterial({ color: '#0d0d0f', map: tex(K, 'arcgrille', 128, 32, (c, w, h) => { c.fillStyle = '#26262a'; c.fillRect(0, 0, w, h); c.fillStyle = '#060607'; for (let x = 3; x < w; x += 6) for (let y = 3; y < h; y += 6) c.fillRect(x, y, 3, 3); }), roughness: 0.6 })));
+    grille.position.set(0, 1.56, 0.27); g.add(grille);
     const scr = tex(K, 'arcadescr', 256, 512, (c, w, h) => {
       c.fillStyle = '#05030f'; c.fillRect(0, 0, w, h);
       const r = K.rng(3);
@@ -671,12 +843,22 @@
       c.fillStyle = '#ffd23d'; c.font = `700 22px ${K.MONO}`; c.textAlign = 'center'; c.fillText('HI 10000', w / 2, 24);
     });
     const smap = scr.clone(); smap.wrapT = THREE.RepeatWrapping; smap.needsUpdate = true;
-    const screen = K.mesh(new THREE.PlaneGeometry(0.46, 0.4), new THREE.MeshBasicMaterial({ map: smap, toneMapped: false, color: new THREE.Color(1.3, 1.3, 1.3) }));
-    screen.position.set(0, 1.28, 0.27); screen.rotation.x = -0.18; g.add(screen);
-    const marquee = K.box(0.56, 0.14, 0.02, K.glow('#ff5d8f', 2.2)); marquee.position.set(0, 1.62, 0.2); g.add(marquee);
-    g.userData.tick = t => { smap.offset.y = (t * 0.08) % 1; marquee.material.emissiveIntensity = 2 + Math.sin(t * 3) * 0.6; };
-    // a separate material so the marquee's flicker doesn't change other items' glow
-    marquee.material = marquee.material.clone();
+    const bezel = K.box(0.52, 0.46, 0.01, K.std('#050506', 0.3)); bezel.position.set(0, 1.28, 0.262); bezel.rotation.x = -0.18; g.add(bezel);
+    const screenM = new THREE.MeshBasicMaterial({ map: smap, toneMapped: false, color: new THREE.Color(1.3, 1.3, 1.3) });
+    // scanlines over the screen, and a slight bulge like a tube
+    const sg = new THREE.PlaneGeometry(0.46, 0.4, 12, 12), sgp = sg.attributes.position;
+    for (let i = 0; i < sgp.count; i++) { const x = sgp.getX(i) / 0.23, y = sgp.getY(i) / 0.2; sgp.setZ(i, 0.012 * (1 - x * x) * (1 - y * y)); }
+    const screen = K.mesh(sg, screenM); screen.position.set(0, 1.28, 0.27); screen.rotation.x = -0.18; g.add(screen);
+    const lines = K.mesh(sg, K.memo('arcscan', () => new THREE.MeshBasicMaterial({ map: (() => { const t = tex(K, 'scan', 4, 128, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = 'rgba(0,0,0,.35)'; for (let y = 0; y < h; y += 2) c.fillRect(0, y, w, 1); }).clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); t.needsUpdate = true; return t; })(), transparent: true, depthWrite: false })));
+    lines.position.copy(screen.position); lines.position.z += 0.001; lines.rotation.copy(screen.rotation); g.add(lines);
+    const marqueeT = tex(K, 'marquee', 512, 128, (c, w, h) => {
+      const gr = c.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#5b2bd9'); gr.addColorStop(1, '#ff5d8f'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#fff'; c.font = `700 60px ${K.MONO}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = '#3ee6ff'; c.shadowBlur = 12; c.fillText('TYPE INVADERS', w / 2, h / 2 + 4);
+    });
+    const marqueeM = new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: marqueeT, emissiveIntensity: 1.6 });
+    const marquee = K.box(0.56, 0.14, 0.02, marqueeM); marquee.position.set(0, 1.64, 0.2); g.add(marquee);
+    const glow = new THREE.PointLight('#8c6bff', 0.5, 1.6, 2); glow.position.set(0, 1.3, 0.5); g.add(glow);
+    g.userData.tick = t => { smap.offset.y = (t * 0.08) % 1; marqueeM.emissiveIntensity = 1.5 + Math.sin(t * 3) * 0.3; };
     return g;
   }
   function floorLamp(K) {
@@ -693,17 +875,36 @@
     const stand = K.std('#1b1c1e', 0.4, 0.6);
     g.add(K.tube([[-0.15, 0.01, 0.1], [0, 0.03, -0.05], [0.15, 0.01, 0.1]], 0.008, stand, 24, 6));
     g.add(K.tube([[0, 0.03, -0.05], [0, 0.6, -0.12]], 0.008, stand, 8, 6));
-    const gt = K.group(); gt.position.set(0, 0.06, 0.02); gt.rotation.x = -0.16; g.add(gt);
+    for (const sx of [-1, 1]) g.add(K.put(K.cyl(0.012, 0.012, 0.05, K.std('#111', 0.9), 10), sx * 0.08, 0.07, 0.06, Math.PI / 2, 0, 0));
+    const gt = K.group(); gt.position.set(0, 0.07, 0.03); gt.rotation.x = -0.16; g.add(gt);
     const s = new THREE.Shape();
     s.moveTo(0, 0); s.bezierCurveTo(0.2, 0, 0.21, 0.2, 0.12, 0.25); s.bezierCurveTo(0.17, 0.33, 0.16, 0.46, 0, 0.47);
     s.bezierCurveTo(-0.16, 0.46, -0.17, 0.33, -0.12, 0.25); s.bezierCurveTo(-0.21, 0.2, -0.2, 0, 0, 0);
-    const bodyGeo = new THREE.ExtrudeGeometry(s, { depth: 0.09, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.008, bevelSegments: 3, curveSegments: 24 });
-    const body = K.mesh(bodyGeo, K.memo('guitarwood', () => new THREE.MeshPhysicalMaterial({ color: '#d99a4e', roughness: 0.3, clearcoat: 1 }))); body.position.z = -0.045; gt.add(body);
-    const hole = K.mesh(new THREE.CircleGeometry(0.045, 32), K.std('#120b06', 0.9)); hole.position.set(0, 0.3, 0.054); gt.add(hole);
+    const hole = new THREE.Path(); hole.absarc(0, 0.3, 0.042, 0, TAU, true);
+    const top = new THREE.Shape(s.getPoints(48)); top.holes.push(hole);
+    // the top is spruce with a sunburst, the sides and back are darker wood, edged with white binding
+    const topT = tex(K, 'gtop', 256, 256, (c, w, h) => {
+      const gr = c.createRadialGradient(w / 2, h * 0.65, 10, w / 2, h * 0.6, w * 0.6); gr.addColorStop(0, '#f2c77a'); gr.addColorStop(0.65, '#d9953f'); gr.addColorStop(1, '#5a2a10'); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+      c.strokeStyle = 'rgba(120,70,20,.18)'; for (let x = 0; x < w; x += 3) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 2, h); c.stroke(); }
+    });
+    const topGeo = new THREE.ShapeGeometry(top, 24), tp = topGeo.attributes.position, tuv = topGeo.attributes.uv;
+    for (let i = 0; i < tuv.count; i++) tuv.setXY(i, (tp.getX(i) + 0.21) / 0.42, tp.getY(i) / 0.47);
+    const topM = K.memo('gtopm', () => new THREE.MeshPhysicalMaterial({ map: topT, roughness: 0.3, clearcoat: 1 }));
+    const front = K.mesh(topGeo, topM); front.position.z = 0.046; gt.add(front);
+    const sideGeo = new THREE.ExtrudeGeometry(new THREE.Shape(s.getPoints(48)), { depth: 0.09, bevelEnabled: false, curveSegments: 24 });
+    const body = K.mesh(sideGeo, K.memo('gside', () => new THREE.MeshPhysicalMaterial({ color: '#5a2a10', roughness: 0.3, clearcoat: 1 }))); body.position.z = -0.045; gt.add(body);
+    const bind = K.tube(s.getPoints(48).map(p => [p.x, p.y, 0.046]), 0.003, K.std('#f2efe6', 0.4), 120, 4, true); gt.add(bind);
+    const inside = K.mesh(new THREE.CircleGeometry(0.042, 32), K.std('#120b06', 0.9)); inside.position.set(0, 0.3, 0.02); gt.add(inside);
+    const rose = K.torus(0.05, 0.004, K.std('#1b1410', 0.5), TAU, 6, 40); rose.position.set(0, 0.3, 0.047); gt.add(rose);
+    const guard = K.mesh(new THREE.CircleGeometry(0.04, 20, 0, Math.PI * 0.6), K.plastic('#1b1410', 0.3)); guard.position.set(0.03, 0.23, 0.047); guard.rotation.z = -1.4; gt.add(guard);
     const neck = K.box(0.05, 0.5, 0.025, K.wood('walnut')); neck.position.set(0, 0.7, 0.03); gt.add(neck);
-    const head = K.rbox(0.07, 0.15, 0.02, 0.006, K.wood('walnut')); head.position.set(0, 1.02, 0.025); head.rotation.x = -0.15; gt.add(head);
-    const br = K.box(0.1, 0.012, 0.01, K.std('#1b1c1e', 0.5)); br.position.set(0, 0.12, 0.055); gt.add(br);
-    for (let i = 0; i < 6; i++) { const st = K.box(0.0012, 0.86, 0.0012, K.std('#d9d4c9', 0.3, 1)); st.position.set(-0.018 + i * 0.0072, 0.55, 0.06); gt.add(st); }
+    const fb = K.box(0.052, 0.48, 0.006, K.std('#1b1410', 0.5)); fb.position.set(0, 0.71, 0.045); gt.add(fb);
+    for (let i = 1; i < 14; i++) { const fr = K.box(0.052, 0.002, 0.003, K.std('#c9ccd2', 0.2, 1)); fr.position.set(0, 0.95 - i * 0.034 * (1 - i * 0.018), 0.049); gt.add(fr); }
+    for (const fy of [0.85, 0.78, 0.72, 0.66, 0.6]) { const dot = K.cyl(0.004, 0.004, 0.002, K.std('#f2efe6', 0.3), 8); dot.rotation.x = Math.PI / 2; dot.position.set(0, fy, 0.049); gt.add(dot); }
+    const head = K.rbox(0.075, 0.16, 0.02, 0.006, K.wood('walnut')); head.position.set(0, 1.03, 0.025); head.rotation.x = -0.15; gt.add(head);
+    for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) { const peg = K.cyl(0.006, 0.006, 0.03, K.std('#c9ccd2', 0.2, 1), 8); peg.rotation.z = Math.PI / 2; peg.position.set(sx * 0.05, 0.98 + k * 0.04, 0.02); gt.add(peg); const knob = K.rbox(0.014, 0.02, 0.008, 0.003, K.std('#f2efe6', 0.4)); knob.position.set(sx * 0.068, 0.98 + k * 0.04, 0.02); gt.add(knob); }
+    const br = K.rbox(0.12, 0.016, 0.008, 0.003, K.std('#1b1410', 0.5)); br.position.set(0, 0.12, 0.051); gt.add(br);
+    for (let i = 0; i < 6; i++) { const st = K.box(0.0012, 0.86, 0.0012, K.std('#d9d4c9', 0.3, 1)); st.position.set(-0.018 + i * 0.0072, 0.55, 0.058); gt.add(st); }
     return g;
   }
   function framedTrio(K) {

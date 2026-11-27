@@ -694,6 +694,16 @@ window.Room = (() => {
       if (bb.max.z <= 0.12 && bb.max.x > 0.3) s.wallB.push(o);
       else if (bb.max.x <= 0.2 && bb.max.z > 0.3) s.wallL.push(o);
     }
+    // soft shade where the walls meet the floor and each other, since there is no ambient occlusion
+    const aoT = K.canvasTex('ao-ramp', 16, 128, (c, w, h) => { const gr = c.createLinearGradient(0, h, 0, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.35, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+    const aoM = new THREE.MeshBasicMaterial({ color: '#000', alphaMap: aoT, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
+    const strip = (w, h, list, place) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), aoM); place(m); m.raycast = () => {}; shell.add(m); list.push(m); };
+    strip(W, 0.45, s.wallB, m => m.position.set(W / 2, 0.225, 0.003));
+    strip(D, 0.45, s.wallL, m => { m.rotation.y = Math.PI / 2; m.position.set(0.003, 0.225, D / 2); });
+    strip(W, 0.4, s.wallB, m => { m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI; m.position.set(W / 2, 0.002, 0.2); });
+    strip(D, 0.4, s.wallL, m => { m.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); m.position.set(0.2, 0.002, D / 2); });
+    strip(H, 0.35, s.wallB, m => { m.rotation.z = -Math.PI / 2; m.position.set(0.175, H / 2, 0.003); });
+    strip(H, 0.35, s.wallL, m => { m.rotation.set(0, Math.PI / 2, Math.PI / 2); m.position.set(0.003, H / 2, 0.175); });
   }
 
   // Walls between the camera and the room fade out of the way, so the room turns all the way round
@@ -770,10 +780,31 @@ window.Room = (() => {
   }
 
   // ---------------------------------------------------------------- items in the scene
+  // A soft dark patch under each item (or behind a wall item), since the renderer has no ambient
+  // occlusion: it sits things on the floor instead of floating over it
+  function contactTex(s) {
+    return s.K.canvasTex('contact', 128, 128, (c, w, h) => {
+      c.filter = 'blur(12px)'; c.fillStyle = 'rgba(0,0,0,1)';
+      c.beginPath(); c.roundRect(28, 28, w - 56, h - 56, 18); c.fill();
+    });
+  }
+  function contact(s, p, model) {
+    const d = def(p.id), dm = RoomItems.dims(p.id);
+    if (!dm || d.rug) return null;
+    const THREE = s.THREE, b = dm.box;
+    const m = s.contactMat || (s.contactMat = new THREE.MeshBasicMaterial({ color: '#000', alphaMap: contactTex(s), transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    const k = 128 / 72;   // the canvas is 128 px, the dark core about 72 px
+    const sh = new THREE.Mesh(s.contactGeo || (s.contactGeo = new THREE.PlaneGeometry(1, 1)), m);
+    if (p.wall) { sh.scale.set((b.max.x - b.min.x) * k, (b.max.y - b.min.y) * k * 0.9, 1); sh.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2 - 0.02, 0.002); sh.material = s.contactWall || (s.contactWall = Object.assign(m.clone(), { opacity: 0.32 })); }
+    else { sh.rotation.x = -Math.PI / 2; sh.scale.set((b.max.x - b.min.x) * k * 0.95, (b.max.z - b.min.z) * k * 0.95, 1); sh.position.set((b.min.x + b.max.x) / 2, 0.003, (b.min.z + b.max.z) / 2); }
+    sh.userData.contact = true; sh.raycast = () => {};
+    return sh;
+  }
   function place(s, p) {
     const wrap = new s.THREE.Group();
     const model = RoomItems.create(p.id);
     wrap.add(model);
+    const sh = contact(s, p, model); if (sh) wrap.add(sh);
     wrap.userData.place = p;
     p.obj = wrap; p.model = model;
     s.itemsRoot.add(wrap);
