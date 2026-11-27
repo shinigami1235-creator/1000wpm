@@ -155,15 +155,15 @@ window.SyntaxDress = (() => {
       for (let i = 0; i < 3; i++) put(B.chest, cbox(0.32, 0.36, 2.3, 0.3), [sx * (W * 0.5 + 0.05 - i * 0.18), 0.2 - i * 0.62, 0.1], [0, 0, sx * (0.25 + i * 0.08)], i % 2 ? plate : dark);
       // exhausts on the upper back, with a hot ring at the mouth
       put(B.chest, cyl(0.42, 0.52, 1.3, 10), [sx * 1.85, H / 2 - 0.05, -1.55], [-0.55, 0, sx * -0.15], dark);
-      put(B.chest, new THREE.TorusGeometry(0.4, 0.07, 6, 14), [sx * 1.85 + sx * -0.1, H / 2 + 0.52, -1.92], [Math.PI / 2 - 0.55, 0, sx * -0.15], glow);
-      put(B.chest, cyl(0.34, 0.34, 0.1, 10), [sx * 1.85 + sx * -0.1, H / 2 + 0.45, -1.86], [-0.55, 0, sx * -0.15], dark);
+      put(B.chest, new THREE.TorusGeometry(0.42, 0.09, 6, 14), [sx * 1.85 + sx * -0.1, H / 2 + 0.52, -1.92], [Math.PI / 2 - 0.55, 0, sx * -0.15], plate);
+      put(B.chest, cyl(0.34, 0.34, 0.1, 10), [sx * 1.85 + sx * -0.1, H / 2 + 0.4, -1.83], [-0.55, 0, sx * -0.15], mouthMat);
     }
     put(B.chest, cbox(1.3, 0.7, 0.75, 0.3, 0.75, 1), [0, H / 2 + 0.12, 1.2], [-0.45, 0, 0], plate);
     // heat-sink fins down the spine, swept back, each with a glowing back edge
     for (let i = 0; i < 5; i++) {
       const x = (i - 2) * 0.55, h = 2.6 - Math.abs(i - 2) * 0.5;
       put(B.chest, cbox(0.16, h, 1.25, 0.25, 0.6, 1), [x, 0.3, -D / 2 - 0.35], [0.2, 0, x * -0.12], dark);
-      put(B.chest, bar(0.07, h * 0.82, 0.07), [x, 0.35, -D / 2 - 0.98], [0.2, 0, x * -0.12], glow);
+      put(B.chest, bar(0.07, h * 0.3, 0.07), [x, 0.3 + h * 0.28, -D / 2 - 0.92], [0.2, 0, x * -0.12], glow);
     }
     // the core's bezel: three bars round the triangle with a glowing inner edge, and fangs at the corners
     for (let i = 0; i < 3; i++) {
@@ -212,6 +212,12 @@ window.SyntaxDress = (() => {
       put(sh, cone(0.32, 1.9, 4), [sx * 1.85, 2.45, 0.2], [-0.25, 0, sx * -0.8], dark);
       put(sh, cone(0.2, 0.9, 4), [sx * 0.4, 2.85, 0.6], [0.1, 0, sx * -0.25], plate);
       put(sh, bar(0.1, 0.1, P[2] * 0.95), [sx * 2.38, -0.62, 0], [0, 0, sx * -0.18], glow);
+      // vent slits across the pauldron's front plate
+      for (let i = 0; i < 3; i++) put(sh, bar(1.6, 0.09, 0.08), [sx * (0.78 - 0.06 * i), 0.3 + i * 0.3, P[2] * 0.52 + 0.24 - i * 0.045], [0.15, 0, sx * -0.18], glow);
+      put(sh, bar(1.9, 0.12, 0.1), [sx * 0.72, 1.32, P[2] * 0.52 + 0.1], [0.15, 0, sx * -0.18], dark);
+      put(sh, cbox(0.24, 2.3, P[2] * 0.72, 0.3, 0.85, 1), [sx * 2.72, 0.75, 0], [0, 0, sx * -0.2], dark);
+      put(sh, cbox(0.3, 0.3, 0.3, 0.3), [sx * 2.85, 1.75, P[2] * 0.3], [0, 0, 0], plate);
+      put(sh, cbox(0.3, 0.3, 0.3, 0.3), [sx * 2.85, 1.75, -P[2] * 0.3], [0, 0, 0], plate);
       put(sh, bar(0.08, 1.5, 0.08), [sx * 2.5, 0.35, P[2] * 0.42], [0, 0, sx * -0.18], glow);
       // the upper arm: a piston up the back, chrome rod in a dark sleeve
       put(ar, cyl(0.22, 0.22, 1.3, 8), [0, -0.9, -T * 0.62], [0, 0, 0], dark);
