@@ -419,9 +419,9 @@ Combat.FX = (() => {
     // pulse and, when it's near the floor, a burn. s scales it (1 is a solid spell hit at size 6)
     function impact(at, col, s = 1, o2 = {}) {
       const big = s >= 1.4;
-      flare(at, WHITE, 4 * s, 0.12, 1.4, 0.3);
-      bigFlash(at, col, 9 * s, 1.1);
-      flare(at, col, 5 * s, 0.5, 0.8, 0.9);
+      flare(at, WHITE, 3 * s, 0.1, 1.2, 0.3);
+      bigFlash(at, col, 7 * s, 0.85);
+      flare(at, col, 4 * s, 0.45, 0.6, 0.9);
       if (!reduce) {
         burst(at, Math.round(18 + 22 * s), 9 * s, col, 0.35 * Math.sqrt(s), 0.6, o2.glyph == null ? G.star : o2.glyph, { drag: 2.2 });
         burst(at, Math.round(8 + 12 * s), 12 * s, EMBER, 0.28, 0.9, G.ember, { drag: 1.2, grav: 9, up: 0.5 });
@@ -977,7 +977,7 @@ Combat.FX = (() => {
       decal(t2, col, 7, 1.2, 0.6);
       light(t1, col, 1.6, 0.6);
       juice('shake', 0.25);
-      e.tongues = Array.from({ length: 9 }, (_, i) => ({ a: i / 9 * Math.PI * 2, h: rnd(3, 5.5), ph: rnd(0, 6) }));
+      e.tongues = Array.from({ length: 9 }, (_, i) => ({ a: i / 9 * Math.PI * 2, h: rnd(1.5, 2.6), ph: rnd(0, 6) }));
       e.update = () => {
         P(cs, 'pos', t1);
         const k = 1 - e.t / 0.6; if (k <= 0) return false;
@@ -989,7 +989,7 @@ Combat.FX = (() => {
           for (let j = 1; j <= 5; j++) {
             const y = j / 5;
             t5.set(t3.x + Math.sin(e.t * 18 + f.ph + j) * 0.25 * y, f.h * y * ease(e.t / 0.2), t3.z + Math.cos(e.t * 15 + f.ph + j) * 0.25 * y);
-            seg(prev, t5, 0.5 * (1 - y * 0.8), j < 3 ? hot : col, 1.2 * k);
+            seg(prev, t5, 0.26 * (1 - y * 0.8), j < 3 ? hot : col, 1.1 * k);
             prev = t4.copy(t5);
           }
         }
@@ -1302,9 +1302,9 @@ Combat.FX = (() => {
         P(tg, 'pos', t1); t1.z += 1 * S;
         e.boom = e.t; e.sh = shell(); e.at = t1.clone();
         e.sh.m.material.uniforms.uCol.value.copy(col); e.sh.m.material.uniforms.uHex.value = 0;
-        burst(t1, 120, 22 * S, col, 0.55, 0.9, G.star, { drag: 1.4 });
-        burst(t1, 60, 14 * S, hi, 0.4, 0.7, G.dot, { drag: 1.8 });
-        impact(t1, col, 2 * S, { shake: 0.7 });
+        burst(t1, 80, 22 * S, col, 0.5, 0.9, G.star, { drag: 1.4 });
+        burst(t1, 40, 14 * S, hi, 0.4, 0.7, G.dot, { drag: 1.8 });
+        impact(t1, col, 1.7 * S, { shake: 0.7 });
         smoke(t1, 10, col, 4 * S, 2, { speed: 8 * S, alpha: 0.35, spread: 2 * S });
         P(tg, 'base', t2); decal(t2, col, 22 * S, 1.6, 0.9, 0.4);
         react(tg, 'stagger', h.power);
@@ -1333,7 +1333,7 @@ Combat.FX = (() => {
         const u = (e.t - e.boom) / 0.8;
         if (u >= 1) { if (e.sh) { freeShell(e.sh); e.sh = null; } return e.t - e.boom < 1.4; }
         e.sh.m.position.copy(e.at); e.sh.m.scale.setScalar((1 + ease(u) * 13) * S);
-        e.sh.m.material.uniforms.uAmt.value = (1 - u) * 1.6;
+        e.sh.m.material.uniforms.uAmt.value = (1 - u) * (1 - u) * 1.2;
         circle(t3.copy(e.at).setY(0.12), UP, (1 + ease(u) * 20) * S, 0.35 * S, col, 1.6 * (1 - u), 40);
         circle(e.at, t4.subVectors(camera.position, e.at).normalize(), (1 + ease(u) * 15) * S, 0.25 * S, hi, 1.2 * (1 - u), 40, u);
         // radial streaks thrown out in the first instant
