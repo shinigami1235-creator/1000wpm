@@ -15,6 +15,7 @@ Router.register('duel', (() => {
   const e = s => UI.esc(s);
   let el = null, off = [], mode = 'menu', info = null, scene = null, raf = 0, keys = null, onDoc = null;
   let ty = null, lastState = null, fog = 0, endShown = false, waitC = null, incoming = null, incT = 0, ctl = null, noticeT = 0;
+  let snd = null, phaseWas = '', countWas = 0, endT = 0;
   const SIDE_COL = [Theme.hex('accent'), '#f29d30'];
 
   function mount(root, params) {
@@ -209,7 +210,10 @@ Router.register('duel', (() => {
     UI.play('duel', true);
     // each side's operator: yours from the Character Lab, everyone else's seeded from their name
     const preset = k => (!window.Operator ? null : k === me ? Operator.mine() : Operator.random(P[k].art ? 'art' : P[k].name || P[k].id));
-    scene = DuelScene.mount(stage, { sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k], preset: preset(k) })) });
+    // the arena's sounds: hits, blocks, the bell, the crowd (js/app/arena-audio.js)
+    snd = window.ArenaAudio ? ArenaAudio.create() : null;
+    phaseWas = ''; countWas = 0;
+    scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k], preset: preset(k), name: P[k].name })) });
     window._duel = { scene: () => scene };   // tests
     // load and play every effect once behind the cover, then tell the server this side is ready.
     // The countdown starts only when both sides are; a stuck load gives up after 12 seconds.
@@ -308,7 +312,8 @@ Router.register('duel', (() => {
       case 'status': if (['ward', 'hyper', 'root', 'split'].includes(ev.name)) scene.aura(ev.side, ev.name, ev.on); break;
       case 'round': round(ev); break;
       case 'combo': if (ev.side === me && ev.combo && ev.combo % 5 === 0 && ev.combo > ev.from) WPM.track('combo', { n: ev.combo, mode: 'duel' });
-        if (ev.side === me && ev.tier > 0 && ev.combo > ev.from && Combat.TIERS[ev.tier].at === ev.combo) banner(Combat.TIERS[ev.tier].name, 'tier', 900); break;
+        if (ev.side === me && ev.tier > 0 && ev.combo > ev.from && Combat.TIERS[ev.tier].at === ev.combo) { banner(Combat.TIERS[ev.tier].name, 'tier', 900); if (snd) snd.combat('tierUp', ev.tier); }
+        if (ev.side === me && ev.combo < ev.from && ev.from >= 5 && snd) snd.combat('break'); break;
       default: break;
     }
   }
@@ -394,11 +399,22 @@ Router.register('duel', (() => {
         return;
       }
     }
+    if (st.phase !== phaseWas) {
+      phaseWas = st.phase;
+      if (scene) scene.phase(st.phase, Math.max(1, st.phase === 'fight' ? st.round : (st.round || 0) + 1));
+      if (snd && st.phase !== 'over') snd.crowd(true, st.phase === 'fight' ? 1 : 0.8);
+    }
     const clockEl = el.querySelector('[data-clock]');
     const t = st.phase === 'fight' ? st.roundMs - (st.clock - st.roundAt) : st.phase === 'count' ? (st.roundAt || 0) - st.clock : st.phase === 'break' ? st.breakUntil - st.clock : 0;
     clockEl.textContent = UI.clock ? UI.clock(Math.max(0, Math.ceil(t / 1000))) : String(Math.ceil(t / 1000));
     el.querySelector('[data-round]').textContent = st.phase === 'count' ? 'Get ready' : st.phase === 'break' ? 'Next round in' : `Round ${Math.max(1, st.round)}`;
-    if (st.phase === 'count') { const s = Math.ceil(((st.roundAt || 0) - st.clock) / 1000); if (s > 0) banner(String(s), 'count', 1100); }
+    if (st.phase === 'count' || st.phase === 'break') {
+      const s = (((st.phase === 'count' ? st.roundAt : st.breakUntil) || 0) - st.clock) / 1000;
+      const n = Math.ceil(s);
+      if (st.phase === 'count' && n > 0) banner(String(n), 'count', 1100);
+      if (n > 0 && n <= 3 && n !== countWas && snd) snd.play('tick');
+      countWas = n;
+    }
     st.sides.forEach((s, k) => {
       hpTo(k, s.hp);
       const a = el.querySelector(`[data-acc="${k}"]`);
@@ -534,6 +550,7 @@ Router.register('duel', (() => {
       return;
     }
     const won = me >= 0 && r.winner === me, lost = me >= 0 && r.winner === 1 - me;
+    if (scene && r.forfeit == null) scene.result(r.winner);
     let reward = null;
     if (me >= 0) {
       const s = (r.sides && r.sides[me]) || {};
@@ -545,6 +562,15 @@ Router.register('duel', (() => {
       WPM.track('pvp_match', { mode: info.mode, won, opp: P[1 - me].id, art: !!P[1 - me].art, wpm: s.wpm || 0, acc: s.acc || 0, rating: m.rating ? m.rating.after : null });
       if (won) WPM.track('pvp_win', { mode: info.mode, opp: P[1 - me].id, art: !!P[1 - me].art });
     }
+    // the KO and the winner's moment play out first (the camera circles the winner), then the card
+    const show = () => paintEnd(m, r, won, lost, reward);
+    clearTimeout(endT);
+    if (r.forfeit != null || matchMedia('(prefers-reduced-motion: reduce)').matches) show(); else endT = setTimeout(show, 3600);
+  }
+  function paintEnd(m, r, won, lost, reward) {
+    if (!el || !info) return;
+    if (snd) snd.crowd(false);
+    const me = info.you, P = info.players;
     const box = el.querySelector('[data-end]');
     if (!box) return;
     const title = r.forfeit != null ? (r.forfeit === me ? 'You left the duel' : `${P[r.forfeit].name} left the duel`)
@@ -590,9 +616,10 @@ Router.register('duel', (() => {
     cancelAnimationFrame(raf); raf = 0;
     if (mode === 'fight' && !endShown) Net.match.leave();
     if (scene) { scene.dispose(); scene = null; }
+    if (snd) { snd.dispose(); snd = null; }
     if (onDoc) { document.removeEventListener('keydown', onDoc); onDoc = null; }
     keys = null; ty = null; info = null; lastState = null; waitC = null;
-    clearTimeout(incT); clearTimeout(bannerT);
+    clearTimeout(incT); clearTimeout(bannerT); clearTimeout(endT);
   }
   function unmount() {
     stopFight();
