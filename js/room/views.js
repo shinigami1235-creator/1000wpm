@@ -61,7 +61,7 @@
   }
 
   const VIEWS = [
-    ['view-city', 'Night city', 0, 'city', true],
+    ['view-city', 'City at night', 0, 'city', true],
     ['view-rain', 'Rainy afternoon', 500, 'rain'],
     ['view-forest', 'Forest with fireflies', 800, 'forest'],
     ['view-snow', 'Snowy mountains', 900, 'snow'],

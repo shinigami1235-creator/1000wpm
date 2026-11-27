@@ -46,7 +46,7 @@
       pet: { sit: [606, 240, 112], hover: [470, 190, 120] },
     },
     3: { name: 'Ops den', level: 25, w: 1376, h: 768, size: [5, 4.5], focus: 0.45, dim: 0.85,
-      glass: [506, 132, 207.5, 309.5],
+      glass: [506, 132, 222.5, 309.5],
       posters: [[[52, 119], [234, 146], [235, 399], [52, 401]], [[1193, 242], [1297, 234], [1298, 387], [1193, 388]]],
       screens: [
         { q: [[273, 367], [384, 368], [384, 454], [274, 469]] },
@@ -72,7 +72,7 @@
       pet: { sit: [226, 668, 175], hover: [640, 210, 120] },
     },
     5: { name: 'Command deck', level: 75, w: 1376, h: 768, size: [10, 8], focus: 0.55, dim: 0.85,
-      glass: [94, 29, 733.5, 370.5],
+      glass: [94, 29, 733.5, 472.5],
       posters: [[[1060, 150], [1132, 146], [1132, 266], [1060, 268]], [[1048, 350], [1112, 347], [1112, 457], [1049, 457]]],
       screens: [
         { q: [[246, 399], [298, 399], [298, 450], [246, 450]] },
@@ -130,7 +130,7 @@
   const I = [];
   const add = (type, list) => list.forEach(([id, name, price, more]) => I.push({ id, name, type, price, ...(more || {}) }));
   add('view', [
-    ['view-city', 'Night city', 0, { scene: null, desc: 'The view the room came with.' }],
+    ['view-city', 'City at night', 0, { scene: null, desc: 'The view the room came with.' }],
     ['view-rain', 'Rainy afternoon', 500, { scene: 'rain' }],
     ['view-forest', 'Forest with fireflies', 800, { scene: 'forest' }],
     ['view-snow', 'Snowy mountains', 900, { scene: 'snow' }],

@@ -134,17 +134,85 @@ window.RoomView = (() => {
 
 
   // ------------------------------------------------------------------ window views
-  const SW = 1024, SH = 768, OW = 384, OH = 288;
+  // the scenes are baked into pictures (tools/room-views-bake.py): the big one for the window and a
+  // small one for the shop card; a scene without a picture is painted here instead
+  const OW = 384, OH = 288;
   const sceneCache = new Map();
-  function sceneArt(key) {
-    if (!sceneCache.has(key)) {
-      const sc = RoomScenes.SCENES[key];
-      const base = document.createElement('canvas'); base.width = SW; base.height = SH;
-      sc.draw(RoomScenes.K, base.getContext('2d'), SW, SH);
-      sceneCache.set(key, { sc, base });
-    }
-    return sceneCache.get(key);
+  function sceneArt(key, small) {
+    const k = key + (small ? '-s' : '');
+    if (!sceneCache.has(k)) sceneCache.set(k, loadImg(`assets/room/views/${k}.webp`).catch(() => {
+      const W = small ? 400 : 1536, H = small ? 300 : 1152, c = document.createElement('canvas'); c.width = W; c.height = H;
+      RoomScenes.SCENES[key].draw(RoomScenes.K, c.getContext('2d', { willReadFrequently: true }), W, H);
+      return c;
+    }));
+    return sceneCache.get(k);
   }
+  // The view as if it were really outside that window, worked out from the photo's own glass:
+  // brightness and contrast pulled toward what the photo shows there, a little less colour, the
+  // photo's light across the glass (darker corners, brighter where the room lights it), haze, the
+  // room's reflections from the original glass laid back on top, and the photo's grain.
+  //   sc.keep: how much of the view's own brightness stays (0 takes the photo's, 1 keeps the scene's)
+  function behindGlass(c, W, H, P, mk, [bx, by, bw, bh], tw, sc) {
+    const f = P.naturalWidth / tw;
+    const grab = (w, h, blur = 0) => { const t = document.createElement('canvas'); t.width = w; t.height = h; const g = t.getContext('2d', { willReadFrequently: true }); if (blur) g.filter = `blur(${blur}px)`; g.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
+    const O = grab(W, H), Ob = grab(W, H, Math.max(2, W / 70));
+    // the photo's light across the window, very soft: from a tiny copy, smoothed up
+    const lw = 12, lh = Math.max(2, Math.round(12 * H / W));
+    const tiny = document.createElement('canvas'); tiny.width = lw; tiny.height = lh;
+    const tg = tiny.getContext('2d'); tg.filter = 'blur(1px)'; tg.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, lw, lh);
+    const big = document.createElement('canvas'); big.width = W; big.height = H;
+    const bgc = big.getContext('2d', { willReadFrequently: true }); bgc.imageSmoothingQuality = 'high'; bgc.drawImage(tiny, 0, 0, W, H);
+    const Lo = bgc.getImageData(0, 0, W, H).data;
+    const mt = document.createElement('canvas'); mt.width = W; mt.height = H;
+    const mg = mt.getContext('2d', { willReadFrequently: true }); mg.drawImage(mk, 0, 0, W, H);
+    const M = mg.getImageData(0, 0, W, H).data;
+    const img = c.getImageData(0, 0, W, H), D = img.data;
+    const lum = (a, i) => a[i] * 0.2126 + a[i + 1] * 0.7152 + a[i + 2] * 0.0722;
+    // averages over the glass only
+    let n = 0, sS = 0, sS2 = 0, sO = 0, sO2 = 0, oR = 0, oG = 0, oB = 0;
+    for (let i = 0; i < D.length; i += 16) {
+      if (M[i + 3] < 128) continue;
+      const a = lum(D, i), b = lum(O, i);
+      n++; sS += a; sS2 += a * a; sO += b; sO2 += b * b; oR += O[i]; oG += O[i + 1]; oB += O[i + 2];
+    }
+    if (!n) return;
+    const mS = sS / n, dS = Math.sqrt(Math.max(1, sS2 / n - mS * mS)), mO = sO / n, dO = Math.sqrt(Math.max(1, sO2 / n - mO * mO));
+    oR /= n; oG /= n; oB /= n;
+    const keep = sc.keep == null ? 0.35 : sc.keep;
+    // brightness: mostly the photo's; contrast: never more than the scene had, pulled toward the photo's
+    const mT = mS > mO ? mO + (mS - mO) * keep : mS, dT = Math.min(dS, dO + (dS - dO) * (keep + 0.15)) * 0.92, g = dT / dS;
+    // the glass's colour: the photo's average there, as a tint around grey
+    const oL = Math.max(1, oR * 0.2126 + oG * 0.7152 + oB * 0.0722), tR = oR / oL, tG = oG / oL, tB = oB / oL, tint = 0.28;
+    const sat = 0.8, haze = 0.1, hR = tR * mT * 1.05, hG = tG * mT * 1.05, hB = tB * mT * 1.05;
+    let seed = 1;
+    for (let i = 0, p = 0; i < D.length; i += 4, p++) {
+      if (M[i + 3] === 0) continue;
+      const y = (p / W | 0) / H;
+      let r = D[i], gg = D[i + 1], b = D[i + 2];
+      // tone toward the photo
+      r = (r - mS) * g + mT; gg = (gg - mS) * g + mT; b = (b - mS) * g + mT;
+      const L = r * 0.2126 + gg * 0.7152 + b * 0.0722;
+      r = L + (r - L) * sat; gg = L + (gg - L) * sat; b = L + (b - L) * sat;
+      r += (r * tR - r) * tint; gg += (gg * tG - gg) * tint; b += (b * tB - b) * tint;
+      // the photo's light falloff across the glass
+      const lo = Math.min(1.5, Math.max(0.6, lum(Lo, i) / Math.max(4, mO)));
+      const lk = 1 + (lo - 1) * 0.5;
+      r *= lk; gg *= lk; b *= lk;
+      // depth haze, a little thicker low down where the view is farthest off
+      const hz = haze + 0.08 * y;
+      r += (hR - r) * hz; gg += (hG - gg) * hz; b += (hB - b) * hz;
+      // the room's reflections: what stands out bright on the photo's own glass (the LED lines, the
+      // light on the bars), the cool ones more than the warm city lights, screened on
+      const hp = lum(O, i) - lum(Ob, i), cy = Math.min(1, Math.max(0, (O[i + 1] - O[i] - 30) / 22));
+      const rf = Math.min(1, Math.max(0, (hp - 8) / 50)) * cy * 0.5;
+      if (rf > 0) { r = 255 - (255 - r) * (1 - O[i] / 255 * rf); gg = 255 - (255 - gg) * (1 - O[i + 1] / 255 * rf); b = 255 - (255 - b) * (1 - O[i + 2] / 255 * rf); }
+      // grain like the photo's
+      seed = (seed * 16807) % 2147483647; const gr = (seed / 2147483647 - 0.5) * 7;
+      D[i] = r + gr; D[i + 1] = gg + gr; D[i + 2] = b + gr;
+    }
+    c.putImageData(img, 0, 0);
+  }
+
   const masks = new Map();
   const loadImg = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
   const mask = n => { if (!masks.has(n)) masks.set(n, loadImg(`assets/room/tiers/t${n}-glass.png`)); return masks.get(n); };
@@ -207,23 +275,22 @@ window.RoomView = (() => {
       cv.className = lv.className = 'rv-glass';
       cv.style.cssText = lv.style.cssText = `left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px`;
       room.append(cv, lv);
-      const { sc, base } = sceneArt(it.scene);
+      const sc = RoomScenes.SCENES[it.scene];
       const draw = sc.layer ? sc.layer(RoomScenes.K.rng(it.scene.length * 13)) : null;
-      let m = null, P = null; Promise.all([mask(opt.tier), pixels()]).then(([i, p]) => { m = i; P = p; paint(); layer(2); }, () => {});
-      const ctx = cv.getContext('2d'), lx = lv.getContext('2d');
-      // the glass sits a little darker than the scene, and keeps a ghost of the room's own reflections
+      let m = null, P = null, base = null;
+      Promise.all([mask(opt.tier), pixels(), sceneArt(it.scene)]).then(([i, p, b]) => { m = i; P = p; base = b; paint(); layer(2); }, () => {});
+      const ctx = cv.getContext('2d', { willReadFrequently: true }), lx = lv.getContext('2d');
       function paint() {
         if (!m) return;
         const k = Math.min(2, s * (devicePixelRatio || 1));
         const W = Math.max(1, Math.round(bw * k)), H = Math.max(1, Math.round(bh * k));
         if (cv.width === W && cv.height === H && cv._done) return;
         cv.width = W; cv.height = H; cv._done = true;
+        const SW = base.naturalWidth || base.width, SH = base.naturalHeight || base.height;
         const sk = Math.max(W / SW, H / SH) * 1.06, sw = SW * sk, sh = SH * sk;
-        // a touch soft and less saturated, as if it were far behind the glass
-        ctx.filter = `blur(${(k * 0.7).toFixed(2)}px) saturate(.82)`; ctx.drawImage(base, (W - sw) / 2, (H - sh) / 2, sw, sh); ctx.filter = 'none';
-        const haze = ctx.createLinearGradient(0, 0, 0, H); haze.addColorStop(0, 'rgba(20,30,50,.0)'); haze.addColorStop(1, 'rgba(20,30,50,.18)'); ctx.fillStyle = haze; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = `rgba(3,7,10,${(1 - T.dim) * 0.8 + 0.08})`; ctx.fillRect(0, 0, W, H);
-        if (P) { const f = P.naturalWidth / T.w; ctx.globalAlpha = 0.2; ctx.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, W, H); ctx.globalAlpha = 1; }
+        // soft, as if it were far behind the glass and out of the lens's focus
+        ctx.filter = `blur(${(Math.max(1, W / 520) * (sc.soft || 1)).toFixed(2)}px)`; ctx.drawImage(base, (W - sw) / 2, (H - sh) / 2, sw, sh); ctx.filter = 'none';
+        if (P) behindGlass(ctx, W, H, P, m, [bx, by, bw, bh], T.w, sc);
         ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(m, 0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
       }
@@ -235,9 +302,11 @@ window.RoomView = (() => {
         last = t;
         lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, LW, LH);
         // the layers were painted for a 384 x 288 window: drawn over a larger area here, so a
-        // snowflake or raindrop stays a few pixels across on a big window
-        const lk = Math.max(LW / OW, LH / OH) * 0.55;
+        // snowflake or raindrop stays a pixel or two across on a big window; faint, behind the glass
+        const lk = Math.max(LW / OW, LH / OH) * (sc.fine || 0.55);
+        lx.globalAlpha = sc.fade || 0.7;
         lx.save(); lx.scale(lk, lk); draw(lx, LW / lk, LH / lk, t); lx.restore();
+        lx.globalAlpha = 1;
         lx.globalCompositeOperation = 'destination-in'; lx.drawImage(m, 0, 0, LW, LH);
       }
       glassCv = { paint };
@@ -458,8 +527,9 @@ window.RoomView = (() => {
     }
     const c = document.createElement('canvas'); c.width = 400; c.height = 300; const x = c.getContext('2d');
     if (it.type === 'view') {
-      if (it.scene) { const { sc, base } = sceneArt(it.scene); x.drawImage(base, 0, 0, SW, SH, 0, 0, 400, 300); if (sc.layer) { const l = document.createElement('canvas'); l.width = OW; l.height = OH; sc.layer(RoomScenes.K.rng(7))(l.getContext('2d'), OW, OH, 3); x.drawImage(l, 0, 0, 400, 300); } }
-      else { RoomScenes.K.drawCity(x, 400, 300, 14); }
+      if (it.scene) { const sc = RoomScenes.SCENES[it.scene], b = await sceneArt(it.scene, true); x.drawImage(b, 0, 0, 400, 300); if (sc.layer) { const l = document.createElement('canvas'); l.width = OW; l.height = OH; sc.layer(RoomScenes.K.rng(7))(l.getContext('2d'), OW, OH, 3); x.globalAlpha = sc.fade || 0.7; x.drawImage(l, 0, 0, 400, 300); x.globalAlpha = 1; } }
+      // the room's own city: a piece of the Ops den's window, bars and all
+      else { const im = await loadImg('assets/room/tiers/t3-m.webp'); x.drawImage(im, 512, 220, 196, 147, 0, 0, 400, 300); return c.toDataURL('image/webp', 0.86); }
       x.strokeStyle = '#1a1e1c'; x.lineWidth = 14; x.strokeRect(0, 0, 400, 300); x.lineWidth = 8; x.beginPath(); x.moveTo(200, 0); x.lineTo(200, 300); x.moveTo(0, 150); x.lineTo(400, 150); x.stroke();
     } else if (it.type === 'light') {
       x.fillStyle = '#07100c'; x.fillRect(0, 0, 400, 300);
