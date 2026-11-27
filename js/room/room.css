@@ -171,3 +171,14 @@
 .rm[data-visit] .rm-menu button { display: none; }
 .rm[data-visit] .rm-menu { width: auto; max-width: calc(100% - 32px); }
 .rm[data-visit] .rm-menu .rm-ttl { display: flex; margin: 2px 4px; }
+
+/* walls and floor picker in the Room panel */
+.rm-sub { margin: 14px 0 6px; font: 600 12px/1 var(--f-mono, monospace); letter-spacing: .12em; text-transform: uppercase; color: var(--rink2, #8fa89a); }
+.rm-fin { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.rm-fin button { width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 5px; background: var(--rbg3); border: 1px solid rgba(var(--accent-rgb, 57,255,136), .12); color: inherit; cursor: pointer; text-align: left; }
+.rm-fin .rm-thumb { aspect-ratio: 1; width: 100%; }
+.rm-fin b { font-size: 12px; font-weight: 600; line-height: 1.2; }
+.rm-fin small { font-size: 11px; color: var(--rink2, #8fa89a); }
+.rm-fin li.on button { border-color: var(--rg); box-shadow: inset 0 0 14px rgba(var(--accent-rgb, 57,255,136), .12); }
+.rm-fin li.locked button { opacity: .7; }
+.rm-fin li.locked small { color: var(--gold, #f2c230); }

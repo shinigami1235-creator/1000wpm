@@ -5,7 +5,7 @@
 (() => {
   const CELL = 0.25;
   const TAU = Math.PI * 2;
-  const CATEGORIES = ['Desks', 'Chairs', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs', 'Room size'];
+  const CATEGORIES = ['Desks', 'Chairs', 'Beds & Sofas', 'PC & Tech', 'Monitors', 'Keyboards', 'Decor', 'Lighting', 'Plants', 'Wall & Shelf', 'Floor & Rugs', 'Walls', 'Floors', 'Room size'];
   // Room sizes in metres. room-s is free and every player has it; the others are shop items.
   const SIZES = [
     { id: 'room-s', label: 'S', w: 4.2, d: 3.8, h: 2.6, price: 0 },
@@ -1290,6 +1290,8 @@
     // An item with gift: true never shows in the shop.
     add(it) { it.wall = !!it.wall; catalog.push(it); byId.set(it.id, it); },
     K_,
+    // builders home-items.js reuses
+    parts: { bookRows, books, cactus, snakePlant, astronaut },
     // The size a layout uses. Layouts saved before sizes existed use room-s.
     sizeOf(layout = window.WPM && WPM.getRoom()) {
       return SIZES.find(z => layout && z.id === layout.size) || SIZES[0];
@@ -1297,7 +1299,7 @@
     // Total shop price of the items placed in a layout, room size not included
     roomValue(layout = window.WPM && WPM.getRoom()) {
       if (!layout || !Array.isArray(layout.items)) return 0;
-      return layout.items.reduce((sum, p) => { const it = byId.get(p.id); return sum + (it && !it.roomSize ? it.price : 0); }, 0);
+      return layout.items.reduce((sum, p) => { const it = byId.get(p.id); return sum + (it && !it.roomSize && !it.finish ? it.price : 0); }, 0);
     },
   };
 })();

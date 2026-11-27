@@ -41,6 +41,10 @@ window.Room = (() => {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // ---------------------------------------------------------------- geometry of a placement
+  // room sizes, wallpapers and floors change the room instead of being placed
+  const special = d => !!(d && (d.roomSize || d.finish));
+  const finishOwned = (d, vOwned) => !!(d && d.finish && (d.base || (vOwned ? vOwned.has(d.id) : WPM.owns(d.id))));
+
   // A placement is { id, x, y, z, rot, wall } where wall is null, 'back' or 'left'.
   // Floor items: (x, z) is the footprint centre and rot turns it in 90 degree steps.
   // Wall items: x (back wall) or z (left wall) is the centre along the wall and y the bottom edge.
@@ -374,7 +378,7 @@ window.Room = (() => {
               <button type="button" data-tool="move">${svg('move')}<span>Move</span></button>
               <button type="button" data-tool="rotate">${svg('rotate')}<span>Rotate</span></button>
               <button type="button" data-tool="delete">${svg('trash')}<span>Delete</span></button>
-              <button type="button" data-tool="size" aria-expanded="false">${svg('size')}<span>Room size</span></button>
+              <button type="button" data-tool="size" aria-expanded="false">${svg('size')}<span>Room</span></button>
               <button type="button" data-tool="place" hidden>${svg('check')}<span>Place</span></button>
               <button type="button" data-tool="cancel" hidden>${svg('x')}<span>Cancel</span></button>
             </div>
@@ -454,11 +458,11 @@ window.Room = (() => {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
-    controls.minAzimuthAngle = 0.1;
-    controls.maxAzimuthAngle = Math.PI / 2 - 0.1;
-    controls.minPolarAngle = 0.42;
-    controls.maxPolarAngle = 1.3;
-    controls.rotateSpeed = 0.6;
+    // drag turns the room all the way round; the wall in the way hides (cutaway)
+    controls.minPolarAngle = 0.3;
+    controls.maxPolarAngle = 1.35;
+    controls.rotateSpeed = 0.9;
+    controls.zoomSpeed = 0.8;
     renderer.domElement.style.touchAction = 'none';
 
     // the composer's own target needs samples, or post-processing throws away the antialiasing
@@ -475,6 +479,8 @@ window.Room = (() => {
     const z = visit && !saved && visit.size ? sizes().find(x => x.id === visit.size) || sizes()[0] : RoomItems.sizeOf(saved);
     s.size = visit ? (z.price === 0 || vOwned.has(z.id) ? z : sizes()[0]) : sizeOwned(z) ? z : sizes()[0];
     setDims(s.size);
+    const fin = (key, kind) => { const d = saved && saved[key] ? def(saved[key]) : null; return d && d.finish && d.finish.kind === kind && finishOwned(d, vOwned) ? d.id : null; };
+    s.paper = fin('paper', 'wall'); s.floorF = fin('floor', 'floor');
     buildShell(s, phone);
     s.itemsRoot = new THREE.Group();
     scene.add(s.itemsRoot);
@@ -482,7 +488,7 @@ window.Room = (() => {
     buildGrids(s);
     controls.target.set(W / 2, 0.85, D / 2);
 
-    const owned = new Set((visit ? [...vOwned] : WPM.owned()).filter(id => def(id) && !def(id).roomSize));
+    const owned = new Set((visit ? [...vOwned] : WPM.owned()).filter(id => def(id) && !special(def(id))));
     for (const id of owned) RoomItems.create(id);   // fills in heights
     let list;
     if (saved && Array.isArray(saved.items)) {
@@ -510,6 +516,7 @@ window.Room = (() => {
         s.t += dt;
         controls.update();
         for (const p of s.items) if (p.model.userData.tick) p.model.userData.tick(s.t, dt);
+        cutaway(s);
         composer.render();
         frameDone(s);
       });
@@ -536,6 +543,7 @@ window.Room = (() => {
       controls.update();
       for (const p of s.items) if (p.model.userData.tick) p.model.userData.tick(s.t, dt);
       if (s.marker.visible) s.marker.material.opacity = 0.55 + Math.sin(s.t * 5) * 0.15;
+      cutaway(s);
       composer.render();
       frameDone(s);
     });
@@ -575,9 +583,8 @@ window.Room = (() => {
     scene.add(shell);
 
     // floor
-    const ftex = K.floorTex(); ftex.needsUpdate = true; ftex.wrapS = ftex.wrapT = THREE.RepeatWrapping; ftex.repeat.set(W / 2, D / 2);
-    const fb = K.floorBump(); fb.wrapS = fb.wrapT = THREE.RepeatWrapping; fb.repeat.set(W / 2, D / 2);
-    const wood = new THREE.MeshStandardMaterial({ map: ftex, bumpMap: fb, bumpScale: 1.2, roughness: 0.48, metalness: 0 });
+    // the floor and walls carry the bought finish (home-items.js); the uv of each surface is in metres
+    const wood = RoomItems.finishMat(K, s.floorF, 'floor', W, D);
     const slabM = K.std('#0b100d', 0.85);
     const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.012, D), [slabM, slabM, wood, slabM, slabM, slabM]);
     floor.position.set(W / 2, -0.006, D / 2); floor.receiveShadow = true;
@@ -593,9 +600,11 @@ window.Room = (() => {
     const e4 = K.box(0.004, 0.004, D + T, K.glow(GREEN, 0.8)); e4.position.set(W + 0.002, -0.248, (D - T) / 2); shell.add(e4);
 
     // walls
-    const plaster = K.plasterTex();
-    const wallM = new THREE.MeshStandardMaterial({ color: '#34403a', roughness: 0.92, bumpMap: plaster, bumpScale: 0.8 });
-    const back = new THREE.Mesh(new THREE.BoxGeometry(W + T, H, T), wallM);
+    const wallM = RoomItems.finishMat(K, s.paper, 'wall');
+    s.shellMats = [wood, wallM];
+    const bgeo = new THREE.BoxGeometry(W + T, H, T), bp = bgeo.attributes.position, buv = bgeo.attributes.uv;
+    for (let i = 0; i < buv.count; i++) buv.setXY(i, bp.getX(i) + (W + T) / 2 - T, bp.getY(i) + H / 2);
+    const back = new THREE.Mesh(bgeo, wallM);
     back.position.set((W - T) / 2, H / 2, -T / 2); back.receiveShadow = true; back.castShadow = true;
     shell.add(back);
     const sh = new THREE.Shape();
@@ -604,7 +613,7 @@ window.Room = (() => {
     hole.moveTo(WIN.z0, WIN.y0); hole.lineTo(WIN.z0, WIN.y1); hole.lineTo(WIN.z1, WIN.y1); hole.lineTo(WIN.z1, WIN.y0); hole.lineTo(WIN.z0, WIN.y0);
     sh.holes.push(hole);
     const lgeo = new THREE.ExtrudeGeometry(sh, { depth: T, bevelEnabled: false });
-    const luv = lgeo.attributes.uv; for (let i = 0; i < luv.count; i++) luv.setXY(i, luv.getX(i) / 1.2, luv.getY(i) / 1.2);
+    
     const left = new THREE.Mesh(lgeo, wallM);
     left.rotation.y = -Math.PI / 2; left.position.set(0, 0, 0);
     left.receiveShadow = true; left.castShadow = true;
@@ -674,6 +683,26 @@ window.Room = (() => {
       shell.add(warm);
     }
     const cityGlow = new THREE.PointLight('#8a6bff', 1.6, 3, 2); cityGlow.position.set(0.35, wy, wz); shell.add(cityGlow);
+
+    // the pieces of each wall, hidden when the camera swings round behind that wall
+    s.wallB = []; s.wallL = []; s.hidB = s.hidL = false;
+    shell.updateMatrixWorld(true);
+    const bb = new THREE.Box3();
+    for (const o of shell.children) {
+      if (!o.isMesh) continue;
+      bb.setFromObject(o);
+      if (bb.max.z <= 0.12 && bb.max.x > 0.3) s.wallB.push(o);
+      else if (bb.max.x <= 0.2 && bb.max.z > 0.3) s.wallL.push(o);
+    }
+  }
+
+  // Walls between the camera and the room fade out of the way, so the room turns all the way round
+  function cutaway(s) {
+    const c = s.camera.position, hb = c.z < -0.2, hl = c.x < -0.2;
+    if (hb !== s.hidB) { s.hidB = hb; s.wallB.forEach(o => { o.visible = !hb; }); }
+    if (hl !== s.hidL) { s.hidL = hl; s.wallL.forEach(o => { o.visible = !hl; }); }
+    for (const p of s.items) if (p.wall && p.obj) p.obj.visible = !(p.wall === 'back' ? hb : hl);
+    if (s.shellMats) for (const m of s.shellMats) if (m.userData.tick) m.userData.tick(m, s.t);
   }
 
   // Grid, footprint marker and selection brackets
@@ -773,7 +802,7 @@ window.Room = (() => {
     lights.sort((a, b) => b.intensity - a.intensity);
     lights.forEach((l, i) => { l.visible = i < (s.phone ? 4 : 8); });
   }
-  const serialize = s => ({ v: 1, size: s.size.id, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
+  const serialize = s => ({ v: 1, size: s.size.id, paper: s.paper || undefined, floor: s.floorF || undefined, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
 
   function markDirty(s) {
     s.dirty = true;
@@ -930,7 +959,7 @@ window.Room = (() => {
   // ---------------------------------------------------------------- placing and moving
   // s.placing = { id, rot, p (existing placement or null), ghost, cand, ok, group, orig }
   function startPlace(s, id) {
-    if (def(id).roomSize) return;
+    if (special(def(id))) return;
     if (s.placing) cancelPlacing(s);
     if (s.mode !== 'edit') setMode(s, 'edit');
     select(s, null);
@@ -1120,15 +1149,15 @@ window.Room = (() => {
     t('move').classList.toggle('on', !!(P && P.p));
   }
   function buildTabs(s) {
-    const cats = ['All', ...RoomItems.categories.filter(c => c !== 'Room size')];
+    const cats = ['All', ...RoomItems.categories.filter(c => !['Room size', 'Walls', 'Floors'].includes(c))];
     s.ui.tabs.innerHTML = cats.map(c => `<button type="button" role="tab" data-cat="${esc(c)}" aria-selected="${c === s.cat}">${c === 'All' ? svg('grid') : ''}<span>${esc(c)}</span></button>`).join('');
   }
   function renderStrip(s) {
     if (!s.ui) return;
-    const owned = WPM.owned().map(def).filter(d => d && !d.roomSize);
+    const owned = WPM.owned().map(def).filter(d => d && !special(d));
     const inRoom = new Set(s.items.map(p => p.id));
     const list = owned.filter(d => s.cat === 'All' || d.category === s.cat);
-    const more = RoomItems.catalog.filter(d => !d.roomSize && !d.gift && !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
+    const more = RoomItems.catalog.filter(d => !special(d) && !d.gift && !WPM.owns(d.id) && (s.cat === 'All' || d.category === s.cat)).length;
     s.ui.strip.innerHTML = list.map(d => `
       <button type="button" class="rm-card${s.sel && s.sel.id === d.id ? ' on' : ''}" data-id="${d.id}" aria-label="${esc(d.name)}${inRoom.has(d.id) ? ', in room' : ''}">
         <span class="rm-thumb"><img alt="" data-thumb="${d.id}"></span>
@@ -1152,12 +1181,12 @@ window.Room = (() => {
     const pop = s.ui.pop;
     pop.hidden = false;
     s.root.querySelectorAll('[data-act="inventory"],[data-act="presets"],[data-tool="size"]').forEach(b => b.setAttribute('aria-expanded', (b.dataset.act || b.dataset.tool) === kind));
-    const owned = WPM.owned().map(def).filter(d => d && !d.roomSize);
+    const owned = WPM.owned().map(def).filter(d => d && !special(d));
     const inRoom = new Set(s.items.map(p => p.id));
     if (kind === 'size') {
       const big = sizes()[sizes().length - 1];
       pop.innerHTML = `
-        <header><h3>// ROOM SIZE</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
+        <header><h3>// ROOM</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
         <p class="rm-hint">Items that don't fit a smaller size go back to your inventory.</p>
         <ul class="rm-sizes">${sizes().map(z => {
           const own = sizeOwned(z), cur = z.id === s.size.id;
@@ -1167,11 +1196,18 @@ window.Room = (() => {
           return `<li class="${cur ? 'on' : ''}${own ? '' : ' locked'}">
             <span class="rm-plan" aria-hidden="true"><i style="width:${Math.round(z.w / big.w * 100)}%;height:${Math.round(z.d / big.d * 100)}%"></i></span>
             <span class="rm-inv-txt"><b>${esc(z.name)}</b><small>${z.w} × ${z.d} m, ${z.area} m²</small></span>${btn}</li>`;
-        }).join('')}</ul>`;
+        }).join('')}</ul>
+        ${['wall', 'floor'].map(k => `<h4 class="rm-sub">${k === 'wall' ? 'Walls' : 'Floor'}</h4>
+        <ul class="rm-fin">${RoomItems.finishes(k).map(d => {
+          const own = finishOwned(d), cur = d.id === ((k === 'wall' ? s.paper : s.floorF) || (k === 'wall' ? 'wall-plaster' : 'floor-oak'));
+          return `<li class="${cur ? 'on' : ''}${own ? '' : ' locked'}"><button type="button" ${own ? `data-finish="${d.id}"` : 'data-shopfin="1"'} aria-pressed="${cur}" title="${esc(d.name)}">
+            <span class="rm-thumb"><img alt="" data-thumb="${d.id}"></span><b>${esc(d.name)}</b><small>${cur ? 'In use' : own ? 'Use' : `${d.price.toLocaleString('en-US')} coins`}</small></button></li>`;
+        }).join('')}</ul>`).join('')}`;
+      fillThumbs(s, pop);
       return;
     }
     if (kind === 'inventory') {
-      const more = RoomItems.catalog.filter(d => !d.roomSize && !d.gift && !WPM.owns(d.id)).length;
+      const more = RoomItems.catalog.filter(d => !special(d) && !d.gift && !WPM.owns(d.id)).length;
       pop.innerHTML = `
         <header><h3>// INVENTORY</h3><button type="button" class="rm-close" data-act="close" aria-label="Close">${svg('x')}</button></header>
         <p class="rm-hint">You own ${owned.length} item${owned.length > 1 ? 's' : ''} and ${owned.filter(d => inRoom.has(d.id)).length} are in the room.</p>
@@ -1218,6 +1254,8 @@ window.Room = (() => {
       else if (tool === 'delete') del(s);
       else if (tool === 'size') { if (s.placing) cancelPlacing(s, true); if (s.popKind === 'size') closePop(s); else openPop(s, 'size'); }
       else if (b.dataset.size) { setRoomSize(s, b.dataset.size); openPop(s, 'size'); }
+      else if (b.dataset.finish) { setFinish(s, b.dataset.finish); openPop(s, 'size'); }
+      else if (b.dataset.shopfin) location.hash = '#/shop';
       else if (tool === 'place') commit(s);
       else if (tool === 'cancel') { cancelPlacing(s); }
       else if (b.dataset.cat) {
@@ -1243,6 +1281,20 @@ window.Room = (() => {
         say(s, `${pr.name} applied. Press Save room to keep it.`);
       }
     });
+  }
+
+  // ---------------------------------------------------------------- walls and floor
+  function setFinish(s, id) {
+    const d = def(id);
+    if (!d || !d.finish || !finishOwned(d)) return;
+    const key = d.finish.kind === 'wall' ? 'paper' : 'floorF';
+    if ((s[key] || null) === (d.base ? null : d.id)) return;
+    s[key] = d.base ? null : d.id;
+    s.scene.remove(s.shell);
+    s.shell.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    buildShell(s, s.phone);
+    markDirty(s);
+    say(s, `${d.name}. Press Save room to keep it.`);
   }
 
   // ---------------------------------------------------------------- room size
@@ -1295,7 +1347,7 @@ window.Room = (() => {
       : cam.position.clone().sub(s.controls.target).normalize();
     const dist = fitDistance(s, dir, free, w, h);
     s.controls.minDistance = dist * 0.45;
-    s.controls.maxDistance = dist * 1.25;
+    s.controls.maxDistance = dist * 1.5;
     s.fit = dist;
     cam.near = Math.max(0.3, dist * 0.03); cam.far = dist * 3; cam.updateProjectionMatrix();
     if (first) {
