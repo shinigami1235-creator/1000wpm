@@ -156,8 +156,9 @@ window.SuperScene = (() => {
             // the open sea: long swells and foam lines
             float sw = sin(p.x * 0.18 + p.y * 0.35 + uTime * 1.2) * 0.5 + sin(p.x * -0.31 + p.y * 0.17 - uTime * 0.8) * 0.5;
             float n = vn(p * 0.5 + vec2(uTime * 0.2, -uTime * 0.1));
-            float w = smoothstep(0.75, 1.0, sin(p.x * 0.35 + p.y * 0.55 + uTime * 1.6)) * 0.5 + smoothstep(0.85, 1.0, sin(p.x * -0.5 + p.y * 0.3 - uTime * 1.1)) * 0.35;
-            c = uBg * (1.0 + sw * 0.25) + uB * g * 0.12 + uA * w * 0.32 + uA * smoothstep(0.8, 0.95, n) * 0.15;
+            float n2 = vn(p * 0.18 + vec2(-uTime * 0.05, uTime * 0.07));
+            float foam = smoothstep(0.62, 0.9, n * 0.6 + n2 * 0.6 + sw * 0.15) * 0.5;
+            c = uBg * (1.05 + sw * 0.18) + uB * g * 0.06 + uA * foam * 0.22 + uB * smoothstep(0.3, 1.0, sw) * 0.25;
             wet = 1.0;
           }
           // reflections of the lights above: a pool under each and a streak toward the camera
@@ -273,6 +274,7 @@ window.SuperScene = (() => {
     // debris: blocks knocked off a boss, falling with gravity
     const debris = [];
     function shed(at, n, c, power = 1, size = 0.7) {
+      if (model) { n = Math.ceil(n / 3); size *= 0.7; K.fx.burst(at, n * 4, c, { speed: 9 * power, g: 9, life: 0.8, size: 0.3 }); }
       for (let i = 0; i < n && debris.length < 120; i++) {
         debris.push({ p: at.clone().add(v4.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))), v: new V(rnd(-6, 6), rnd(2, 9), rnd(-3, 7)).multiplyScalar(power),
           r: new V(rnd(0, 6), rnd(0, 6), 0), w: new V(rnd(-6, 6), rnd(-6, 6), rnd(-6, 6)), s: size * rnd(0.6, 1.3), c: c.clone(), life: rnd(1.2, 2.2), t: 0 });
@@ -560,6 +562,7 @@ window.SuperScene = (() => {
       if (s.status !== 'won' && dead && s.status !== 'lost') { dead = false; }
       lost = s.status === 'lost';
       neckOpen = s.b && s.b.neck ? 1 : 0;
+      if (model && model.apply) model.apply(s);
       if (model && model.packets) model.packets(s.targets.filter(x => x.kind === 'packet').map((x, i) => ({ id: x.id, left: x.left, total: x.total, i })), clock.t);
       if (bossId === 'leviathan' && !model) {
         const weak = s.targets.find(x => x.kind === 'weak'), decoy = s.targets.find(x => x.kind === 'decoy');
@@ -615,7 +618,7 @@ window.SuperScene = (() => {
       }
       if (n === 'cast' && fx) {
         const tg = { ...target };
-        if (bossId === 'leviathan') { tg.pos = out => out.copy(segPos[frontI]); tg.top = out => out.copy(segPos[frontI]).setY(segPos[frontI].y + 4); tg.base = out => out.set(segPos[frontI].x, 0, segPos[frontI].z); }
+        if (bossId === 'leviathan' && !model) { tg.pos = out => out.copy(segPos[frontI]); tg.top = out => out.copy(segPos[frontI]).setY(segPos[frontI].y + 4); tg.base = out => out.set(segPos[frontI].x, 0, segPos[frontI].z); }
         fx.cast(d.spell, { caster, target: tg, hits: d.hits, effect: d.effect || {} });
         if (d.rarity >= 3) juice.glitch(0.4, 0.6);
       }
@@ -637,7 +640,7 @@ window.SuperScene = (() => {
         if (d.kind === 'lunge' || d.kind === 'sweep') { diveUntil = t + d.ms / 1000; diveLen = d.ms / 1000; }
       }
       // a missed block: the attack flies from the boss and lands on Art
-      if (n === 'blockFail' && fx) {
+      if (n === 'blockFail' && fx && !model) {
         attackerPos(d.attack, d.owner, v4);
         fx.shot(4, new V().copy(v4), out => out.copy(artPos).setY(artPos.y + 0.8), () => {}, { color: '#ff4d5e', dur: 0.16 });
       }
@@ -651,7 +654,7 @@ window.SuperScene = (() => {
         shed(v1.copy(artPos).setY(1.4), 16, C('#3ee6ff'), 1.4, 0.45);
         attackerPos(d.attack, d.owner, v4);
         const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
-        if (fx) fx.shot(4, new V().copy(artPos).setY(artPos.y + 0.8), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
+        if (fx) fx.shot(model ? 2 : 4, new V().copy(artPos).setY(artPos.y + 0.8), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
       }
       // an interrupt: the charge shatters in the boss's face and it reels
       if (n === 'cancel') {
@@ -763,6 +766,7 @@ window.SuperScene = (() => {
       K.update(adt, t, pxK);
       atmosphere(t, pxK, snap && snap.chaos && snap.chaos.fog ? 0.8 : 0);
       floorMat.uniforms.uCam.value.copy(camera.position);
+      hemi.intensity = 0.5 + (mctx.skyFlash || 0) * 1.6;
       composer.render();
       if (opts.onFrame) opts.onFrame();
     }
