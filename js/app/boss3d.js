@@ -942,8 +942,10 @@ window.BossScene = (() => {
     const P = (pose, more = {}) => Object.assign({ pose: (c, o) => pose(c.u, o.pos, o.look, c) }, more);
     const CLOSE = P((u, o, l) => {                                     // your bot's face, pushing in
       const y = raidPos[RAID]; toBoss(y);
-      o.copy(y).addScaledVector(tB, 3.8 - 0.8 * ease(u)); o.x += tB.z * 1.3; o.z -= tB.x * 1.3; o.y = y.y + 0.6; l.copy(y); l.y += 0.15; },
-      { len: 0.6, slow: 0.6, cut: 1, omega: 12 });
+      // side on to your bot, the boss beyond it: never between the two, since it dives in right next to the boss
+      const sd = (tB.z * (gamePos.x - y.x) - tB.x * (gamePos.z - y.z)) > 0 ? 1 : -1;
+      o.copy(y).addScaledVector(tB, 1.5); o.x += tB.z * sd * (3.2 - 0.6 * ease(u)); o.z -= tB.x * sd * (3.2 - 0.6 * ease(u)); o.y = y.y + 0.5; l.copy(y); l.y += 0.3; },
+      { len: 0.6, slow: 0.6, cut: 1, omega: 12, fov: 34, frame: ['face', -0.3, 0.05] });   // the face a third in from the left
     const WIDE_HIT = P((u, o, l) => {                                  // side on to the boss as it's hit
       bossFrame(); const H = bossH(), d = fitD(H, 0.55, 40) * (1 - 0.12 * u), sd = bS.dot(tB.copy(gamePos).sub(root.position)) > 0 ? 1 : -1;
       o.copy(root.position).addScaledVector(bS, sd * d).addScaledVector(bF, d * 0.2); o.y = H * 0.35 + 1.2 * u; l.copy(anchorCore); },
@@ -972,7 +974,7 @@ window.BossScene = (() => {
         dodge: { pri: 3, duringThreat: true, parts: [P((u, o, l) => {
           const y = raidPos[RAID]; toBoss(y);
           o.copy(y).addScaledVector(tB, -1.2 - 0.8 * u); o.x += tB.z * 3.2; o.z -= tB.x * 3.2; o.y = y.y + 0.4; l.copy(y).lerp(anchorCore, 0.15); },
-          { len: 0.8, slow: 0.8, cut: 1, omega: 12 })] },
+          { len: 0.8, slow: 0.8, cut: 1, omega: 12, fov: 36, frame: ['face', 0.3, 0] })] },
         // from the floor in front of it, craning up and back
         scale: { pri: 3, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H, 1.5, 40) + (fitD(H, 0.85, 40) - fitD(H, 1.5, 40)) * smooth(u);
@@ -1011,6 +1013,7 @@ window.BossScene = (() => {
       return director.want(kind, pri === undefined ? { x } : { x, pri });
     }
     const cutaway = (kind, len, x) => play(kind, x);
+    const faceV = new V();
     const dirCtx = { threatAt: Infinity, line: null, homeSide: 0, occluders: null, subjects: null };
     let dirOpened = false;
     let baseFov = 40;
@@ -2463,7 +2466,8 @@ window.BossScene = (() => {
         dirCtx.threatAt = threatAt(t);
         dirCtx.line = [root.position, raidPos[RAID]]; dirCtx.homeSide = 0;
         dirCtx.occluders = [{ c: anchorCore, r: bossH() * 0.3 }];
-        dirCtx.subjects = { head: anchorHead, core: anchorCore, you: raidPos[RAID] };
+        faceV.copy(raidPos[RAID]); faceV.y += 0.3;   // your bot's face, a little above its centre
+        dirCtx.subjects = { head: anchorHead, core: anchorCore, you: raidPos[RAID], face: faceV };
         shotNow = director.update(t, dt, dirCtx);
       } else { camera.position.copy(gamePos); camera.lookAt(gameLook); }
       // shake on top of whichever shot plays
