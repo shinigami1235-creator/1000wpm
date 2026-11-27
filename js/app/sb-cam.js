@@ -61,7 +61,14 @@ window.SuperCam = (() => {
     const ctx = { threatAt: Infinity, t: 0, dt: 0, finishing: false };
     function update(t, dt, threatAt, finishing) {
       ctx.threatAt = threatAt; ctx.t = t; ctx.dt = dt; ctx.finishing = finishing;
-      if (dir) { const s = dir.update(t, dt, ctx); if (s === 'game') o.setSlow(1, 0); return s; }
+      if (dir) {
+        // the director's springs are explicit: on a slow frame step them in small pieces so they never overshoot
+        const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 40))));
+        let s;
+        for (let i = 1; i <= n; i++) { ctx.t = t - dt + dt * i / n; s = dir.update(ctx.t, dt / n, ctx); }
+        if (s === 'game') o.setSlow(1, 0);
+        return s;
+      }
       const out = { pos: v1, look: v2, fov: 42 }; gamePose(ctx, out);
       camera.position.copy(out.pos); camera.lookAt(out.look);
       return 'game';

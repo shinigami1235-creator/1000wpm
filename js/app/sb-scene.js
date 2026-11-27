@@ -51,7 +51,9 @@ window.SuperScene = (() => {
       step: (s2, f) => impl && impl.step(s2, f),
       model: () => impl && impl.model(),
       dispose: () => { gone = true; if (impl) impl.dispose(); },
+      cameraAt: () => impl && impl.cameraAt(),
     };
+    window.__sbLast = ctl;   // test hook: the newest arena, the lobby preview included
     return ctl;
   }
 
@@ -619,7 +621,7 @@ window.SuperScene = (() => {
           worldOf(d.at, v1);
           hitGlow = Math.max(hitGlow, crit ? 1 : 0.45);
           if (bossId === 'leviathan' && weakI >= 0 && d.src === 'weak') segFlash[weakI] = 1;
-          flare(v1, crit ? C('#ffffff') : hitCol(d.tier || 0), crit ? 5 : 2.6, 0.22);
+          flare(v1, crit ? C('#ffffff') : hitCol(d.tier || 0), (crit ? 5 : 2.6) * (model ? 0.6 : 1), 0.22);
           if (crit || big) { juice.shake(big ? 0.6 : 0.3); juice.stop(big ? 95 : 55); recoil = Math.max(recoil, big ? 1 : 0.5); }
           else juice.shake(0.07);
           // every hit knocks it back: the body on a spring, the head that was hit thrown up and back
@@ -827,7 +829,7 @@ window.SuperScene = (() => {
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     function info() { return { aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
-    return { apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
+    return { cameraAt: () => ({ p: camera.position.toArray(), fov: camera.fov, model: !!model, boss: bossId, shot: cam.shot(), log: cam.log() }), apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
   return { mount };
