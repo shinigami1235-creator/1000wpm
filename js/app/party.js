@@ -408,7 +408,10 @@ Router.register('party', (() => {
     live.sort((p, q) => q.y - p.y);
     for (let i = 0; i < live.length; i++) for (let j = 0; j < i; j++) {
       const p = live[i], q = live[j];
-      if (Math.abs(p.x - q.x) < (p.w + q.w) / 2 + 4 && Math.abs(p.y - q.y) < p.h + 4) p.y = q.y - q.h - 4;
+      if (Math.abs(p.x - q.x) < (p.w + q.w) / 2 + 4 && Math.abs(p.y - q.y) < p.h + 4) {
+        // stack above the other tag, or below it when that would leave the stage
+        p.y = q.y - q.h - 4 >= p.h + 2 ? q.y - q.h - 4 : q.y + p.h + 4;
+      }
     }
     for (const p of live) p.t.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`;
   }
