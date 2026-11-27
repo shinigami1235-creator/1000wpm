@@ -98,7 +98,7 @@ window.BossKit = (() => {
           #endif`)
           .replace('#include <color_fragment>', `#include <color_fragment>
           vec2 sU = projU(); vec3 pn = panel(sU); float wn = vn(sU * 2.3 + uSeed);
-          diffuseColor.rgb *= (0.8 + 0.32 * pn.z) * (1.0 - 0.62 * pn.y) * (0.88 + 0.24 * wn);`)
+          diffuseColor.rgb *= (0.8 + 0.32 * pn.z) * (1.0 - 0.62 * pn.y) * (0.88 + 0.24 * wn) * (0.72 + 0.28 * (normalize(vSN).y * 0.5 + 0.5));`)
           .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = clamp(roughnessFactor * (0.72 + 0.56 * wn) + pn.y * 0.25, 0.08, 1.0);`)
           .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>

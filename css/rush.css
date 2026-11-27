@@ -175,6 +175,9 @@
 }
 .rush .rp-bar { display: flex; justify-content: space-between; gap: 18px; padding: 3px 8px; background: #a35bff; font: 600 var(--t-xs)/1.2 var(--f-head); color: #12051f; }
 .rush .rp-bar i { font-style: normal; }
+/* the Kernel King's decrees: gold seals instead of spam windows */
+.rush .rp.rp-king { background: linear-gradient(#1c1708, #120e04); box-shadow: 0 0 0 1px #d9aa3a, 0 10px 30px rgba(0,0,0,.6); }
+.rush .rp-king .rp-bar { background: linear-gradient(90deg, #b8862a, #f0c75a, #b8862a); color: #1a1203; letter-spacing: .08em; }
 .rush .rp .w { padding: 10px 14px 12px; font: 400 var(--t-l)/1.1 var(--f-mono); color: var(--ink); text-align: center; white-space: nowrap; }
 .rush .rp.on { box-shadow: 0 0 0 2px var(--accent), 0 10px 30px rgba(0,0,0,.6); }
 .rush .rp.gone.done { animation: rp-out 260ms ease-in forwards; }

@@ -22,6 +22,9 @@ window.RushPage = (() => {
   // the signature move's words live in the arena, on the thing they belong to, not in the chip row
   const ARENA = new Set(['popup', 'sign', 'mute', 'page', 'byte', 'decoy']);
   const TAG_LABEL = { sign: 'Sign', page: 'Page', byte: 'Packet', decoy: 'Fake', mute: 'Speaker' };
+  // the titans' throws are named for what they are: rubble, data blocks, pistons; the King's pop-ups are decrees
+  const TITAN_TAG = { siege: { sign: 'Rubble' }, colossus: { byte: 'Block' }, brute: { page: 'Piston' } };
+  const DECREES = ['ROYAL DECREE', 'BY ORDER', 'EDICT', 'PROCLAMATION', 'THE KING SAYS', 'BY DECREE'];
   const TIPS = {
     start: 'Type the highlighted word and press Space to hit the boss.',
     block: 'Type the red lit words before their timer runs out to block.',
@@ -761,7 +764,8 @@ window.RushPage = (() => {
         const n = [...tags.values()].filter(x => x.kind === 'popup').length;
         el.style.left = (8 + ((n * 31 + Math.random() * 18) % 64)).toFixed(1) + '%';
         el.style.top = (10 + ((n * 23 + Math.random() * 14) % 42)).toFixed(1) + '%';
-        const ads = ['FREE GIFT!!', 'u won', 'CLICK NOW', 'hot deal', 'DM me', 'last chance'];
+        const king = plan.boss.id === 'king', ads = king ? DECREES : ['FREE GIFT!!', 'u won', 'CLICK NOW', 'hot deal', 'DM me', 'last chance'];
+        if (king) el.classList.add('rp-king');
         el.innerHTML = `<div class="rp-bar"><span>${esc(ads[Math.floor(Math.random() * ads.length)])}</span><i>x</i></div><b class="w"></b>`;
         box.append(el);
         tags.set(p.id, { kind: 'popup', el, word: p.word, due: p.due, total: p.total, typed: null });
@@ -769,7 +773,7 @@ window.RushPage = (() => {
         const box = q('tags'); if (!box) return;
         const el = document.createElement('div');
         el.className = 'rt rt-' + p.kind;
-        el.innerHTML = `<small>${TAG_LABEL[p.kind] || ''}</small><b class="w"></b>${p.due ? '<i class="rt-bar"><i></i></i>' : ''}`;
+        el.innerHTML = `<small>${((TITAN_TAG[plan.boss.id] || {})[p.kind]) || TAG_LABEL[p.kind] || ''}</small><b class="w"></b>${p.due ? '<i class="rt-bar"><i></i></i>' : ''}`;
         el.style.opacity = '0';
         box.append(el);
         tags.set(p.id, { kind: p.kind, el, word: p.word, due: p.due, total: p.total, typed: null, bar: el.querySelector('.rt-bar i') });

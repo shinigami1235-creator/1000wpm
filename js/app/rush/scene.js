@@ -810,8 +810,9 @@ window.RushScene = (() => {
     const ro = new ResizeObserver(fit); ro.observe(host);
 
     // ---------- the camera director ----------
-    // The game shot is the home view above. Every other shot is a cutaway the fight asks for, and CamDir
-    // plays it only when no attack, wind-up or thrown word is coming at you (the page passes the time to
+    // The game shot is the home view above, on the line from the titan to you; every cutaway but the
+    // kill's orbit keeps to its right-hand side (the 180-degree rule), so the titan never swaps sides.
+    // Every other shot is a cutaway the fight asks for, and CamDir plays it only when no attack, wind-up or thrown word is coming at you (the page passes the time to
     // the next one with threat()), so a cutaway never hides something to answer. The fights' cutaways:
     //   enter    the titan's entrance, during the 3-2-1 count: a low wide that pushes in, then up at its face
     //   block    you blocked: low behind your barrier as the blow bounces off, slowed, then side on as it reels
@@ -834,14 +835,14 @@ window.RushScene = (() => {
           game: { pose: (c, o) => { o.pos.copy(camBase); o.look.copy(camLook); o.fov = 44; }, omega: 7 },
           enter: { pri: 4, free: true, parts: [
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.62, 40); o.set(dA.x + d * 0.42, 1.0 + 0.6 * u, dA.z + d * (0.95 - 0.15 * u)); l.set(dA.x, H * 0.52, dA.z); }, { len: 1.5, cut: 1, fov: 40, omega: 5 }),
-            SP((u, o, l) => { bossAt(dA); const H = bossH(); o.set(dA.x - 3.6 + 0.8 * u, 0.9, dA.z + 7.6 - 0.8 * u); l.set(dA.x, H * 0.8, dA.z); }, { len: 1.1, cut: 1, fov: 38, omega: 5 }),
+            SP((u, o, l) => { bossAt(dA); const H = bossH(); o.set(dA.x + 3.6 - 0.8 * u, 0.9, dA.z + 7.6 - 0.8 * u); l.set(dA.x, H * 0.8, dA.z); }, { len: 1.1, cut: 1, fov: 38, omega: 5 }),
           ] },
           block: { pri: 3, parts: [
             SP((u, o, l) => { coreWorld(dB); o.set(YOU.x + 2.1, 1.3 + 0.3 * u, YOU.z + 2.2 - 0.4 * u); l.copy(dB); l.y -= 0.6; }, { len: 0.6, slow: 0.45, cut: 1, fov: 40, omega: 12 }),
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42); o.set(dA.x + d * 0.85, H * 0.38, dA.z + d * 0.5); l.set(dA.x, H * 0.48, dA.z + 1.2); }, { len: 0.9, cut: 1, fov: 42, omega: 8 }),
           ] },
           hit: { pri: 2, parts: [
-            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.68, 42) * (1 - 0.06 * u); o.set(dA.x - d * 0.5, 2.2 + 0.5 * u, dA.z + d * 0.86); l.set(dA.x + 0.4, H * 0.5, dA.z + 1.4); }, { len: 0.9, slow: 0.3, cut: 1, fov: 42, omega: 9 }),
+            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.68, 42) * (1 - 0.06 * u); o.set(dA.x + d * 0.5, 2.2 + 0.5 * u, dA.z + d * 0.86); l.set(dA.x - 0.4, H * 0.5, dA.z + 1.4); }, { len: 0.9, slow: 0.3, cut: 1, fov: 42, omega: 9 }),
           ] },
           phase: { pri: 3, parts: [
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42), a = 0.75 - 0.5 * u; o.set(dA.x + Math.sin(a) * d, 0.8 + H * 0.45 * u, dA.z + Math.cos(a) * d); l.set(dA.x, H * 0.62, dA.z); }, { len: 1.5, cut: 1, fov: 42, omega: 4 }),
