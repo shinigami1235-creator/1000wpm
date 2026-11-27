@@ -53,9 +53,9 @@ Typemaster is the dial for Art. `node tools/superboss/balance.js 6` runs six fig
 
 | Boss | Typemaster, bot at 165 wpm | Typemaster, bot at 105 wpm | Casual, bot at 66 wpm |
 |---|---|---|---|
-| Kernel Hydra | won 5 of 6, about 2:30 | won 0 of 6 | won 3 of 6 |
-| The Compiler | won 6 of 6, about 3:25 | won 0 of 6 | won 6 of 6 |
-| Packet Leviathan | won 6 of 6, about 3:05 | won 0 of 6 | won 6 of 6 |
+| Kernel Hydra | won 6 of 6, about 2:15 | won 0 of 6 | won 5 of 6 |
+| The Compiler | won 5 of 6, about 3:25 | won 0 of 6 | won 6 of 6 |
+| Packet Leviathan | won 6 of 6, about 3:10 | won 0 of 6 | won 5 of 6 |
 
 The bot reads a misspelled line instantly, so the Compiler is harder for a person than this table shows.
 
