@@ -268,7 +268,8 @@ window.RoomView = (() => {
     // (saturation and brightness kept, so grey stays grey), faded out at its edges. Drawn once into
     // a canvas instead of a CSS blend, so the page doesn't blend the whole room on every frame.
     function light(L, it) {
-      if (!it.c) return;
+      const col = RT.colorOf(it);
+      if (!col) return;
       for (const [x, y, w, h] of L.zones) {
         const c = document.createElement('canvas');
         c.className = 'rv-tint' + (it.anim ? ' ' + it.anim : '');
@@ -281,7 +282,7 @@ window.RoomView = (() => {
           c.width = W; c.height = H;
           const g = c.getContext('2d');
           g.drawImage(P, (x - w / 2) * f, (y - h / 2) * f, w * f, h * f, 0, 0, W, H);
-          g.globalCompositeOperation = 'hue'; g.fillStyle = it.c; g.fillRect(0, 0, W, H);
+          g.globalCompositeOperation = 'hue'; g.fillStyle = col; g.fillRect(0, 0, W, H);
           g.globalCompositeOperation = 'destination-in';
           g.save(); g.translate(W / 2, H / 2); g.scale(W / 2, H / 2);
           const r = g.createRadialGradient(0, 0, 0, 0, 0, 1); r.addColorStop(0, '#000'); r.addColorStop(0.55, '#000'); r.addColorStop(1, 'rgba(0,0,0,0)');
@@ -290,7 +291,7 @@ window.RoomView = (() => {
         pixels().then(paint);
         if (it.anim === 'pulse') el('rv-dark', '', `left:${x - w / 2}px;top:${y - h / 2}px;width:${w}px;height:${h}px`);
       }
-      for (const [x, y, w, h] of L.cores || []) el('rv-core' + (it.anim ? ' ' + it.anim : ''), '', `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${it.c}`);
+      for (const [x, y, w, h] of L.cores || []) el('rv-core' + (it.anim ? ' ' + it.anim : ''), '', `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${col}`);
     }
 
     // -------- props, pets and the case: cut-outs standing on their spot

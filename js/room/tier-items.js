@@ -182,6 +182,7 @@
     ['led-orange', 'Sunset orange', 300, { c: '#ff7a2a' }],
     ['led-blue', 'Deep blue', 300, { c: '#3a6bff' }],
     ['led-pulse', 'Red pulse', 700, { c: '#ff3b4f', anim: 'pulse', desc: 'Breathes slowly, like an alarm.' }],
+    ['led-streak', 'Streak light', 0, { bonus: 'roomlight', c: '#3ee6ff', desc: 'Your 60-day streak colour, set on the Profile page.' }],
     ['led-rainbow', 'Rainbow cycle', 900, { c: '#ff3b4f', anim: 'rainbow', sw: 'linear-gradient(90deg,#ff4d5e,#f2c230,#39ff88,#3ee6ff,#b45cff)', desc: 'Runs through every colour.' }],
   ]);
   add('prop', [
@@ -231,6 +232,7 @@
   ]);
   for (const it of I) it.art = it.type === 'prop' || it.type === 'pet' ? `assets/room/items/${it.id === 'pet-drone' ? 'drone' : it.id}.webp` : null;
   const byId = new Map(I.map(it => [it.id, it]));
+  const bonusColor = it => { try { const b = window.Progress && Progress.bonus(it.bonus); return b ? b.color : null; } catch (e) { return null; } };
   const DEFAULT = { view: 'view-city', screen: 'scr-stats', wall: 'scr-card', light: 'led-teal', banner: 'ban-ctrl' };
 
   // ------------------------------------------------------------------ the achievement case
@@ -281,14 +283,16 @@
     defaultFor: (slotId, kind) => (kind === 'screen' && slotId !== 'm1' ? 'scr-logo' : DEFAULT[kind] || null),
     kind: id => KINDS.find(k => k.id === id),
     // free items count as owned by everyone
-    owns: (id, owned) => { const it = byId.get(id); return !!it && (it.price === 0 && !it.gift || (owned ? owned.includes(id) : !!(window.WPM && WPM.owns(id)))); },
+    owns: (id, owned) => { const it = byId.get(id); if (it && it.bonus) return !!bonusColor(it); return !!it && (it.price === 0 && !it.gift || (owned ? owned.includes(id) : !!(window.WPM && WPM.owns(id)))); },
+    // a light that comes from a streak bonus takes the colour picked for it (js/app/progress.js)
+    colorOf: it => (it.bonus ? bonusColor(it) || it.c : it.c),
   };
 
   // ------------------------------------------------------------------ RoomItems for #/shop and gifts
   // The shop page (js/app/shop.js), the gift crate (js/app/progress.js) and the gift reveal read
   // window.RoomItems. Free items stay out of the shop; gift-only ones come only from gifts.
   const CAT = { view: 'Window views', screen: 'Monitor programs', poster: 'Posters', light: 'Lighting', prop: 'Shelf and desk', holo: 'Holograms', pet: 'Pets', banner: 'Banners' };
-  const catalog = I.filter(it => it.price > 0 || it.gift).map(it => {
+  const catalog = I.filter(it => (it.price > 0 || it.gift) && !it.bonus).map(it => {
     it.category = CAT[it.type];
     it.desc ||= `${it.name}, for ${({ view: 'the window', screen: 'any monitor', poster: 'any poster frame', light: 'any lighting zone', prop: 'a shelf or the desk', holo: 'the Command deck pedestal', pet: 'your room', banner: 'the banner' })[it.type]}.`;
     if (it.type === 'holo') it.desc += ' Shows from the Command deck (level 75).';

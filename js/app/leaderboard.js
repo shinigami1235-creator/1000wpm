@@ -159,13 +159,13 @@ Router.register('leaderboard', (() => {
           <tbody><tr class="mine-best">
             <td class="rank top">1</td>
             <td><div class="who">${UI.meImg(68, 34)}<span>${UI.esc(p.name)}</span><span class="tag" style="color:var(--green);border-color:var(--line)">You</span></div></td>
-            <td><div class="who">${plan}<span>Size ${UI.esc(r.label)}<span class="hide-sm">, ${r.w} × ${r.d} m</span></span></div></td>
+            <td><div class="who">${plan}<span>${r.tier ? `Tier ${r.tier} // ` : 'Size '}${UI.esc(r.label)}<span class="hide-sm">, ${r.w} × ${r.d} m</span></span></div></td>
             <td class="n num-col">${r.area} m²</td>
             <td class="n num-col hide-sm">${UI.fmt(r.items)}</td>
             <td class="num-col"><span class="price">${UI.coin()}${UI.fmt(r.value)}</span></td>
           </tr></tbody>
         </table>
-        <p class="empty"><a class="green" href="#/room">Open My Room</a> to add items or change its size.</p>`;
+        <p class="empty"><a class="green" href="#/room">Open My Room</a> ${r.tier ? 'to dress it up.' : 'to add items or change its size.'}</p>`;
     }, board, 'room');
   }
 

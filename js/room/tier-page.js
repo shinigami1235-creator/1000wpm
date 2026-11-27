@@ -220,7 +220,7 @@
   function equipped() { const r = load(), t = view.tier; return (r.eq[t] || {}); }
   function optionsFor(kind, slot) {
     const k = RT.kind(kind);
-    let list = RT.ITEMS.filter(i => i.type === k.type && (!i.gift || WPM.owns(i.id)));
+    let list = RT.ITEMS.filter(i => i.type === k.type && (!i.gift || WPM.owns(i.id)) && (!i.bonus || RT.owns(i.id)));
     if (kind === 'shelf') list = list.filter(i => !i.desk);
     if (kind === 'wall') list = list.filter(i => i.id !== 'scr-logo');
     if (kind === 'screen') list = list.filter(i => i.id !== 'scr-card');
@@ -248,7 +248,7 @@
     const sel = box.querySelector('.rm-it.on'); if (sel && sel.scrollIntoView && state.scrolled !== state.slot) { state.scrolled = state.slot; box.scrollLeft = Math.max(0, sel.offsetLeft - 40); }
   }
   function thumbHtml(it) {
-    if (it.type === 'light') return `<span class="sw" style="--c:${it.sw || it.c};${it.sw && !it.sw.startsWith('#') ? `background:${it.sw}` : ''}"></span>`;
+    if (it.type === 'light') return `<span class="sw" style="--c:${it.sw || RT.colorOf(it)};${it.sw && !it.sw.startsWith('#') ? `background:${it.sw}` : ''}"></span>`;
     if (it.type === 'view') return `<canvas data-view="${it.id}" width="4" height="3"></canvas>`;
     if (it.type === 'holo') return `<img src="" alt="" data-holo="${it.id}">`;
     return RV.art(it, mine().data) || esc(it.name);
@@ -303,7 +303,7 @@
   function paintAch() {
     const d = mine(), have = new Set(d.earned), T = RT.TIERS[view.tier], cap = (T.case || T.pins || []).length;
     const n = ui('rm-sheet', `<button type="button" class="rm-x" data-x>Close</button><h2>Achievements</h2><p>Earned, never sold. The best ${cap} stand in your room's ${T.pins ? 'corkboard' : 'case'}; higher tiers have more room.</p>
-      <div class="rm-ach">${RT.TROPHIES.map(t => `<div class="rm-a${have.has(t.id) ? '' : ' no'}"><img src="assets/room/items/${t.art}.webp" alt="" loading="lazy"><div><b>${esc(t.name)}</b><span>${have.has(t.id) ? 'Earned' : esc(t.how)}</span></div></div>`).join('')}</div>`);
+      <div class="rm-ach">${[...RT.TROPHIES].sort((a, b) => have.has(b.id) - have.has(a.id)).map(t => `<div class="rm-a${have.has(t.id) ? '' : ' no'}"><img src="assets/room/items/${t.art}.webp" alt="" loading="lazy"><div><b>${esc(t.name)}</b><span>${have.has(t.id) ? 'Earned' : esc(t.how)}</span></div></div>`).join('')}</div>`);
     n.querySelector('[data-x]').addEventListener('click', () => setMode('custom'));
   }
 
@@ -352,7 +352,7 @@
   function summary() {
     const d = mine(), T = RT.TIERS[d.tier];
     const value = Object.values(d.equip).reduce((s, id) => s + ((RT.get(id) || {}).price || 0), 0);
-    return { label: `${d.tier} (${T.name})`, w: T.size[0], d: T.size[1], area: T.size[0] * T.size[1], items: Object.values(d.equip).filter(Boolean).length, value };
+    return { tier: d.tier, label: T.name, w: T.size[0], d: T.size[1], area: T.size[0] * T.size[1], items: Object.values(d.equip).filter(Boolean).length, value };
   }
 
   window.Room = { mount, unmount, summary };
