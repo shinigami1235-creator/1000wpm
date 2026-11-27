@@ -219,21 +219,24 @@ window.RoomView = (() => {
         if (cv.width === W && cv.height === H && cv._done) return;
         cv.width = W; cv.height = H; cv._done = true;
         const sk = Math.max(W / SW, H / SH) * 1.06, sw = SW * sk, sh = SH * sk;
-        ctx.drawImage(base, (W - sw) / 2, (H - sh) / 2, sw, sh);
+        // a touch soft and less saturated, as if it were far behind the glass
+        ctx.filter = `blur(${(k * 0.7).toFixed(2)}px) saturate(.82)`; ctx.drawImage(base, (W - sw) / 2, (H - sh) / 2, sw, sh); ctx.filter = 'none';
+        const haze = ctx.createLinearGradient(0, 0, 0, H); haze.addColorStop(0, 'rgba(20,30,50,.0)'); haze.addColorStop(1, 'rgba(20,30,50,.18)'); ctx.fillStyle = haze; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = `rgba(3,7,10,${(1 - T.dim) * 0.8 + 0.08})`; ctx.fillRect(0, 0, W, H);
         if (P) { const f = P.naturalWidth / T.w; ctx.globalAlpha = 0.2; ctx.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, W, H); ctx.globalAlpha = 1; }
         ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(m, 0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
       }
-      const LW = Math.min(420, Math.round(bw * 1.2)), LH = Math.round(LW * bh / bw);
+      const LW = Math.min(640, Math.round(bw * 1.5)), LH = Math.round(LW * bh / bw);
       lv.width = LW; lv.height = LH;
       let last = -1;
       function layer(t) {
         if (!draw || !m || t - last < 0.05) return;
         last = t;
         lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, LW, LH);
-        // the layers were painted for a 384 x 288 window; keep their scale on a wide one
-        const lk = Math.max(LW / OW, LH / OH);
+        // the layers were painted for a 384 x 288 window: drawn over a larger area here, so a
+        // snowflake or raindrop stays a few pixels across on a big window
+        const lk = Math.max(LW / OW, LH / OH) * 0.55;
         lx.save(); lx.scale(lk, lk); draw(lx, LW / lk, LH / lk, t); lx.restore();
         lx.globalCompositeOperation = 'destination-in'; lx.drawImage(m, 0, 0, LW, LH);
       }
