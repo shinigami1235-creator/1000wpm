@@ -38,7 +38,7 @@ window.Lazy = (() => {
     'page:play': { need: ['race'], js: ['js/app/missions.js', 'js/app/play-picker.js', 'js/app/play.js'] },
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
-      js: ['js/app/wordflow.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/app/camdir.js', 'js/app/sb-kit.js', 'js/app/sb-hydra.js', 'js/app/sb-compiler.js', 'js/app/sb-leviathan.js', 'js/app/sb-support.js', 'js/app/sb-cam.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
+      js: ['js/app/wordflow.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/room/aq.js', 'js/app/camdir.js', 'js/app/sb-kit.js', 'js/app/sb-hydra.js', 'js/app/sb-compiler.js', 'js/app/sb-leviathan.js', 'js/app/sb-support.js', 'js/app/sb-cam.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
     'page:duel': { need: ['net'], js: ['js/app/operator3d.js', 'js/app/wordflow.js', 'js/app/duel3d.js', 'js/app/duel.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:party': { need: ['net'], js: ['js/app/wordflow.js', 'js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/operator3d.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three', 'gltf', 'model-full', 'model-lite'] },
     'page:u': { need: ['net'], js: ['js/app/players.js'] },

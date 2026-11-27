@@ -228,6 +228,18 @@ window.SuperScene = (() => {
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     const dust = new THREE.Points(dGeo, dustMat); dust.frustumCulled = false; scene.add(dust);
+    // adaptive quality (js/room/aq.js): resolution first, then the extras (mist, shafts, dust, light
+    // pools on the floor), so a slow machine stays smooth. window.__sbFull keeps everything for tests
+    const basePR = Math.min(1.25, devicePixelRatio || 1);
+    let detail = 1;
+    function setDetail(d) {
+      detail = d;
+      mists.forEach(m => { m.visible = d > 0.8; });
+      shafts.forEach(m => { m.visible = d > 0.62; });
+      dust.visible = d > 0.48;
+    }
+    const aq = window.AdaptiveQuality && !window.__sbFull ? AdaptiveQuality.create({ key: 'wpm-sb', fps: 60, minScale: 0.6, minDetail: 0.4,
+      onScale: s2 => { renderer.setPixelRatio(basePR * s2); fit(); }, onDetail: setDetail }) : null;
     function atmosphere(t, px, fogK) {
       mistMat.uniforms.uTime.value = t; mistMat.uniforms.uC.value.copy(pal.c).lerp(pal.a, 0.4).multiplyScalar(0.18); mistMat.uniforms.uFog.value = fogK;
       shaftMat.uniforms.uTime.value = t; shaftMat.uniforms.uC.value.copy(pal.c).lerp(new THREE.Color(1, 1, 1), 0.35);
@@ -517,6 +529,7 @@ window.SuperScene = (() => {
     function fit() {
       const w = host.clientWidth || 800, h = host.clientHeight || 600;
       renderer.setSize(w, h, false);
+      composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);
       bloom.resolution.set(w / 2, h / 2);
       camera.aspect = w / h;
@@ -775,7 +788,8 @@ window.SuperScene = (() => {
       composer.render();
       if (opts.onFrame) opts.onFrame();
     }
-    renderer.setAnimationLoop(() => frameStep(performance.now()));
+    if (aq) { aq.watch(renderer.domElement); aq.apply(); }
+    renderer.setAnimationLoop(() => { const n = performance.now(); frameStep(n); if (aq && !paused && visible && !document.hidden) aq.frame(n); });
     // test hook: n frames back to back, ms per frame (the min of three tries) and the draw calls of one frame
     function bench(n = 20) {
       let best = 1e9;
@@ -812,7 +826,7 @@ window.SuperScene = (() => {
       bloom.dispose(); if (composer.dispose) composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
-    function info() { return { shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
+    function info() { return { aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
     return { apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
