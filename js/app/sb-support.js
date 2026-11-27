@@ -107,7 +107,7 @@ window.SuperSupport = (() => {
     function update(t, dt, s) {
       const sh = s && s.art ? s.art.shield : 0;
       if (sh !== shields) { if (sh > shields) barRise = 0; shields = sh; }
-      const wantA = shields ? 0.32 + shields * 0.14 : 0;
+      const wantA = shields ? 0.12 + shields * 0.07 : 0;
       barA += (Math.max(wantA, barFlash * 0.4) - barA) * Math.min(1, dt * 4);
       barRise = Math.min(1, barRise + dt * 1.6);
       barFlash = Math.max(0, barFlash - dt * 2.4);

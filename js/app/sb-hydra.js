@@ -253,7 +253,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     }
     mouthWorld('root', v1);
     const stop = hitArt ? v2.copy(art).setY(1.4) : ctx.shieldAt(v2);
-    K.fx.beam(v1, stop, '#3ee6ff', 1.5, 0.75, { grow: 0.1, follow: (a, b) => { mouthWorld('root', a); } });
+    K.fx.beam(v1, stop, '#3ee6ff', 0.95, 0.6, { grow: 0.1, follow: (a, b) => { mouthWorld('root', a); } });
     K.fx.burst(stop, hitArt ? 80 : 70, hitArt ? '#ff8a8a' : '#bfefff', { speed: 14, g: 8, life: 0.7, size: 0.35, dir: v3.set(0, 0.6, hitArt ? 0.3 : -0.5), dirK: 0.6 });
     K.fx.light(stop, hitArt ? '#ff4d5e' : '#3ee6ff', 60, 4);
     if (!hitArt) K.fx.shock(stop, C('#3ee6ff'), 0.6, 6, 0.4, { flat: false, face: ctx.camPos });

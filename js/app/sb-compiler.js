@@ -277,7 +277,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
       // overflow: hands lift above the head and hold the column
       if (stackU > 0) { const e = ease(Math.min(1, stackU * 2.2)); v2.set(T.x + sd * 3.2, T.y + T.h / 2 + 9 + stackU * 4, T.z + 2.5); a.target.lerp(v2, e); }
       // the phase change: arms flung wide
-      if (roar > 0) { v2.set(T.x + sd * 22, T.y + 8, T.z + 4); a.target.lerp(v2, roar); }
+      if (roar > 0) { v2.set(T.x + sd * 27, T.y + 12, T.z + 6); a.target.lerp(v2, roar); }
       // fork bomb: a hand points at Art as the drones launch
       if (a.launch && t - a.launch < 1) { const e = Math.sin(clamp((t - a.launch) / 1, 0, 1) * Math.PI); v2.copy(art).lerp(a.sh, 0.55).setY(10); a.target.lerp(v2, e); }
       // the finish: hands hang
@@ -384,5 +384,14 @@ SuperModels.compiler = function (THREE, K, ctx) {
     props.userData.tick = (t, pal) => { barMat.color.copy(pal.a).multiplyScalar(1 + Math.sin(t * 2) * 0.3); pm.userData.u.uSeam.value.copy(pal.a).multiplyScalar(0.5); };
   }
 
-  return { group, props, update, event, anchor, worldOf, attacker, subj, packets, reset, dispose() {}, height: 27, width: 50, camY: 9, focus: new V(0, 12, -6), face: 'core', info: () => ({ stack: stackBlocks.length, laser: !!laser, drones: drones.size }) };
+  return { group, props, update, event, anchor, worldOf, attacker, subj, packets, reset, dispose() {}, height: 27, width: 50, camY: 9, focus: new V(0, 12, -6), face: 'core', info: () => ({ stack: stackBlocks.length, laser: !!laser, drones: drones.size }),
+    // joint check: the elbow's bend (0 = straight) and which way it points; it must stay behind the arm
+    // (toward the pole), so the forearm always folds forward like an elbow, never backward
+    joints: () => arms.map(a => {
+      const s0 = a.shW || a.sh, u = v1.copy(a.elbow).sub(s0).normalize(), f = v2.copy(a.wrist).sub(a.elbow).normalize();
+      const bend = Math.round(Math.acos(clamp(u.dot(f), -1, 1)) * 180 / Math.PI);
+      const line = v3.copy(a.wrist).sub(s0).normalize(), off = v4.copy(a.elbow).sub(s0); off.sub(line.multiplyScalar(off.dot(line)));
+      const back = off.z < 0.05 || Math.abs(off.x) > Math.abs(off.z);   // the elbow sits behind or out, never in front
+      return { side: a.sd, bend, back, upper: +a.elbow.distanceTo(s0).toFixed(2), fore: +a.wrist.distanceTo(a.elbow).toFixed(2) };
+    }) };
 };
