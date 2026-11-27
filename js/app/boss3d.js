@@ -1219,7 +1219,8 @@ window.BossScene = (() => {
       const out = v1.copy(b.wp).sub(root.position).setY(0).normalize();
       if (permanent) {
         b.mode = 3; b.grav = 1;
-        b.vel.set(out.x * rnd(2, 6), rnd(2, 7), out.z * rnd(1, 3) + rnd(-1, 1.5)).multiplyScalar(power);
+        // away from the view (the camera is always toward +z), so the chunks don't pile up in front of the squad
+        b.vel.set(out.x * rnd(2, 6), rnd(2, 7), rnd(-5, -0.5)).multiplyScalar(power);
       } else {
         if (b.mode !== 0) return;
         b.mode = 1; b.life = rnd(0.5, 1.2); b.grav = rnd(0.15, 0.5);
