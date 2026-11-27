@@ -44,6 +44,7 @@ window.SuperScene = (() => {
       pause: on => impl && impl.pause(on),
       slow: k => impl && impl.slow(k),
       info: () => (impl ? impl.info() : null),
+      bench: n => (impl ? impl.bench(n) : null),
       dispose: () => { gone = true; if (impl) impl.dispose(); },
     };
     return ctl;
@@ -630,8 +631,7 @@ window.SuperScene = (() => {
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
-    renderer.setAnimationLoop(() => {
-      const nowMs = performance.now();
+    function frameStep(nowMs) {
       // rdt is real time for fades, so a slow frame never leaves a tint or a flash on screen
       const rdt = Math.min(0.5, (nowMs - lastT) / 1000);
       let dt = Math.min(0.05, rdt); lastT = nowMs;
@@ -699,7 +699,17 @@ window.SuperScene = (() => {
       if (fx) fx.update(adt);
       composer.render();
       if (opts.onFrame) opts.onFrame();
-    });
+    }
+    renderer.setAnimationLoop(() => frameStep(performance.now()));
+    // test hook: n frames back to back, ms per frame (the min of three tries) and the draw calls of one frame
+    function bench(n = 20) {
+      let best = 1e9;
+      const gl = renderer.getContext(), px = new Uint8Array(4);
+      for (let k = 0; k < 3; k++) { const a = performance.now(); for (let i = 0; i < n; i++) { lastT = performance.now() - 16.7; frameStep(performance.now()); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } best = Math.min(best, (performance.now() - a) / n); }
+      renderer.info.autoReset = false; renderer.info.reset(); frameStep(performance.now()); renderer.info.autoReset = true;
+      const i = renderer.info.render;
+      return { ms: +best.toFixed(1), calls: i.calls, tris: i.triangles };
+    }
 
     function setBoss(id) {
       bossId = id; B = SuperData.boss(id);
@@ -723,7 +733,7 @@ window.SuperScene = (() => {
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     function info() { return { boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
-    return { apply, event, anchor, screenRect, setBoss, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
+    return { apply, event, anchor, screenRect, setBoss, bench, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
   return { mount };

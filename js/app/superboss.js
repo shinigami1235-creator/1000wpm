@@ -731,7 +731,7 @@
 
     // test hooks
     window._sb = {
-      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(),
+      fight: () => fight, state: () => fight.state(), start: () => begin(), arena: () => arena, scene: () => arena.scene.info(), bench: n => arena.scene.bench(n),
       phase: n => fight.debug.phase(n), hp: f => fight.debug.hp(f), finish: ms => fight.debug.finish(ms), enrage: () => fight.debug.enrage(),
       support: (id, buyer) => fight.support(id, buyer || 'nova_k'), combo: n => fight.debug.combo(n), offer: ids => fight.debug.offer(ids), crowd: () => fight.debug.crowd(),
       artHp: n => fight.debug.artHp(n), type: s => { for (const ch of s) fight.char(ch); },
