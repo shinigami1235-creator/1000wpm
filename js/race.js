@@ -424,6 +424,8 @@ window.RaceView = (() => {
     draw(state, dt) {
       const ctx = this.ctx, T = this.theme, now = performance.now();
       const you = state.you;
+      // on a small canvas (phones) the HUD, banners and result card draw bigger so they stay readable
+      this.hk = clamp(760 / (this.cv.clientWidth || W), 1, 2);
       ctx.setTransform(this.cv.width / W, 0, 0, this.cv.height / H, 0, 0);
       // after the line the car rolls on and slows down
       if (you.progress >= 1) {
@@ -565,7 +567,7 @@ window.RaceView = (() => {
       ctx.restore();
 
       // screen tints sit over the world but under the HUD
-      if (this.red > 0) this.vignette(ctx, '#ff2a3c', this.red * 0.55);
+      if (this.red > 0) this.vignette(ctx, '#ff2a3c', this.red * 0.4);
       if (you.boost > 0) this.vignette(ctx, '#3ee6ff', 0.22 * you.boost + Math.sin(now / 60) * 0.04);
       if (this.flash > 0) { ctx.globalAlpha = this.flash * 0.45; ctx.fillStyle = this.flashCol; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
 
@@ -875,7 +877,7 @@ window.RaceView = (() => {
         const e = (now - b.t0) / 1000;
         const inK = Math.min(1, e / 0.18), outK = e > 1.2 ? 1 - (e - 1.2) / 0.3 : 1;
         const a = Math.max(0, Math.min(inK, outK));
-        const y = 112 + i * 52, sc = 1 + (1 - inK) * 0.4;
+        const hk = Math.min(1.6, this.hk || 1), y = (112 + i * 52) * hk, sc = (1 + (1 - inK) * 0.4) * hk;
         ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, y); ctx.scale(sc, sc);
         ctx.font = 'italic 700 34px "Chakra Petch", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const tw = ctx.measureText(b.text).width;
@@ -894,6 +896,8 @@ window.RaceView = (() => {
       const k = Math.min(1, e / 0.35), ek = 1 - Math.pow(1 - k, 3);
       const w = 540, h = 156, x = W / 2 - w / 2, y = 96 + (1 - ek) * 30;
       ctx.save(); ctx.globalAlpha = ek;
+      const rk = Math.min(1.7, this.hk || 1);
+      if (rk > 1) { ctx.translate(W / 2, 40); ctx.scale(rk, rk); ctx.translate(-W / 2, -40); }
       ctx.fillStyle = 'rgba(2,6,4,.86)';
       ctx.beginPath(); ctx.moveTo(x + 14, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h - 14); ctx.lineTo(x + w - 14, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + 14); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = R.color; ctx.lineWidth = 1.5; ctx.stroke();
@@ -922,7 +926,8 @@ window.RaceView = (() => {
       const you = st.you;
       const G = acc(), INK = '#eafff3', CY = '#3ee6ff';
       // course map along the top, each car a small marker
-      const mx = 150, my = 24, mw = W - 300;
+      const k = this.hk || 1;
+      const mx = 20 + 130 * k, my = 24 * Math.min(k, 1.4), mw = W - mx - 40;
       ctx.fillStyle = 'rgba(2,6,4,.7)'; ctx.beginPath(); ctx.roundRect(mx - 10, my - 9, mw + 20, 18, 9); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(mx, my - 1, mw, 2);
       for (let k = 1; k < 10; k++) ctx.fillRect(mx + mw * k / 10 - 0.5, my - 3, 1, 6);
@@ -933,15 +938,16 @@ window.RaceView = (() => {
       let lastX = -99;
       marks.forEach(([p, c, n], i) => {
         const xx = mx + mw * clamp(p, 0, 1);
-        ctx.fillStyle = 'rgba(2,6,4,.9)'; ctx.beginPath(); ctx.arc(xx, my, 7, 0, 7); ctx.fill();
-        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(xx, my, 5, 0, 7); ctx.fill();
-        ctx.font = '12px "Share Tech Mono", monospace'; ctx.textAlign = 'center';
-        const flip = Math.abs(xx - lastX) < 60;
-        ctx.fillText(n, xx, flip ? my - 13 : my + 22);
+        ctx.fillStyle = 'rgba(2,6,4,.9)'; ctx.beginPath(); ctx.arc(xx, my, 7 * k, 0, 7); ctx.fill();
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(xx, my, 5 * k, 0, 7); ctx.fill();
+        ctx.font = `${Math.round(12 * k)}px "Share Tech Mono", monospace`; ctx.textAlign = 'center';
+        const flip = Math.abs(xx - lastX) < 60 * k;
+        ctx.fillText(n, xx, flip ? my + 37 * k : my + 22 * k);
         lastX = xx;
       });
       // position and gap at the top left
       const opp = st.others[0];
+      ctx.save(); ctx.scale(k, k);
       if (opp) {
         const ahead = you.progress >= opp.progress;
         const place = you.progress >= 1 && opp.progress >= 1 ? (this.result && this.result.won ? 1 : 2) : ahead ? 1 : 2;
@@ -951,11 +957,16 @@ window.RaceView = (() => {
         ctx.font = '13px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(234,255,243,.55)'; ctx.fillText('/ 2', 72, 42);
         const gapM = Math.round(Math.abs(you.progress - opp.progress) * this.finishSeg * SEG / 100);
         if (you.progress > 0.005 && you.progress < 1) {
-          ctx.fillStyle = opp.color; ctx.font = '13px "Share Tech Mono", monospace';
-          ctx.fillText(gapM < 2 ? `${opp.name} level` : `${opp.name} ${gapM} m ${ahead ? 'behind' : 'ahead'}`, 20, 62);
+          const gt = gapM < 2 ? `${opp.name} level` : `${opp.name} ${gapM} m ${ahead ? 'behind' : 'ahead'}`;
+          ctx.font = '13px "Share Tech Mono", monospace';
+          ctx.fillStyle = 'rgba(2,6,4,.72)'; ctx.fillRect(16, 50, ctx.measureText(gt).width + 8, 17);
+          ctx.fillStyle = opp.color; ctx.fillText(gt, 20, 62);
         }
       }
+      ctx.restore();
       // speedometer: ticks, the arc, a digital readout and the boost bar
+      const sk = Math.min(k, 1.45);
+      ctx.save(); ctx.translate(W, H); ctx.scale(sk, sk); ctx.translate(-W, -H);
       const cx = W - 84, cy = H - 62, r = 50;
       ctx.fillStyle = 'rgba(2,6,4,.82)'; ctx.beginPath(); ctx.arc(cx, cy, r + 12, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r + 12, 0, 7); ctx.stroke();
@@ -987,8 +998,11 @@ window.RaceView = (() => {
       }
       ctx.font = '10px "Share Tech Mono", monospace'; ctx.fillStyle = you.boost > 0 ? CY : 'rgba(234,255,243,.45)'; ctx.textAlign = 'right';
       ctx.fillText(you.boost > 0 ? 'BOOST' : 'NITRO', bx - 6, by + 6);
-      ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(234,255,243,.4)'; ctx.font = '12px "Share Tech Mono", monospace';
-      ctx.fillText('// ' + this.theme.name.toUpperCase(), 20, H - 16);
+      ctx.restore();
+      if (k < 1.3) {
+        ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(234,255,243,.4)'; ctx.font = '12px "Share Tech Mono", monospace';
+        ctx.fillText('// ' + this.theme.name.toUpperCase(), 20, H - 16);
+      }
     }
   }
   View.THEMES = THEMES;
