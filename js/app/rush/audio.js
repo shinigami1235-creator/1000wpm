@@ -112,7 +112,11 @@ window.RushAudio = (() => {
   // through its own gain so a charge can be cut off. Levels sit under the music's hits; the big ones
   // (slams, the death blast) reach it.
   let tk = null, charging = null;
-  const TLEVEL = { siegeSlam: 0.9, quake: 0.8, throneShock: 0.85, pound: 0.95, titanBoom: 1, crush: 0.9, titanRoar: 0.7, clang: 0.75 };
+  // levels set from offline renders (renderTitan): the loudest peak about -4 dBFS, the charges about 3 dB
+  // under the strikes, the quiet magic and wire sounds lifted to sit with the rest
+  const TLEVEL = { siegeSlam: 0.9, quake: 0.8, throneShock: 0.6, pound: 0.5, titanBoom: 0.58, crush: 0.7, titanRoar: 0.9, clang: 0.75, cleave: 0.55,
+    wireLash: 1.3, decreeCast: 1.3, compile: 1.2, titanFall: 1.2, overload: 1.1, rise: 1.0, bladeSweep: 1.0 };
+  const CHARGE_K = 0.72;
   function tkit(c) {
     const nb = {};
     function noise(len) {
@@ -207,7 +211,7 @@ window.RushAudio = (() => {
     const sr = 44100, c = new OfflineAudioContext(1, sr * secs, sr);
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
     comp.connect(c.destination);
-    const g = c.createGain(); g.gain.value = TLEVEL[name] || 0.7; g.connect(comp);
+    const g = c.createGain(); g.gain.value = (TLEVEL[name] || 0.7) * (/Charge$|Build$/.test(name) ? CHARGE_K : 1); g.connect(comp);
     tkit(c)[name](g, 0.01, arg);
     const d = (await c.startRendering()).getChannelData(0);
     let pk = 0, ss = 0; for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; ss += v * v; }
@@ -225,7 +229,7 @@ window.RushAudio = (() => {
       const { ac, bus } = A().out();
       tk ||= tkit(ac);
       if (!tk[name]) return;
-      const g = ac.createGain(); g.gain.value = TLEVEL[name] || 0.7; g.connect(bus);
+      const g = ac.createGain(); g.gain.value = (TLEVEL[name] || 0.7) * (/Charge$|Build$/.test(name) ? CHARGE_K : 1); g.connect(bus);
       const t = ac.currentTime + 0.005;
       if (/Charge$|Build$/.test(name)) { stopCharge(true); charging = tk[name](g, t, arg); return; }
       if (!/^(titanRoar|materialize|assemble|rise|compile|charge|armourOff|overload)$/.test(name)) stopCharge();

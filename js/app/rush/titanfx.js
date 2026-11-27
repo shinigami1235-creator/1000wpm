@@ -408,7 +408,7 @@ window.RushTitanFX = (() => {
       if (beamMesh.visible) { beamMat.uniforms.uT.value = clock; if (!beamOn) { beamMat.uniforms.uA.value -= dt / 0.25; if (beamMat.uniforms.uA.value <= 0) beamMesh.visible = false; } }
       if (lightK > 0) {
         lightK = Math.max(0, lightK - dt * 4);
-        if (flashSpr) { flashSpr.visible = lightK > 0; flashSpr.material.opacity = Math.min(1, lightK); flashSpr.scale.setScalar(4 + 6 * lightK); }
+        if (flashSpr) { flashSpr.visible = lightK > 0; flashSpr.material.opacity = Math.min(1, lightK); flashSpr.scale.setScalar(2.5 + 3.5 * lightK); }
         if (o.onFlash) o.onFlash(flashCol, lightK);
       }
     }

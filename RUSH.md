@@ -261,7 +261,7 @@ A wind-up picks one of three attacks (`RushData.ATTACKS`), never the same one tw
 | | Steam blast | hunched in, the vents building, the cracks heating, a fan | rears up, the vents blast steam at you |
 | | Hammer pound | both fists overhead, the armour white-hot, a disc | pounds the floor |
 
-`wind` scales the wind-up's length and `hit` the integrity it costs when it lands: the quick attacks wind up 5% faster and hit 20% lighter, the big ones wind up 12% longer and hit 10% harder, so the three average out. The Siege Titan's double slam (its own move) uses the plain slam at 1 and 1. The attack is picked from its own random stream, so the fight's other dice are unchanged. In 320 simulated titan fights per player (`/tmp` check, boss 2 to 16) the win rate and integrity left moved by under 2 points.
+`wind` scales the wind-up's length and `hit` the integrity it costs when it lands: the quick attacks wind up 5% faster and hit 20% lighter, the big ones wind up 12% longer and hit 10% harder, so the three average out. The Siege Titan's double slam (its own move) uses the plain slam at 1 and 1. The attack is picked from its own random stream, so the fight's other dice are unchanged. In 320 simulated titan fights per player (a 40 wpm and a 24 wpm bot, bosses 2 to 16, attacks on against attacks off) the win rate moved by under 2 points and the integrity left by under 1; `node tools/rush/sim.js` passes.
 
 Every pose comes from joint-check's `bend()` in body terms and passes its range, buried-limb and floor checks, at the wind-up, the strike and at a quarter, half and three quarters of the way between (`TITAN_POSES` in `js/app/bosskit.js`). The wind-up eases in and trembles in its last fifth; the strike blends in over 0.13 s, holds, and recovers over 0.7 s; a blocked strike stops halfway and the titan reels.
 
@@ -283,9 +283,13 @@ The rush camera runs on `CamDirector` (`js/app/camdir.js`). The game shot is the
 
 ### Sound
 
-`RushAudio.titan(name, arg)` (in `js/app/rush/audio.js`) makes every titan sound in code on the World Boss's effects bus: a charge per attack that builds over the wind-up and is cut off when the blow lands or is blocked, a strike sound per attack, the clang of a block, and the roars, entrances and death (armour coming off, the core overloading, the blast).
+`RushAudio.titan(name, arg)` (in `js/app/rush/audio.js`) makes every titan sound in code on the World Boss's effects bus: a charge per attack that builds over the wind-up and is cut off when the blow lands or is blocked (or the game pauses), a strike sound per attack, the clang of a block, and the roars, entrances and death (armour coming off, the core overloading, the blast). Levels come from offline renders (`RushAudio.renderTitan(name)`): the loudest peak is about -3 dBFS after the effects bus's compressor, the charges sit about 3 dB under the strikes.
 
 ### Testing
 
 - `window._rush.attack(id)` starts that titan attack now. `_rush.freeze(true)` holds the fight still; `_rush.sceneCtl().preview([[pose, weight], ...])` holds a pose and `review({ pos, look, fov })` a fixed camera; `window.__rushStep = 1 / 30` steps the scene a fixed 1/30 s a frame, for matched review shots. `_rush.sceneCtl().titan()` reports the titan's state and the camera director's log.
 - `window.__camProbe = true` before the page loads logs the camera and the fighters every frame in `window.__camLog`, for the camera metrics.
+
+### Frame cost
+
+Measured headless (SwiftShader) with `_rush.sceneCtl().bench()`, which times whole frames with the GPU finished, plain titans (`window.__rushPlain = true`) against the rich ones on the same page at 1366x660: about 45 ms against about 55 to 65 ms. The machine was shared and the numbers moved by a quarter between runs. Draw calls went from 106-236 to 121-158 (the King from 236 to 144), since the parts are merged per bone. Most of the added cost is the armour's panel shader on a software renderer; on a real GPU it is small. What was cut to get here: a lit floor (now a painted texture), the flash's point light (now a glow and a lift of the fill light), the environment map on the broad plates (trim only), and the Brute's crack pattern on the others (compiled only for the Brute).
