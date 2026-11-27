@@ -30,6 +30,7 @@ Router.register('play', (() => {
     stop();
     game = want;
     el.classList.toggle('picking', game === 'pick');
+    el.classList.toggle('play-racing', game === 'race');
     el.querySelector('[data-sub]').textContent = game === 'pick' ? (matchMedia('(hover: none)').matches ? '// pick a game' : '// pick a game. Type its name to start it.') : '// GAMES';
     const host0 = el.querySelector('[data-game]');
     if (game === 'pick') {
@@ -83,7 +84,7 @@ Router.register('play', (() => {
     stopGame = null;
   }
 
-  function unmount() { stop(); game = ''; el = null; }
+  function unmount() { stop(); game = ''; if (el) el.classList.remove('picking', 'play-racing'); el = null; }
 
   return { title: 'Play', mount, update, unmount };
 })());

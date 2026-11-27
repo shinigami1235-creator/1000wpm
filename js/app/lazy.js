@@ -14,7 +14,7 @@ window.Lazy = (() => {
     combat: { css: ['css/combat.css'], js: ['bus', 'spells', 'combo', 'damage', 'engine', 'bank', 'sfx', 'fx3d', 'inline'].map(f => `js/app/combat/${f}.js`) },
     map: { css: ['css/map.css'], js: ['js/app/community.js', 'js/app/missions.js', 'js/app/worldmap.js', 'js/app/activity.js'] },
     kb: { js: ['js/keyboards.js', 'js/kb3d.js'] },
-    race: { need: ['mt'], js: ['js/race.js', 'js/games.js'] },
+    race: { need: ['mt'], css: ['css/modes.css'], js: ['js/race-audio.js', 'js/race.js', 'js/games.js'] },
     passages: { js: ['js/learn/passages.js'] },
     learn: { need: ['words', 'mt'], css: ['css/learn.css'],
       js: ['js/learn/coins.js', 'js/learn/passages.js', 'js/learn/wordsource.js', 'js/learn/keyboard.js', 'js/learn/lessons.js', 'js/learn/typer.js', 'js/app/learn.js', 'js/app/free.js', 'js/app/reel.js'] },

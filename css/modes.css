@@ -1,0 +1,14 @@
+/* Game modes: the race, the game picker and the typing test (overnight modes pass).
+   Loaded with the race group in js/app/lazy.js. */
+
+/* On a short window the race takes the room the page title and the tall game tabs used,
+   so the road is bigger and still fits without scrolling (1366x660 and up). */
+@media (max-height: 820px) and (min-width: 700px) {
+  .play-racing .play-head { display: none; }
+  .play-racing .game-tabs { margin-bottom: 12px; }
+  .play-racing .game-tab { padding: 7px 12px; }
+  .play-racing .game-tab .label { display: none; }
+  .play-racing .game-tab h3 { font-size: 16px; }
+  .play-racing .race-top { margin-bottom: 10px; }
+  .play-racing .race-stage { width: min(100%, max(420px, calc((100svh - 330px) * 2.4))); margin-bottom: 10px; }
+}
