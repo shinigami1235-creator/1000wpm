@@ -120,6 +120,8 @@ window.BossScene = (() => {
     }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.info.autoReset = false;
+    let lastCalls = 0, lastTris = 0;
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));
     renderer.toneMapping = THREE.NoToneMapping;
     host.prepend(renderer.domElement);
@@ -351,6 +353,9 @@ window.BossScene = (() => {
       ];
       kit.lights[1].position.set(-8, 16, 14);
       kit.lights[2].position.set(0, 8, -14);
+      // Syntax Error's metal reflects its own studio (js/app/syntax-dress.js), so its red rim comes in lower
+      // and softer, catching the edges instead of washing the tops of the plates red
+      if (kit.tips) { kit.lights[2].intensity = 1.1; kit.lights[2].position.set(0, 3, -14); kit.lights[0].intensity = 0.25; }
       kit.lights[3].position.set(12, 6, -6);
       kit.lights.forEach(l => scene.add(l));
       // the fists: where slams land, and a red glow that builds in them through a wind-up
@@ -385,14 +390,46 @@ window.BossScene = (() => {
         const rest = ['chest', 'spine', 'hips', 'neck', 'head', 'handL', 'handR'].flatMap(k => own(B0[k])).concat(kit.tail ? deep(kit.tail) : []);
         kit.shedSets = [[], arms, rest, []];
       }
-      // a glowing wireframe twin of every plate that can come off, shown where the plate was
-      const ghostMat = keep(new THREE.MeshBasicMaterial({ color: C(kit.glowColor || '#ff3a2e', 1.6), wireframe: true, transparent: true, opacity: 0.75, toneMapped: false }));
+      // a glowing hologram twin of every plate that can come off, shown where the plate was: its hard
+      // edges as lines over a faint shell that glows at the edges and has scan lines running up it
+      // (it was a triangle wireframe, which read as a tangle). Each bone's twins are merged into one
+      // lines mesh and one shell, so a bare boss costs two draw calls a bone; each plate keeps an empty
+      // stand-in where it was, for the hit points pinned to it.
+      const ghostCol = C(kit.glowColor || '#ff3a2e', 1.7);
+      const ghostLine = keep(new THREE.LineBasicMaterial({ color: ghostCol.clone(), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      const ghostFill = keep(new THREE.ShaderMaterial({
+        uniforms: { uCol: { value: ghostCol.clone().multiplyScalar(0.7) }, uT: { value: 0 }, uK: { value: 1 } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; varying float vY;
+          void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vY = w.y; vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz); gl_Position = projectionMatrix * viewMatrix * w; }`,
+        fragmentShader: `uniform vec3 uCol; uniform float uT; uniform float uK; varying vec3 vN; varying vec3 vV; varying float vY;
+          void main(){ float f = pow(1.0 - abs(dot(normalize(vN), vV)), 2.0); float scan = smoothstep(0.82, 1.0, sin(vY * 9.0 - uT * 5.0));
+            float a = (0.05 + f * 0.5 + scan * 0.12) * uK; gl_FragColor = vec4(uCol * a, a); }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      const ghostBy = new Map(), gm4 = new THREE.Matrix4(), gs = new V();
       for (const set of kit.shedSets) for (const m of set) {
-        const g = new THREE.Mesh(m.geometry, ghostMat);
+        if (m.userData.detail) continue;
+        const g = new THREE.Object3D();
         g.position.copy(m.position); g.quaternion.copy(m.quaternion); g.scale.copy(m.scale).multiplyScalar(0.94);
         g.visible = false; m.parent.add(g); m.userData.ghost = g;
+        if (!ghostBy.has(m.parent)) ghostBy.set(m.parent, []);
+        const geo = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone());
+        geo.applyMatrix4(gm4.compose(m.position, m.quaternion, gs.copy(m.scale).multiplyScalar(0.94)));
+        ghostBy.get(m.parent).push({ m, geo });
       }
-      kit.ghostMat = ghostMat;
+      const cat = (geos, attr) => { let n = 0; for (const g of geos) n += g.attributes[attr].array.length; const a = new Float32Array(n); let i = 0; for (const g of geos) { a.set(g.attributes[attr].array, i); i += g.attributes[attr].array.length; } return a; };
+      for (const [bone, list] of ghostBy) {
+        const fill = keep(new THREE.BufferGeometry()), edges = list.map(x => new THREE.EdgesGeometry(x.geo, 28));
+        fill.setAttribute('position', new THREE.BufferAttribute(cat(list.map(x => x.geo), 'position'), 3));
+        fill.setAttribute('normal', new THREE.BufferAttribute(cat(list.map(x => x.geo), 'normal'), 3));
+        const line = keep(new THREE.BufferGeometry()); line.setAttribute('position', new THREE.BufferAttribute(cat(edges, 'position'), 3));
+        list.forEach(x => x.geo.dispose()); edges.forEach(e => e.dispose());
+        const vis = new THREE.Group(); vis.visible = false;
+        vis.add(new THREE.Mesh(fill, ghostFill)); vis.add(new THREE.LineSegments(line, ghostLine));
+        bone.add(vis);
+        for (const x of list) x.m.userData.ghostVis = vis;
+      }
+      kit.ghostMat = ghostLine; kit.ghostFill = ghostFill;
       kit.shed = [];
       // Syntax Error's lightning: short arcs that crackle round a gauntlet through a wind-up, and a
       // stream from the open claw to the raid on the reach (Art's Data Erasure); redrawn jagged each
@@ -441,6 +478,7 @@ window.BossScene = (() => {
         for (const f of kit.fists) if (f.at.parent === m) m.parent.attach(f.at);
         const gh = m.userData.ghost;
         if (gh) { gh.visible = true; for (const b of blocks) if (b.km === m) b.km = gh; }
+        if (m.userData.ghostVis) m.userData.ghostVis.visible = true;
         m.userData.home = { parent: m.parent, pos: m.position.clone(), quat: m.quaternion.clone(), scale: m.scale.clone(), ghost: gh };
         if (instant) { m.visible = false; kit.shed.push(m); continue; }
         scene.attach(m);
@@ -449,6 +487,7 @@ window.BossScene = (() => {
         m.userData.spin = new V(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4));
         m.userData.life = rnd(3, 4.5);
         kit.shed.push(m);
+        if (m.userData.detail) continue;
         burst(vF.copy(m.position), 40, 12, GREEN, 1.4, 9);
         burst(vF, 20, 8, WHITE, 1, 9);
         flare(vF, GREEN, 5, 0.25, canFlash() ? 1.1 : 0.5);
@@ -475,7 +514,8 @@ window.BossScene = (() => {
       for (const m of kit.shed) {
         const h = m.userData.home; h.parent.add(m); m.position.copy(h.pos); m.quaternion.copy(h.quat); m.scale.copy(h.scale); m.visible = true;
         if (h.ghost) { h.ghost.visible = false; for (const b of blocks) if (b.km === h.ghost) b.km = m; }
-        m.userData = { ghost: h.ghost };
+        if (m.userData.ghostVis) m.userData.ghostVis.visible = false;
+        m.userData = { ghost: h.ghost, detail: m.userData.detail, ghostVis: m.userData.ghostVis };
       }
       kit.shed.length = 0;
     }
@@ -495,6 +535,19 @@ window.BossScene = (() => {
         _bb.setComponent(ax, bb[side].getComponent(ax));
         b.km = m; b.kl = _bb.clone(); b.size *= 0.7;
       }
+    }
+
+    // Syntax Error's detail pass (js/app/syntax-dress.js): real metal, more parts, a halo, the core's
+    // light, damage that builds through the phases, smoke, error codes floating round it
+    const dress = kit && kit.tips && window.SyntaxDress ? SyntaxDress.dress(THREE, kit, { scene, renderer, glowTex, RoundedBoxGeometry: opts.RoundedBoxGeometry, reduce, calm }) : null;
+    if (dress) {
+      kit.shedSets[1].push(...dress.arms);
+      kit.shedSets[2].push(...dress.body);
+      // BossKit's glowing bands and chest lines go with the plates they sit on, or they hang in the
+      // air as red squares once the armour is off (the visor stays: it's the face)
+      const glowsOf = b => b.children.filter(o => o.isMesh && !kit.meshes.includes(o) && !o.userData.detail && o.material.isMeshBasicMaterial && !o.material.wireframe);
+      for (const [i, bs] of [[1, [kit.bones.foreL, kit.bones.foreR]], [2, [kit.bones.chest]]]) for (const b of bs) for (const m of glowsOf(b)) { m.userData.detail = true; kit.shedSets[i].push(m); }
+      disposables.push(dress);
     }
 
     // shards that orbit the boss
@@ -1550,6 +1603,7 @@ window.BossScene = (() => {
           jolt = Math.min(0.9, jolt + Math.min(0.5, 0.14 + h.dmg * 0.015) * (big ? 1.6 : 1));
           if (!reduce) mv.z -= Math.min(0.5, 0.08 + h.dmg * 0.012) * (big ? 2 : 1);
           if (big && canFlash()) hitGlow = calm ? 0.5 : 1;
+          if (dress) dress.flash(big ? 0.9 : 0.3);
           shake = Math.max(shake, Math.min(0.5, 0.08 + h.dmg * 0.012) * (big ? 1.6 : 1));
           if (big) stopUntil = Math.max(stopUntil, performance.now() + (h.kind === 'block' ? 90 : 60));
         } else { recoilV -= 0.04; jolt = Math.min(0.9, jolt + 0.015); }
@@ -2111,6 +2165,8 @@ window.BossScene = (() => {
       armLG.rotation.set(cur.lx, 0, cur.lz);
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
       if (kit) driveKit(t, at, adt);
+      if (kit && kit.ghostFill) { kit.ghostFill.uniforms.uT.value = at; kit.ghostFill.uniforms.uK.value = phase >= 4 && !reduce && Math.random() < 0.08 ? 0.35 : 1; }
+      if (dress) dress.update(t, adt, { phase, stage, charge: Math.max(chargeK, charge), roar: Math.sin(clamp((t - roarAt) / 2.6, 0, 1) * Math.PI), dead, deadT, weak: weakK > 0.5 });
       if (flight) {
         const sl = dead ? null : own(t), sx = dead ? null : evs.find(z => z.side && !z.cut && t >= z.s && t <= z.e);
         const calm = !dead && !evs.some(z => !z.side && z.type === 'slam' && z.e > t && z.s < t + 3) && !locks.some(l => t < l.h + 0.4) && !current(t, 'volley');
@@ -2528,7 +2584,9 @@ window.BossScene = (() => {
                 P2(raidPos[0], 'm0'), P2(raidPos[3], 'fl1'), P2(raidPos[7], 'fl2')] });
       }
       if (fx) fx.update(adt);
+      renderer.info.reset();
       composer.render();
+      lastCalls = renderer.info.render.calls; lastTris = renderer.info.render.triangles;
       if (opts.onFrame) opts.onFrame();
     });
     const tmpCol = new THREE.Color();
@@ -2588,7 +2646,7 @@ window.BossScene = (() => {
     // tests only: hold every animation still so a capture shows one exact moment
     let paused = false;
     function pause(on) { paused = !!on; }
-    function info() { return { phase, palTo, stage, dead, shots: shots.filter(s => s.on).length, adds: adds.filter(a => a.on).length, evs: evs.length, x: mv.x, z: mv.z, fx: fx ? fx.info() : null }; }
+    function info() { return { phase, palTo, stage, dead, shots: shots.filter(s => s.on).length, adds: adds.filter(a => a.on).length, evs: evs.length, x: mv.x, z: mv.z, fx: fx ? fx.info() : null, calls: lastCalls, tris: lastTris }; }
 
     setFrac(1, true);
     applyPal(1);
