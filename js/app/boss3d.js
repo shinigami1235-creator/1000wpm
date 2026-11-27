@@ -1211,8 +1211,14 @@ window.BossScene = (() => {
     // and it walks in on the raid the whole time: adv goes from 0 at its spot to 1 right in front
     // of the raid in about 15 s, and your sets of words and blocks knock it back.
     // MEN: wind-up pose, strike pose, wind-up seconds, weight
-    const MEN = { swipe: ['pull', 'sweep', 0.34, 0.62], jab: ['coil', 'punch', 0.26, 0.58], stomp: ['raise', 'slam', 0.4, 0.5], lean: ['coil', 'coil', 0.45, 0.7] };
-    const MEN_BY_PHASE = [['swipe', 'jab', 'lean', 'stomp'], ['swipe', 'jab', 'stomp', 'lean'], ['jab', 'swipe', 'stomp', 'jab'], ['jab', 'swipe', 'stomp', 'jab', 'swipe'], ['jab', 'swipe', 'stomp', 'jab', 'swipe']];
+    const MEN = { swipe: ['pull', 'sweep', 0.34, 0.62], jab: ['coil', 'punch', 0.26, 0.58], stomp: ['raise', 'slam', 0.4, 0.5], lean: ['coil', 'coil', 0.45, 0.7],
+      // Syntax Error (28 Nov 2026): a snatch of the claw at the raid that crackles, and a taunt: it curls up
+      // and throws its head back with its mouth lit
+      claw: ['grabwind', 'grab', 0.3, 0.5], taunt: ['brace', 'roar', 0.5, 0.42] };
+    const SYN_MEN = !!(kit && kit.POSES.brace);
+    const MEN_BY_PHASE = SYN_MEN
+      ? [['swipe', 'jab', 'lean', 'stomp', 'taunt'], ['swipe', 'jab', 'stomp', 'claw', 'taunt'], ['jab', 'swipe', 'stomp', 'claw', 'taunt'], ['jab', 'swipe', 'stomp', 'claw', 'swipe'], ['jab', 'swipe', 'claw', 'jab', 'swipe', 'taunt']]
+      : [['swipe', 'jab', 'lean', 'stomp'], ['swipe', 'jab', 'stomp', 'lean'], ['jab', 'swipe', 'stomp', 'jab'], ['jab', 'swipe', 'stomp', 'jab', 'swipe'], ['jab', 'swipe', 'stomp', 'jab', 'swipe']];
     const men = { at: -9, kind: 'swipe', next: 2, fired: false };
     let adv = 0, prevX = 0, leanZ = 0;
 
@@ -2008,7 +2014,9 @@ window.BossScene = (() => {
           flinchAt = t;
           wave(root.position, 0.6, 16, 0.8, pal.a, 0.6);
           burst(v1.copy(root.position).setY(0.3), 30, 8, WHITE, 0.8, 6);
-        } else if (men.kind !== 'lean') shake = Math.max(shake, reduce ? 0.08 : 0.22);
+        } else if (men.kind === 'taunt') snd('glitchRoar');
+        else if (men.kind !== 'lean') shake = Math.max(shake, reduce ? 0.08 : 0.22);
+        if (men.kind === 'claw' && kit && kit.arcs && !reduce) { kit.group.updateMatrixWorld(true); kit.fists[1].at.getWorldPosition(vA); for (let k = 0; k < 4; k++) kit.arcs.add(vA, v1.copy(vA).add(v2.set(rnd(-4, 4), rnd(-3, 2), rnd(-1, 4))), 0.12, 0.8, 8); }
         if (opts.onMenace) opts.onMenace(men.kind);
       }
     }
@@ -2016,7 +2024,7 @@ window.BossScene = (() => {
     function menaceK(t) {
       const u = t - men.at, K = MEN[men.kind];
       if (u < 0 || u > K[2] + 1.3) return null;
-      const hold = men.kind === 'lean' ? 0.8 : 0.12;
+      const hold = men.kind === 'lean' ? 0.8 : men.kind === 'taunt' ? 0.6 : 0.12;
       if (u < K[2]) return { a: ease(u / K[2]), b: 0, surge: 0 };
       const s = u - K[2];
       if (s < 0.12) return { a: 1 - easeIn(s / 0.12) * (men.kind === 'lean' ? 0 : 1), b: easeIn(s / 0.12), surge: easeIn(s / 0.12) };
@@ -2610,7 +2618,8 @@ window.BossScene = (() => {
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
       if (kit) driveKit(t, at, adt);
       if (kit && kit.ghostFill) { kit.ghostFill.uniforms.uT.value = at; kit.ghostFill.uniforms.uK.value = phase >= 4 && !reduce && Math.random() < 0.08 ? 0.35 : 1; }
-      if (dress) dress.update(t, adt, { phase, stage, charge: Math.max(chargeK, charge), roar: Math.sin(clamp((t - roarAt) / 2.6, 0, 1) * Math.PI), dead, deadT, weak: weakK > 0.5 });
+      const tauntK = men.kind === 'taunt' && !dead ? (menaceK(t) || { b: 0 }).b : 0;
+      if (dress) dress.update(t, adt, { phase, stage, charge: Math.max(chargeK, charge), roar: Math.sin(clamp((t - roarAt) / 2.6, 0, 1) * Math.PI), mouth: tauntK, dead, deadT, weak: weakK > 0.5 });
       if (flight) {
         const sl = dead ? null : own(t), sx = dead ? null : evs.find(z => z.side && !z.cut && t >= z.s && t <= z.e);
         const calm = !dead && !evs.some(z => !z.side && z.type === 'slam' && z.e > t && z.s < t + 3) && !locks.some(l => t < l.h + 0.4) && !current(t, 'volley');
@@ -3110,7 +3119,7 @@ window.BossScene = (() => {
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
     return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
-      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
+      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [...hazes, dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }
 
   return { mount };

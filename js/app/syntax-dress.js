@@ -481,7 +481,8 @@ window.SyntaxDress = (() => {
       for (const x of [glyphs, smoke.pts, embers.pts, pool, shadow]) if (x.parent) x.parent.remove(x);
       keep.forEach(x => x.dispose && x.dispose());
     }
-    return { arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow, smoke, embers, env };
+    const objs = [glyphs, smoke.pts, embers.pts, pool, shadow, halo, codeRing, visorGlow, ...dressed];   // for the cost check in tests
+    return { arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow, smoke, embers, env, objs };
   }
   return { dress };
 })();
