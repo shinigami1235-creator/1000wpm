@@ -21,6 +21,17 @@
 //   b.face('happy')             happy, calm, focus, angry, hurt, heart, blink, x
 //   b.hit(dir, t)               knocked back along dir at time t: spins, flashes, face goes hurt
 //   b.dispose()
+//
+// In fights (js/app/boss3d.js):
+//   BotKit.mine()                 -> { id, look }: your bot is your division's (Ops), dressed as you set it in
+//                                    the hangar (#/hangar, saved as 'wpm-bot'); before a division, the one you edited last
+//   BotKit.random(seed)           -> { id, look } for another player, the same every time for the same seed
+//   BotKit.actor(THREE, id, look) -> { group, play(anim), once(kind), update(dt), kbWorld(out), dispose }:
+//                                    a bot that stands where an operator stood (group at floor level, facing +z)
+//                                    and takes the same calls: play 'idle' | 'type' | 'victory' | 'defeat',
+//                                    once 'cast' | 'hit'; kbWorld gives where its shots leave from
+//   BotKit.crowd(THREE, n)        -> { meshes, dispose }: n simple bots in three instanced meshes (shell, face,
+//                                    glow) sharing each matrix; colour the face and glow per instance
 // THREE.RoundedBoxGeometry is used when the caller passes it in (as BossKit's callers do).
 window.BotKit = (() => {
   const BOTS = {
@@ -252,6 +263,13 @@ window.BotKit = (() => {
     }
     // ---------- the back slot: the same part on every bot, at that bot's back ----------
     const BACK = { orbit: [0, 0.1, -0.98], pixel: [0, 0.05, -0.68], nova: [0, 0.1, -0.93], kite: [0, -0.15, -0.93], beep: [0, 0, -0.98], raze: [0, 0.15, -1.05] };
+    {   // every bot has a vent on its back that glows in the operator's colour, since the raid is mostly seen from behind
+      const vent = new THREE.Group(); body.add(vent); vent.position.set(...(BACK[id] || [0, 0, -1])); vent.position.z -= 0.02;
+      const plate = mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 24), dark, vent); plate.rotation.x = Math.PI / 2;
+      const vr = ring(0.27, 0.045, glow, vent); vr.position.z = -0.05;
+      const core = mesh(new THREE.CircleGeometry(0.14, 20), glowSoft, vent); core.position.z = -0.05; core.rotation.y = Math.PI;
+      for (const k of [-1, 1]) { const strip = mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), glow, vent); strip.position.set(k * 0.48, 0, 0.02); }
+    }
     if (opts.back === 'wings' || opts.back === 'pack') {
       const anchor = new THREE.Group(); body.add(anchor); anchor.position.set(...(BACK[id] || [0, 0, -1])); parts.back = anchor;
       if (opts.back === 'wings') for (const s of [-1, 1]) {
@@ -321,5 +339,74 @@ window.BotKit = (() => {
     function dispose() { group.parent && group.parent.remove(group); keep.forEach(x => x.dispose && x.dispose()); }
     return { id, ...def, group, body, face, hit, update, dispose };
   }
-  return { create, BOTS, OPTIONS, STICKERS };
+  // ---------- in fights ----------
+  const DIV_BOT = { striker: 'nova', precision: 'pixel', hunter: 'raze', sentinel: 'orbit', ghost: 'kite', architect: 'beep' };
+  const HOVER = 2.3;   // a bot's centre above the floor
+  const accent = () => (window.Theme ? Theme.hex('accent') : '#8cff58');
+  const lookOf = L => ({ color: L.color || accent(), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back,
+    marks: { stickers: L.stickers || [], wear: L.wear || 0 }, name: L.name || '' });
+  function mine() {
+    let st = null; try { st = window.TT && TT.store ? TT.store.get('wpm-bot', null) : null; } catch (e) {}
+    const d = window.Ops && Ops.division ? Ops.division() : null;
+    const id = (d && DIV_BOT[d.id]) || (st && BOTS[st.active] ? st.active : 'pixel');
+    return { id, look: lookOf((st && st.bots && st.bots[id]) || {}) };
+  }
+  function random(seed) {
+    let h = 2166136261; for (const c of String(seed)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+    const r = k => ((h >>> (k * 3)) & 1023) / 1024, ids = Object.keys(BOTS);
+    const glows = ['#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
+    return { id: ids[Math.floor(r(0) * ids.length)], look: lookOf({ color: glows[Math.floor(r(1) * glows.length)],
+      shell: OPTIONS.shell[Math.floor(r(2) * OPTIONS.shell.length)][0], sig: r(3) < 0.5 ? 0 : 1, back: r(4) < 0.6 ? 'none' : r(4) < 0.8 ? 'wings' : 'pack' }) };
+  }
+  function actor(THREE, id, look = {}, o = {}) {
+    const V = THREE.Vector3, bot = create(THREE, id, { ...look, scale: o.scale || 1 });
+    const group = new THREE.Group(); group.add(bot.group);
+    const hover = o.hover == null ? HOVER : o.hover;
+    let t = Math.random() * 10, anim = 'idle', castAt = -9, prevZ = 0;
+    const vel = new V();
+    function play(a) { anim = a; }
+    function once(kind) {
+      if (kind === 'hit') bot.hit(new V(Math.random() < 0.5 ? -1 : 1, 0, -0.6), t);
+      else if (kind === 'cast') castAt = t;
+    }
+    function update(dt) {
+      t += dt;
+      const sc = t - castAt, lunge = sc < 0.4 ? Math.sin(sc / 0.4 * Math.PI) * 0.9 : 0;   // a dart forward on a cast
+      let y = hover, face, tilt = 0, turn = 0;
+      if (anim === 'defeat') { y = hover * 0.4; face = 'x'; tilt = 0.7; }
+      else if (anim === 'victory') { y = hover + Math.abs(Math.sin(t * 5)) * 0.5; face = 'happy'; turn = Math.sin(t * 2.5) * 0.5; }
+      else if (anim === 'type' || sc < 0.4) face = sc < 0.4 ? 'angry' : 'focus';
+      bot.group.position.set(0, y, lunge);
+      bot.group.rotation.set(0, turn, tilt);
+      vel.set(0, 0, (lunge - prevZ) / Math.max(1e-3, dt) + (anim === 'type' ? 2.5 : 0)); prevZ = lunge;
+      bot.update(t, dt, { vel, face });
+    }
+    function at(name, tt) { anim = name; t = tt; update(0); }
+    const kbWorld = out => bot.body.localToWorld(out.set(0, 0, 1.15));
+    return { group, bot, play, once, update, at, kbWorld, dispose: () => bot.dispose() };
+  }
+  function mergeGeos(THREE, list) {   // non-indexed position merge, enough for flat-coloured glow parts
+    const pos = []; for (const g of list) { const gg = g.index ? g.toNonIndexed() : g; pos.push(...gg.attributes.position.array); }
+    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); return out;
+  }
+  function crowd(THREE, n) {
+    const keep = [], own = x => (keep.push(x), x);
+    const shellGeo = own(new THREE.SphereGeometry(1, 20, 14)); shellGeo.translate(0, HOVER, 0);
+    const faceGeo = own(new THREE.SphereGeometry(1.015, 16, 10, Math.PI / 2 - 0.85, 1.7, Math.PI / 2 - 0.55, 1.1)); faceGeo.translate(0, HOVER, 0);
+    const under = new THREE.TorusGeometry(0.42, 0.06, 6, 24); under.rotateX(Math.PI / 2); under.translate(0, HOVER - 1.02, 0);
+    const vent = new THREE.TorusGeometry(0.3, 0.06, 6, 24); vent.translate(0, HOVER, -1.0);
+    const glowGeo = own(mergeGeos(THREE, [under, vent]));
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; drawFace(cv.getContext('2d'), 'calm', '#ffffff');
+    const tex = own(new THREE.CanvasTexture(cv)); tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
+    const meshes = [
+      new THREE.InstancedMesh(shellGeo, own(new THREE.MeshStandardMaterial({ color: '#d8dce2', roughness: 0.4, metalness: 0.25 })), n),
+      new THREE.InstancedMesh(faceGeo, own(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })), n),
+      new THREE.InstancedMesh(glowGeo, own(new THREE.MeshBasicMaterial({ toneMapped: false })), n),
+    ];
+    const white = new THREE.Color(1, 1, 1);
+    meshes.forEach(m => { m.frustumCulled = false; if (m !== meshes[0]) for (let i = 0; i < n; i++) m.setColorAt(i, white); });
+    return { meshes, dispose() { keep.forEach(x => x.dispose && x.dispose()); meshes.forEach(m => m.dispose && m.dispose()); } };
+  }
+
+  return { create, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd };
 })();

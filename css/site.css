@@ -647,6 +647,7 @@ table.board { width: 100%; border-collapse: separate; border-spacing: 0 6px; fon
 .page.page-full { max-width: 1640px; }
 .room-host { position: relative; height: calc(100vh - 130px); height: calc(100svh - 130px); min-height: 560px; padding: 0; }
 .room-host > .loading-state { height: 100%; }
+.room-links { display: flex; gap: 6px; justify-content: flex-end; margin: 0 0 8px; }
 .page-room { padding-bottom: 20px; }
 
 /* ---------- profile ---------- */

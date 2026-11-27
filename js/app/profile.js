@@ -52,6 +52,7 @@ Router.register('profile', (() => {
           <section class="panel">
             <div class="ph">// OPERATOR</div>
             <a class="btn out" href="#/lab" style="width:100%">Edit operator</a>
+            <a class="btn out" href="#/hangar" style="width:100%;margin-top:8px">Edit bot</a>
           </section>
         </div>
 

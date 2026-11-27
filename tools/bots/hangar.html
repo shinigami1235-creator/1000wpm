@@ -108,7 +108,10 @@ const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200); camera.position.set
 const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.22, 0.9)); composer.addPass(new OutputPass());
 
-let bot = null, spin = -0.5, tryFace = '', tryUntil = 0;
+let bot = null, spin = -0.5, tryFace = '', tryUntil = 0, busyAt = -1e9;
+// the bot turns on its own only once you've left it alone for 3 seconds
+const IDLE_AFTER = 3, touch = () => { busyAt = performance.now() / 1000; };
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel']) document.addEventListener(ev, touch, { passive: true });
 function build() {
   if (bot) bot.dispose();
   const L = look();
@@ -175,7 +178,7 @@ function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.
 new ResizeObserver(resize).observe(view);
 const clock = new THREE.Clock();
 function draw(t) {
-  if (drag == null && !window.hangarFixed) spin += 0.004;
+  if (drag == null && !window.hangarFixed && performance.now() / 1000 - busyAt > IDLE_AFTER) spin += 0.004;
   bot.group.rotation.y = spin;
   bot.update(t, 1 / 60, { face: t < tryUntil ? tryFace : undefined });
   stand.rotation.y = spin;

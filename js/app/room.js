@@ -4,7 +4,7 @@ Router.register('room', (() => {
 
   function mount(el) {
     el.classList.add('page-full');
-    el.innerHTML = `<section class="panel room-host" aria-label="My room" data-host></section>`;
+    el.innerHTML = `<p class="room-links"><a class="btn out sm" href="#/hangar">Hangar</a><a class="btn out sm" href="#/lab">Operator</a></p><section class="panel room-host" aria-label="My room" data-host></section>`;
     const host = el.querySelector('[data-host]');
     mounted = false;
     cancel = UI.waitFor('Room', host, R => { R.mount(host); mounted = true; });

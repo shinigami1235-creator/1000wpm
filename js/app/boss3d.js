@@ -536,34 +536,39 @@ window.BossScene = (() => {
       centres.forEach(([x, z], i) => squadRings[i].position.set(x, 0.05, z + (i ? 0.2 : -0.2)));
       youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
       // with operators standing there, shots leave from their chests
-      if (OPS) for (const p of raidPos) p.y = 1.9;
+      if (OPS) for (const p of raidPos) p.y = BOT ? BotKit.HOVER : 1.9;
     }
     const ONSCREEN = 11;   // slots below this are drawn; the rest of the raid is off screen
     // raiders a blow knocks flat: knockAt[i] is when, and they get up again 1.4 s later
     const knockAt = new Float32Array(ONSCREEN).fill(-9);
     let flinchAt = -9;
 
-    // ---------- operators (js/app/operator3d.js) ----------
-    // You and your squad stand in the raid as full characters, facing the boss; everyone else is one
-    // instanced crowd. They type while words land, cast on a release, flinch when hit, kneel when down.
-    const OPS = window.Operator ? 1.7 : 0;    // about 3 units tall against the 16-unit titan
+    // ---------- the raid's bots (js/app/botkit.js), or operators (js/app/operator3d.js) without it ----------
+    // Operators fight through their bots (Art, 27 Nov 2026): you and your squad hover in the raid as full
+    // bots facing the boss; everyone else is one instanced crowd of simple bots. They type while words
+    // land, dart forward on a release, spin when hit and drop with an X on the screen when down.
+    // Operators themselves now show only in the profile, room, leaderboard and victory scene.
+    const BOT = !!window.BotKit;
+    const OPS = BOT ? 1 : window.Operator ? 1.7 : 0;    // an operator is about 3 units tall against the 16-unit titan
     const TH = { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry };
     const crew = [];                          // { id, op, slot, typeAt, down }
     let crowd = null, won = false;
     const crowdCol = new THREE.Color(), crowdTint = [];
     function addOp(id, preset, slot) {
-      const op = Operator.create(TH, preset, { lite: id !== 'you' });   // full detail for you only
-      op.group.scale.setScalar(OPS); op.group.rotation.y = Math.PI;
+      let op;
+      if (BOT) { const b = id === 'you' ? BotKit.mine() : BotKit.random(id); op = BotKit.actor(TH, b.id, b.look, { scale: 0.78 }); }
+      else { op = Operator.create(TH, preset, { lite: id !== 'you' }); op.group.scale.setScalar(OPS); }   // full detail for you only
+      op.group.rotation.y = Math.PI;
       scene.add(op.group);
       const c = { id, op, slot, typeAt: -9, down: false, beat: Math.random() * 3, kb: (preset && preset.kb && preset.kb.style) || 'slab' };
       crew.push(c); return c;
     }
     if (OPS) {
       if (!kit) scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.9));
-      addOp('you', Operator.mine(), RAID);
-      crowd = Operator.crowd(TH, RAID);
+      addOp('you', window.Operator ? Operator.mine() : null, RAID);   // the operator's preset still carries the keyboard
+      crowd = BOT ? BotKit.crowd(TH, RAID) : Operator.crowd(TH, RAID);
       crowd.meshes.forEach(m => scene.add(m));
-      for (let i = 0; i < RAID; i++) crowdTint.push(new THREE.Color('#ffffff').lerp(raidCol(i), 0.32));
+      for (let i = 0; i < RAID; i++) crowdTint.push(BOT ? raidCol(i).clone().multiplyScalar(1.5) : new THREE.Color('#ffffff').lerp(raidCol(i), 0.32));
       marks.visible = false;
     }
     // the squad mates take the three spots nearest you
@@ -592,8 +597,27 @@ window.BossScene = (() => {
         c.op.play(anim);
         c.op.update(dt);
       }
-      // the rest of the raid: two instanced crowds, male and female, mixed along both sides
       const used = new Set(crew.map(c => c.slot));
+      if (BOT) {   // the rest of the raid: simple bots, every part sharing one matrix
+        let n = 0;
+        for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) {
+          if (used.has(i)) continue;
+          const p = raidPos[i];
+          const ku = t - knockAt[i], kk = ku < 0.15 ? ease(ku / 0.15) : ku < 0.8 ? 1 : ku < 1.4 ? 1 - smooth((ku - 0.8) / 0.6) : 0;
+          const fu = t - flinchAt, fk = fu < 0.35 ? Math.sin(fu / 0.35 * Math.PI) * (0.5 + 0.5 * Math.sin(i * 2.3)) : 0;
+          opP.set(p.x, Math.sin(t * 2.1 + i * 1.3) * 0.12 + Math.sin(t * 9 + i) * 0.06 * markGlow[i] + fk * 0.35, p.z + kk * 1.8);
+          opQ.setFromEuler(opE.set(-kk * 0.9, Math.PI + Math.sin(i * 1.7) * 0.25, kk * (i % 2 ? 1.2 : -1.2)));
+          const bs = 0.62 + (i % 5) * 0.02; opS.setScalar(bs);
+          opP.y += BotKit.HOVER * (1 - bs);   // the hover height is in the geometry, so scaling would lower it
+          opM.compose(opP, opQ, opS);
+          crowdCol.copy(crowdTint[i]).multiplyScalar(1 + markGlow[i] * 1.2);
+          crowd.meshes.forEach((m, k) => { m.setMatrixAt(n, opM); if (k) m.setColorAt(n, crowdCol); });
+          n++;
+        }
+        crowd.meshes.forEach(m => { m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+        return;
+      }
+      // the rest of the raid: two instanced crowds, male and female, mixed along both sides
       const n = [0, 0];
       for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) {
         if (used.has(i)) continue;

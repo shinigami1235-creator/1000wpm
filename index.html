@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-dtUZqOUfNO8jdYazo9ivzkfycy7LnAoz0wcLNv008uE=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-jLt1vX6mbZlTdh7uI309mkAyrqyGpzXKo+5NnQ6iYAY=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-dtUZqOUfNO8jdYazo9ivzkfycy7LnAoz0wcLNv008uE=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-RwBFSLAeXLcqN3Mu4TVBxmRltlkPQ1mhcJ+meFLbFiU=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stormtyper by 10000wpm</title>
@@ -109,6 +109,7 @@
         <a href="#/leaderboard" data-route="leaderboard">[ leaderboard ]</a>
         <a href="#/room" data-route="room">[ my room ]</a>
         <a href="#/lab" data-route="lab">[ operator ]</a>
+        <a href="#/hangar" data-route="hangar">[ hangar ]</a>
         <a href="#/shop" data-route="shop">[ shop ]</a>
         <a href="#/profile" data-route="profile">[ profile ]</a>
       </nav>
@@ -159,7 +160,7 @@
 <script src="js/app/progress-fx.js"></script>
 <script src="js/app/buddy-art.js"></script>
 <script src="js/app/buddy.js"></script>
-<script>['home','type','play','boss','superboss','duel','party','u','commons','leaderboard','shop','room','profile','lab'].forEach(n => Router.lazy(n));</script>
+<script>['home','type','play','boss','superboss','duel','party','u','commons','leaderboard','shop','room','profile','lab','hangar'].forEach(n => Router.lazy(n));</script>
 <script>Router.start(document.getElementById('view'));</script>
 </body>
 </html>
