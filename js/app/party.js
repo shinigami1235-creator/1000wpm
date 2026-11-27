@@ -13,7 +13,7 @@ Router.register('party', (() => {
   const R = () => PartyRules;
   const ROLE_ICON = { striker: 'bolt', guard: 'lock', support: 'flame' };
   let el = null, off = [], view = '', run = null, words = [], scene = null, keys = null, ty = null, onDoc = null, onSound = null, onResize = null, raf = 0, lastState = null, endShown = false;
-  let counted = false;
+  let counted = false, arenaSnd = null;
   let create = { run: 'relay', difficulty: 'normal' };
   // lit words (Gid, 27 Nov 2026): you only type your stream; counters, mites, heals, revives, shields,
   // buffs and spells light up stream words two or more ahead (PartyRules lit, players[i].marks)
@@ -270,13 +270,17 @@ Router.register('party', (() => {
       </div>`;
     const stage = el.querySelector('[data-stage]');
     buildTeam();
+    // the fight's own sounds (slams, chips, kills, heals) on the run's audio context (js/app/arena-audio.js)
+    arenaSnd = window.ArenaAudio && window.BossAudio ? ArenaAudio.create({ ctx: () => BossAudio.out().ac, out: () => BossAudio.out().bus, on: () => BossAudio.on }) : null;
     scene = PartyScene.mount(stage, {
+      audio: arenaSnd,
       now: () => Net.match.clock(),
       color: colorOf,
       lane: id => lanes.get(id) || null,
       onImpact: (h, x, y) => { if (x != null) MultiUI.pop(el.querySelector('[data-nums]'), x, y, String(h.dmg), h.you ? 'out' : 'team'); },
       onFrame: placeTags,
     });
+    window._party = { scene: () => scene };   // tests
     el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); Net.lobbies.leave().then(() => { location.hash = '#/party'; browser(); }); });
     flow = null;
     ty = NetTypist.create({
@@ -376,7 +380,7 @@ Router.register('party', (() => {
       } else if (f.kind === 'head' && st.boss.kind === 'hydra' || f.kind === 'twin') {
         word = f.name; cls = 'aim' + (me.target === f.id ? ' mine' : '');
         const n = st.players.filter(p => p.target === f.id && !p.down);
-        sub = `<span class="pa-tag-hp"><i style="width:${(100 * f.hp / f.maxHp).toFixed(0)}%"></i></span>${n.map(p => `<i class="dot" style="background:${colorOf(p.id)}"></i>`).join('')}`;
+        sub = `<span class="pa-tag-hp"><i style="width:${Math.min(100, 100 * f.hp / f.maxHp).toFixed(0)}%"></i></span>${n.map(p => `<i class="dot" style="background:${colorOf(p.id)}"></i>`).join('')}`;
       } else continue;
       want.add(f.id);
       let t = tagEls.get(f.id);
@@ -388,15 +392,28 @@ Router.register('party', (() => {
     }
     for (const [id, t] of tagEls) if (!want.has(id)) { t.remove(); tagEls.delete(id); }
   }
+  // tags that would sit on top of each other (two heads close together) are stacked instead, so
+  // every word stays readable; a tag's size is measured only when its content changes
   function placeTags() {
     if (!scene || !tagEls.size) return;
     const at = scene.anchors();
+    const live = [];
     for (const [id, t] of tagEls) {
       const a = at.get(id);
       if (!a) { t.style.visibility = 'hidden'; continue; }
       t.style.visibility = '';
-      t.style.transform = `translate(${a.x.toFixed(1)}px, ${a.y.toFixed(1)}px) translate(-50%, -100%)`;
+      if (t._sz !== t.dataset.v) { t._sz = t.dataset.v; t._w = t.offsetWidth; t._h = t.offsetHeight; }
+      live.push({ t, x: a.x, y: a.y, w: t._w || 60, h: t._h || 30 });
     }
+    live.sort((p, q) => q.y - p.y);
+    for (let i = 0; i < live.length; i++) for (let j = 0; j < i; j++) {
+      const p = live[i], q = live[j];
+      if (Math.abs(p.x - q.x) < (p.w + q.w) / 2 + 4 && Math.abs(p.y - q.y) < p.h + 4) {
+        // stack above the other tag, or below it when that would leave the stage
+        p.y = q.y - q.h - 4 >= p.h + 2 ? q.y - q.h - 4 : q.y + p.h + 4;
+      }
+    }
+    for (const p of live) p.t.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`;
   }
 
   // the words this player may type besides the stream; the rules decide what they do
@@ -489,9 +506,9 @@ Router.register('party', (() => {
         lanePop(ev.id, `-${ev.dmg}`, ev.shielded ? 'block' : 'in');
         break;
       case 'down': scene.down(ev.id); pop(ev.id === 'me' ? "You're down. Keep typing to come back sooner." : `${who(ev.id).name} is down. Type ${who(ev.id).handle || handleOf(ev.id)} to bring them back.`, 'in'); sfx('blockFail'); break;
-      case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.heal(ev.id); sfx('milestone'); break;
-      case 'heal': scene.heal(ev.id); lanePop(ev.id, `+${ev.amount}`, 'heal'); if (ev.by === 'me' || ev.id === 'me') sfx('weakOpen'); break;
-      case 'shield': scene.shield(ev.id); lanePop(ev.id, 'Shield', 'block'); if (ev.by === 'me' || ev.id === 'me') sfx('shieldUp'); break;
+      case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.up(ev.id); sfx('milestone'); break;
+      case 'heal': scene.heal(ev.id, ev.by); lanePop(ev.id, `+${ev.amount}`, 'heal'); if (ev.by === 'me' || ev.id === 'me') sfx('weakOpen'); break;
+      case 'shield': scene.shield(ev.id, ev.by); lanePop(ev.id, 'Shield', 'block'); if (ev.by === 'me' || ev.id === 'me') sfx('shieldUp'); break;
       case 'foeGone': scene.foeGone(ev.id, ev.how); if (ev.how === 'pop' || ev.how === 'kill') sfx('addKill'); if (ev.how === 'bite') sfx('projHit'); break;
       case 'foe': if (fightKind === 'swarm') sfx('addSpawn'); break;
       case 'regrow': scene.regrow(ev.id); pop(fightKind === 'twins' ? 'It came back' : 'A head grew back', 'in'); sfx('roar'); break;
@@ -652,12 +669,14 @@ Router.register('party', (() => {
   function stopRun() {
     cancelAnimationFrame(raf); raf = 0;
     if (scene) { scene.dispose(); scene = null; }
+    if (arenaSnd) { arenaSnd.dispose(); arenaSnd = null; }
     if (onDoc) { document.removeEventListener('keydown', onDoc); onDoc = null; }
     if (onSound) { removeEventListener('wpm-sound', onSound); onSound = null; }
     if (onResize) { removeEventListener('resize', onResize); onResize = null; }
     if (window.RushAudio) RushAudio.stop();
     UI.play('party', false);
     tagEls.clear(); lanes.clear();
+    window._party = null;
     keys = null; ty = null; run = null; lastState = null;
     clearTimeout(bannerT);
   }

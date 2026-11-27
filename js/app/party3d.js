@@ -2,16 +2,19 @@
 // blocks in code. hydra (three necks on a mound), swarm (the Cache Wraith and its mites),
 // snake (the Null Conductor's train of word cars), golem (a block giant with a core
 // that opens) and twins (Syntax, a crystal, and Echo, its wire ghost).
-// The team is not drawn here: the team cards sit under the canvas and lane(id) says
-// where each one is, so shots leave from a card and attacks land on one.
+// Each area is dressed by js/app/party-arena.js (its floor, light and set). The team stand at the
+// front, each over their card under the canvas (lane(id) says where), and fight with the moves in
+// js/app/fight-moves.js. The boss winds up with a charge you can see and hear, lands with a
+// shockwave, and a camera director (js/app/camdir.js) cuts to the boss's big moments and the kill
+// only while no attack is on its way to the team.
 //
-//   const sc = PartyScene.mount(host, { lane: id => ({ x, y }) | null, now: () => netMs, color: id => '#hex', onImpact(h, x, y) })
+//   const sc = PartyScene.mount(host, { lane: id => ({ x, y }) | null, now: () => netMs, color: id => '#hex', onImpact(h, x, y), audio })
 //   sc.setFight({ kind, look, foes })   build the creatures for a fight
 //   sc.sync(state)                      every paint: foes, HP, the attack being wound up, the core, relink clock
 //   sc.shot({ id, foe, dmg, tier, crit, you })   a word from a player's card to a foe; onImpact on landing
 //   sc.cast(spellId, { from, foe, hits, effect })  a spell from the combat layer
 //   sc.attackLands({ id, target }) / sc.block({ id, by }) / sc.chip({ from, targets, what })
-//   sc.foeGone(id, how)  how: kill | pop | bite | cut     sc.regrow(id)   sc.down(id)   sc.heal(id)   sc.shield(id)
+//   sc.foeGone(id, how)  how: kill | pop | bite | cut     sc.regrow(id)   sc.down(id)   sc.up(id)   sc.heal(id, by)   sc.shield(id, by)
 //   sc.clear()  the fight is won     sc.anchors() -> Map(foeId -> { x, y, on }) in host pixels, for word labels
 //   sc.dispose()
 window.PartyScene = (() => {
@@ -48,8 +51,11 @@ window.PartyScene = (() => {
       foeGone: (id, how) => impl && impl.foeGone(id, how),
       regrow: id => impl && impl.regrow(id),
       down: id => impl && impl.down(id),
-      heal: id => impl && impl.heal(id),
-      shield: id => impl && impl.shield(id),
+      heal: (id, by) => impl && impl.heal(id, by),
+      shield: (id, by) => impl && impl.shield(id, by),
+      up: id => impl && impl.up(id),
+      director: () => (impl ? impl.director() : null),
+      _impl: () => impl,   // tests
       clear: () => impl && impl.clear(),
       anchors: () => (impl ? impl.anchors() : new Map()),
       info: () => (impl ? impl.info() : null),
@@ -109,16 +115,27 @@ window.PartyScene = (() => {
 
     // ---------- shared pieces ----------
     const T = { value: 0 };
-    const EDGE_V = 'varying vec2 vUv; varying float vD; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }';
+    // the creatures' skin: a dark armoured block lit from above, a bright edge on every face, panel
+    // lines inside each face, a rim of light where the surface turns away from the camera, a scan
+    // running over it, and a white flash when it's hit
+    const EDGE_V = `varying vec2 vUv; varying float vD; varying vec3 vN; varying vec3 vV;
+      void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz);
+        vec4 mv = viewMatrix * w; vD = -mv.z; gl_Position = projectionMatrix * mv; }`;
     const EDGE_F = `uniform vec3 uCol; uniform float uHit; uniform float uTime; uniform float uOp; uniform float uFill; uniform float uSeed;
-      varying vec2 vUv; varying float vD;
+      varying vec2 vUv; varying float vD; varying vec3 vN; varying vec3 vV;
       void main(){
         vec2 d = min(vUv, 1.0 - vUv);
-        float edge = 1.0 - smoothstep(0.0, 0.085, min(d.x, d.y));
+        float edge = 1.0 - smoothstep(0.0, 0.07, min(d.x, d.y));
+        vec2 q = abs(fract(vUv * 2.0) - 0.5);
+        float panel = (1.0 - smoothstep(0.0, 0.035, min(q.x, q.y))) * (1.0 - edge);
         float scan = 0.5 + 0.5 * sin(vUv.y * 28.0 + uTime * 4.0 + uSeed * 20.0);
-        vec3 col = mix(uCol, vec3(1.0), uHit * 0.55);
-        vec3 c = vec3(0.004, 0.008, 0.007) + col * uFill * (0.05 + 0.06 * scan) + col * edge * (1.0 + uHit * 1.4);
-        c = mix(c, vec3(0.0), smoothstep(45.0, 85.0, vD) * 0.8);
+        vec3 n = normalize(vN);
+        float lit = 0.35 + 0.65 * max(dot(n, normalize(vec3(0.3, 1.0, 0.55))), 0.0);
+        float rim = pow(1.0 - abs(dot(n, normalize(vV))), 2.2);
+        vec3 col = mix(uCol, vec3(1.0), uHit * 0.4);
+        vec3 c = vec3(0.012, 0.016, 0.02) * lit + col * uFill * (0.05 + 0.05 * scan) * lit + col * edge * (0.95 + uHit * 0.9)
+          + col * panel * 0.16 * uFill + col * rim * 0.42 * uFill + vec3(uHit * 0.12);
+        c = mix(c, vec3(0.0), smoothstep(45.0, 85.0, vD) * 0.7);
         gl_FragColor = vec4(c, uOp);
       }`;
     function edgeMat(col, fill = 1, op = 1) {
@@ -136,27 +153,30 @@ window.PartyScene = (() => {
     { const c = glowCv.getContext('2d'); const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,.4)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); }
     const glowTex = new THREE.CanvasTexture(glowCv);
 
-    // ---------- the arena ----------
-    const codeCv = document.createElement('canvas'); codeCv.width = codeCv.height = 512;
-    {
-      const c = codeCv.getContext('2d'); c.font = '20px monospace';
-      const CH = '01{}[]<>/=+*#$abcdef';
-      for (let x = 0; x < 512; x += 16) for (let y = 0; y < 512; y += 22) if (Math.random() < 0.5) { c.fillStyle = `rgba(255,255,255,${rnd(0.15, 0.9).toFixed(2)})`; c.fillText(CH[Math.floor(Math.random() * CH.length)], x, y); }
-    }
-    const codeTex = new THREE.CanvasTexture(codeCv); codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping; codeTex.repeat.set(7, 3);
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 60), new THREE.MeshBasicMaterial({ map: codeTex, transparent: true, opacity: 0.16, depthWrite: false, fog: false }));
-    wall.position.set(0, 20, -42); scene.add(wall);
-    const grid = new THREE.GridHelper(160, 80, '#ffffff', '#ffffff');
-    grid.material.transparent = true; grid.material.opacity = 0.28; scene.add(grid);
+    // ---------- the arena (js/app/party-arena.js), or the old code wall and grid without it ----------
+    let arena = null;
+    if (window.PartyArena) { try { arena = PartyArena.build(THREE, scene, { lite: matchMedia('(max-width: 720px)').matches }); } catch (e) { console.warn('Party arena', e); arena = null; } }
+    let wall = null, grid = null, floorRing = null;
     const pillarMat = edgeMat(Theme.hex('accent-dim'), 0.35);
-    const pillars = [];
-    for (let k = 0; k < 18; k++) {
-      const side = k % 2 ? 1 : -1, h = rnd(6, 22);
-      const m = box(scene, rnd(1.6, 3.2), h, rnd(1.6, 3.2), pillarMat, side * rnd(16, 40), h / 2, -rnd(20, 44));
-      pillars.push(m);
+    if (!arena) {
+      const codeCv = document.createElement('canvas'); codeCv.width = codeCv.height = 512;
+      {
+        const c = codeCv.getContext('2d'); c.font = '20px monospace';
+        const CH = '01{}[]<>/=+*#$abcdef';
+        for (let x = 0; x < 512; x += 16) for (let y = 0; y < 512; y += 22) if (Math.random() < 0.5) { c.fillStyle = `rgba(255,255,255,${rnd(0.15, 0.9).toFixed(2)})`; c.fillText(CH[Math.floor(Math.random() * CH.length)], x, y); }
+      }
+      const codeTex = new THREE.CanvasTexture(codeCv); codeTex.wrapS = codeTex.wrapT = THREE.RepeatWrapping; codeTex.repeat.set(7, 3);
+      wall = new THREE.Mesh(new THREE.PlaneGeometry(150, 60), new THREE.MeshBasicMaterial({ map: codeTex, transparent: true, opacity: 0.16, depthWrite: false, fog: false }));
+      wall.position.set(0, 20, -42); scene.add(wall);
+      grid = new THREE.GridHelper(160, 80, '#ffffff', '#ffffff');
+      grid.material.transparent = true; grid.material.opacity = 0.28; scene.add(grid);
+      for (let k = 0; k < 18; k++) {
+        const side = k % 2 ? 1 : -1, h = rnd(6, 22);
+        box(scene, rnd(1.6, 3.2), h, rnd(1.6, 3.2), pillarMat, side * rnd(16, 40), h / 2, -rnd(20, 44));
+      }
+      floorRing = new THREE.Mesh(new THREE.RingGeometry(9, 9.12, 96), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+      floorRing.rotation.x = -Math.PI / 2; floorRing.position.set(0, 0.02, -3); scene.add(floorRing);
     }
-    const floorRing = new THREE.Mesh(new THREE.RingGeometry(9, 9.12, 96), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
-    floorRing.rotation.x = -Math.PI / 2; floorRing.position.set(0, 0.02, -3); scene.add(floorRing);
 
     // ---------- particles, rings and strips ----------
     const PN = 260;
@@ -168,6 +188,7 @@ window.PartyScene = (() => {
     let pI = 0;
     function burst(at, n, speed, col, o = {}) {
       if (reduce) n = Math.ceil(n / 3);
+      if (!col.isColor) col = C(col);   // a hex string here once turned every spark NaN and blacked out the frame
       for (let k = 0; k < n; k++) {
         const p = parts[pI = (pI + 1) % PN];
         p.s.material.color.copy(col).multiplyScalar(o.k || 1.6);
@@ -213,6 +234,27 @@ window.PartyScene = (() => {
     // short bolts for chip hits and heals
     const bolts = Array.from({ length: 10 }, () => ({ m: mkStrip(), t: 1, life: 0.3, a: new V(), b: new V(), col: new THREE.Color(), w: 0.3 }));
     let boI = 0;
+    // word streaks: a bright thin core and a soft glow running along an arc from a player's hand to a foe
+    const streaks = Array.from({ length: 16 }, () => ({ core: mkStrip(), glow: mkStrip(), on: false, t: 0, dur: 0.25, a: new V(), c: new V(), to: null, col: new THREE.Color(), cb: null, k: 1 }));
+    let stI = 0;
+    const _h = new V(), _tl = new V(), _bt = new V();
+    function streak(a, to, col, dur, cb, k = 1) {
+      const S = streaks[stI = (stI + 1) % streaks.length];
+      if (S.on && S.cb) { const f = S.cb; S.cb = null; f(); }
+      S.a.copy(a); to(_bt); S.c.lerpVectors(a, _bt, 0.5).add(v4.set(rnd(-1.5, 1.5), 2.2 + rnd(0, 1.2), 0));
+      S.to = to; S.col.copy(col); S.dur = dur; S.t = 0; S.on = true; S.cb = cb; S.k = k;
+      S.core.material.color.copy(col).lerp(WHITE, 0.6).multiplyScalar(1.8); S.glow.material.color.copy(col).multiplyScalar(1.2);
+    }
+    function drawStreaks(dt) {
+      for (const S of streaks) {
+        if (!S.on) { S.core.visible = S.glow.visible = false; continue; }
+        S.t += dt; const u = S.t / S.dur;
+        S.to(_bt);
+        bez(S.a, S.c, _bt, Math.min(1, ease(u)), _h); bez(S.a, S.c, _bt, Math.max(0, Math.min(1, ease(u - 0.3))), _tl);
+        strip(S.core, _tl, _h, 0.09 * S.k, 1); strip(S.glow, _tl, _h, 0.42 * S.k, 0.45);
+        if (u >= 1) { S.on = false; S.core.visible = S.glow.visible = false; if (S.cb) { const f = S.cb; S.cb = null; f(); } }
+      }
+    }
     function bolt(a, b, col, life = 0.32, w = 0.35) { const x = bolts[boI = (boI + 1) % bolts.length]; x.a.copy(a); x.b.copy(b); x.col.copy(col); x.t = 0; x.life = life; x.w = w; x.m.material.color.copy(col); }
 
     // ---------- combat effects (tier shots and spells) ----------
@@ -224,6 +266,8 @@ window.PartyScene = (() => {
 
     // ---------- camera and the team line ----------
     const camBase = new V(0, 6.2, 23), camLook = new V(0, 4.6, -1);
+    // the team's places are worked out from the home view, so a cutaway never moves them
+    const homeCam = camera.clone();
     let teamZ = 9;
     let W = 600, H = 400;
     const laneCache = new Map();
@@ -236,6 +280,7 @@ window.PartyScene = (() => {
       const dist = Math.max(21, 11 / (Math.tan(half) * camera.aspect));
       camBase.set(0, 6.2, dist);
       camera.position.copy(camBase); camera.lookAt(camLook); camera.updateProjectionMatrix();
+      homeCam.aspect = camera.aspect; homeCam.position.copy(camBase); homeCam.lookAt(camLook); homeCam.updateProjectionMatrix(); homeCam.updateMatrixWorld();
       teamZ = clamp(dist - 12, 7, 14);
       // resizing the canvas clears it: draw again now, so a resize never shows a blank frame
       if (drawn) composer.render();
@@ -256,7 +301,7 @@ window.PartyScene = (() => {
       const w = W, h = H;
       const x = L ? L.x : w / 2, y = h * 0.96;
       ndc.set(x / w * 2 - 1, -(y / h * 2 - 1));
-      ray.setFromCamera(ndc, camera);
+      ray.setFromCamera(ndc, homeCam);
       plane.constant = -teamZ;
       if (!ray.ray.intersectPlane(plane, out)) out.set(0, 0.5, teamZ);
       out.y = Math.max(0.4, out.y);
@@ -274,32 +319,60 @@ window.PartyScene = (() => {
     const TH = window.Operator ? { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry } : null;
     // your keyboard's look on your shots (js/app/combat/fx3d.js, keyboard signatures)
     const myKb = window.Operator ? Operator.mine().kb.style : null;
+    const OPS = 1.9;
     function teamSync(players) {
       if (!TH || !players) return;
       if (!teamLit) {
         teamLit = true;
-        scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.8));
-        const key = new THREE.DirectionalLight('#ffffff', 2); key.position.set(0, 9, 16); scene.add(key);
+        if (!arena) {
+          scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.8));
+          const key = new THREE.DirectionalLight('#ffffff', 2); key.position.set(0, 9, 16); scene.add(key);
+        }
       }
       for (const p of players) if (!team.has(p.id)) {
         const op = Operator.create(TH, p.id === 'me' ? Operator.mine() : Operator.random(p.name || p.id), { lite: p.id !== 'me' });   // full detail for you only
-        op.group.scale.setScalar(1.9); op.group.rotation.y = Math.PI;
+        op.group.scale.setScalar(OPS); op.group.rotation.order = 'YXZ'; op.group.rotation.y = Math.PI;
         scene.add(op.group);
-        team.set(p.id, { op, typeAt: -9 });
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+        ring.rotation.x = -Math.PI / 2; scene.add(ring);
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: glowTex, color: colorOf(p.id).multiplyScalar(0.6), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+        pool.rotation.x = -Math.PI / 2; scene.add(pool);
+        team.set(p.id, { op, ring, pool, mv: window.FightMoves ? FightMoves.create(THREE, op) : null, typeAt: -9, down: false });
       }
-      for (const [id, m] of team) if (!players.some(p => p.id === id)) { scene.remove(m.op.group); m.op.dispose(); team.delete(id); }
+      for (const [id, m] of team) if (!players.some(p => p.id === id)) { scene.remove(m.op.group, m.ring, m.pool); m.op.dispose(); team.delete(id); }
     }
     const tv = new V();
     function teamTick(t, dt) {
       for (const [id, m] of team) {
         laneAt(id, tv);
-        m.op.group.position.set(tv.x, 0, tv.z - 2.4);
         const p = st && st.players ? st.players.find(x => x.id === id) : null;
-        m.op.play(p && p.down ? 'defeat' : teamWon ? 'victory' : t - m.typeAt < 1.6 ? 'type' : 'idle');
+        const down = !!(p && p.down);
+        if (down && !m.down && m.mv) m.mv.act('stagger');
+        m.down = down;
+        m.op.play(down ? 'defeat' : teamWon ? 'victory' : t - m.typeAt < 1.6 ? 'type' : 'idle');
         m.op.update(dt);
+        const r = m.mv && !down ? m.mv.update(dt) : null;
+        // they face the boss (away from the camera), so a lunge goes into the screen and a hit pushes them back
+        m.op.group.position.set(tv.x, r ? r.y * OPS : 0, tv.z - 2.4 - (r ? r.x * OPS : 0));
+        m.op.group.rotation.x = r ? r.rx : 0;
+        m.ring.position.set(tv.x, 0.03, tv.z - 2.4); m.pool.position.set(tv.x, 0.02, tv.z - 2.4);
+        const aimed = !!(atk && st && (atk.target === id || atk.target === 'team') && !down);
+        m.ring.material.color.copy(aimed ? RED : colorOf(id)).multiplyScalar(aimed ? 1.6 + Math.sin(t * 14) * 0.5 : 1.4);
+        m.ring.material.opacity = down ? 0.3 : 0.85;
       }
     }
-    function teamAct(id, kind) { const m = team.get(id); if (!m) return; if (kind === 'type') m.typeAt = nowS(); else m.op.once(kind); }
+    function teamAct(id, kind) {
+      const m = team.get(id); if (!m) return;
+      if (kind === 'type') { m.typeAt = nowS(); return; }
+      if (m.mv && !m.down) m.mv.act(kind === 'hit' ? 'stagger' : kind);
+      else if (kind === 'cast' || kind === 'hit') m.op.once(kind === 'hit' ? 'hit' : 'cast');
+    }
+    // where a shot leaves a player: the right hand, or over their card
+    function handAt(id, out) {
+      const m = team.get(id);
+      if (m && m.op.bones && m.op.bones.RightHand) return m.op.bones.RightHand.getWorldPosition(out).add(v4.set(0, 0.3, -1.6));
+      return laneAt(id, out).add(v4.set(0, 0.6, 0));
+    }
 
     // ---------- creatures ----------
     let cre = null, kind = '', foes = new Map(), st = null, deadAt = -9, feintAt = 0;
@@ -333,6 +406,14 @@ window.PartyScene = (() => {
         const eyeMat = glowMatFor(pal.eye);
         box(head, 0.28, 0.18, 0.2, eyeMat, -0.5, 0.35, 0.95); box(head, 0.28, 0.18, 0.2, eyeMat, 0.5, 0.35, 0.95);
         for (let k = 0; k < 3; k++) { const c = box(head, 0.18, 0.7, 0.5, mat, 0, 0.8, -0.6 + k * 0.5); c.rotation.x = -0.5; }
+        // swept-back horns, a brow ridge and two rows of teeth
+        for (const sx of [-1, 1]) {
+          const h1 = box(head, 0.22, 0.22, 1.3, mat, sx * 0.62, 0.62, -0.95); h1.rotation.set(0.55, sx * 0.35, 0);
+          const h2 = box(head, 0.16, 0.16, 0.8, mat, sx * 0.78, 0.98, -1.6); h2.rotation.set(0.95, sx * 0.45, 0);
+          const brow = box(head, 0.5, 0.14, 0.3, mat, sx * 0.5, 0.52, 0.95); brow.rotation.z = sx * -0.35;
+        }
+        const toothMat = glowMatFor('#ffffff'); toothMat.opacity = 0.55;
+        for (let k = 0; k < 5; k++) { const tx = -0.42 + k * 0.21; box(head, 0.08, 0.18, 0.08, toothMat, tx, -0.28, 1.9); box(jaw, 0.08, 0.16, 0.08, toothMat, tx, 0.14, 2.2); }
         return { i, mat, base, neck, head, jaw, eyeMat, pos: new V().copy(REST[i]), rest: REST[i], alive: true, fall: 0, charge: 0, lunge: 0, lungeTo: new V(), bite: 0, gone: false };
       });
       holder.add(g);
@@ -344,7 +425,7 @@ window.PartyScene = (() => {
         hit(id, k) { const h = byFoe(id); if (h) h.mat.uniforms.uHit.value = Math.min(1.5, h.mat.uniforms.uHit.value + k); },
         charge(id, k) { const h = byFoe(id); if (h) h.charge = k; },
         lunge(id, at, k = 1) { const h = byFoe(id); if (h && (k >= 1 || h.lunge < 0.3)) { h.lunge = 1; h.lk = k; h.lungeTo.copy(at); } },
-        gone(id) { const h = byFoe(id); if (h) { h.alive = false; burst(h.head.position, 30, 8, pal.a, { up: 0.5 }); } },
+        gone(id) { const h = byFoe(id); if (h) { h.alive = false; burst(h.head.position, 30, 8, C(pal.a), { up: 0.5 }); } },
         regrow(id) { const h = byFoe(id); if (h) { h.alive = true; h.mat.uniforms.uHit.value = 1.5; } },
         update(dt, t) {
           tail.forEach((m, k) => { m.position.x = Math.sin(t * 1.6 - k * 0.6) * 0.5 * k * 0.3 * still; });
@@ -396,6 +477,8 @@ window.PartyScene = (() => {
         return a;
       });
       const cache = Array.from({ length: 12 }, (_, k) => box(queen, 0.7, 0.7, 0.7, qMat));
+      for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; const sp = box(queen, 0.18, 1.4, 0.18, qMat, Math.cos(a) * 1.2, 3.1, Math.sin(a) * 1.2); sp.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); }
+      const qRing = new THREE.Mesh(new THREE.TorusGeometry(3, 0.05, 4, 64), glowMatFor(pal.c)); qRing.rotation.x = Math.PI / 2; qRing.position.y = -1.4; queen.add(qRing);
       const tailPts = Array.from({ length: 26 }, () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: C(pal.a), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); queen.add(s); return { s, k: Math.random() }; });
       holder.add(g);
       const qPos = new V();
@@ -405,7 +488,7 @@ window.PartyScene = (() => {
         anchor(id, out) { return out.copy(queen.position).add(v4.set(0, 5.2, 0)); },
         hitPos(id, out) { return out.copy(queen.position); },
         source(out) { return out.copy(qPos).add(v4.set(0, -1, 1)); },
-        hit(id) { qHit = 1.4; },
+        hit(id) { qHit = Math.min(1, qHit + 0.5); },
         charge() {},
         lunge() { for (const a of arms) a.rotation.x = -0.9; },
         gone() {},
@@ -415,6 +498,7 @@ window.PartyScene = (() => {
           queen.position.copy(qPos);
           queen.rotation.y = Math.sin(t * 0.5) * 0.25 * still;
           hood.rotation.y += dt * 0.3;
+          qRing.rotation.z += dt * 0.8; qRing.scale.setScalar(1 + Math.sin(t * 2) * 0.05);
           cache.forEach((c, k) => { const a = t * 1.5 + k / cache.length * Math.PI * 2; c.position.set(Math.cos(a) * 3.8, Math.sin(a * 2 + k) * 0.5, Math.sin(a) * 2.2); c.rotation.set(a, a * 0.7, 0); });
           tailPts.forEach(p => { p.k = (p.k + dt * 0.35) % 1; p.s.position.set(Math.sin(p.k * 9 + t) * 0.6 * p.k, -1.8 - p.k * 4.2, -p.k * 1.4); p.s.material.opacity = (1 - p.k) * 0.7; p.s.scale.setScalar(0.9 * (1 - p.k * 0.6)); });
           arms.forEach((a, k) => { a.rotation.x += (Math.sin(t * 1.5 + k) * 0.25 - a.rotation.x) * Math.min(1, dt * 3); });
@@ -437,6 +521,11 @@ window.PartyScene = (() => {
       box(head, 1.9, 0.14, 1.9, hMat, 0, 1.85, 0);
       box(head, 1.15, 0.75, 1.15, hMat, 0, 2.3, 0);
       const halo = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.05, 6, 40), glowMatFor(pal.c)); halo.rotation.x = Math.PI / 2; halo.position.y = 3.1; head.add(halo);
+      // the headlight: a cone of light thrown ahead of the train onto the track
+      const beamG = new THREE.ConeGeometry(1.6, 7, 20, 1, true); beamG.translate(0, -3.5, 0); beamG.rotateX(-Math.PI / 2 + 0.12);
+      const beamM = new THREE.MeshBasicMaterial({ map: glowTex, color: C(pal.eye, 0.35), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const headBeam = new THREE.Mesh(beamG, beamM); headBeam.position.set(0, 1.15, 1.5); head.add(headBeam);
+      for (const sx of [-1, 1]) for (const z of [-0.8, 0.8]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.25, 14), hMat); w.rotation.z = Math.PI / 2; w.position.set(sx * 1.2, 0.35, z); head.add(w); }
       const cars = new Map();
       function car(f) {
         const m = new THREE.Group();
@@ -452,7 +541,7 @@ window.PartyScene = (() => {
       }
       holder.add(g);
       const hist = []; let travel = 0;
-      const pathAt = (tt, out) => out.set(Math.sin(tt * 0.36) * 10.5, 0, -4.5 + Math.sin(tt * 0.72) * 4.2);
+      const pathAt = trainPath;
       let tt = 0, charge = 0, lunge = 0, lk = 1, whip = 0, hHit = 0;
       // lay the trail the train has already run, so the cars start strung out behind the head
       for (let k = -400; k <= 0; k++) { const p = pathAt(k * 0.05, new V()); const l = hist[hist.length - 1]; travel += l ? l.p.distanceTo(p) : 0; hist.push({ p, at: travel }); }
@@ -550,6 +639,11 @@ window.PartyScene = (() => {
       const head = new THREE.Group(); head.position.set(0, 4.6, 0.2); torso.add(head);
       box(head, 1.9, 1.5, 1.7, mat, 0, 0.6, 0);
       const visor = box(head, 1.5, 0.28, 0.1, glowMatFor(pal.eye), 0, 0.75, 0.88);
+      box(head, 2.1, 0.3, 1.9, mat, 0, 1.45, 0); box(head, 0.3, 0.9, 1.5, mat, 0, 1.9, -0.1);   // crest
+      // vents on the chest and two exhaust stacks on the back that glow with the charge
+      const vent = glowMatFor(pal.c); vent.opacity = 0.6;
+      for (let k = 0; k < 3; k++) for (const sx of [-1, 1]) box(torso, 0.9, 0.12, 0.08, vent, sx * 1.8, 2.3 - k * 0.35, 1.58);
+      const stacks = [-1, 1].map(sx => { const st = box(torso, 0.7, 2.4, 0.7, dark, sx * 1.4, 4.4, -1.4); const glowTop = box(torso, 0.5, 0.15, 0.5, glowMatFor(pal.c), sx * 1.4, 5.65, -1.4); return glowTop; });
       const arms = [-1, 1].map(s => {
         const a = new THREE.Group(); a.position.set(s * 3.3, 3.2, 0); torso.add(a);
         box(a, 2, 1.5, 2.1, mat, 0, 0.2, 0);
@@ -557,6 +651,10 @@ window.PartyScene = (() => {
         const fore = new THREE.Group(); fore.position.set(0, -3, 0); a.add(fore);
         box(fore, 1.5, 2.4, 1.6, mat, 0, -1.1, 0);
         box(fore, 1.9, 1.5, 1.9, mat, 0, -2.8, 0.1);
+        // a pauldron over the shoulder, a knuckle row and a lit band on the forearm
+        const pd = box(a, 2.5, 0.7, 2.6, dark, s * 0.25, 1.1, 0); pd.rotation.z = -s * 0.3;
+        for (let k = 0; k < 4; k++) box(fore, 0.34, 0.34, 0.4, dark, -0.6 + k * 0.4, -3.45, 0.85);
+        const band = glowMatFor(pal.c); band.opacity = 0.7; box(fore, 1.56, 0.14, 1.66, band, 0, -0.4, 0);
         return { a, fore, s };
       });
       holder.add(g);
@@ -594,6 +692,8 @@ window.PartyScene = (() => {
           core.material.color.copy(C(pal.c, 1.6)).lerp(GOLD, weakK);
           head.rotation.y = Math.sin(t * 1.1) * 0.35 * still;
           visor.material.color.copy(C(pal.eye, 1.6)).lerp(RED, charge);
+          stacks.forEach(gt => { gt.material.color.copy(C(pal.c, 1.4)).lerp(RED, charge); gt.scale.y = 1 + charge * 3; });
+          if (charge > 0.3 && Math.random() < dt * 20 * charge) for (const sx of [-1, 1]) smoke(v3.set(g.position.x + sx * 1.4, 10.6, g.position.z - 1.4), 1, 1.5, { up: 1.5, size: 1.4, life: 1.2, op: 0.35, col: '#4a4f52' });
           hit = Math.max(0, hit - dt * 4); mat.uniforms.uHit.value = hit; dark.uniforms.uHit.value = hit * 0.6;
           mat.uniforms.uCol.value.copy(C(pal.a)).lerp(RED, charge * 0.6);
           if (stomp > 0.9 && stomp - dt * 3 <= 0.9) ring(v2.set(0, 0, -2), C(pal.a), 8, 0.5);
@@ -613,7 +713,8 @@ window.PartyScene = (() => {
         mk(1.5, 0); mk(0.8, 2.9); mk(0.6, -2.6, 0.8);
         const shards = Array.from({ length: 7 }, (_, k) => { const m = new THREE.Mesh(new THREE.TetrahedronGeometry(0.35), wire); grp.add(m); return { m, k }; });
         const eye = box(grp, 0.9, 0.16, 0.1, glowMatFor(pal.eye), 0, 3.0, 0.75);
-        return { i, grp, fill, wire, parts, shards, eye, home: new V(i ? 4.8 : -4.8, 5.2, -3), alive: true, k: 0, charge: 0, lunge: 0, lungeTo: new V(), hit: 0 };
+        const orbits = [0, 1].map(k => { const r = new THREE.Mesh(new THREE.TorusGeometry(2.4 + k * 0.6, 0.035, 4, 64), glowMatFor(col)); r.material.opacity = 0.7; grp.add(r); return r; });
+        return { orbits, i, grp, fill, wire, parts, shards, eye, home: new V(i ? 4.8 : -4.8, 5.2, -3), alive: true, k: 0, charge: 0, lunge: 0, lungeTo: new V(), hit: 0 };
       });
       const link = mkStrip(); link.material.color.copy(C(pal.a)).lerp(C(pal.c), 0.5);
       const timer = new THREE.Mesh(new THREE.RingGeometry(2.6, 2.8, 64, 1, 0, Math.PI * 2), new THREE.MeshBasicMaterial({ color: RED, transparent: true, opacity: 0.8, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -645,6 +746,7 @@ window.PartyScene = (() => {
               p.m.position.set(Math.cos(a) * 2.6 * s.k, p.home.y * (1 - s.k) - s.k * 3 + Math.sin(a) * s.k, Math.sin(a) * 2.6 * s.k);
               p.m.rotation.x = s.k * a;
             });
+            s.orbits.forEach((r, k) => { r.rotation.set(t * (0.8 + k * 0.5) + k, t * (0.5 - k * 0.3), 0.4 * k); r.material.opacity = (0.7 - s.k * 0.6) * (1 + s.charge); r.scale.setScalar(1 - s.charge * 0.3); });
             s.shards.forEach(x => { const a = t * (1.2 + x.k * 0.1) + x.k; x.m.position.set(Math.cos(a) * (2.4 + s.k), Math.sin(a * 1.7) * 2, Math.sin(a) * (2.4 + s.k)); x.m.rotation.set(a, a, 0); });
             s.hit = Math.max(0, s.hit - dt * 4);
             const base = C(s.i ? pal.c : pal.a);
@@ -752,8 +854,11 @@ window.PartyScene = (() => {
     let mites = null;
     const isMite = id => !!(mites && mites.has(id));
     const foePos = (id, out) => (isMite(id) ? mites.hitPos(id, out) : cre.hitPos(id, out));
-    function applyPal(look) {
+    // the snake's route, shared with the arena so the track is laid where the train runs
+    const trainPath = (tt, out) => out.set(Math.sin(tt * 0.36) * 10.5, 0, -6.2 + Math.sin(tt * 0.72) * 4.2);
+    function applyPal(look, k) {
       pal = PALS[look] || PALS[0];
+      if (arena) { arena.set(pal, k, trainPath); return; }
       scene.background.set(pal.bg); scene.fog.color.set(pal.bg);
       wall.material.color.copy(C(pal.a));
       grid.material.color.copy(C(pal.b));
@@ -763,56 +868,142 @@ window.PartyScene = (() => {
     function setFight(f) {
       clearCreature();
       teamWon = false;
-      kind = f.kind; applyPal(f.look || 0);
+      kind = f.kind; applyPal(f.look || 0, f.kind);
       foes = new Map((f.foes || []).map(x => [x.id, x]));
       deadAt = -9;
       cre = (BUILD[kind] || golem)();
       if (kind === 'swarm') mites = miteLayer(out => cre.source(out));
       else if (f.adds === 'mites') { const main = (f.foes || [])[0]; mites = miteLayer(out => cre.hitPos(main && main.id, out).add(v4.set(0, 1, 1))); }
       if (fx) fx.clear();
+      teamWon = false; frags.count = 0; fragS.forEach(f => { f.life = 0; });
+      dieT = 0; holder.visible = true; holder.position.y = 0; holder.scale.set(1, 1, 1);
+      if (dir) dir.reset();
+      want('reveal', { pri: 3 });
+      snd('reveal'); roarT = 2.2;
       // the new creature's shaders compile before its first frame, not during the fight
       try { renderer.compile(scene, camera); } catch (e) {}
     }
 
     // ---------- the attack being wound up ----------
-    let atk = null;
+    let atk = null, weakWas = false;
     const aimV = new V(), fromV = new V();
     function sync(s) {
       st = s;
       teamSync(s.players);
       if (s.foes) { const m = new Map(); for (const x of s.foes) m.set(x.id, x); for (const [id, x] of foes) if (!m.has(id) && x.kind === 'mite') m.set(id, { ...x, alive: false }); foes = m; }
       atk = s.attack || null;
-      if (cre && cre.weak) cre.weak(s.weak > 0);
+      if (cre && cre.weak) { const on = s.weak > 0; if (on && !weakWas) want('weak', { pri: 2 }); weakWas = on; cre.weak(on); }
     }
-    function drawAttack(t) {
+    // the charge: a ball of light gathers at the attacker as sparks stream into it, its colour turning
+    // to red, while the aim lines and target rings tighten on whoever it will hit
+    const orb = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ff4d5e', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
+    orb.visible = false; orb.renderOrder = 6; scene.add(orb);
+    const orbCore = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ffffff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
+    orbCore.visible = false; orbCore.renderOrder = 7; scene.add(orbCore);
+    let atkK = 0, sparkT = 0, roarT = 0;
+    function drawAttack(t, dt) {
       for (const a of aims) a.visible = false;
       for (const r of aimRings) r.visible = false;
+      orb.visible = orbCore.visible = false; atkK = 0;
       if (!cre) return;
       for (const f of foes.values()) if (cre.charge) cre.charge(f.id, 0);
+      // the roar as a fight starts: every part of the boss rears up together
+      if (roarT > 0 && cre.charge) { roarT -= dt; const rk = Math.sin(Math.min(1, (2.2 - roarT) / 2.2) * Math.PI) * 0.75; for (const f of foes.values()) if (f.alive && f.kind !== 'mite') cre.charge(f.id, rk); }
       if (!atk || !st) return;
       const now = opts.now ? opts.now() : 0;
       const s0 = atk.show || atk.start;   // the counter word comes first; the wind-up shows after the lead
       const k = clamp((now - s0) / Math.max(1, atk.land - s0), 0, 1);
+      atkK = k;
       if (atk.from && cre.charge) cre.charge(atk.from, smooth(k));
       cre.hitPos(atk.from, fromV);
+      if (k > 0) {
+        const pulse = 1 + Math.sin(t * (10 + k * 30)) * 0.12;
+        orb.visible = orbCore.visible = true;
+        orb.position.copy(fromV).add(v4.set(0, 0.4, 1.2)); orbCore.position.copy(orb.position);
+        orb.scale.setScalar((1.2 + k * 4.2) * pulse); orbCore.scale.setScalar((0.4 + k * 1.6) * pulse);
+        orb.material.opacity = 0.25 + k * 0.55; orbCore.material.opacity = 0.35 + k * 0.65;
+        orb.material.color.copy(C(pal.c)).lerp(RED, smooth(k)).multiplyScalar(1.6);
+        sparkT -= dt;
+        if (sparkT <= 0 && !reduce) {
+          sparkT = 0.05 - k * 0.03;
+          // sparks start out round the orb and fly into it
+          v1.set(rnd(-1, 1), rnd(-0.6, 1), rnd(-1, 1)).normalize().multiplyScalar(3.5 + k * 2.5);
+          const p = parts[pI = (pI + 1) % PN];
+          p.s.material.color.copy(C(pal.c)).lerp(RED, k).multiplyScalar(1.8);
+          p.s.position.copy(orb.position).add(v1); p.v.copy(v1).multiplyScalar(-1.6); p.size = 0.22; p.max = p.life = 0.55; p.grav = 0; p.s.visible = true;
+        }
+        if (arena) arena.bossLight.intensity = 40 + k * 60;
+      }
       const ids = atk.target === 'team' ? st.players.filter(p => !p.down).map(p => p.id) : [atk.target];
       ids.slice(0, 4).forEach((id, i) => {
         laneAt(id, aimV);
         const pulse = 0.5 + 0.5 * Math.sin(t * (8 + k * 18));
         aims[i].material.color.copy(RED);
-        strip(aims[i], fromV, aimV, 0.12 + k * 0.4, (0.15 + k * 0.6) * (0.6 + 0.4 * pulse));
+        strip(aims[i], orb.visible ? orb.position : fromV, v2.copy(aimV).add(v4.set(0, 1.2, -2.4)), 0.1 + k * 0.35, (0.12 + k * 0.5) * (0.6 + 0.4 * pulse));
         const r = aimRings[i];
-        r.visible = true; r.position.set(aimV.x, 0.06, aimV.z);
-        r.scale.setScalar(2.4 - k * 1.4); r.material.opacity = 0.3 + k * 0.6 * pulse;
+        r.visible = true; r.position.set(aimV.x, 0.06, aimV.z - 2.4);
+        r.scale.setScalar(2.4 - k * 1.2); r.material.opacity = 0.3 + k * 0.6 * pulse;
       });
+    }
+
+    // smoke and dust, drawn normally so they read as dust and not as light
+    const SN = 50;
+    const puffs = Array.from({ length: SN }, () => { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#7d888c', transparent: true, depthWrite: false, opacity: 0 })); m.visible = false; m.renderOrder = 4; scene.add(m); return { s: m, v: new V(), life: 0, max: 1, size: 1, op: 0.5 }; });
+    let sI = 0;
+    function smoke(at, n, speed, o = {}) {
+      if (reduce) n = Math.ceil(n / 2);
+      for (let k = 0; k < n; k++) {
+        const p = puffs[sI = (sI + 1) % SN];
+        p.s.position.copy(at).add(v4.set(rnd(-0.6, 0.6), rnd(0, 0.3), rnd(-0.6, 0.6)));
+        p.v.set(rnd(-1, 1), rnd(0.1, 0.5) + (o.up || 0), rnd(-1, 1)).normalize().multiplyScalar(speed * rnd(0.4, 1));
+        p.size = (o.size || 1.6) * rnd(0.7, 1.3); p.max = p.life = (o.life || 1.3) * rnd(0.7, 1.2);
+        p.s.material.color.set(o.col || '#6f7a7e'); p.op = o.op || 0.5; p.s.visible = true;
+      }
+    }
+    // pieces of the boss: glowing blocks that fly off when a part of it falls or it dies
+    const FN = 70;
+    const fragMat = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false });
+    const frags = new THREE.InstancedMesh(boxGeo(1, 1, 1), fragMat, FN);
+    frags.instanceMatrix.setUsage(THREE.DynamicDrawUsage); frags.count = 0; frags.frustumCulled = false; scene.add(frags);
+    const fragS = Array.from({ length: FN }, () => ({ p: new V(), v: new V(), r: new V(), w: new V(), s: 0.3, life: 0 }));
+    let fI = 0;
+    const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _sc = new V();
+    function shatter(at, n, speed, size = 0.5) {
+      if (reduce) n = Math.ceil(n / 2);
+      fragMat.color.copy(C(pal.a, 1.3));
+      for (let k = 0; k < n; k++) {
+        const f = fragS[fI = (fI + 1) % FN];
+        f.p.copy(at).add(v4.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)));
+        f.v.set(rnd(-1, 1), rnd(0.4, 1.4), rnd(-1, 0.25)).normalize().multiplyScalar(speed * rnd(0.4, 1));
+        f.r.set(rnd(0, 6), rnd(0, 6), rnd(0, 6)); f.w.set(rnd(-8, 8), rnd(-8, 8), rnd(-8, 8));
+        f.s = size * rnd(0.4, 1.2); f.life = rnd(1.2, 2.2);
+      }
+      frags.count = FN;
+    }
+    function drawFrags(dt) {
+      if (!frags.count) return;
+      let live = 0;
+      fragS.forEach((f, i) => {
+        if (f.life > 0) {
+          f.life -= dt; live++;
+          f.v.y -= 16 * dt; f.p.addScaledVector(f.v, dt);
+          if (f.p.y < f.s / 2) { f.p.y = f.s / 2; f.v.y *= -0.35; f.v.x *= 0.7; f.v.z *= 0.7; }
+          f.r.addScaledVector(f.w, dt);
+        }
+        const k = f.life > 0 ? Math.min(1, f.life * 2) : 0;
+        _m4.compose(f.p, _q.setFromEuler(_e.set(f.r.x, f.r.y, f.r.z)), _sc.setScalar(Math.max(0.0001, f.s * k)));
+        frags.setMatrixAt(i, _m4);
+      });
+      frags.instanceMatrix.needsUpdate = true;
+      if (!live) frags.count = 0;
     }
 
     // ---------- events ----------
     const hitAt = new V();
     function shot(h) {
-      teamAct(h.id, 'type'); if (h.tier >= 2 || h.crit) teamAct(h.id, 'cast');
+      teamAct(h.id, 'type'); teamAct(h.id, h.crit || h.tier >= 3 ? 'blast' : h.tier >= 2 ? 'jab' : 'flick');
       if (!cre) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
-      const from = laneAt(h.id, new V()).add(v4.set(0, 0.6, 0));
+      const from = handAt(h.id, new V());
       const foe = h.foe;
       const to = out => foePos(foe, out);
       const col = h.you ? null : (opts.color ? opts.color(h.id) : null);
@@ -825,12 +1016,16 @@ window.PartyScene = (() => {
         if (opts.onImpact) opts.onImpact(h, p ? p.x : null, p ? p.y : null);
       };
       // teammates' shots stay small so four streams don't wash the boss out
-      if (fx) fx.shot(h.you ? Math.min(3, h.tier || 0) : Math.min(1, h.tier || 0), from, to, land, { color: col, kb: h.you ? myKb : null });
-      else land();
+      // plain words fly as a thin streak on an arc (the combat layer's basic bolt is drawn for a far
+      // camera and filled the near screen here); your combo shots and keyboard signatures use the combat layer
+      const tier = h.you ? Math.min(3, h.tier || 0) : 0;
+      if (fx && (tier >= 2 || (h.you && myKb && myKb !== 'slab'))) fx.shot(tier, from, to, land, { color: col, kb: h.you ? myKb : null, w: 0.5 });
+      else streak(from, to, col ? C(col) : h.you ? C('#eafff4') : colorOf(h.id), h.crit ? 0.3 : 0.26, land, h.you ? 1 : 0.7);
     }
     function cast(id, c = {}) {
+      teamAct(c.from || 'me', 'cast');
       if (!fx || !cre) return;
-      const caster = { pos: out => laneAt(c.from || 'me', out).add(v4.set(0, 0.8, 0)) };
+      const caster = { pos: out => handAt(c.from || 'me', out) };
       const foe = c.foe;
       const target = {
         size: kind === 'swarm' ? 3 : 4,
@@ -841,40 +1036,98 @@ window.PartyScene = (() => {
       };
       fx.cast(id, { caster, target, hits: c.hits, effect: c.effect });
     }
+    // sounds go through opts.audio (an ArenaAudio on the run's audio context)
+    const snd = (name, arg) => { if (opts.audio) opts.audio.play(name, arg); };
+    let punch = 0;
     function attackLands(a) {
       if (!cre) return;
       const ids = a.target === 'team' ? (st ? st.players.filter(p => !p.down).map(p => p.id) : []) : [a.target];
       ids.forEach(id => teamAct(id, 'hit'));
       const from = a.from || (st && st.foes[0] && st.foes[0].id);
-      if (ids.length === 1) { laneAt(ids[0], v1); cre.lunge(from, v1); }
-      else cre.lunge(from, v1.set(0, 1, teamZ));
-      for (const id of ids) { laneAt(id, v2); burst(v2, 14, 7, RED, { up: 0.6 }); ring(v2, RED, 2.2, 0.4); }
-      shake = Math.max(shake, a.target === 'team' ? 0.8 : 0.5);
+      // the lunge stops above and in front of the player, so it never covers them on screen
+      if (ids.length === 1) { laneAt(ids[0], v1).add(v4.set(0, 3.8, -5.5)); cre.lunge(from, v1); }
+      else cre.lunge(from, v1.set(0, 4.5, teamZ - 7.5));
+      for (const id of ids) {
+        laneAt(id, v2); v2.z -= 2.4;
+        burst(v2.clone().add(v4.set(0, 1.4, 0)), 18, 8, RED, { up: 0.6 }); ring(v2, RED, 3.2, 0.5); ring(v2, C('#ffffff'), 1.8, 0.3);
+        smoke(v2, 5, 2.4, { size: 2, life: 1.2, op: 0.45 });
+      }
+      if (arena) arena.pulse(a.target === 'team' ? 1 : 0.6);
+      shake = Math.max(shake, a.target === 'team' ? 0.8 : 0.5); punch = Math.max(punch, a.target === 'team' ? 1 : 0.6);
+      hitStop = Math.max(hitStop, performance.now() + (reduce ? 0 : 90));
+      snd('bossLunge'); snd('bossSlam');
     }
     function block(b) {
       if (!cre || !atk) return;
       cre.hitPos(atk.from, v1);
-      laneAt(b.by === 'firewall' ? (atk.target === 'team' ? 'me' : atk.target) : b.by, v2);
-      bolt(v2.clone().add(v4.set(0, 0.6, 0)), v1, SHIELD, 0.4, 0.6);
-      burst(v1, 18, 6, SHIELD, {});
+      const by = b.by === 'firewall' ? (atk.target === 'team' ? 'me' : atk.target) : b.by;
+      if (b.by !== 'firewall') teamAct(by, 'block');
+      laneAt(by, v2);
+      bolt(v2.clone().add(v4.set(0, 2.2, -2.4)), orb.visible ? orb.position.clone() : v1, SHIELD, 0.45, 0.7);
+      burst(v1, 24, 7, SHIELD, {});
+      // the gathered charge bursts apart
+      if (orb.visible) { burst(orb.position, 30, 9, C(pal.c), { size: 0.3 }); ring(v3.copy(orb.position).setY(0.1), SHIELD, 6, 0.5); }
       if (cre.charge && atk.from) cre.charge(atk.from, 0);
+      cre.hit(atk.from, 1.2);
+      snd('block'); snd('shatter', 0.6);
     }
+    const CHIP_SND = { spit: 'spit', whip: 'whip', quake: 'quake', beam: 'beam' };
     function chip(c) {
       if (!cre) return;
       if (cre.chip) cre.chip();
       cre.hitPos(c.from, v1);
-      for (const id of c.targets || []) { laneAt(id, v2); bolt(v1, v2.clone().add(v4.set(0, 0.6, 0)), RED, 0.28, c.what === 'quake' ? 0.2 : 0.3); burst(v2, 6, 4, RED, {}); }
-      if (c.what === 'quake') { ring(v1.set(0, 0, -2), RED, 14, 0.7); shake = Math.max(shake, 0.4); }
+      for (const id of c.targets || []) { laneAt(id, v2); v2.z -= 2.4; v2.y += 1.6; bolt(v1, v2, c.what === 'spit' ? C(pal.c) : RED, c.what === 'beam' ? 0.5 : 0.3, c.what === 'quake' ? 0.2 : c.what === 'beam' ? 0.6 : 0.32); burst(v2, 8, 4, RED, {}); teamAct(id, 'flinch'); }
+      if (c.what === 'quake') { ring(v1.set(0, 0, -2), RED, 14, 0.7); smoke(v1.set(0, 0.2, -1), 8, 5, { size: 2.2, life: 1.4, op: 0.4 }); shake = Math.max(shake, 0.4); if (arena) arena.pulse(0.8); }
+      snd(CHIP_SND[c.what] || 'teamHit');
     }
     function foeGone(id, how) {
       if (!cre) return;
-      if (isMite(id)) mites.gone(id, how); else cre.gone(id, how);
+      if (isMite(id)) { mites.gone(id, how); return; }
+      const f = foes.get(id);
+      cre.hitPos(id, v1);
+      cre.gone(id, how);
+      if (how === 'kill' || how === 'cut') {
+        shatter(v1, how === 'cut' ? 8 : 16, 7, how === 'cut' ? 0.3 : 0.42); burst(v1, 30, 10, C('#ffffff'), { size: 0.35, life: 0.5, grav: 2 });
+        snd('sever'); hitStop = Math.max(hitStop, performance.now() + (reduce ? 0 : 120));
+        // a head or a twin falls: a slow close look at it, if nothing is coming at the team
+        if (f && (f.kind === 'head' || f.kind === 'twin')) want('sever', { x: v1.clone(), pri: 3 });
+      }
     }
-    function regrow(id) { if (cre) cre.regrow(id); const f = foes.get(id); if (f && cre) { cre.hitPos(id, v1); burst(v1, 20, 5, C(pal.c), { up: 0.8 }); } }
-    function down(id) { laneAt(id, v1); burst(v1, 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); }
-    function heal(id) { laneAt(id, v1); burst(v1, 18, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 1.8, 0.5); }
-    function shield(id) { laneAt(id, v1); ring(v1, SHIELD, 2.2, 0.6); burst(v1, 12, 3, SHIELD, { up: 1, grav: -1 }); }
-    function clear() { teamWon = true; deadAt = nowS(); for (const f of foes.values()) if (cre && f.alive) cre.gone(f.id, 'kill'); shake = Math.max(shake, 1); burst(v1.set(0, 5, -3), 80, 12, C(pal.a), { up: 0.5, size: 0.4, life: 1.2 }); }
+    function regrow(id) { if (cre) cre.regrow(id); const f = foes.get(id); if (f && cre) { cre.hitPos(id, v1); burst(v1, 26, 6, C(pal.c), { up: 0.8 }); ring(v3.copy(v1).setY(0.05), C(pal.c), 5, 0.6); snd('bossRoar'); } }
+    function down(id) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.5), 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); smoke(v1, 5, 2, { size: 1.8, op: 0.4 }); snd('knock'); }
+    function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); if (by && by !== id) teamAct(by, 'cast'); snd('heal'); }
+    function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.5), 16, 3, SHIELD, { up: 1, grav: -1 }); if (by && by !== id) teamAct(by, 'cast'); snd('shield'); }
+    function up(id) { const m = team.get(id); if (m && m.mv) m.mv.act('cast'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
+    // the boss dies: it bursts into pieces, slow motion, and the camera circles where it stood
+    function clear() {
+      teamWon = true; deadAt = nowS(); atk = null;
+      const at = cre ? cre.hitPos(null, new V()) : new V(0, 5, -3);
+      for (const f of foes.values()) { if (cre && f.alive) cre.gone(f.id, 'kill'); f.alive = false; }
+      shake = Math.max(shake, 1); punch = 1;
+      burst(at, 80, 12, C(pal.a), { up: 0.5, size: 0.4, life: 1.2 });
+      burst(at, 30, 6, C('#ffffff'), { size: 0.5, life: 0.4, grav: 0 });
+      shatter(at, 60, 14, 0.6); smoke(v1.copy(at).setY(0.5), 12, 6, { size: 3, life: 2, op: 0.45 });
+      ring(v1.copy(at).setY(0.05), C(pal.a), 16, 1); ring(v1.copy(at).setY(0.05), C('#ffffff'), 9, 0.6);
+      if (arena) arena.pulse(1.4);
+      killAt.copy(at); dieT = 0.001;
+      if (!reduce) { slowUntil = performance.now() + 1400; slowK = 0.3; }
+      want('kill', { pri: 5 });
+      snd('shatter', 1);
+    }
+    const killAt = new V();
+    let slowUntil = 0, slowK = 1, dieT = 0, dieSpawn = 0;
+    // the dead boss glitches, sinks and comes apart into pieces over a second and a half
+    function drawDeath(dt) {
+      if (!dieT) return;
+      dieT += dt;
+      const u = Math.min(1, dieT / 1.5);
+      holder.position.y = -Math.pow(u, 2) * 4;
+      holder.scale.set(1 + u * 0.08, 1 - 0.6 * Math.pow(u, 1.5), 1 + u * 0.08);
+      holder.visible = u < 1 && !(u > 0.45 && Math.random() < u * 0.5);
+      dieSpawn -= dt;
+      if (u < 1 && dieSpawn <= 0) { dieSpawn = 0.12; shatter(v3.set(killAt.x + rnd(-3, 3), rnd(1, 8) * (1 - u), killAt.z + rnd(-2, 2)), 6, 8, 0.4); burst(v3, 6, 5, C(pal.a), { size: 0.3 }); }
+      if (u >= 1) { dieT = 0; holder.visible = false; }
+    }
 
     const _s = new V();
     function screen(p) {
@@ -896,30 +1149,69 @@ window.PartyScene = (() => {
       return out;
     }
 
+    // ---------- the camera director (js/app/camdir.js) ----------
+    // Home is the wide view over the team at the boss. While the boss winds up, the home view leans
+    // a little toward it. Cutaways: the boss rising at the start of a fight, a head or a twin falling,
+    // the core opening, and the kill. None plays while an attack is winding up at the team or a mite
+    // is about to land, so the counter word, the aim lines and the mites stay in view.
+    const bossAt = new V(), lookTo = new V();
+    function bossCentre(out) { if (!cre) return out.set(0, 5, -4); return cre.hitPos(atk ? atk.from : null, out); }
+    const shots = {
+      game: { fov: 42, omega: 4, pose(c, out) {
+        const t = c.t, lean = smooth(atkK) * 0.18;
+        out.pos.set(camBase.x + Math.sin(t * 0.21) * 0.5 * still, camBase.y + Math.sin(t * 0.17) * 0.2 * still, camBase.z - lean * 2.5);
+        out.look.copy(camLook).lerp(bossAt, lean);
+        out.fov = 42 - lean * 8;
+      } },
+      reveal: { pri: 3, free: true, parts: [
+        // low between the team and the boss, looking up as it rises, then a three-quarter from its side
+        { len: 1.6, cut: 1, fov: 46, omega: 3, pose(c, out) { const u = c.u; out.pos.set(-8 + u * 4, 0.9 + u * 1.6, 2.2); out.look.set(bossAt.x, 3.5 + u * 2.5, bossAt.z); } },
+        { len: 1.2, cut: 1, fov: 38, omega: 3, pose(c, out) { out.pos.set(9, 5 + c.u * 1.5, 3.5); out.look.set(bossAt.x, bossAt.y + 1, bossAt.z); } },
+      ] },
+      sever: { pri: 3, parts: [
+        { len: 1.25, cut: 1, slow: 0.4, fov: 36, pose(c, out) { const x = c.x || bossAt; out.pos.set(x.x * 0.6 + 4, x.y + 1.2, x.z + 11 - c.u * 1.5); out.look.copy(x); } },
+      ] },
+      weak: { pri: 2, len: 1.5, fov: 34, pose(c, out) { out.pos.set(3.5, 6.5, 8.5 - c.u * 1.2); out.look.copy(bossAt); } },
+      kill: { pri: 5, free: true, duringThreat: true, parts: [
+        { len: 1.4, cut: 1, slow: 0.3, fov: 40, pose(c, out) { out.pos.set(killAt.x + 6, 2.2, killAt.z + 10); out.look.set(killAt.x, killAt.y, killAt.z); } },
+        { len: 2.0, cut: 1, fov: 44, omega: 2.5, pose(c, out) { const a = -0.7 + c.u * 1.2; out.pos.set(killAt.x + Math.sin(a) * 15, 6.5 + c.u * 2, killAt.z + Math.cos(a) * 15); out.look.set(killAt.x, 3, killAt.z); } },
+      ] },
+    };
+    const dir = window.CamDirector ? CamDirector.create(THREE, camera, {
+      reduce, shots, lockBefore: 5.5, gap: 6, budget: 3,
+      onPart(name, idx, part) { if (part.slow && !reduce) { slowK = part.slow; slowUntil = performance.now() + part.len * 1000; } },
+    }) : null;
+    function want(name, w) { if (dir) dir.want(name, w); }
+
     // ---------- the frame ----------
     let lastT = nowS();
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
-    renderer.setAnimationLoop(() => {
+    let loopErr = 0;
+    renderer.setAnimationLoop(() => { try { frame(); } catch (e) { if (loopErr++ < 3) console.error('arena frame', e); } });
+    function frame() {
       if (!visible || document.hidden) { lastT = nowS(); return; }
       const t = nowS();
-      let dt = Math.min(0.05, t - lastT); lastT = t;
+      const real = Math.min(0.05, t - lastT); lastT = t;
+      let dt = real;
       if (performance.now() < hitStop) dt *= 0.15;
+      else if (performance.now() < slowUntil) dt *= slowK;
       T.value = t;
       laneCache.clear();
       teamTick(t, dt);
       drawn = true;
-      // the boss never just waits: every 1.4 to 2.6 s one of them snaps at a random player
+      // the boss never just waits: every 1.6 to 3 s one of them makes a small feint toward a player,
+      // stopping well short of them
       if (cre && cre.lunge && st && st.players && !reduce && t > feintAt) {
-        feintAt = t + 1.4 + Math.random() * 1.2;
+        feintAt = t + 1.6 + Math.random() * 1.4;
         const up = st.players.filter(p => !p.down);
         const foe = [...foes.values()].filter(f => f.alive && f.kind !== 'mite' && !(atk && atk.from === f.id));
-        if (up.length && foe.length) { laneAt(up[Math.floor(Math.random() * up.length)].id, v1); cre.lunge(foe[Math.floor(Math.random() * foe.length)].id, v1, 0.42); }
+        if (up.length && foe.length) { laneAt(up[Math.floor(Math.random() * up.length)].id, v1).add(v4.set(0, 4, -6)); cre.lunge(foe[Math.floor(Math.random() * foe.length)].id, v1, 0.3); }
       }
       if (cre) cre.update(dt, t);
       if (mites) mites.update(dt, t);
-      drawAttack(t);
+      drawAttack(t, dt);
       for (const p of parts) {
         if (!p.s.visible) continue;
         p.life -= dt;
@@ -928,6 +1220,17 @@ window.PartyScene = (() => {
         const k = p.life / p.max;
         p.s.scale.setScalar(p.size * (0.4 + k)); p.s.material.opacity = k;
       }
+      for (const p of puffs) {
+        if (!p.s.visible) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.s.visible = false; continue; }
+        p.v.multiplyScalar(1 - dt * 2); p.s.position.addScaledVector(p.v, dt);
+        const k = p.life / p.max;
+        p.s.scale.setScalar(p.size * (1.7 - k * 0.9)); p.s.material.opacity = p.op * Math.min(1, (1 - k) * 6) * k;
+      }
+      drawFrags(dt);
+      drawStreaks(dt);
+      drawDeath(dt);
       for (const w of rings) {
         if (!w.m.visible) continue;
         w.t += dt; const k = w.t / w.life;
@@ -942,14 +1245,28 @@ window.PartyScene = (() => {
         strip(b.m, v1, v2, b.w, 1 - b.t);
       }
       if (fx) fx.update(dt);
-      shake = Math.max(0, shake - dt * 2.2);
+      if (arena) { arena.update(t, dt, camera); if (!atkK) arena.bossLight.intensity += (40 - arena.bossLight.intensity) * Math.min(1, real * 3); }
+      if (wall) wall.material.map.offset.y = (wall.material.map.offset.y + dt * 0.03) % 1;
+      // the camera
+      shake = Math.max(0, shake - real * 2.2);
+      punch = Math.max(0, punch - real * 2.4);
+      bossCentre(bossAt);
+      if (dir) {
+        const now = opts.now ? opts.now() : 0;
+        let thr = Infinity;
+        if (atk && st && st.phase === 'fight') thr = t + Math.max(0, (atk.land - now) / 1000);
+        for (const f of foes.values()) if (f.kind === 'mite' && f.alive && f.land) thr = Math.min(thr, t + Math.max(0, (f.land - now) / 1000));
+        dir.update(t, real, { threatAt: thr });
+        // camera test probe (tests set window.__camProbe): the shot and whether an attack was winding up at the team
+        if (window.__camProbe) (window.__camLog ||= []).push({ t: +t.toFixed(3), shot: dir.shot(), wind: !!(atk && st && st.phase === 'fight'), thr: Number.isFinite(thr) ? +(thr - t).toFixed(2) : null });
+      } else { camera.position.copy(camBase); camera.lookAt(camLook); }
       const sh = shake * (reduce ? 0.12 : calm ? 0.6 : 1);
-      camera.position.set(camBase.x + Math.sin(t * 0.21) * 0.5 * still + Math.sin(t * 41) * sh * 0.5, camBase.y + Math.sin(t * 0.17) * 0.2 * still + Math.sin(t * 37 + 1) * sh * 0.4, camBase.z);
-      camera.lookAt(camLook);
-      wall.material.map.offset.y = (wall.material.map.offset.y + dt * 0.03) % 1;
+      if (sh > 0) camera.position.add(v4.set(Math.sin(t * 41) * sh * 0.5, Math.sin(t * 37 + 1) * sh * 0.4, 0));
+      const zoom = 1 + punch * 0.05 * (reduce ? 0 : 1);
+      if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
       composer.render();
       if (opts.onFrame) opts.onFrame();
-    });
+    }
 
     function dispose() {
       renderer.setAnimationLoop(null);
@@ -958,13 +1275,15 @@ window.PartyScene = (() => {
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); });
       geoCache.forEach(g => g.dispose());
-      glowTex.dispose(); stripTex.dispose(); codeTex.dispose();
+      glowTex.dispose(); stripTex.dispose();
+      if (arena) arena.dispose();
       bloom.dispose(); composer.dispose && composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     const live = () => visible && !document.hidden;
     const info = () => ({ kind, foes: foes.size, cre: !!cre, fx: fx ? fx.info() : null });
-    return { setFight, sync, shot, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, clear, anchors, live, info, dispose };
+    return { setFight, sync, shot, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
+      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }) } };
   }
 
   return { mount };
