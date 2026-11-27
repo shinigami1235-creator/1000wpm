@@ -133,7 +133,7 @@ window.RushPage = (() => {
             </div>
           </div>
         </div>`;
-      scene = RushScene.mount(q('stage'), { onImpact });
+      scene = RushScene.mount(q('stage'), { onImpact, sfx: (n, a) => A.titan(n, a) });
       scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
         .catch(() => { const l = q('loading'); if (l) l.textContent = "The bosses can't load without an internet connection."; });
       q('quit').addEventListener('click', () => GameGuard.confirm());
@@ -243,7 +243,7 @@ window.RushPage = (() => {
       if (!f || f.phase !== 'fight') return [];
       const list = f.chips(t).filter(c => c.kind !== 'decoy' && !(c.kind === 'answer' && !c.right))
         .sort((a, b) => (ORDER[a.kind] - ORDER[b.kind]) || ((a.order || 0) - (b.order || 0)) || ((a.due || 0) - (b.due || 0)));
-      const out = list.map(c => ({ id: c.id, kind: LOOK[c.kind] || 'add', label: LABEL[c.kind] || '', due: c.due, total: c.total, chip: c.kind }));
+      const out = list.map(c => ({ id: c.id, kind: LOOK[c.kind] || 'add', label: c.label || LABEL[c.kind] || '', due: c.due, total: c.total, chip: c.kind }));
       for (const sp of earned) out.push({ id: sp.key, kind: 'spell', n: sp.word.split(' ').length, label: sp.word.toUpperCase(), color: sp.color, spell: sp });
       return out;
     }
@@ -343,13 +343,13 @@ window.RushPage = (() => {
         case 'intro': { const st = q('stage'); if (st) TT.countdown(st, null, { step: p.ms / 3 }); break; }
         case 'fight': renderQueue(); paintChips(true); if (plan.slot.n > 1) tip('weak'); break;
         case 'windup':
-          scene.windup(p.ms);
-          A.play('windup', Math.min(2.5, p.ms / 1000));
+          scene.windup(p.ms, p.atk);
+          if (!p.atk) A.play('windup', Math.min(2.5, p.ms / 1000));
           tip('block');
           break;
         case 'move': {
           const m = plan.boss.mv || MOVE[p.move];
-          if (p.move !== 'press') { banner('Its own move', m.name, m.how, 1800); scene.windupEnd(); }
+          if (p.move !== 'press') { banner('Its own move', m.name, m.how, 1800); scene.windupEnd(); A.titanStop(); }
           A.play('warn');
           const chips = f.chips(now());
           if (p.move === 'gifts') scene.gifts(chips.filter(c => c.kind === 'gift').map(c => c.id), p.due);
@@ -362,7 +362,7 @@ window.RushPage = (() => {
         case 'slam': scene.slam(); flashTint(); pop('HIT', 'red'); A.play('blockFail'); break;
         case 'stun': scene.stun(p.ms); tip('stun'); break;
         case 'overheat': pop('OVERHEATED', 'amber'); A.play('shieldBreak'); break;
-        case 'moveDone': scene.moveEnd(); pop('STUNNED', 'green'); A.play('stagger'); if (plan.boss.move === 'fixsign') scene.setSign('NODLES'); break;
+        case 'moveDone': scene.moveEnd(); scene.moveDone(); pop('STUNNED', 'green'); A.play('stagger'); if (plan.boss.move === 'fixsign') scene.setSign('NODLES'); break;
         case 'shield': scene.setShield(1); banner('Half HP', 'Firewall up', 'Your hits go into the firewall until it breaks.', 1800); A.play('shieldUp'); break;
         case 'shieldBreak': scene.setShield(null); pop('FIREWALL DOWN', 'cyan'); A.play('shieldBreak'); break;
         case 'enrage': scene.enrage(true); pop('ENRAGED', 'red'); A.play('roar'); break;
@@ -438,7 +438,7 @@ window.RushPage = (() => {
       document.dispatchEvent(new CustomEvent('buddy', { detail: 'boss-down' }));
       typed = ''; target = null;
       renderQueue(); paintChips(true); paintStrip();
-      wait(1500, () => breather(rec, sum));
+      wait(plan.boss.art === 'kit' && plan.boss.kit !== 'syntax' ? 3000 : 1500, () => breather(rec, sum));   // a titan's death runs about 3 s
     }
     function lost(sum) {
       if (!f) return;
@@ -616,11 +616,14 @@ window.RushPage = (() => {
     document.addEventListener('keydown', enter);
 
     // ---------- the clock ----------
+    let frozen = false;   // tests: _rush.freeze(true) holds the fight still for review shots
     function tick() {
-      if (!f || view !== 'fight' || pausedAt) return;
+      if (!f || view !== 'fight' || pausedAt || frozen) return;
       const t = now();
       f.tick(t);
       if (!f) return;
+      // the camera director keeps to the game shot while anything is coming at you (scene.js, camdir.js)
+      { const S = f.state(t); scene.threat(S.phase !== 'fight' ? Infinity : S.action || S.timed ? 0 : Math.min(S.nextAttack, ['sign', 'page', 'byte', 'mute'].includes(S.sig) ? S.nextSig : Infinity)); }
       syncLine();
       paintChips(false);
       paintFlags(t);
@@ -670,6 +673,7 @@ window.RushPage = (() => {
       if (S.stunned) bits.push(`<span class="wb-flag stun">Stunned <b>${(S.stunLeft / 1000).toFixed(1)}s</b> <small>damage x2</small></span>`);
       if (S.shield) bits.push(`<span class="wb-flag shield">Firewall <b>${fmt(Math.max(0, S.shield.hp))}</b></span>`);
       if (S.enraged) bits.push('<span class="wb-flag jam">Enraged</span>');
+      if (S.action && S.action.type === 'windup' && S.action.shown && S.action.name) bits.push(`<span class="wb-flag jam">${esc(S.action.name)} <b>${(Math.max(0, S.action.due - t) / 1000).toFixed(1)}s</b></span>`);
       if (plan.boss.move === 'press' && S.heat) bits.push(`<span class="wb-flag weak">Blocks <b>${S.heat}</b><small> of 3</small></span>`);
       if (S.pageHeatMax && S.pageHeat) bits.push(`<span class="wb-flag weak">Heat <b>${S.pageHeat}</b><small> of ${S.pageHeatMax}</small></span>`);
       if (S.sig === 'popup') { const n = f.chips(t).filter(c => c.kind === 'popup').length; if (n) bits.push(`<span class="wb-flag ${n >= S.popCap ? 'jam' : 'weak'}">Pop-ups <b>${n}</b><small> of ${S.popCap}</small></span>`); }
@@ -909,7 +913,7 @@ window.RushPage = (() => {
       sig: () => f && f.debug.sig(now()),
       tags: () => [...tags].map(([id, x]) => ({ id, kind: x.kind, word: x.word })),
       marks: () => (f ? f.marks() : []),
-      attack: () => f && f.debug.attack(now()),
+      attack: id => f && f.debug.attack(now(), id),
       move: () => f && f.debug.move(now()),
       act: a => act(a),
       end: () => endRun('quit'),
@@ -921,6 +925,7 @@ window.RushPage = (() => {
       board: () => RushBoard.load(),
       scene: () => scene && scene.info(),
       sceneCtl: () => scene,
+      freeze: on => { frozen = !!on; },
       audio: () => A.state(),
     };
 

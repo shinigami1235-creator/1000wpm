@@ -9,7 +9,9 @@ Boss rush is a near-endless run of boss fights at `#/play/rush`, the third game 
 | `js/app/rush/data.js` | The roster, the twists each mark adds, the floors table, the Breach move words and the scoring formula |
 | `js/app/rush/director.js` | `RushDirector`, the internal monitor that plans each fight |
 | `js/app/rush/fight.js` | `RushFight`, one fight's rules with no DOM, which lets node run it |
-| `js/app/rush/scene.js` | `RushScene`, the arena and the boss figures in three.js (the five Breach bosses drawn here, the titans and Syntax Error from `js/app/bosskit.js`), with the combat effects |
+| `js/app/rush/scene.js` | `RushScene`, the arena and the boss figures in three.js (the five Breach bosses drawn here, the titans and Syntax Error from `js/app/bosskit.js`), with the combat effects, each titan's arena and the camera director |
+| `js/app/rush/titans.js` | `RushTitans`, each titan's attacks (wind-up, strike, recovery), its entrance and its death |
+| `js/app/rush/titanfx.js` | `RushTitanFX`, the titans' pooled effects: floor telegraphs, particles, debris, shockwave rings, trails, the beam and the light pulse |
 | `js/app/rush/audio.js` | `RushAudio`, the music, the stinger between bosses and the effects |
 | `tools/rush/music.py` | Makes each boss's music, `audio/rush-<boss>-<phase>.mp3`, in code |
 | `js/app/rush/board.js` | `RushBoard`, the scoreboard, the saved director model and the server payload |
@@ -17,7 +19,7 @@ Boss rush is a near-endless run of boss fights at `#/play/rush`, the third game 
 | `css/rush.css` | The rush's own styles on top of the World Boss page's `.page-boss` rules |
 | `tools/rush/sim.js` | Director tests with simulated players |
 
-Load order in `index.html`: the combat files, then `data`, `director`, `fight`, `board`, `audio`, `scene`, `page`.
+Load order (`js/app/lazy.js`): the combat files, then `data`, `director`, `fight`, `audio`, `titanfx`, `titans`, `scene`, `page`.
 
 ## The run
 
@@ -220,3 +222,70 @@ One lap is now 12 bosses: the five Breach bosses with a BossKit titan after each
 | 12 | Syntax Error | Packets | Packets with fakes | Syntax Error |
 
 A titan's floors sit halfway between the Breach bosses on either side of it. The titans borrow the Breach music until they get their own tracks, and the gifts, signs and pages still look like the Breach ones.
+
+## The titans, rebuilt (28 Nov 2026)
+
+### Their look
+
+In the rush the titans use BossKit's rich build (`BossKit.create(..., { detail: true, env })`; the World Boss's Syntax Error keeps the plain one):
+
+- Layered armour: a second plate over each pauldron with a polished trim rim and bolts, a back plate and a spine of fins, trim on the pectorals, side vents with slats and a lit strip, a belt with a lit buckle, ribbed hoses on the gut, pistons on the upper arms and thighs, ram plates and lit strips on the gauntlets, trim knuckles, layered knee cops, toe plates, a frame round the visor, cheek vents and fins on the helmet, cables from the back to the shoulders, and a core in a trim ring with six clamps and two thin rings that turn.
+- The plate shader draws dark panel grooves round every plate, varies each panel's colour and roughness so the light breaks up, and keeps the glowing circuit seams. The Brute's armour is cracked and the cracks glow hotter as it overheats.
+- Real materials: plates at metalness 0.45 and roughness 0.5, darker parts at 0.6 and 0.45, polished trim in each titan's own metal at 0.95 and 0.26, rubber cables, all lit by a small environment map built for each titan (a white key above, its colour behind and at the sides).
+- Each titan's own parts: the Siege Titan's battering-ram forearms, spiked knuckles, heavy brow and lamp pylons; the Warden's tassets, gorget, pauldron fins, framed shield with a lit emblem, and a blade with a lit fuller, grip and pommel; the Colossus's data pylons, three eyes, cable bundles into its tail and a ring of blocks circling its chest; the King's gold-trimmed throne with lit runes and pillars, a crown band with red jewels, gold bands on his gauntlets and lit tips on the cable cape; Half-Compiled's jagged lit seam, wire half-skull and wire ribs; the Brute's glowing coil, back pistons and knuckle dusters.
+- Colours per titan (metal, dark, trim, glow): Siege warm grey and brass with amber, Warden steel and silver with cyan, Colossus violet-grey with purple, King gunmetal and gold with gold, Half-Compiled gunmetal with green and pink, Brute scorched iron and copper with orange.
+- Every part sits on the bone it moves with and the parts are merged per bone and material, so a titan draws in about as many calls as the old plain build while carrying about twice the triangles.
+
+### Their attacks
+
+A wind-up picks one of three attacks (`RushData.ATTACKS`), never the same one twice in a row. The lit counter words are labelled with it (BLOCK SLAM) and the flags show its name and timer.
+
+| Titan | Attack | Wind-up and telegraph | Strike |
+|---|---|---|---|
+| Siege Titan | Double-fist slam | both fists overhead, a red disc filling out to you | slams the floor: shockwave, debris, dust |
+| | Siege hook | right arm cocked out to the side, a fan | a level hook across the front, trail and sparks |
+| | Quake stomp | right leg raised, a lane to you | the stomp, a crack of debris racing along the lane |
+| Firewall Warden | Shield bash | shield drawn back, a lane | lunges in shield first, a ring off the shield |
+| | Blade sweep | blade out to the side and back, a fan | a level sweep with a blade trail |
+| | Firewall cleave | blade overhead, a narrow lane | cleaves the floor; a line of fire runs along the lane to you |
+| Data Colossus | Block storm | arms up, the orbiting blocks speed up, a target closing on you | blocks rain on you |
+| | Tail lash | torso wound up, a wide fan | the tail whips round with a trail |
+| | Core beam | chest arched, the core charging, a lane | a beam from the core to you |
+| Kernel King | Throne shockwave | fists raised, a red disc | fists on the armrests: two gold rings across the hall |
+| | Royal decree | hand drawn back, a target on you | points and throws a gold bolt at you |
+| | Gauntlet crush | the giant right fist raised, a lane | slams it down in front |
+| Half-Compiled | Glitch split | crouched, glitching side to side, the armour dropping out to the wire body | flings its arms out in a burst of green and pink |
+| | Wire lash | wire arm drawn back, a lane | the wire arm stretches and lashes |
+| | Stack crash | both fists overhead, a disc | slams the floor |
+| Overclocked Brute | Piston punch | arm chambered, steam from the elbow, a lane | lunging punch, a ring and a cone of sparks and steam |
+| | Steam blast | hunched in, the vents building, the cracks heating, a fan | rears up, the vents blast steam at you |
+| | Hammer pound | both fists overhead, the armour white-hot, a disc | pounds the floor |
+
+`wind` scales the wind-up's length and `hit` the integrity it costs when it lands: the quick attacks wind up 5% faster and hit 20% lighter, the big ones wind up 12% longer and hit 10% harder, so the three average out. The Siege Titan's double slam (its own move) uses the plain slam at 1 and 1. The attack is picked from its own random stream, so the fight's other dice are unchanged. In 320 simulated titan fights per player (`/tmp` check, boss 2 to 16) the win rate and integrity left moved by under 2 points.
+
+Every pose comes from joint-check's `bend()` in body terms and passes its range, buried-limb and floor checks, at the wind-up, the strike and at a quarter, half and three quarters of the way between (`TITAN_POSES` in `js/app/bosskit.js`). The wind-up eases in and trembles in its last fifth; the strike blends in over 0.13 s, holds, and recovers over 0.7 s; a blocked strike stops halfway and the titan reels.
+
+A blocked strike throws sparks off a cyan barrier ring in front of you; a landed one hits your marker with red sparks and a ring.
+
+### Entrances and deaths
+
+Each titan enters during the 3-2-1 count (real time, so it ends inside the count however slow the frames): the Siege Titan drops out of the sky and lands in a crouch; a firewall sweeps down and leaves the Warden standing behind it; the Colossus assembles from blocks pulled in from the arena; the King rises out of the floor on his throne and strikes the armrests; Half-Compiled compiles from the feet up; the Brute charges in from the back and skids to a stop roaring. A fight event (a wind-up) ends an entrance still running.
+
+A titan's death runs about 3 s: the last hit throws it back with sparks from the core, it falls to its knees (or slumps on the throne) and its pauldrons and helmet plates fly loose, the core overloads, it blows apart in a flash, a ring and debris, and the rest dissolves into the floor. The Colossus sheds blocks as it falls, the King's crown bursts, Half-Compiled glitches between its halves, and the Brute's cracks go white with steam. The breather waits 3 s after a titan dies (1.5 s after the others).
+
+### Their arenas
+
+Each titan stands on a dark polished floor that picks up its colour, with a soft shadow under it, dust in the light and its own props kept to the sides and the back: rubble and broken walls with hazard lamps (Siege), firewall gates of moving light (Warden), drifting data blocks (Colossus), a hall of gold-capped columns and a carpet (King), half-built wire scaffolds (Half-Compiled), pipes, two steam stacks and furnace grates (Brute). The Siege Titan's falling rubble and the Brute's pistons replace the Signboard's signs and the Press's pages on their paths.
+
+### The camera director
+
+The rush camera runs on `CamDirector` (`js/app/camdir.js`). The game shot is the view it always had. The page tells the scene how long until the next thing comes at you (`scene.threat(ms)`: 0 while a wind-up is up or a thrown word is in the air, else the time to the next attack or throw), and no cutaway plays within 1.2 s of one. The shots: `enter` (the entrance, a low wide that pushes in, then up at its face), `block` (low behind your barrier in slow motion, then side on as it reels), `hit` (side on as its blow lands), `phase` (a crane round it as it roars), `stunned` (close on it after its own move is beaten) and `kill` (a slow orbit as it comes apart, slowed for its first beat). The springs step at 60 Hz however slow the frames.
+
+### Sound
+
+`RushAudio.titan(name, arg)` (in `js/app/rush/audio.js`) makes every titan sound in code on the World Boss's effects bus: a charge per attack that builds over the wind-up and is cut off when the blow lands or is blocked, a strike sound per attack, the clang of a block, and the roars, entrances and death (armour coming off, the core overloading, the blast).
+
+### Testing
+
+- `window._rush.attack(id)` starts that titan attack now. `_rush.freeze(true)` holds the fight still; `_rush.sceneCtl().preview([[pose, weight], ...])` holds a pose and `review({ pos, look, fov })` a fixed camera; `window.__rushStep = 1 / 30` steps the scene a fixed 1/30 s a frame, for matched review shots. `_rush.sceneCtl().titan()` reports the titan's state and the camera director's log.
+- `window.__camProbe = true` before the page loads logs the camera and the fighters every frame in `window.__camLog`, for the camera metrics.

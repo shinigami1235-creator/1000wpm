@@ -259,18 +259,35 @@ window.RushFight = (() => {
       const every = tw.has('twice') ? 2 : 3;
       if (boss.cycle % every === 0) startMove(t); else windup(t, 0);
     }
+    // a titan's own attack for this wind-up (RushData.ATTACKS): never the same one twice in a row; the
+    // double slam's two wind-ups are its plain slam
+    const atkList = (D.ATTACKS && D.ATTACKS[B.id]) || null;
+    // its own small random stream, so the choice leaves the fight's other dice (and the director tests) as they were
+    let lastAtk = '', aSeed = ((plan.n || 1) * 2654435761 + 0) >>> 0;
+    const arng = () => { aSeed = (aSeed * 1664525 + 1013904223) >>> 0; return aSeed / 4294967296; };
+    let forceAtk = '';
+    function pickAttack(chain) {
+      if (!atkList) return null;
+      if (chain) return { ...atkList[0], wind: 1, hit: 1 };
+      if (forceAtk) { const f = atkList.find(a => a.id === forceAtk); forceAtk = ''; if (f) { lastAtk = f.id; return f; } }
+      const pool = atkList.filter(a => a.id !== lastAtk);
+      const a = pool[Math.floor(arng() * pool.length)];
+      lastAtk = a.id;
+      return a;
+    }
     function windup(t, chain) {
       const words = counterWords(K.counters + (chain === 2 ? 0 : 0));
       const letters = words.join(' ').length;
-      let dur = K.react + K.perChar * letters + frost;
+      const atk = pickAttack(chain);
+      let dur = (K.react + K.perChar * letters) * (atk ? atk.wind : 1) + frost;
       if (chain === 2) dur *= 0.85;
       if (boss.enraged) dur *= 0.85;
       const grace = frost; frost = 0;
       const lead = leadOf();
-      const a = { type: 'windup', start: t, due: t + lead + dur, total: lead + dur, words, chain, ids: [], grace, showAt: t + lead, shown: false };
-      for (const w of words) { const id = nid('block'); a.ids.push(id); mech.push({ id, kind: 'block', word: w, due: a.due, total: a.total, frozen: grace > 0 }); }
+      const a = { type: 'windup', start: t, due: t + lead + dur, total: lead + dur, words, chain, ids: [], grace, showAt: t + lead, shown: false, atk };
+      for (const w of words) { const id = nid('block'); a.ids.push(id); mech.push({ id, kind: 'block', word: w, due: a.due, total: a.total, frozen: grace > 0, label: atk ? 'BLOCK ' + atk.short : '' }); }
       boss.action = a;
-      if (!lead) { a.shown = true; emit('windup', { due: a.due, words, chain, ms: dur }); }
+      if (!lead) { a.shown = true; emit('windup', { due: a.due, words, chain, ms: dur, atk: atk && atk.id, name: atk && atk.name }); }
     }
     function startMove(t) {
       stats.moves++;
@@ -324,7 +341,7 @@ window.RushFight = (() => {
       stats.blocks++;
       hitBoss(max * 0.04, t, { kind: 'block' });
       if (phase !== 'fight') return;
-      emit('block', { chain: a.chain });
+      emit('block', { chain: a.chain, atk: a.atk && a.atk.id });
       if (B.move === 'press') {
         boss.heat++;
         if (boss.heat >= 3) { boss.heat = 0; emit('overheat', {}); endAction(t); stun(t, D.LONG_STUN_MS, true); stats.movesDone++; return; }
@@ -365,14 +382,14 @@ window.RushFight = (() => {
         return;
       }
       // the wind-up shows once the player is about to reach its words
-      if (a.type === 'windup' && !a.shown && t >= a.showAt) { a.shown = true; emit('windup', { due: a.due, words: a.words, chain: a.chain, ms: a.due - t }); }
+      if (a.type === 'windup' && !a.shown && t >= a.showAt) { a.shown = true; emit('windup', { due: a.due, words: a.words, chain: a.chain, ms: a.due - t, atk: a.atk && a.atk.id, name: a.atk && a.atk.name }); }
       if (t < a.due) return;
       // time ran out on the attack or the move
       if (a.type === 'windup') {
         mech = mech.filter(c => !a.ids.includes(c.id));
         boss.action = null;
-        emit('slam', { chain: a.chain });
-        hurt(K.hit, 'slam', t);
+        emit('slam', { chain: a.chain, atk: a.atk && a.atk.id });
+        hurt(Math.round(K.hit * (a.atk ? a.atk.hit : 1)), 'slam', t);
         if (phase !== 'fight') return;
         if (a.chain === 1) { windup(t + 500, 2); return; }
         after(t);
@@ -633,8 +650,8 @@ window.RushFight = (() => {
         hp: boss.hp, max, shield: boss.shield && { ...boss.shield },
         stunned: t < boss.stunUntil, stunLong: boss.stunLong && t < boss.stunUntil, stunLeft: Math.max(0, boss.stunUntil - t),
         panic: t < boss.panicUntil, enraged: boss.enraged, heat: boss.heat,
-        action: a && { type: a.type, start: a.start, due: a.due, total: a.total, shown: a.shown, chain: a.chain },
-        player: { ...player }, nextAttack: Math.max(0, boss.attackAt - t),
+        action: a && { type: a.type, start: a.start, due: a.due, total: a.total, shown: a.shown, chain: a.chain, atk: a.atk && a.atk.id, name: a.atk && a.atk.name },
+        player: { ...player }, nextAttack: Math.max(0, boss.attackAt - t), nextSig: Math.max(0, sigAt - t), timed: sigs.some(x => x.due),
         stage, stageLeft: Math.max(0, stageUntil - t), sig: SG.kind, volume, pageHeat, pageHeatMax: SG.heat || 0, popCap: SG.cap || 0,
       };
     }
@@ -660,7 +677,8 @@ window.RushFight = (() => {
         setHp: (f, t) => { boss.hp = Math.max(1, Math.round(max * f)); const want = boss.hp <= max * D.STAGES[1] ? 3 : boss.hp <= max * D.STAGES[0] ? 2 : 1; if (want > stage) setStage(t === undefined ? now() : t, want); },
         sig: t => { sigAt = 0; tick(t === undefined ? now() : t); },
         setVolume: v => { volume = v; },
-        attack: t => { boss.attackAt = 0; boss.stunUntil = 0; tick(t === undefined ? now() : t); },
+        // the next attack now; id picks a titan's attack (tests), and skips the turn of its own move
+        attack: (t, id) => { if (id) { forceAtk = id; if ((boss.cycle + 1) % (tw.has('twice') ? 2 : 3) === 0) boss.cycle++; } boss.attackAt = 0; boss.stunUntil = 0; tick(t === undefined ? now() : t); },
         // drops any attack under way and starts the boss's own move
         move: t => { t = t === undefined ? now() : t; if (boss.action) { mech = mech.filter(c => !boss.action.ids.includes(c.id)); boss.action = null; } boss.cycle = (tw.has('twice') ? 2 : 3) - 1; boss.attackAt = 0; boss.stunUntil = 0; boss.panicUntil = 0; tick(t); },
         boss, player,

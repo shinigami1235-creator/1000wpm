@@ -24,7 +24,7 @@ window.Lazy = (() => {
     boss: { need: ['words', 'combat'], js: ['js/net/filter.js', 'js/net/chat-rules.js', 'js/app/boss-rules.js', 'js/app/boss-net.js', 'js/app/boss-squad.js', 'js/app/boss-audio.js', 'js/app/bosskit.js', 'js/app/operator3d.js', 'js/app/botkit.js', 'js/app/raid-flight.js', 'js/app/wordflow.js', 'js/app/camdir.js', 'js/app/boss3d.js'] },
     rushBoard: { css: ['css/rush.css'], js: ['js/app/rush/board.js'] },
     rush: { need: ['words', 'combat', 'boss', 'rushBoard'], css: ['css/rush.css'],
-      js: ['data', 'director', 'fight', 'audio', 'scene', 'page'].map(f => `js/app/rush/${f}.js`) },
+      js: ['data', 'director', 'fight', 'audio', 'titanfx', 'titans', 'scene', 'page'].map(f => `js/app/rush/${f}.js`) },
     // these loaders add their own files after themselves, so the group is ready when the globals are
     breach: { js: ['js/breach/load.js'], ready: () => window.Breach && window.Breach.endlessScores },
     room: { js: ['js/room/load.js'], ready: () => window.Room && window.RoomItems },
