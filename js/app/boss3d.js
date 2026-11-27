@@ -173,6 +173,39 @@ window.BossScene = (() => {
     grid.material.transparent = true; grid.material.opacity = 0.32; grid.material.color = pal.b.clone();
     keep(grid.geometry); keep(grid.material);
     env.add(grid);
+    // the arena's atmosphere (28 Nov 2026): a dark glossy floor under the grid that catches the boss's
+    // red light and the flashes of its blows, two layers of low haze drifting over it, and dust motes
+    // hanging in the air
+    const floorMat = keep(new THREE.MeshStandardMaterial({ color: '#06090b', metalness: 0.55, roughness: 0.42 }));
+    const floor = new THREE.Mesh(keep(new THREE.CircleGeometry(80, 48)), floorMat);
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.03; env.add(floor);
+    const hazeCv = document.createElement('canvas'); hazeCv.width = hazeCv.height = 256;
+    {
+      // soft blotches that tile: blurred random discs drawn with wrap-around
+      const g = hazeCv.getContext('2d'); g.filter = 'blur(14px)';
+      for (let i = 0; i < 46; i++) { const x = rnd(0, 256), y = rnd(0, 256), r = rnd(18, 60), a = rnd(0.12, 0.4);
+        for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) { g.fillStyle = `rgba(255,255,255,${a})`; g.beginPath(); g.arc(x + ox, y + oy, r, 0, 6.29); g.fill(); } }
+    }
+    const hazeTex = keep(new THREE.CanvasTexture(hazeCv)); hazeTex.wrapS = hazeTex.wrapT = THREE.RepeatWrapping; hazeTex.repeat.set(5, 5);
+    const hazes = [[0.4, 0.07], [1.3, 0.045]].map(([y, op], i) => {
+      const t = i ? hazeTex.clone() : hazeTex; if (i) { keep(t); t.repeat.set(3.4, 3.4); t.needsUpdate = true; }
+      const m = new THREE.Mesh(keep(new THREE.CircleGeometry(70, 40)), keep(new THREE.MeshBasicMaterial({ map: t, color: pal.b.clone(), transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, fog: true })));
+      m.rotation.x = -Math.PI / 2; m.position.y = y; m.userData.op = op; env.add(m); return m;
+    });
+    const DUST = 220, dustPos = new Float32Array(DUST * 3), dustSeed = new Float32Array(DUST);
+    for (let i = 0; i < DUST; i++) { dustPos.set([rnd(-34, 34), rnd(0.5, 22), rnd(-28, 20)], i * 3); dustSeed[i] = rnd(0, 6.28); }
+    const dustGeo = keep(new THREE.BufferGeometry()); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3).setUsage(THREE.DynamicDrawUsage));
+    const dustMat = keep(new THREE.PointsMaterial({ size: 0.13, color: pal.a.clone().multiplyScalar(0.7), transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const dust = new THREE.Points(dustGeo, dustMat); dust.frustumCulled = false; env.add(dust);
+    function airTick(t, dt) {
+      if (reduce) return;
+      for (let i = 0; i < DUST; i++) {
+        const k = i * 3; dustPos[k + 1] += dt * (0.25 + 0.2 * Math.sin(dustSeed[i])); dustPos[k] += Math.sin(t * 0.3 + dustSeed[i]) * dt * 0.3;
+        if (dustPos[k + 1] > 22) dustPos[k + 1] = 0.5;
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+      hazes[0].material.map.offset.set(t * 0.006, t * 0.004); hazes[1].material.map.offset.set(-t * 0.004, t * 0.007);
+    }
     const floorRings = [[6.5, 6.8, 1.1], [9.5, 9.6, 0.8], [14, 14.08, 0.5]].map(([a, b, k]) => {
       const m = new THREE.Mesh(keep(new THREE.RingGeometry(a, b, 96)), keep(new THREE.MeshBasicMaterial({ color: pal.a.clone(), side: THREE.DoubleSide, transparent: true, opacity: k })));
       m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.userData.k = k;
@@ -520,9 +553,10 @@ window.BossScene = (() => {
       if (instant) { m.visible = false; kit.shed.push(m); return true; }
       scene.attach(m);
       const out = m.getWorldPosition(vF).sub(root.position).setY(0).normalize();
-      m.userData.vel = new V(out.x * rnd(4, 7), rnd(6, 10), out.z * rnd(2, 4) + rnd(2, 5)).multiplyScalar(power);
+      // out to the sides and back, not at the camera, so the plates don't land over the squad
+      m.userData.vel = new V(out.x * rnd(4, 7), rnd(6, 10), out.z * rnd(1, 2.5) + rnd(-4, 1)).multiplyScalar(power);
       m.userData.spin = new V(rnd(-4, 4), rnd(-4, 4), rnd(-4, 4)).multiplyScalar(power);
-      m.userData.life = rnd(3, 4.5);
+      m.userData.life = rnd(2, 3.2);
       kit.shed.push(m);
       if (m.userData.detail) return true;
       // Syntax Error's plates spark red and white, not the arena's green
@@ -579,6 +613,7 @@ window.BossScene = (() => {
     // light, damage that builds through the phases, smoke, error codes floating round it
     const dress = kit && kit.tips && window.SyntaxDress ? SyntaxDress.dress(THREE, kit, { scene, renderer, glowTex, RoundedBoxGeometry: opts.RoundedBoxGeometry, reduce, calm }) : null;
     if (dress) {
+      if (dress.env) { floorMat.envMap = dress.env; floorMat.envMapIntensity = 0.45; }
       kit.shedSets[1].push(...dress.arms);
       kit.shedSets[2].push(...dress.body);
       // BossKit's glowing bands and chest lines go with the plates they sit on, or they hang in the
@@ -1096,13 +1131,13 @@ window.BossScene = (() => {
           const r = fitD(bossH(), 0.75, 40) * (1 + 0.25 * u), a = ease(u) * 1.2 + 0.5; o.set(root.position.x + Math.sin(a) * r, 5.5 + 3 * u, root.position.z + Math.cos(a) * r); l.copy(anchorCore); l.y -= 2 * u; },
           { len: 3.4, cut: 1, slow: 0.4, omega: 4 })] },
         // the kernel open: low in front of it as it drops onto one claw, looking up at the bared core
-        kneel: { pri: 3, parts: [P((u, o, l) => {
+        kneel: { pri: 3, free: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.7, 0.85, 38) * (1 - 0.08 * u);
           o.copy(root.position).addScaledVector(bF, d).addScaledVector(bS, d * 0.5); o.y = 1.0 + 0.6 * u; l.copy(anchorCore); l.y += 0.5; },
           { len: 1.7, slow: 0.45, cut: 1, omega: 9, fov: 38 })] },
         // a phase change: up close on its head as it curls up and the power surges, then the crane
         // from the floor as it roars (the scale shot)
-        roar: { pri: 3, parts: [P((u, o, l) => {
+        roar: { pri: 3, free: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.35, 0.8, 34) * (1 - 0.12 * u);
           o.copy(anchorHead).addScaledVector(bF, d).addScaledVector(bS, -d * 0.35); o.y = anchorHead.y - 2.4 - 0.4 * u; l.copy(anchorHead); l.y -= 2.2; },
           { len: 0.85, slow: 0.6, cut: 1, omega: 10, fov: 34 }), P((u, o, l) => {
@@ -1110,7 +1145,7 @@ window.BossScene = (() => {
           o.copy(root.position).addScaledVector(bF, d).addScaledVector(bS, 2.5); o.y = 0.6 + H * 0.35 * smooth(u); l.copy(anchorHead); l.y -= H * 0.08; },
           { len: 2.0, cut: 1, omega: 6 })] },
         // the fight's opening: low on the visor, then rising to the whole arena
-        intro: { pri: 2, parts: [P((u, o, l) => {
+        intro: { pri: 2, free: true, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H * 0.3, 0.75, 32);
           o.copy(anchorHead).addScaledVector(bF, d * (1 - 0.1 * u)).addScaledVector(bS, d * 0.25); o.y = anchorHead.y - 2.6 + 0.5 * u; l.copy(anchorHead); l.y -= 2.3; },
           { len: 1.2, cut: 1, omega: 8, fov: 32 }), P((u, o, l) => {
@@ -1256,6 +1291,8 @@ window.BossScene = (() => {
       boxMat.uniforms.uColA.value.copy(pal.a); boxMat.uniforms.uColC.value.copy(pal.c);
       pilMat.uniforms.uColA.value.copy(pal.b); pilMat.uniforms.uColC.value.copy(pal.a);
       shardMat.color.copy(pal.a);
+      hazes.forEach(h => h.material.color.copy(pal.b).lerp(pal.a, 0.25));
+      dustMat.color.copy(pal.a).multiplyScalar(0.7);
       rings.forEach(r => { if (!r.userData.gone) r.material.color.copy(r.userData.alt ? pal.c : pal.a).multiplyScalar(1.8); });
       bloom.strength = pal.bloom * 0.75;
     }
@@ -2462,7 +2499,7 @@ window.BossScene = (() => {
       const mk = menaceK(t);
       if (mk && men.kind !== 'stomp') tz += (men.kind === 'lean' ? 2.6 : 1.8) * mk.surge * still;
       const slK = current(t, 'slam');
-      if (!slK || slK.kind !== 'laser') tz += (front + 1 - tz) * tk * still;   // every attack but the laser comes right up to the raid
+      if (!slK || (slK.kind !== 'laser' && !(slK.kind in { quake: 1, scan: 1, rain: 1 }))) tz += (front + 1 - tz) * tk * still;   // every attack but the laser comes right up to the raid
       // and rears back through the wind-up first
       if (slK && !slK.side && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && slK.kind !== 'scan' && slK.kind !== 'quake' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
@@ -2505,6 +2542,7 @@ window.BossScene = (() => {
       pilMat.uniforms.uTime.value = at * still;
       addMat.uniforms.uTime.value = at * still;
       codeTex.offset.y -= adt * pal.wall * (reduce ? 0.3 : 1);
+      airTick(at, adt);
       tethMat.uniforms.uTime.value = reduce ? 0 : at;
       shieldMat.uniforms.uTime.value = at;
 
@@ -2514,7 +2552,7 @@ window.BossScene = (() => {
       {
         let k = 0;
         const sl = own(t);
-        if (sl && !dead && sl.kind !== 'laser') {
+        if (sl && !dead && sl.kind !== 'laser' && sl.kind !== 'quake' && sl.kind !== 'scan' && sl.kind !== 'rain') {
           const st = sl.h - 0.22;
           if (sl.cut) k = 0;
           else if (t < st) k = -0.1 * ease(clamp((t - sl.s) / Math.max(0.3, st - sl.s), 0, 1));
@@ -2932,7 +2970,7 @@ window.BossScene = (() => {
       else gameLook.copy(lookCur);
       gameFov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK) * (1 + 0.1 * orbit.k);
       // the segfault lifts it high: the view tilts up with it and pulls back a little so it stays in frame
-      if (liftY > 0) { gameLook.y += liftY * 0.6; gamePos.y += liftY * 0.25; gameFov *= 1 + liftY * 0.03; }
+      if (liftY > 0) { gameLook.y += liftY * 0.85; gamePos.y += liftY * 0.35; gameFov *= 1 + liftY * 0.035; }
       let shotNow = 'game';
       if (director) {
         if (!dirOpened && t - bornAt > 1.0 && BOT) { dirOpened = true; play('intro'); }
@@ -3070,7 +3108,7 @@ window.BossScene = (() => {
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
     return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
-      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root }) };
+      dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }
 
   return { mount };

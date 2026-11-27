@@ -201,9 +201,14 @@ window.CamDirector = (() => {
       const s = cur.name === 'game' ? def('game') : partAt(def(cur.name), t - cur.at).part;
       solve(cur.name, t, c, pose);
       const w = s.omega ?? def(cur.name).omega ?? (cur.name === 'game' ? 6 : 4);
-      spring(sp.pos, sp.vel, pose.pos, w, dt);
-      spring(sp.look, sp.lvel, pose.look, w * 1.4, dt);
-      sp.fvel += ((pose.fov - sp.fov) * w * w - 2 * w * sp.fvel) * dt; sp.fov += sp.fvel * dt;
+      // the springs step at most 1/60 s at a time: in one step of 1/20 s (a slow device) the look spring
+      // (omega over 10) overshoots more each frame and the camera swings away (found 28 Nov 2026)
+      const nSub = Math.max(1, Math.ceil(dt * 60 - 1e-6)), h = dt / nSub;
+      for (let i = 0; i < nSub; i++) {
+        spring(sp.pos, sp.vel, pose.pos, w, h);
+        spring(sp.look, sp.lvel, pose.look, w * 1.4, h);
+        sp.fvel += ((pose.fov - sp.fov) * w * w - 2 * w * sp.fvel) * h; sp.fov += sp.fvel * h;
+      }
       camera.position.copy(sp.pos);
       camera.lookAt(sp.look);
       if (Math.abs(camera.fov - sp.fov) > 0.01) { camera.fov = sp.fov; camera.updateProjectionMatrix(); }
