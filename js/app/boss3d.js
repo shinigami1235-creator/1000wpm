@@ -173,12 +173,8 @@ window.BossScene = (() => {
     grid.material.transparent = true; grid.material.opacity = 0.32; grid.material.color = pal.b.clone();
     keep(grid.geometry); keep(grid.material);
     env.add(grid);
-    // the arena's atmosphere (28 Nov 2026): a dark glossy floor under the grid that catches the boss's
-    // red light and the flashes of its blows, two layers of low haze drifting over it, and dust motes
-    // hanging in the air
-    const floorMat = keep(new THREE.MeshStandardMaterial({ color: '#06090b', metalness: 0.55, roughness: 0.42 }));
-    const floor = new THREE.Mesh(keep(new THREE.CircleGeometry(80, 48)), floorMat);
-    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.03; env.add(floor);
+    // the arena's atmosphere (28 Nov 2026): two layers of low haze drifting over the floor, and dust
+    // motes hanging in the air (a lit floor was tried and read as a grey slab with a hard edge)
     const hazeCv = document.createElement('canvas'); hazeCv.width = hazeCv.height = 256;
     {
       // soft blotches that tile: blurred random discs drawn with wrap-around
@@ -613,7 +609,6 @@ window.BossScene = (() => {
     // light, damage that builds through the phases, smoke, error codes floating round it
     const dress = kit && kit.tips && window.SyntaxDress ? SyntaxDress.dress(THREE, kit, { scene, renderer, glowTex, RoundedBoxGeometry: opts.RoundedBoxGeometry, reduce, calm }) : null;
     if (dress) {
-      if (dress.env) { floorMat.envMap = dress.env; floorMat.envMapIntensity = 0.45; }
       kit.shedSets[1].push(...dress.arms);
       kit.shedSets[2].push(...dress.body);
       // BossKit's glowing bands and chest lines go with the plates they sit on, or they hang in the
@@ -1769,8 +1764,8 @@ window.BossScene = (() => {
         w.m.visible = u >= 0 && u < 1;
         if (!w.m.visible) continue;
         const r = 2 + (w.r1 - 2) * ease(u);
-        w.m.position.copy(w.at); w.m.scale.set(r, 3.4 * (1 - u * 0.6), r);
-        w.m.material.uniforms.uA.value = (1 - u) * 0.9; w.m.material.uniforms.uT.value = t;
+        w.m.position.copy(w.at); w.m.scale.set(r, 6 * (1 - u * 0.55), r);
+        w.m.material.uniforms.uA.value = (1 - u) * 1.3; w.m.material.uniforms.uT.value = t;
       }
       decalTick(t);
     }
@@ -1780,7 +1775,13 @@ window.BossScene = (() => {
       if (x.kind === 'quake') {
         kit.group.updateMatrixWorld(true);
         quakeWall(root.position, col, you ? 14 : 34, you ? 0.7 : 1.15);
-        for (const i of [0, 1]) { kit.fists[i].at.getWorldPosition(vF); vF.y = 0.2; if (!you) decal(vF, 11, rnd(0, 6.28), 1, 8); if (dress) dress.puff(vF, 10, 1.2); }
+        for (const i of [0, 1]) {
+          kit.fists[i].at.getWorldPosition(vF); vF.y = 0.2;
+          if (!you) decal(vF, 11, rnd(0, 6.28), 1, 8);
+          if (dress) dress.puff(vF, 14, 1.4);
+          flare(vG.copy(vF).setY(1.5), col, 9, 0.3, canFlash() ? 1.3 : 0.6);
+        }
+        lightPulse(vF.setY(2.5), col, 1.2);
         scatter(36, 1.7);
         shake = Math.max(shake, you ? 0.7 : 1.5);
         if (!reduce) slowUntil = Math.max(slowUntil, performance.now() + 300);
@@ -2358,9 +2359,10 @@ window.BossScene = (() => {
     const vA = new V(), vB = new V();
     function syntaxFx(t, dt, gl, gr, trail) {
       kit.group.updateMatrixWorld(true);
+      const sq = current(t, 'slam'), arcK = sq && (sq.kind === 'quake' || sq.kind === 'grab') ? 0.3 : 0.9;
       for (const [i, g] of [[0, gl], [1, gr]]) {
         if (g < 0.25 || reduce) continue;
-        if (Math.random() < g * 0.9) {
+        if (Math.random() < g * arcK) {
           kit.fists[i].at.getWorldPosition(vA);
           vB.copy(vA).add(new V((Math.random() - 0.5) * 6, (Math.random() - 0.3) * 5, (Math.random() - 0.5) * 6));
           kit.arcs.add(vA, vB, 0.08 + Math.random() * 0.08, 0.5 + g * 0.6, 7);

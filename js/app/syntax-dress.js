@@ -29,7 +29,7 @@ window.SyntaxDress = (() => {
       const box = own(new THREE.BoxGeometry(1, 1, 1));
       const room = new THREE.Mesh(box, own(new THREE.MeshBasicMaterial({ color: C('#07080b'), side: THREE.BackSide }))); room.scale.set(40, 24, 40); es.add(room);
       const panel = (c, x, y, z, sx, sy, sz) => { const m = new THREE.Mesh(box, bm(c)); m.position.set(x, y, z); m.scale.set(sx, sy, sz); es.add(m); };
-      panel(C('#dfe8ff', 1.25), -9, 9, 8, 9, 0.2, 7);      // the key softbox, above and to the left
+      panel(C('#dfe8ff', 0.9), -9, 9, 8, 10, 0.2, 8);      // the key softbox, above and to the left
       panel(C('#dfe8ff', 0.7), 10, 6, 10, 0.2, 3, 7);     // a thin strip right
       panel(C('#ff2a3a', 0.45), 0, -11, 0, 26, 0.2, 26);   // the floor glows red under it
       panel(C('#ff3a2e', 1.1), 0, 2, -19, 18, 1.2, 0.2);  // a red bar behind, for the rim
@@ -88,7 +88,7 @@ window.SyntaxDress = (() => {
     const lum = x => x.color.r + x.color.g + x.color.b;
     kitMats.sort((a, b) => lum(b) - lum(a));
     const plate = kitMats[0], dark = kitMats[kitMats.length - 1];
-    for (const [m, met, rough, k] of [[plate, 0.84, 0.4, 1], [dark, 0.72, 0.46, 0.7]]) {
+    for (const [m, met, rough, k] of [[plate, 0.84, 0.45, 1], [dark, 0.72, 0.5, 0.7]]) {
       if (!m) continue;
       m.metalness = met; m.roughness = rough;
       if (env) { m.envMap = env; m.envMapIntensity = 1.15; }
