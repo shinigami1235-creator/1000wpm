@@ -196,7 +196,7 @@ window.RoomView = (() => {
       r += (r * tR - r) * tint; gg += (gg * tG - gg) * tint; b += (b * tB - b) * tint;
       // the photo's light falloff across the glass
       const lo = Math.min(1.5, Math.max(0.6, lum(Lo, i) / Math.max(4, mO)));
-      const lk = 1 + (lo - 1) * 0.5;
+      const lk = 1 + (lo - 1) * 0.35;
       r *= lk; gg *= lk; b *= lk;
       // depth haze, a little thicker low down where the view is farthest off
       const hz = haze + 0.08 * y;

@@ -188,29 +188,41 @@
 
   // ---------------------------------------------------------------- city blocks, near to far
   // one layer of buildings: tops from base - hgt, facades a touch lighter than col with lit windows
-  function city(c0, w, h, r, { base, h0, h1, col, edge, lit, wins, blur = 0, ww = 0.006, gap = 0.012, signs = null, tops = 0.3 }) {
+  // one layer of buildings: each a block shaded from its sky-lit top down into the haze, a lit
+  // edge on one side, a grid of glass (dark panes a touch lighter than the wall, some lit, whole
+  // floors on or off together), roof boxes, masts with red lights, and neon signs if asked for
+  function city(c0, w, h, r, { base, h0, h1, col, edge, lit, wins, blur = 0, ww = 0.006, gap = 0.012, signs = null, tops = 0.3, glass = 'rgba(160,180,210,.07)' }) {
     soft(c0, blur * w / 1024, c => {
+    const C = hex(col), E = hex(edge);
     let x = -w * 0.02;
     while (x < w * 1.02) {
-      const bw = w * (0.035 + r() * 0.07), top = h * (base - h0 - r() * (h1 - h0));
-      c.fillStyle = col; c.fillRect(x, top, bw, h - top + 2);
-      // a lighter edge where the sky lights one side
-      c.fillStyle = edge; c.fillRect(x, top, Math.max(1, bw * 0.06), h - top);
-      if (r() < tops) { const tw = bw * (0.3 + r() * 0.4), th = h * (0.01 + r() * 0.03); c.fillStyle = col; c.fillRect(x + (bw - tw) / 2, top - th, tw, th + 1); if (r() < 0.5) c.fillRect(x + bw / 2 - 0.5, top - th - h * 0.04, Math.max(1, w / 1024), h * 0.04); }
-      const wpx = w * ww, gx = w * gap, gy = w * gap * 1.25;
-      for (let wy = top + gy; wy < h - gy; wy += gy) {
-        const rowOn = r() < 0.85;
-        for (let wx = x + gx * 0.6; wx < x + bw - wpx - gx * 0.3; wx += gx) {
-          if (!rowOn || r() > lit) continue;
-          c.globalAlpha = 0.35 + r() * 0.6; c.fillStyle = wins[r() * wins.length | 0];
-          c.fillRect(wx, wy, wpx, wpx * 1.3);
+      const bw = w * (0.03 + r() * 0.07), top = h * (base - h0 - r() * (h1 - h0)), bh = h - top;
+      const g = c.createLinearGradient(0, top, 0, h);
+      const tone = 0.85 + r() * 0.3;
+      g.addColorStop(0, `rgb(${E[0] * tone | 0},${E[1] * tone | 0},${E[2] * tone | 0})`); g.addColorStop(0.35, `rgb(${C[0] * tone | 0},${C[1] * tone | 0},${C[2] * tone | 0})`); g.addColorStop(1, `rgb(${C[0] * 0.85 | 0},${C[1] * 0.85 | 0},${C[2] * 0.85 | 0})`);
+      c.fillStyle = g; c.fillRect(x, top, bw, bh + 2);
+      c.fillStyle = edge; c.globalAlpha = 0.6; c.fillRect(x, top, Math.max(1, bw * 0.05), bh); c.globalAlpha = 1;
+      if (r() < tops) {
+        const tw = bw * (0.3 + r() * 0.4), th = h * (0.01 + r() * 0.025); c.fillStyle = col; c.fillRect(x + (bw - tw) / 2, top - th, tw, th + 1);
+        if (r() < 0.6) { const mh = h * (0.02 + r() * 0.05), mx = x + bw / 2; c.fillRect(mx - 0.5, top - th - mh, Math.max(1, w / 1024), mh); glow(c, mx, top - th - mh, w * 0.004, 'rgba(255,60,50,.6)'); }
+      }
+      // the glass grid: floors and bays
+      const wpx = w * ww * (0.8 + r() * 0.4), gx = w * gap * (0.85 + r() * 0.3), gy = gx * (1.1 + r() * 0.3), floorLit = lit * (0.5 + r());
+      c.fillStyle = glass;
+      for (let wy = top + gy * 0.8; wy < h - gy * 0.5; wy += gy) for (let wx = x + gx * 0.5; wx < x + bw - wpx - gx * 0.2; wx += gx) c.fillRect(wx, wy, wpx, wpx * 1.25);
+      for (let wy = top + gy * 0.8; wy < h - gy * 0.5; wy += gy) {
+        const on = r() < 0.75 ? floorLit : floorLit * 4;
+        for (let wx = x + gx * 0.5; wx < x + bw - wpx - gx * 0.2; wx += gx) {
+          if (r() > on) continue;
+          c.globalAlpha = 0.3 + r() * 0.55; c.fillStyle = wins[r() * wins.length | 0];
+          c.fillRect(wx, wy, wpx, wpx * 1.25);
         }
       }
       c.globalAlpha = 1;
       if (signs && r() < signs.p) {
-        const sc = signs.cols[r() * signs.cols.length | 0], sx = x + bw * (0.2 + r() * 0.5), sy = top + (h - top) * (0.1 + r() * 0.4), vert = r() < 0.6;
+        const sc = signs.cols[r() * signs.cols.length | 0], sx = x + bw * (0.2 + r() * 0.5), sy = top + bh * (0.1 + r() * 0.4), vert = r() < 0.6;
         c.save(); c.shadowColor = sc; c.shadowBlur = w * 0.02; c.fillStyle = sc; c.globalAlpha = 0.9;
-        if (vert) c.fillRect(sx, sy, w * 0.006, h * (0.05 + r() * 0.1)); else c.fillRect(sx - bw * 0.2, sy, bw * 0.5, h * 0.008);
+        if (vert) c.fillRect(sx, sy, w * 0.005, h * (0.05 + r() * 0.1)); else c.fillRect(sx - bw * 0.2, sy, bw * 0.5, h * 0.007);
         c.restore();
       }
       x += bw + r() * w * 0.004;
@@ -253,7 +265,8 @@
         forest(c, w, h, r, { y: u => 1.02, h0: 0.22, h1: 0.34, n: 14 * w / 1024, col: '#070c13', snow: 'rgba(170,186,215,.35)' });
       },
       layer: r => { const f = Array.from({ length: 260 }, () => [r(), r(), 0.03 + r() * 0.05, 0.35 + Math.pow(r(), 3) * 1.1, r() * 9, 0.25 + r() * 0.6]);
-        return (c, w, h, t) => { for (const [x, y, sp, s, ph, a] of f) { const yy = ((y + t * sp) % 1) * h, xx = ((x + Math.sin(t * 0.8 + ph) * 0.015 + t * 0.006) % 1) * w; c.fillStyle = `rgba(235,242,255,${a})`; c.beginPath(); c.arc(xx, yy, s, 0, TAU); c.fill(); } };
+        // three brightnesses, one path each, so a frame is three fills and not 260
+        return (c, w, h, t) => { for (let k = 0; k < 3; k++) { c.fillStyle = `rgba(235,242,255,${0.3 + k * 0.25})`; c.beginPath(); for (const [x, y, sp, s, ph, a] of f) { if (Math.min(2, (a - 0.25) / 0.6 * 3 | 0) !== k) continue; const yy = ((y + t * sp) % 1) * h, xx = ((x + Math.sin(t * 0.8 + ph) * 0.015 + t * 0.006) % 1) * w; c.moveTo(xx + s, yy); c.arc(xx, yy, s, 0, TAU); } c.fill(); } };
       } },
 
     // ---- the night side of Earth from orbit: the limb, the dawn line, cities, clouds, the airglow
@@ -303,7 +316,7 @@
           const night = 1 - smooth(-0.15, 0.05, sun);
           if (night > 0 && land > 0.5) {
             const cn = fbm3(px * 30, py * 30, pz * 30, 71, 4), spark = hash3(Math.floor(px * 700), Math.floor(py * 700), Math.floor(pz * 700), 72);
-            const L = (smooth(0.62, 0.85, cn) * 0.18 + (spark > 0.93 ? spark - 0.93 : 0) * 14 * smooth(0.42, 0.62, cn)) * night * (1 - cloud * 0.85) * 255;
+            const L = (smooth(0.62, 0.85, cn) * 0.28 + (spark > 0.92 ? spark - 0.92 : 0) * 20 * smooth(0.42, 0.62, cn)) * night * (1 - cloud * 0.85) * 255;
             rr += L; gg += L * 0.72; bb += L * 0.38;
           }
           // the faint glow of moonlit cloud tops on the night side
@@ -569,13 +582,14 @@
         const r = rng(19);
         sky(c, w, h, [[0, '#4a525e'], [0.5, '#7a8590'], [1, '#8f98a2']]);
         clouds(c, w, h, 20, { y0: 0, y1: h * 0.55, cover: 0.4, lit: '#9aa4b0', dark: '#3a414c', alpha: 0.7, sx: 2, sy: 6 });
-        const wins = ['#ffd9a0', '#ffe8c4', '#f2f4ff'];
-        city(c, w, h, r, { base: 0.72, h0: 0.1, h1: 0.45, col: '#76808b', edge: '#7f8994', lit: 0.12, wins, blur: 2.2, tops: 0.4 });
-        mist(c, w, h, 21, h * 0.4, h * 0.85, '#8a949e', 0.5, 0.7);
-        city(c, w, h, r, { base: 0.82, h0: 0.08, h1: 0.38, col: '#5d6670', edge: '#6a737d', lit: 0.18, wins, blur: 1.4, ww: 0.007, gap: 0.014 });
-        mist(c, w, h, 22, h * 0.55, h * 0.95, '#7c858f', 0.4, 0.7);
-        city(c, w, h, r, { base: 0.95, h0: 0.12, h1: 0.4, col: '#3f464e', edge: '#4c545c', lit: 0.25, wins, blur: 0.6, ww: 0.009, gap: 0.018 });
-        city(c, w, h, r, { base: 1.12, h0: 0.15, h1: 0.3, col: '#262b31', edge: '#30363d', lit: 0.3, wins, ww: 0.012, gap: 0.024 });
+        const wins = ['#ffd9a0', '#ffe8c4', '#f2f4ff', '#ffcf86'];
+        city(c, w, h, r, { base: 0.66, h0: 0.12, h1: 0.42, col: '#7a848f', edge: '#8a949e', lit: 0.06, wins, blur: 2.4, tops: 0.4, ww: 0.0035, gap: 0.007 });
+        mist(c, w, h, 21, h * 0.35, h * 0.8, '#8a949e', 0.55, 0.7);
+        city(c, w, h, r, { base: 0.76, h0: 0.1, h1: 0.4, col: '#67707a', edge: '#78818b', lit: 0.1, wins, blur: 1.6, ww: 0.0045, gap: 0.009 });
+        mist(c, w, h, 22, h * 0.5, h * 0.9, '#7c858f', 0.45, 0.7);
+        city(c, w, h, r, { base: 0.9, h0: 0.12, h1: 0.42, col: '#474e56', edge: '#59616a', lit: 0.16, wins, blur: 0.8, ww: 0.006, gap: 0.012 });
+        mist(c, w, h, 23, h * 0.7, h, '#6d767f', 0.3, 0.8);
+        city(c, w, h, r, { base: 1.1, h0: 0.15, h1: 0.32, col: '#2a2f35', edge: '#3a4047', lit: 0.2, wins, ww: 0.008, gap: 0.016 });
       },
       layer: r => { const drops = Array.from({ length: 40 }, () => [r(), r(), 0.02 + r() * 0.08, 0.8 + r() * 1.4]); const streaks = Array.from({ length: 160 }, () => [r(), r(), 0.8 + r()]);
         return (c, w, h, t) => {
@@ -593,13 +607,13 @@
         clouds(c, w, h, 32, { y0: 0, y1: h * 0.5, cover: 0.48, lit: '#7a2a66', dark: '#120818', alpha: 0.75, sx: 2, sy: 6 });
         glow(c, w * 0.65, h * 0.75, w * 0.6, 'rgba(255,60,160,.22)');
         const wins = ['#ff5fae', '#5fe6ff', '#b88bff', '#ffd27a', '#ffe9d0'], signs = { p: 0.5, cols: ['#ff3d9a', '#3ee6ff', '#b46bff', '#ffcf5a'] };
-        city(c, w, h, r, { base: 0.7, h0: 0.12, h1: 0.5, col: '#1c0e2c', edge: '#2a1438', lit: 0.18, wins, blur: 2, signs });
+        city(c, w, h, r, { base: 0.7, h0: 0.12, h1: 0.5, col: '#1c0e2c', edge: '#2e1640', lit: 0.12, wins, blur: 2, signs, ww: 0.004, gap: 0.008, glass: 'rgba(200,120,220,.05)' });
         mist(c, w, h, 33, h * 0.45, h * 0.9, '#5a1c50', 0.45, 0.7);
-        city(c, w, h, r, { base: 0.86, h0: 0.1, h1: 0.42, col: '#120820', edge: '#1e0f2c', lit: 0.24, wins, blur: 1, ww: 0.007, gap: 0.014, signs });
+        city(c, w, h, r, { base: 0.86, h0: 0.1, h1: 0.42, col: '#120820', edge: '#22112f', lit: 0.16, wins, blur: 1, ww: 0.0055, gap: 0.011, signs, glass: 'rgba(200,120,220,.05)' });
         // the 10000 sign on a tower
         c.save(); c.shadowColor = '#3ee6ff'; c.shadowBlur = w * 0.025; c.strokeStyle = '#8ff4ff'; c.lineWidth = w * 0.003; c.font = `700 ${w * 0.034}px ${K2.MONO}`; c.strokeText('10000', w * 0.16, h * 0.44); c.restore();
         mist(c, w, h, 34, h * 0.65, h, '#4a1440', 0.35, 0.8);
-        city(c, w, h, r, { base: 1.08, h0: 0.15, h1: 0.32, col: '#07040c', edge: '#120a1a', lit: 0.3, wins, ww: 0.011, gap: 0.022, signs });
+        city(c, w, h, r, { base: 1.08, h0: 0.15, h1: 0.32, col: '#07040c', edge: '#140b1e', lit: 0.2, wins, ww: 0.008, gap: 0.016, signs, glass: 'rgba(200,120,220,.05)' });
       },
       layer: r => { const drops = Array.from({ length: 160 }, () => [r(), r(), 0.6 + r() * 0.8]);
         return (c, w, h, t) => {
