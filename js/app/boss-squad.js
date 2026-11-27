@@ -125,7 +125,7 @@ window.BossSquad = (() => {
       // lock-ons landing, dodges and covers
       for (const m of M) {
         if (!m.lockUntil) continue;
-        if (!m.you && m.plan && t >= m.plan.at && m.plan.dodge) { m.lockUntil = 0; m.plan = null; continue; }
+        if (!m.you && m.plan && t >= m.plan.at && m.plan.dodge) { m.lockUntil = 0; m.plan = null; emit('dodge', { who: m }); continue; }
         // a simulated Sentinel covers a squadmate a second before the hit
         const sen = M.find(x => !x.you && x !== m && x.division === 'sentinel' && !x.down);
         if (sen && t >= m.lockUntil - 1000 && !m.coverTried) {

@@ -102,9 +102,9 @@ Router.register('boss', (() => {
     if (scene && window.Operator) scene.crew(squad.members().filter(m => !m.you).map(m => ({ id: opId(m), preset: Operator.random(m.name) })));
     const name = m => (m.you ? 'you' : m.name);
     squadOffs.push(
-      squad.on('lock', e => { if (!el || (st && st.defeatedAt)) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} is aiming at you. Type the dodge word`, cls: 'alert' }); } }),
-      squad.on('dodge', () => { if (!el) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
-      squad.on('covered', e => { if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
+      squad.on('lock', e => { if (scene && !(st && st.defeatedAt)) scene.lock(opId(e.who), e.until - now()); if (!el || (st && st.defeatedAt)) return; if (e.who.you) { sfx('warn'); pop('LOCKED ON', 'red'); pushFeed({ text: `${NAME} is aiming at you. Type the dodge word`, cls: 'alert' }); } }),
+      squad.on('dodge', e => { if (scene) scene.act(opId(e.who), 'dodge'); if (!el || !e.who.you) return; sfx('blockOk'); pop('DODGED', 'cyan'); }),
+      squad.on('covered', e => { if (scene) scene.act(opId(e.who), 'covered', opId(e.by)); if (!el) return; if (e.by.you) { sfx('blockOk'); pop('COVERED', 'cyan'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} covered ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
       squad.on('hit', e => {
         if (scene) scene.act(opId(e.who), 'hit');
         if (!el || !e.who.you) return;

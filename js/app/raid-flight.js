@@ -11,6 +11,11 @@
 //   shield       when the attack is blocked, your squad clumps behind the barrier instead
 //   down         a hard hit drops a bot to the floor; the nearest squad mate flies over and repairs it
 //                with a beam until it gets back up
+//   sortie       squads take turns: all four dive at the boss one after another, then spread wide and
+//                drift back to their posts (Gid, 27 Nov: "fly in and do attacks. fly out, spread")
+//   side attack  the boss goes after a flank squad: they put up a barrier and clump, scatter, or get hit
+//   roll, flip   a dodge is a barrel roll sideways and a hard hit a backflip, so each result reads apart
+//   guard        a squad mate flies in front of a locked-on bot to cover it
 //
 //   const f = RaidFlight.create(THREE, scene, { slots, you, squads, hover })
 //   f.home(i, v)                   the formation post for slot i (call when the raid is laid out)
@@ -21,6 +26,12 @@
 //   f.lateFor(id, pk) -> Set       the slots too slow to dodge this attack (decided once per attack)
 //   f.knock(i, t, hard)            a hit; hard ones may put the bot down for a repair
 //   f.setDown(i, on)               hold a bot down (your bot when you're out) until set back
+//   f.sortie(k, t)                 squad k dives in and spreads out
+//   f.roll(i, t, dir) / f.guard(i, target, until)
+//   f.spinOf(i, t) -> [x, z]       the flip and roll to add to the bot's rotation
+//   f.centre(k, out)               where squad k is now
+//   ctx also takes spin (the orbit's turn rate), calm (true when your squad is free to sortie) and
+//   side: { id, k, kind, h, at, outcome: 'block'|'dodge'|'hit' } for an attack on another squad
 //   f.isDown(i), f.vel(i), f.dispose()
 window.RaidFlight = (() => {
   function create(THREE, scene, o) {
@@ -31,7 +42,9 @@ window.RaidFlight = (() => {
     const S = Array.from({ length: N }, (_, i) => ({
       pos: new V(), vel: new V(), home: new V(), init: false, ph: Math.random() * 6.28, flit: new V(), flitAt: rnd(0, 2.5),
       run: null, downAt: -1, downUntil: -1, held: false, repairOf: -1, repairBy: -1, knockedAt: -9,
+      fv: new V(), spread: null, rollAt: -9, rollDir: 1, flipAt: -9, rolledFor: null, guard: null,
     }));
+    const members = [0, 1, 2].map(k => (o.squads || [])[k] || []);
     const lateSets = new Map();
     // repair beams: a green line from the repairing bot to the downed one, and a ring under it
     const BEAMS = 6, beams = [];
@@ -49,7 +62,41 @@ window.RaidFlight = (() => {
     function busy(s, t) { return (s.run && t < s.run.t0 + s.run.dur) || s.downAt >= 0 || s.repairOf >= 0; }
     let lastRun = -1, lastRunT = -9;
     // who the boss should turn toward: the last bot to start a run at it, for a moment
-    const focus = t => lastRun >= 0 && t - lastRunT < 1.3 && t >= lastRunT ? S[lastRun].pos : null;
+    const fpos = new V();
+    let sortieK = -1, sortieT = -9;
+    const focus = t => {
+      if (sortieK >= 0 && t - sortieT < 1.6 && t >= sortieT) return centre(sortieK, fpos);
+      return lastRun >= 0 && t - lastRunT < 1.3 && t >= lastRunT ? S[lastRun].pos : null;
+    };
+    function centre(k, out) {
+      out.set(0, 0, 0); let n = 0;
+      for (const i of members[k]) if (S[i] && S[i].init) { out.add(S[i].pos); n++; }
+      return n ? out.multiplyScalar(1 / n) : out;
+    }
+    // a squad's turn: each bot dives in a beat after the last, then they spread wide and drift back
+    function sortie(k, t) {
+      const m = members[k].filter(i => isAct(i) && S[i].downAt < 0 && S[i].repairOf < 0);
+      if (!m.length) return false;
+      sortieK = k; sortieT = t;
+      m.forEach((i, n) => {
+        const reach = i === YOU ? 0.7 : 0.95, d = n * 0.13;
+        S[i].run = null;
+        run(i, t, { delay: d, dur: 1.05, side: n % 2 ? 1 : -1, reach, lift: 2.5 + (n % 3) * 0.8 });
+        S[i].spread = { t0: t + d + 0.85, dur: 1.7, fan: (n - (m.length - 1) / 2) * 0.55 };
+      });
+      if (o.onSortie) o.onSortie(k, t);
+      return true;
+    }
+    let nextSortie = 4, turnK = 0;
+    function roll(i, t, dir) { const s = S[i]; if (!s || t - s.rollAt < 0.6) return; s.rollAt = t; s.rollDir = dir || (Math.random() < 0.5 ? -1 : 1); }
+    function guard(i, target, until) { const s = S[i]; if (!s || !isAct(i)) return; s.run = null; s.spread = null; s.guard = { target, until }; }
+    // the flip and roll on top of the bot's own lean: a barrel roll for a dodge, a backflip for a hard hit
+    function spinOf(i, t, out) {
+      const s = S[i]; out[0] = 0; out[1] = 0; if (!s) return out;
+      const ru = (t - s.rollAt) / 0.5; if (ru >= 0 && ru < 1) out[1] = s.rollDir * Math.PI * 2 * (1 - Math.pow(1 - ru, 3));
+      const fu = (t - s.flipAt) / 0.6; if (fu >= 0 && fu < 1) out[0] = -Math.PI * 2 * (1 - Math.pow(1 - fu, 2.4));
+      return out;
+    }
     function run(i, t, o2 = {}) {
       const s = S[i]; if (!s || busy(s, t)) return;
       if (i !== YOU && squadOf[i] > 0) { lastRun = i; lastRunT = t + (o2.delay || 0); }
@@ -81,6 +128,8 @@ window.RaidFlight = (() => {
       const s = S[i]; if (!s || !isAct(i)) return;
       s.knockedAt = t; s.run = null;
       if (s.repairOf >= 0) { S[s.repairOf].repairBy = -1; s.repairOf = -1; }
+      if (hard) s.flipAt = t;
+      s.spread = null; s.guard = null;
       if (hard && s.downAt < 0 && i !== YOU && Math.random() < 0.45) { s.downAt = t + 0.35; s.downUntil = t + rnd(3.4, 4.4); pickRepairer(i, t); }
     }
     function setDown(i, on) {
@@ -92,8 +141,18 @@ window.RaidFlight = (() => {
     let lastT = 0;
     function update(t, dt, ctx, out) {
       lastT = t;
-      const boss = ctx.boss, aim = ctx.aim, th = ctx.threat;
-      const lead = th ? th.h - t : 99;
+      const boss = ctx.boss, aim = ctx.aim, th = ctx.threat, sd = ctx.side;
+      const lead = th ? th.h - t : 99, slead = sd ? sd.h - t : 99;
+      const sdodge = sd && slead < 1.0 && slead > -0.5;
+      // the squads take turns diving in; yours only while nothing is coming at it
+      if (t > nextSortie) {
+        turnK = (turnK + 1) % 3;
+        let k = turnK;
+        if ((k === 0 && !ctx.calm) || (sd && sd.k === k)) k = (k + 1) % 3;
+        if ((k === 0 && !ctx.calm) || (sd && sd.k === k)) k = (k + 1) % 3;
+        if (!(k === 0 && !ctx.calm) && !(sd && sd.k === k)) sortie(k, t);
+        nextSortie = t + rnd(2.8, 4.2);
+      }
       const dodging = th && lead < 1.0 && lead > -0.5;
       const late = th && lateSets.get(th.id) || null;
       const R = 5.6;
@@ -114,6 +173,18 @@ window.RaidFlight = (() => {
         tgt.y += Math.sin(t * 1.3 + s.ph * 2) * 0.35 + s.flit.y;
         tgt.z += Math.cos(t * 0.7 + s.ph) * 0.5 * calm + s.flit.z;
         let stiff = 26;
+        // spreading out after a dive: away from the boss and fanned sideways, then back to the post
+        if (s.spread) {
+          const u = (t - s.spread.t0) / s.spread.dur;
+          if (u >= 1) s.spread = null;
+          else if (u >= 0) {
+            const w = Math.sin(u * Math.PI);
+            tmp2.copy(s.pos).sub(boss); tmp2.y = 0; if (tmp2.lengthSq() < 0.01) tmp2.set(0, 0, 1); tmp2.normalize();
+            tgt.addScaledVector(tmp2, 3.6 * w);
+            tgt.x += -tmp2.z * s.spread.fan * 5 * w; tgt.z += tmp2.x * s.spread.fan * 5 * w;
+            tgt.y += 1.4 * w; stiff = 34;
+          }
+        }
         // an attack run: out to the boss's side, a beat there, back
         if (s.run && t >= s.run.t0) {
           const u = (t - s.run.t0) / s.run.dur;
@@ -140,9 +211,29 @@ window.RaidFlight = (() => {
               tmp.normalize();
               tgt.set(aim.x + tmp.x * (R + 2.4), HOVER + 1.4, aim.z + tmp.z * (R + 2.4));
               stiff = 160;
+              if (s.rolledFor !== th.id && lead < 0.5 && Math.random() < 0.6) { s.rolledFor = th.id; roll(i, t, tmp.x >= 0 ? 1 : -1); }
             } else if (lead < 0.1) tgt.y += 1;
           } else if (i === YOU && !th.blocked && th.kind !== 'sweep') { stiff = 40; }   // you stay in the zone: your words decide the block
         }
+        // the boss is going after another squad: a barrier and a clump, a scatter, or they take it
+        if (sdodge && k === sd.k && s.downAt < 0 && s.repairOf < 0) {
+          tmp2.copy(boss).sub(sd.at); tmp2.y = 0; tmp2.normalize();               // toward the boss
+          const n = members[k].indexOf(i);
+          if (sd.outcome === 'block') {
+            tgt.copy(sd.at).addScaledVector(tmp2, -0.6); tgt.x += Math.cos(n * 2.1) * 1.1; tgt.z += Math.sin(n * 2.1) * 0.6; tgt.y = HOVER + 0.3 + (n % 2) * 0.9; stiff = 70;
+          } else if (sd.outcome === 'dodge') {
+            if (sd.kind === 'sweep') { tgt.y = HOVER + 3.6; stiff = 160; }
+            else { const sx = n % 2 ? 1 : -1; tgt.copy(sd.at); tgt.x += -tmp2.z * sx * (R + 2); tgt.z += tmp2.x * sx * (R + 2); tgt.y = HOVER + 1.2; stiff = 160; }
+            if (s.rolledFor !== sd.id && slead < 0.45) { s.rolledFor = sd.id; roll(i, t, n % 2 ? 1 : -1); }
+          } else { tgt.lerp(sd.at, 0.4); stiff = 40; }
+        }
+        // covering a locked-on squad mate: between it and the boss
+        if (s.guard) {
+          if (t > s.guard.until || !S[s.guard.target]) s.guard = null;
+          else { const g = S[s.guard.target].pos; tgt.copy(g).lerp(boss, 0.18); tgt.y = g.y + 0.3; stiff = 120; }
+        }
+        // a barrel roll throws it sideways
+        { const ru = (t - s.rollAt) / 0.5; if (ru >= 0 && ru < 1) { tgt.x += s.rollDir * 3.2 * Math.sin(Math.min(1, ru * 1.4) * Math.PI / 2); stiff = Math.max(stiff, 140); } }
         // knocked back for a moment
         const ku = t - s.knockedAt;
         if (ku < 0.6) { tgt.z += (1 - ku / 0.6) * 3; tgt.y += Math.sin(ku / 0.6 * Math.PI) * 1.2; }
@@ -163,6 +254,8 @@ window.RaidFlight = (() => {
         s.pos.addScaledVector(s.vel, dt);
         if (s.pos.y < 0.6) { s.pos.y = 0.6; s.vel.y = Math.max(0, s.vel.y); }
         out[i].copy(s.pos);
+        // what the bot feels for its lean: its own velocity plus the orbit carrying the raid round
+        s.fv.copy(s.vel); if (ctx.spin) s.fv.x += ctx.spin * 9;
       }
       // the repair beams
       let b = 0;
@@ -177,9 +270,9 @@ window.RaidFlight = (() => {
       for (; b < BEAMS; b++) { beams[b].line.visible = beams[b].ring.visible = false; }
     }
     const isDown = i => !!S[i] && S[i].downAt >= 0 && (S[i].held || lastT >= S[i].downAt);
-    const vel = i => S[i] ? S[i].vel : tmp.set(0, 0, 0);
+    const vel = i => S[i] ? S[i].fv : tmp.set(0, 0, 0);
     function dispose() { beams.forEach(({ line, ring }) => { scene.remove(line); scene.remove(ring); line.geometry.dispose(); line.material.dispose(); ring.geometry.dispose(); ring.material.dispose(); }); }
-    return { home, update, run, strafe, strike, lateFor, knock, setDown, isDown, vel, focus, dispose, S };
+    return { home, update, run, strafe, strike, sortie, roll, guard, spinOf, centre, members, lateFor, knock, setDown, isDown, vel, focus, dispose, S };
   }
   return { create };
 })();

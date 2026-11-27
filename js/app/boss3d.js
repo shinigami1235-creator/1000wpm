@@ -18,6 +18,7 @@
 //   opts.onMenace(kind)                a swing, jab, stomp or lean at the raid between attacks lands
 //                                      (swipe, jab, stomp, lean), for the sound
 //   freezeAttack(id)                   cryo lock: that attack's hit shows as held off for you
+//   lock(who, ms)                      the boss aims at a squad member; act(who, 'dodge' | 'covered', byId) settles it
 //   defeat(instant) / revive()
 //   screen(key, out)      host pixels of 'head', 'core', 'you', 'shot:<id>' or 'add:<id>'
 //   dispose()
@@ -75,7 +76,10 @@ window.BossScene = (() => {
       charge: (level, tier) => impl && impl.charge(level, tier),
       feed: () => impl && impl.feed(),
       crew: list => { pending.crew = list; if (impl) impl.crew(list); },
-      act: (who, kind) => impl && impl.act(who, kind),
+      act: (who, kind, by) => impl && impl.act(who, kind, by),
+      lock: (who, ms) => impl && impl.lock(who, ms),
+      sideAttack: (k, kind, outcome) => impl && impl.sideAttack(k, kind, outcome),   // test hook
+      orbitInfo: () => impl && impl.orbitInfo(),
       raidInfo: () => impl && impl.raidInfo(),
       // with no scene (WebGL off or still loading) the release lands at once
       release: (tier, power, onLand) => { if (impl && impl.live()) impl.release(tier, power, onLand); else if (onLand) onLand(null, null); },
@@ -584,7 +588,8 @@ window.BossScene = (() => {
       for (let i = 0; i < RAID; i++) crowdTint.push(BOT ? raidCol(i).clone().multiplyScalar(1.5) : new THREE.Color('#ffffff').lerp(raidCol(i), 0.32));
       marks.visible = false;
       if (BOT && window.RaidFlight) {
-        flight = RaidFlight.create(THREE, scene, { slots: RAID + 1, you: RAID, squads: [[RAID, 0, 1, 2], [3, 4, 5, 6], [7, 8, 9, 10]], hover: BotKit.HOVER, animated: Math.min(ONSCREEN, SHOWN) });
+        flight = RaidFlight.create(THREE, scene, { slots: RAID + 1, you: RAID, squads: [[RAID, 0, 1, 2], [3, 4, 5, 6], [7, 8, 9, 10]], hover: BotKit.HOVER, animated: Math.min(ONSCREEN, SHOWN),
+          onSortie: k => { if (k === 0 && Math.random() < 0.35) cutaway('dive', 1.8); } });
         homePos.forEach((p, i) => { if (p.lengthSq()) flight.home(i, p); });
       }
     }
@@ -594,20 +599,28 @@ window.BossScene = (() => {
       for (let i = crew.length - 1; i > 0; i--) { scene.remove(crew[i].op.group); crew[i].op.dispose(); crew.splice(i, 1); }
       (list || []).slice(0, 3).forEach((m, i) => addOp(m.id, m.preset, i));
     }
-    function act(who, kind) {
+    function act(who, kind, by) {
       const c = crew.find(x => x.id === who);
       if (!c) return;
+      if (kind === 'dodge' || kind === 'covered') {
+        const l = lockFor(c.slot); if (!l) return;
+        l.outcome = kind === 'dodge' ? 'dodge' : 'cover'; l.coverAt = nowS();
+        if (kind === 'covered' && flight) { const g = crew.find(x => x.id === by); if (g && g.slot !== c.slot) flight.guard(g.slot, c.slot, l.h + 0.35); }
+        return;
+      }
       if (kind === 'type') c.typeAt = nowS();
       else if (kind === 'cast' || kind === 'hit') { if (!c.down) c.op.once(kind); if (flight && kind === 'cast' && c.id !== 'you') flight.run(c.slot, nowS()); }
       else if (kind === 'down') { c.down = true; if (flight) flight.setDown(c.slot, true); }
       else if (kind === 'up') { c.down = false; if (flight) flight.setDown(c.slot, false); }
     }
-    const opM = new THREE.Matrix4(), opQ = new THREE.Quaternion(), opS = new V(), opP = new V(), opE = new THREE.Euler();
+    const opM = new THREE.Matrix4(), opQ = new THREE.Quaternion(), opS = new V(), opP = new V(), opE = new THREE.Euler(), spn = [0, 0];
+    const faceBoss = p => Math.atan2(root.position.x - p.x, root.position.z - p.z);
     function opsTick(t, dt) {
       if (!OPS) return;
       for (const c of crew) {
         const p = raidPos[c.slot];
         c.op.group.position.set(p.x, BOT ? p.y - BotKit.HOVER : 0, p.z);
+        if (flight) { flight.spinOf(c.slot, t, spn); c.op.group.rotation.set(spn[0], faceBoss(p), spn[1], 'YXZ'); }
         // mates keep typing; you type while your words are landing
         if (c.id !== 'you' && t - c.typeAt > 1.6 && Math.random() < dt * 2) c.typeAt = t;
         const dn = c.down || (flight && flight.isDown(c.slot));
@@ -626,7 +639,8 @@ window.BossScene = (() => {
           opP.set(p.x, (flight ? p.y - BotKit.HOVER : 0) + Math.sin(t * 2.1 + i * 1.3) * 0.12 + Math.sin(t * 9 + i) * 0.06 * markGlow[i] + fk * 0.35, p.z + (flight ? 0 : kk * 1.8));
           const fv = flight ? flight.vel(i) : opP, dn = flight && flight.isDown(i) ? 1 : 0;
           const kd = Math.max(kk, dn);
-          opQ.setFromEuler(opE.set(-kd * 0.9 + (flight ? clamp(-fv.z * 0.05, -0.4, 0.4) : 0), Math.PI + Math.sin(i * 1.7) * 0.25, kd * (i % 2 ? 1.2 : -1.2) + (flight ? clamp(fv.x * 0.05, -0.45, 0.45) : 0)));
+          if (flight) flight.spinOf(i, t, spn);
+          opQ.setFromEuler(opE.set(-kd * 0.9 + (flight ? clamp(-fv.z * 0.05, -0.4, 0.4) + spn[0] : 0), (flight ? faceBoss(p) : Math.PI) + Math.sin(i * 1.7) * 0.25, kd * (i % 2 ? 1.2 : -1.2) + (flight ? clamp(fv.x * 0.05, -0.45, 0.45) + spn[1] : 0), 'YXZ'));
           const bs = 0.62 + (i % 5) * 0.02; opS.setScalar(bs);
           opP.y += BotKit.HOVER * (1 - bs);   // the hover height is in the geometry, so scaling would lower it
           opM.compose(opP, opQ, opS);
@@ -865,26 +879,47 @@ window.BossScene = (() => {
     const camBase = new V(0, 5.5, 30), camLook = new V(0, 7.4, 0), lookCur = new V(0, 7.4, 0);
     // the orbit: every so often your squad swings round to a new side of the boss, and the view goes
     // with it at a capped speed; it holds still through a wind-up. Reduce motion keeps the fixed view.
-    const orbit = { phi: 0, target: 0, next: 6 };
+    // Gid, 27 Nov 2026: "the camera spins along with your party as you encircle the boss". The raid
+    // circles all the time at a turn rate that changes every few seconds and now and then reverses; it
+    // eases to a stop while an attack or a lock-on winds up at your squad, so you can read it.
+    const orbit = { phi: 0, w: 0, want: 0.14, next: 5 };
     function orbitTick(t, dt) {
-      if (reduce || !BOT) return;
-      const sl = current(t, 'slam'), hold = !!(sl && !sl.cut && t < sl.h + 0.6);
-      if (!hold && t > orbit.next) { orbit.target += (Math.random() < 0.5 ? -1 : 1) * rnd(0.6, 1.4); orbit.next = t + rnd(9, 15); }
-      if (!hold) orbit.phi += clamp(orbit.target - orbit.phi, -0.2 * dt, 0.2 * dt);
+      if (reduce || !BOT) { orbit.w = 0; return; }
+      // only the last second before a hit at your squad: attacks come often, and the raid keeps circling
+      const sl = own(t), lk = locks.find(l => l.slot === RAID && t > l.h - 1.0 && t < l.h + 0.4);
+      const hold = !!(sl && !sl.cut && t > sl.h - 1.0 && t < sl.h + 0.4) || !!lk || dead;
+      if (t > orbit.next) { orbit.want = (Math.random() < 0.3 ? -Math.sign(orbit.want || 1) : Math.sign(orbit.want || 1)) * rnd(0.09, 0.2); orbit.next = t + rnd(5, 9); }
+      orbit.w += ((hold ? 0 : orbit.want) - orbit.w) * Math.min(1, dt * (hold ? 3 : 0.8));
+      orbit.phi += orbit.w * dt;
       env.rotation.y = -orbit.phi;
     }
     // cutaways: a short shot from another angle on a stagger, a phase change or the kill, never
     // while an attack is winding up
-    const cut = { at: -9, len: 0, pos: new V(), look: new V(), kind: '' };
-    function cutaway(kind, len = 1.5) {
+    const cut = { at: -9, len: 0, pos: new V(), look: new V(), kind: '', x: null };
+    function cutaway(kind, len = 1.5, x = null) {
       if (reduce || !BOT) return;
-      const t = nowS(), sl = current(t, 'slam');
+      const t = nowS(), sl = own(t);
       if (sl && !sl.cut && t < sl.h + 0.3) return;
+      if (locks.some(l => l.slot === RAID && t < l.h + 0.3)) return;
       if (t < cut.at + cut.len + 2) return;
-      cut.at = t; cut.len = len; cut.kind = kind;
+      cut.at = t; cut.len = len; cut.kind = kind; cut.x = x;
     }
     function cutPose(out, look) {
       const b = root.position, side = cut.kind === 'side' ? 1 : cut.kind === 'low' ? -1 : 0.6;
+      if (cut.kind === 'over' && cut.x) {
+        // side on to the boss and the squad it's going after, both in frame
+        const a = cut.x.at; v4.set(a.x - b.x, 0, a.z - b.z); const d = v4.length(); v4.normalize();
+        const sd = (v4.x * camera.position.z - v4.z * camera.position.x) > 0 ? -1 : 1;   // the side nearer the usual view
+        out.set((a.x + b.x) / 2 + v4.z * sd * (d * 0.9 + 12), 7.5, (a.z + b.z) / 2 - v4.x * sd * (d * 0.9 + 12));
+        look.set((a.x + b.x) / 2, 5.5, (a.z + b.z) / 2);
+        return out;
+      }
+      if (cut.kind === 'dive') {
+        // riding behind your bot as your squad dives in
+        const y = raidPos[RAID]; v4.set(y.x - b.x, 0, y.z - b.z).normalize();
+        out.set(y.x + v4.x * 3.4 + v4.z * 1.2, y.y + 1.4, y.z + v4.z * 3.4 - v4.x * 1.2); look.copy(anchorHead);
+        return out;
+      }
       if (cut.kind === 'side') { out.set(b.x + 17, 6.5, b.z + 5); look.copy(anchorCore); }
       else if (cut.kind === 'low') { out.set(b.x - 9, 1.4, b.z + 12); look.copy(anchorHead); }
       else { out.copy(aim); out.x += 4.5 * side; out.y -= 0.8; out.z += 6; look.copy(anchorHead); }   // from among the raid, looking up
@@ -1036,7 +1071,13 @@ window.BossScene = (() => {
       for (let i = evs.length - 1; i >= 0; i--) {
         const x = evs[i];
         if (t > x.e + 0.5) { evs.splice(i, 1); continue; }
-        if (x.type === 'slam' && t >= x.h && !x.hitDone) { x.hitDone = true; impact(x); }
+        if (x.side && !x.hitDone && flight) {
+          if (t < x.h - 0.55) { flight.centre(x.side, x.at); x.at.y = 0; }
+          if (!x.cutDone && t >= x.h - 0.4) { x.cutDone = true; if (Math.random() < 0.55) cutaway('over', 1.3, x); }
+        }
+        // a new attack at your squad cuts short one on another squad still winding up
+        if (x.type === 'slam' && !x.side && !x.cutSide) { x.cutSide = true; for (const z of evs) if (z.side && !z.cut && t < z.h && x.s < z.e) z.cut = t; }
+        if (x.type === 'slam' && t >= x.h && !x.hitDone) { x.hitDone = true; if (!x.cut || !x.side) impact(x); }
         if (x.type === 'volley') for (const s of x.shots) if (!s.fired && t >= s.l) {
           s.fired = true;
           if (t >= s.a) continue;
@@ -1062,8 +1103,87 @@ window.BossScene = (() => {
         if (x.type === 'shield' && !x.hitDone && t >= x.u) { x.hitDone = true; }
       }
     }
-    function current(t, type) { for (const x of evs) if (x.type === type && t >= x.s && t <= x.e) return x; return null; }
+    function current(t, type) {
+      let alt = null;
+      for (const x of evs) if (x.type === type && t >= x.s && t <= x.e) { if (!x.side) return x; alt = alt || x; }
+      return alt;
+    }
+    // an attack at your squad only
+    function own(t) { for (const x of evs) if (x.type === 'slam' && !x.side && t >= x.s && t <= x.e) return x; return null; }
+
+    // ---------- the boss goes after the other squads (Gid, 27 Nov 2026) ----------
+    // Between your attacks it turns on a flank squad: it rushes them, fires the laser at them, sweeps
+    // them or slams them. Each one ends one of three ways, and each looks different: they put a barrier
+    // up and it smashes into it (the boss is thrown back), they scatter and it hits the floor, or it
+    // lands and they're thrown, some down for a repair. These are their fight, so nothing here touches
+    // your integrity or your words.
+    const side = { next: 9, k: 2, seq: 0 };
+    const SIDE_KINDS = ['lunge', 'laser', 'sweep', 'slam', 'lunge', 'laser'];
+    function sideTick(t) {
+      if (!flight || reduce || dead || SHOWN < ONSCREEN || t < side.next) return;
+      const busy = evs.some(x => x.type === 'slam' && (x.side ? t < x.e : x.e > t - 0.5 && x.s < t + 4.5)) ||
+        current(t, 'adds') || current(t, 'shield') || current(t, 'volley') || locks.some(l => t < l.h + 0.5) || t - roarAt < 2.6;
+      if (busy) { side.next = t + 0.8; return; }
+      side.k = side.k === 1 ? 2 : 1;
+      const r = Math.random();
+      sideAttack(side.k, SIDE_KINDS[Math.floor(Math.random() * SIDE_KINDS.length)], r < 0.36 ? 'block' : r < 0.7 ? 'dodge' : 'hit');
+      side.next = t + rnd(6.5, 11) * (1 - phase * 0.07);
+    }
+    function sideAttack(k, kind, outcome) {
+      if (!flight || dead) return;
+      const t = nowS(), wind = kind === 'laser' ? 1.7 : kind === 'lunge' ? 1.25 : 1.45;
+      const x = { id: 'side' + (++side.seq), type: 'slam', kind, side: k, s: t, h: t + wind, e: t + wind + 1.7, started: false, hitDone: false,
+        at: flight.centre(k, new V()), outcome, cutDone: false };
+      if (outcome === 'block') x.blocked = t + wind * rnd(0.35, 0.6);
+      x.at.y = 0;
+      evs.push(x);
+    }
+    function sideImpact(x) {
+      const t = nowS(), at = x.at, col = x.outcome === 'block' ? CYAN : RED;
+      if (x.outcome === 'block') {
+        // it smashes into their barrier and is thrown back
+        sideHitAt = t;
+        v2.copy(root.position).sub(at).setY(0).normalize().multiplyScalar(3).add(at).setY(3);
+        burst(v2, 60, 16, CYAN, 1.2, 4); burst(v2, 30, 12, WHITE, 1.4, 6);
+        flare(v2, CYAN, 8, 0.3, canFlash() ? 1.1 : 0.5);
+        wave(v1.copy(at).setY(0.3), 0.4, 12, 0.7, CYAN, 0.85);
+        recoilV -= 1.6; jolt = Math.min(0.9, jolt + 0.5); headJerk = 1;
+        shake = Math.max(shake, 0.35);
+        if (flight) setTimeout(() => { if (!dead && flight) flight.sortie(x.side, nowS()); }, 250);   // and they hit back
+      } else if (x.outcome === 'dodge') {
+        // it hits the floor where they were
+        burst(v1.copy(at).setY(0.6), 50, 12, RED, 1.5, 12); burst(v1, 24, 8, WHITE, 1.2, 10);
+        wave(v1.copy(at).setY(0.2), 0.5, 15, 0.9, RED, 0.9);
+        shake = Math.max(shake, 0.45);
+      } else {
+        // it lands: the squad is thrown and the hard ones flip; some go down for a repair
+        const hard = x.kind !== 'sweep';
+        for (const i of flight ? flight.members[x.side] : []) if (i < ONSCREEN) { knockAt[i] = t + Math.random() * 0.06; flight.knock(i, t, hard); }
+        burst(v1.copy(at).setY(1.4), 70, 15, RED, 1.4, 9); burst(v1, 30, 10, WHITE, 1.4, 12);
+        flare(v1, RED, 7, 0.26, canFlash() ? 1.1 : 0.5);
+        wave(v1.copy(at).setY(0.2), 0.5, 18, 1.0, RED, 0.95);
+        shake = Math.max(shake, 0.7); stopUntil = Math.max(stopUntil, performance.now() + 70);
+      }
+      if (x.kind === 'laser') { beamTo.copy(at).setY(1.6); beamLen = 0.8; beamW = 1.8; beamUntil = t + beamLen; }
+      if (x.kind === 'sweep') { sweepT0 = t; sweepAt.copy(at); }
+      if (kit && (x.kind === 'slam' || x.kind === 'lunge')) {
+        kit.group.updateMatrixWorld(true);
+        for (const i of x.kind === 'slam' ? [0, 1] : [1]) { kit.fists[i].at.getWorldPosition(vF); vF.y = 0.2; wave(vF, 0.5, 16, 0.9, col, 0.9); burst(vF, 30, 12, WHITE, 1.6, 14); }
+      }
+    }
+
+    // ---------- lock-ons: the boss aims at one bot in your squad (js/app/boss-squad.js) ----------
+    // A red sight line from its eyes to the bot builds over the 4.5 s; then it fires. The bot either
+    // rolls out of it (a dodge), a squad mate flies in front with a shield (a cover), or it's hit.
+    const locks = [];
+    function lock(who, ms) {
+      const c = crew.find(x => x.id === who); if (!c || dead) return;
+      const t = nowS();
+      locks.push({ slot: c.slot, t0: t, h: t + Math.max(0.6, ms / 1000), outcome: null, by: -1, fired: false, rolled: false, at: new V() });
+    }
+    function lockFor(slot) { const t = nowS(); return locks.find(l => l.slot === slot && !l.fired && t < l.h + 0.2); }
     function impact(x) {
+      if (x.side) { sideImpact(x); return; }
       const you = blocked.has(x.id) || frozen.has(x.id);
       const at = aim;
       if (x.cut) { act('you', 'cast'); return; }   // a broken charge: nothing lands
@@ -1111,13 +1231,91 @@ window.BossScene = (() => {
       if (!kit && (x.kind === 'slam' || x.kind === 'lunge')) wave(root.position, 2, 34, 1.3, you ? CYAN : RED, 0.9);
       if (you) { burst(v1.copy(at).setY(2), 30, 9, CYAN, 1.2, 6); flare(v1, CYAN, 6, 0.3, canFlash() ? 1.2 : 0.6); }
       else burst(v1.copy(at).setY(1), 24, 7, RED, 1, 9);
+      if (x.kind === 'beam' || x.kind === 'laser') beamTo.copy(aim);
+      if (x.kind === 'sweep') sweepAt.copy(aim);
       if (x.kind === 'beam') { beamLen = 0.55; beamW = 0.9; beamUntil = nowS() + beamLen; }
       if (x.kind === 'laser') { beamLen = 0.9; beamW = 2.2; beamUntil = nowS() + beamLen; shake = Math.max(shake, you ? 0.5 : 1.2); }
       if (x.kind === 'charge') { shake = Math.max(shake, 1.7); stopUntil = Math.max(stopUntil, performance.now() + 160); if (!reduce) slowUntil = performance.now() + 500; }
       if (x.kind === 'sweep') { sweepT0 = nowS(); }
       stopUntil = Math.max(stopUntil, performance.now() + (you ? 80 : 50));
     }
-    let beamUntil = 0, sweepT0 = -9, beamLen = 0.55, beamW = 0.9, barrierHitAt = -9;
+    let beamUntil = 0, sweepT0 = -9, beamLen = 0.55, beamW = 0.9, barrierHitAt = -9, sideHitAt = -9;
+    const beamTo = new V(), sweepAt = new V();
+    // a second barrier for a flank squad's block, and the lock-on's sight line, shot and cover shield
+    const barrier2Mat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    const barrier2 = new THREE.Mesh(keep(new THREE.CircleGeometry(1, 6)), barrier2Mat);
+    barrier2.add(new THREE.Mesh(keep(new THREE.RingGeometry(0.92, 1, 6)), barrier2Mat));
+    barrier2.visible = false; scene.add(barrier2);
+    const sightGeo = keep(new THREE.BufferGeometry()); sightGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const sightMat = keep(new THREE.LineBasicMaterial({ color: C('#ff4d5e', 2.2), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    const sight = new THREE.Line(sightGeo, sightMat); sight.frustumCulled = false; sight.visible = false; scene.add(sight);
+    const sightRing = new THREE.Mesh(keep(new THREE.RingGeometry(0.75, 0.9, 40)), keep(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 2), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })));
+    sightRing.visible = false; scene.add(sightRing);
+    const zapMat = keep(new THREE.MeshBasicMaterial({ color: C('#ff6a3d', 2.2), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    const zap = new THREE.Mesh(keep(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true)), zapMat); zap.visible = false; scene.add(zap);
+    const zapFrom = new V(), zapTo = new V(); let zapAt = -9;
+    const bubbleMat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.4), transparent: true, opacity: 0, wireframe: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    const bubble = new THREE.Mesh(keep(new THREE.IcosahedronGeometry(1, 1)), bubbleMat); bubble.visible = false; scene.add(bubble);
+    function lockTick(t, dt) {
+      let shown = null;
+      for (let i = locks.length - 1; i >= 0; i--) {
+        const l = locks[i], p = raidPos[l.slot];
+        if (t > l.h + 0.7) { locks.splice(i, 1); continue; }
+        if (!l.fired) {
+          if (t < l.h - 0.3) l.at.copy(p);
+          if (l.outcome === 'dodge' && !l.rolled && t >= l.h - 0.28 && flight) { l.rolled = true; flight.roll(l.slot, t); }
+          if (t >= l.h) {
+            l.fired = true; zapAt = t; zapFrom.copy(anchorHead);
+            if (l.outcome === 'cover') {
+              // into the shield: it stops short and splashes
+              zapTo.copy(p).lerp(root.position, 0.16); zapTo.y = p.y;
+              burst(zapTo, 40, 12, CYAN, 1.2, 4); flare(zapTo, CYAN, 5, 0.25, canFlash() ? 1 : 0.5);
+            } else if (l.outcome === 'dodge') {
+              // where it was a moment ago: the floor behind takes it
+              zapTo.copy(l.at); zapTo.y = 0.3;
+              burst(zapTo, 30, 10, RED, 1.4, 12); wave(v1.copy(zapTo).setY(0.15), 0.4, 6, 0.6, RED, 0.8);
+            } else {
+              zapTo.copy(p);
+              burst(zapTo, 40, 13, RED, 1.3, 9); flare(zapTo, RED, 5, 0.24, canFlash() ? 1.1 : 0.5);
+              if (flight) flight.knock(l.slot, t, true);
+              if (l.slot < ONSCREEN) knockAt[l.slot] = t;
+              shake = Math.max(shake, l.slot === RAID ? 0.6 : 0.3);
+            }
+          }
+        }
+        if (!shown || l.h < shown.h) shown = l;
+      }
+      // the sight line on the nearest lock-on
+      const l = shown && !shown.fired ? shown : null;
+      sight.visible = sightRing.visible = !!l;
+      if (l) {
+        const p = raidPos[l.slot], u = clamp((t - l.t0) / (l.h - l.t0), 0, 1);
+        const a = sightGeo.attributes.position.array;
+        a[0] = anchorHead.x; a[1] = anchorHead.y - 1.2; a[2] = anchorHead.z; a[3] = p.x; a[4] = p.y; a[5] = p.z;
+        sightGeo.attributes.position.needsUpdate = true;
+        sightMat.opacity = (0.25 + 0.65 * u) * (u > 0.75 && !reduce ? 0.55 + 0.45 * Math.sin(t * 38) : 1);
+        sightRing.position.copy(p); sightRing.quaternion.copy(camera.quaternion);
+        sightRing.scale.setScalar(2.4 - 1.3 * ease(u)); sightRing.rotateZ(t * 3);
+        sightRing.material.opacity = 0.4 + 0.5 * u;
+      }
+      // the shot: a quick thick beam that thins out
+      const zu = (t - zapAt) / 0.28;
+      zap.visible = zu >= 0 && zu < 1;
+      if (zap.visible) {
+        v1.copy(zapTo).sub(zapFrom); const len = v1.length();
+        zap.position.copy(zapFrom).addScaledVector(v1, 0.5); zap.quaternion.setFromUnitVectors(v2.set(0, 1, 0), v1.normalize());
+        const r = 0.45 * (1 - zu) + 0.05; zap.scale.set(r, len, r); zapMat.opacity = 0.95 * (1 - zu);
+      }
+      // the cover shield round a covered bot, from the cover until just after the shot
+      const cv = locks.find(z => z.outcome === 'cover' && t < z.h + 0.35);
+      bubble.visible = !!cv;
+      if (cv) {
+        const p = raidPos[cv.slot], hu = t - cv.h;
+        bubble.position.copy(p); bubble.rotation.set(t * 0.7, t * 1.1, 0);
+        bubble.scale.setScalar(1.9 + (hu > 0 ? 0.8 * hu / 0.35 : 0.08 * Math.sin(t * 9)));
+        bubbleMat.opacity = hu > 0 ? 0.9 * (1 - hu / 0.35) : Math.min(0.55, (t - cv.coverAt) * 3);
+      }
+    }
     // your block's barrier: a cyan disc in front of the raid from the block until the blow lands on it
     const barrierMat = keep(new THREE.MeshBasicMaterial({ color: C('#3ee6ff', 1.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
     const barrier = new THREE.Mesh(keep(new THREE.CircleGeometry(1, 6)), barrierMat);
@@ -1599,7 +1797,7 @@ window.BossScene = (() => {
       const ln = current(t, 'slam');
       if (ln && ln.kind === 'lunge' && t >= ln.h - 0.12 && t < ln.h + 0.45 && !reduce) {
         kit.fists[1].at.getWorldPosition(vA);
-        root.localToWorld(vB.copy(aim)); vB.y += 0.8;
+        if (ln.side) vB.copy(ln.at).setY(1.6); else { root.localToWorld(vB.copy(aim)); vB.y += 0.8; }
         for (let k = 0; k < 3; k++) kit.arcs.add(vA, vB, 0.06, 1.4, 16);
         if (Math.random() < 0.5) burst(vB, 6, 6, RED, 1, 6);
       }
@@ -1647,7 +1845,7 @@ window.BossScene = (() => {
         if (u < 1.6) { const k = u < 0.5 ? -easeIn(u / 0.5) : u < 0.75 ? -1 + 2.4 * ease((u - 0.5) / 0.25) : 1.4 * (1 - smooth((u - 0.75) / 0.85)); tz += k * 2.5 * still; pose.hx += k * 0.15; }
       }
       // attack poses on the shared clock
-      const sl = current(t, 'slam');
+      const sl = current(t, 'slam'), sx0 = tx, sz0 = tz;
       if (sl && !sl.cut) {
         const w = clamp((t - sl.s) / (sl.h - sl.s), 0, 1), after = t - sl.h;
         const rec = after > 0 ? 1 - smooth(after / 1.2) : 1;
@@ -1678,6 +1876,11 @@ window.BossScene = (() => {
           tx *= 1 - w * 0.8;
         }
         charge = after < 0 ? (sl.kind === 'beam' || sl.kind === 'laser' ? w : w * 0.5) : 0;
+        if (sl.side) {
+          // the moves above are written toward your squad (+z): turn them toward the squad it's after
+          const ya = Math.atan2(sl.at.x - mv.x, sl.at.z - mv.z), dx = tx - sx0, dz = tz - sz0 + (sl.kind === 'lunge' ? 2.5 * Math.sin(clamp((t - sl.h + 0.3) / 0.9, 0, 1) * Math.PI) : 0);
+          tx = sx0 + dx * Math.cos(ya) + dz * Math.sin(ya); tz = sz0 - dx * Math.sin(ya) + dz * Math.cos(ya);
+        }
       } else charge = Math.max(0, charge - dt * 2);
       const vo = current(t, 'volley');
       if (vo) { const w = clamp((t - vo.s) / 1.2, 0, 1) * clamp((vo.e - t) / 0.8, 0, 1); pose.rx = -1.2 * w; pose.rz = 0.6 * w; }
@@ -1711,7 +1914,7 @@ window.BossScene = (() => {
       const slK = current(t, 'slam');
       if (!slK || slK.kind !== 'laser') tz += (front + 1 - tz) * tk * still;   // every attack but the laser comes right up to the raid
       // and rears back through the wind-up first
-      if (slK && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
+      if (slK && !slK.side && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash));
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash));
@@ -1759,7 +1962,7 @@ window.BossScene = (() => {
       // the boss goes from 40% to 85% of the screen in half a second)
       {
         let k = 0;
-        const sl = current(t, 'slam');
+        const sl = own(t);
         if (sl && !dead && sl.kind !== 'laser') {
           const st = sl.h - 0.22;
           if (sl.cut) k = 0;
@@ -1770,6 +1973,7 @@ window.BossScene = (() => {
         threatK = k * (reduce ? 0.35 : 1);
       }
       menaceTick(t, bdt);
+      sideTick(t);
       // pose and movement
       if (!dead) motion(t, at, bdt);
       const k = Math.min(1, bdt * 7);
@@ -1780,9 +1984,16 @@ window.BossScene = (() => {
       jolt = Math.max(0, jolt - adt * 2.6);
       root.position.set(mv.x, cur.y, mv.z);
       {
-        const sl = current(t, 'slam'), f = flight && !(sl && !sl.cut && t < sl.h + 0.5) && !reduce ? flight.focus(t) : null;
-        const want = f ? clamp(Math.atan2(f.x - root.position.x, f.z - root.position.z), -0.9, 0.9) : 0;
-        bossTurn += (want - bossTurn) * Math.min(1, dt * (sl ? 5 : 2.2));
+        // an attack faces its target, a lock-on faces its bot, and in between it turns to whoever
+        // is diving at it
+        const sl = current(t, 'slam'), lk = !sl && locks.find(l => t < l.h + 0.3);
+        let want = 0, rate = 2.2;
+        if (sl && !sl.cut && t < sl.h + 0.6) { const a = sl.at || aim; want = Math.atan2(a.x - root.position.x, a.z - root.position.z); rate = sl.side ? 4 : 5; }
+        else if (lk) { const p = raidPos[lk.slot]; want = Math.atan2(p.x - root.position.x, p.z - root.position.z); rate = 4; }
+        else if (flight && !reduce) { const f = flight.focus(t); if (f) want = Math.atan2(f.x - root.position.x, f.z - root.position.z); }
+        if (reduce) want = 0;
+        let d = want - bossTurn; d = Math.atan2(Math.sin(d), Math.cos(d));
+        bossTurn += d * Math.min(1, dt * rate);
       }
       root.rotation.y = mv.face + bossTurn + Math.sin(at * 0.3) * 0.05 * still;
       // it leans into a dash
@@ -1799,12 +2010,16 @@ window.BossScene = (() => {
       armRG.rotation.set(cur.rx, cur.ry, cur.rz);
       if (kit) driveKit(t, at, adt);
       if (flight) {
-        const sl = dead ? null : current(t, 'slam');
-        flight.update(t, adt, { boss: root.position, aim, threat: sl && !sl.cut ? { id: sl.id, kind: sl.kind, h: sl.h, blocked: !!sl.blocked } : null }, raidPos);
+        const sl = dead ? null : own(t), sx = dead ? null : evs.find(z => z.side && !z.cut && t >= z.s && t <= z.e);
+        const calm = !dead && !evs.some(z => !z.side && z.type === 'slam' && z.e > t && z.s < t + 3) && !locks.some(l => t < l.h + 0.4) && !current(t, 'volley');
+        flight.update(t, adt, { boss: root.position, aim, spin: orbit.w, calm,
+          threat: sl && !sl.cut ? { id: sl.id, kind: sl.kind, h: sl.h, blocked: !!sl.blocked } : null,
+          side: sx ? { id: sx.id, k: sx.side, kind: sx.kind, h: sx.h, at: sx.at, outcome: sx.outcome } : null }, raidPos);
         youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
       }
       opsTick(t, adt);
       root.updateMatrixWorld(true);
+      lockTick(t, adt);
       partG.forEach((g, i) => g.getWorldQuaternion(partQ[i]));
       if (kit) {
         kit.bones.head.getWorldPosition(anchorHead).y += 2.2;
@@ -1918,28 +2133,33 @@ window.BossScene = (() => {
         tele.visible = teleFill.visible = true;
         // the ring marks the danger zone, and the fill grows to meet it at the moment of the hit
         const R = 5.6, blink = w > 0.8 && !reduce ? 0.5 + 0.5 * Math.sin(t * 40) : 1;
-        tele.position.set(aim.x, 0.06, aim.z); tele.scale.setScalar(R + Math.sin(t * (6 + 14 * w)) * 0.1 * still);
+        const ta = sl.at || aim;
+        tele.position.set(ta.x, 0.06, ta.z); tele.scale.setScalar(R + Math.sin(t * (6 + 14 * w)) * 0.1 * still);
         teleFill.position.copy(tele.position); teleFill.scale.setScalar(Math.max(0.05, R * 0.97 * ease(w)));
         tele.material.opacity = (0.5 + 0.45 * w) * blink;
         teleFill.material.opacity = 0.14 + 0.3 * w;
-        tele.material.color.copy(blocked.has(sl.id) ? CYAN : RED);
-        teleFill.material.color.copy(blocked.has(sl.id) ? CYAN : RED).multiplyScalar(0.4);
+        const blk = sl.side ? !!(sl.blocked && t >= sl.blocked) : blocked.has(sl.id);
+        tele.material.color.copy(blk ? CYAN : RED);
+        teleFill.material.color.copy(blk ? CYAN : RED).multiplyScalar(0.4);
         if (sl.kind === 'beam' || sl.kind === 'laser') {
           beam.visible = true;
-          setBeam(anchorCore, aim, sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
+          setBeam(anchorCore, v3.copy(ta).setY(sl.side ? 1.6 : ta.y), sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
           beamMat.opacity = 0.25 + 0.35 * w;
         }
       } else { tele.visible = teleFill.visible = false; }
       if (t < beamUntil) {
         beam.visible = true;
         const u = (beamUntil - t) / beamLen;
-        setBeam(anchorCore, aim, beamW * u + 0.2);
+        setBeam(anchorCore, beamTo, beamW * u + 0.2);
         beamMat.opacity = 0.9 * u;
       } else if (!(sl && !sl.cut && (sl.kind === 'beam' || sl.kind === 'laser') && t < sl.h)) beam.visible = false;
       const su = t - sweepT0;
       if (su < 0.45) {
         sweepBar.visible = true;
-        sweepBar.position.set(16 - 32 * ease(su / 0.35), 0.8, aim.z);
+        // across the target, side to side as the boss sees it
+        const yaw = Math.atan2(sweepAt.x - root.position.x, sweepAt.z - root.position.z), d = 16 - 32 * ease(su / 0.35);
+        sweepBar.position.set(sweepAt.x + Math.cos(yaw) * d, 0.8, sweepAt.z - Math.sin(yaw) * d);
+        sweepBar.rotation.y = yaw;
         sweepMat.opacity = 0.85 * (1 - su / 0.45);
       } else sweepBar.visible = false;
 
@@ -2141,10 +2361,11 @@ window.BossScene = (() => {
         cutPose(v3, v4); camera.position.lerp(v3, k); vG.lerp(v4, k);
       }
       camera.lookAt(vG);
+      if (orbit.w && !(cu >= 0 && cu < cut.len)) camera.rotateZ(-orbit.w * 0.35);
       const fov = baseFov * (1 - 0.12 * adv * still) * (1 - 0.3 * threatK);
       // the barrier in front of the raid while your block waits for the blow, cracking when it lands
       {
-        const bx = blocked.size ? evs.find(z => z.type === 'slam' && z.blocked && t < z.h + 0.35 && !z.cut) : null;
+        const bx = blocked.size ? evs.find(z => z.type === 'slam' && !z.side && z.blocked && t < z.h + 0.35 && !z.cut) : null;
         const hu = t - barrierHitAt;
         const a = bx ? (t < bx.h ? Math.min(1, (t - bx.blocked) / 0.15) * (0.22 + 0.06 * Math.sin(t * 20)) : Math.max(0, 0.9 * (1 - hu / 0.35))) : 0;
         barrier.visible = a > 0.01;
@@ -2153,6 +2374,21 @@ window.BossScene = (() => {
           barrier.position.copy(aim); barrier.position.z -= 3; barrier.position.y = 3.2;
           barrier.scale.setScalar(5.5 + (hu < 0.35 ? 1.2 * (1 - hu / 0.35) : 0));
           barrier.rotation.set(0, 0, t * 0.4);
+        }
+      }
+      // a flank squad's barrier, from their block until the blow lands on it
+      {
+        const bx = evs.find(z => z.side && z.outcome === 'block' && !z.cut && t >= z.blocked && t < z.h + 0.35);
+        const hu = t - sideHitAt;
+        const a = bx ? (t < bx.h ? Math.min(1, (t - bx.blocked) / 0.15) * (0.24 + 0.06 * Math.sin(t * 20)) : Math.max(0, 0.9 * (1 - hu / 0.35))) : 0;
+        barrier2.visible = a > 0.01;
+        if (barrier2.visible) {
+          barrier2Mat.opacity = a;
+          v1.copy(root.position).sub(bx.at).setY(0).normalize();
+          barrier2.position.copy(bx.at).addScaledVector(v1, 3); barrier2.position.y = 3.2;
+          barrier2.lookAt(root.position.x, 3.2, root.position.z);
+          barrier2.scale.setScalar(5 + (hu < 0.35 && hu >= 0 ? 1.1 * (1 - hu / 0.35) : 0));
+          barrier2.rotateZ(t * 0.4);
         }
       }
       if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -2234,8 +2470,8 @@ window.BossScene = (() => {
     setFrac(1, true);
     applyPal(1);
     // for tests: where the raid's bots are, the target zone's centre, who is down
-    const raidInfo = () => ({ st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = current(nowS(), 'slam'); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
-    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act };
+    const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
+    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w }) };
   }
 
   return { mount };
