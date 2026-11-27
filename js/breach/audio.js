@@ -93,8 +93,19 @@ window.BreachAudio = (() => {
     n.connect(f).connect(g).connect(sfxGain); n.start(t); n.stop(t + len + 0.05);
   }
   const fx = {
-    shot() { burst(0.06, 2400 + Math.random() * 800, 0.8, 0.5); tone('square', 900, 180, 0.05, 0.12); },
-    kill() { burst(0.22, 900, 0.6, 0.7, 'lowpass'); tone('sawtooth', 320, 50, 0.25, 0.25); burst(0.12, 4000, 1.5, 0.25, 'bandpass', 0.03); },
+    // each shot climbs a little in pitch with the combo, with a small random spread so a run never sounds like a machine
+    shot(combo = 0) {
+      const up = Math.pow(2, Math.min(12, combo % 24 / 2) / 12) * (0.96 + Math.random() * 0.08);
+      burst(0.05, (2400 + Math.random() * 800) * up, 0.8, 0.42); tone('square', 900 * up, 180 * up, 0.05, 0.1); tone('sine', 220 * up, 90, 0.06, 0.12);
+    },
+    // a kill: a low thump, the crack and a glassy spray as the hologram breaks apart
+    kill() {
+      tone('sine', 140, 38, 0.28, 0.5); burst(0.22, 900, 0.6, 0.6, 'lowpass'); tone('sawtooth', 320, 50, 0.25, 0.2);
+      burst(0.12, 4000, 1.5, 0.25, 'bandpass', 0.03);
+      for (let i = 0; i < 4; i++) tone('triangle', 2400 + Math.random() * 2400, 1200 + Math.random() * 800, 0.06, 0.05, 0.03 + i * 0.03);
+    },
+    // an enemy shot leaving the muzzle
+    enemyFire() { tone('sawtooth', 600, 160, 0.18, 0.18); burst(0.16, 1200, 1.2, 0.3, 'bandpass'); },
     miss() { tone('square', 140, 110, 0.12, 0.18); },
     hurt() { tone('sawtooth', 120, 40, 0.4, 0.5); burst(0.3, 300, 0.7, 0.6, 'lowpass'); },
     pickup() { [660, 880, 1320].forEach((f, i) => tone('triangle', f, f * 1.01, 0.12, 0.25, i * 0.06)); },
@@ -120,9 +131,9 @@ window.BreachAudio = (() => {
     danger() { tone('square', 1320, 1320, 0.06, 0.13); tone('square', 990, 990, 0.08, 0.13, 0.08); },
     access() { [660, 990, 1320].forEach((f, i) => tone('square', f, f, 0.07, 0.16, i * 0.06)); },
   };
-  function play(name) {
+  function play(name, arg) {
     if (!on()) return;
-    try { ctx(); fx[name] && fx[name](); } catch (e) {}
+    try { ctx(); fx[name] && fx[name](arg); } catch (e) {}
   }
 
   return { music, stopMusic, duck, play, unlock: () => { try { ctx(); } catch (e) {} } };

@@ -31,6 +31,8 @@ window.Breach3D = (() => {
     post = new ShaderPass(POST);
     composer.addPass(post);
     buildPools();
+    scene.add(camera);
+    buildGun();
     resize(canvas.clientWidth || W, canvas.clientHeight || H);
     ready = true;
     return true;
@@ -200,7 +202,7 @@ window.Breach3D = (() => {
 
   // ---------- pools: particles, rings, beams ----------
   let TMPV = null;
-  let vox = null, voxData = [], letters = [], rings = [], beams = [], sparks = null;
+  let vox = null, voxData = [], letters = [], rings = [], beams = [];
   const VOX_N = 700;
   function buildPools() {
     vox = new THREE.InstancedMesh(new THREE.BoxGeometry(0.11, 0.11, 0.11), addMat('#ffffff', 1), VOX_N);
@@ -216,13 +218,136 @@ window.Breach3D = (() => {
       const m = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), addMat(Theme.hex('accent'), 2, { side: THREE.DoubleSide }));
       m.visible = false; scene.add(m); rings.push({ m, life: 0 });
     }
+    // a comet: thin at the tail, full at the head, so perspective doesn't make the near end a wall of light
+    const coreG = new THREE.CylinderGeometry(0.02, 0.003, 1, 6, 1, true), glowG = new THREE.CylinderGeometry(0.065, 0.006, 1, 8, 1, true);
     for (let i = 0; i < 18; i++) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.035, 1, 6, 1, true), addMat(Theme.hex('accent'), 3));
+      const m = new THREE.Mesh(glowG, addMat(Theme.hex('accent'), 1.8));
       m.visible = false; scene.add(m);
+      const core = new THREE.Mesh(coreG, addMat('#f2fff8', 3.2)); core.visible = false; scene.add(core);
       const tip = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#bfffd9', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
       tip.visible = false; scene.add(tip);
-      beams.push({ m, tip, life: 0 });
+      beams.push({ m, core, tip, life: 0 });
     }
+    // flashes: a bright sprite that blooms and fades (muzzle, impacts, kills)
+    for (let i = 0; i < 28; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      sp.visible = false; scene.add(sp); flashes.push({ s: sp, life: 0 });
+    }
+    // shock rings that run along the floor under a kill
+    for (let i = 0; i < 8; i++) {
+      const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), addMat(Theme.hex('accent'), 2, { side: THREE.DoubleSide }));
+      m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); shocks.push({ m, life: 0 });
+    }
+  }
+  const flashes = [], shocks = [];
+  function flash(p, col, size = 1, life = 0.12, grow = 1.6) {
+    if (!ready) return;
+    const F = flashes.find(f => f.life <= 0) || flashes[0];
+    F.life = F.max = life; F.size = size; F.grow = grow;
+    F.s.material.color = bright(col, 1.6); F.s.position.set(p.x, p.y, p.z); F.s.visible = true;
+  }
+  function shock(p, col, size = 1) {
+    if (!ready) return;
+    const fy = floorFn ? floorFn(p) : null;
+    if (fy === null || fy === undefined) return;
+    const S = shocks.find(r => r.life <= 0) || shocks[0];
+    S.life = S.max = 0.5; S.size = size;
+    S.m.material.color = bright(col, 1.6); S.m.position.set(p.x, fy + 0.07, p.z); S.m.visible = true;
+  }
+  // a few fast sparks off an impact
+  function sparks(p, col, n = 5, speed = 1) {
+    if (!ready) return;
+    const c = new THREE.Color(col);
+    let k = 0;
+    for (let i = 0; i < VOX_N && k < n; i++) {
+      const d = voxData[i];
+      if (d.life > 0) continue;
+      d.life = d.max = 0.18 + Math.random() * 0.2;
+      d.floor = -1e9;
+      d.p = new THREE.Vector3(p.x, p.y, p.z);
+      d.v = new THREE.Vector3((Math.random() - 0.5) * 9, Math.random() * 6 - 1, (Math.random() - 0.5) * 9).multiplyScalar(speed);
+      d.c = (Math.random() < 0.5 ? new THREE.Color('#ffffff') : c.clone()).multiplyScalar(1.4);
+      d.s = 0.35 + Math.random() * 0.35;
+      k++;
+    }
+  }
+
+  // ---------- the player's blaster ----------
+  // A hologram gun at the lower right of the view, built like the typos (dark core, holo shell,
+  // bright edges). It kicks back on every shot, a key on its side lights for each letter, and its
+  // rings spin faster and its cell glows whiter as the combo grows. It draws over the world but under
+  // the HUD canvas, so it never covers a word.
+  let gun = null;
+  function buildGun() {
+    const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+    const acc = Theme.hex('accent');
+    const holo = holoMat(acc, 0.1); holo.depthTest = false; holo.uniforms.uAlpha.value = 0.42;
+    const dark = basic('#020a06', 1, { depthTest: false, transparent: true, opacity: 0.6 });
+    const lm = lineMat(acc, 1.1, { depthTest: false, transparent: true, opacity: 0.75 });
+    const piece = (geom, x, y, z, rx = 0, rz = 0) => {
+      const h = new THREE.Group(); h.position.set(x, y, z); h.rotation.set(rx, 0, rz);
+      const i = new THREE.Mesh(geom, dark); i.scale.setScalar(0.96); h.add(i);
+      h.add(new THREE.Mesh(geom, holo));
+      h.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom, 25), lm));
+      body.add(h); return h;
+    };
+    piece(new THREE.BoxGeometry(0.1, 0.085, 0.44), 0, 0, 0);
+    piece(new THREE.BoxGeometry(0.064, 0.04, 0.3), 0, 0.062, -0.03);
+    piece(new THREE.BoxGeometry(0.055, 0.15, 0.075), 0, -0.1, 0.12, 0.38);
+    piece(new THREE.BoxGeometry(0.11, 0.03, 0.12), 0, -0.05, -0.12);
+    piece(new THREE.CylinderGeometry(0.02, 0.028, 0.28, 10), 0, 0.006, -0.34, Math.PI / 2);
+    const rings = [];
+    for (let k = 0; k < 3; k++) {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(0.04 - k * 0.004, 0.0055, 6, 20), basic(acc, 2.2, { depthTest: false, transparent: true }));
+      r.position.set(0, 0.006, -0.27 - k * 0.065); body.add(r); rings.push(r);
+    }
+    // the energy cell on top and a row of keys on the side
+    const cell = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.16, 8), basic(acc, 2, { depthTest: false, transparent: true }));
+    cell.rotation.x = Math.PI / 2; cell.position.set(0, 0.092, 0.02); body.add(cell);
+    const keys = [];
+    const kg = new THREE.BoxGeometry(0.012, 0.022, 0.022);
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 6; k++) {
+      const m = new THREE.Mesh(kg, basic(acc, 0.35, { depthTest: false, transparent: true }));
+      m.position.set(-0.056, 0.012 - r * 0.028, 0.13 - k * 0.032 - r * 0.012); body.add(m); keys.push({ m, glow: 0 });
+    }
+    const tip = new THREE.Object3D(); tip.position.set(0, 0.006, -0.5); body.add(tip);
+    const mf = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright(acc, 2.4), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false }));
+    mf.position.copy(tip.position); mf.scale.setScalar(0.001); body.add(mf);
+    g.position.set(0.34, -0.26, -0.64); g.rotation.set(0.05, 0.16, 0); g.scale.setScalar(0.62);
+    g.traverse(o => { o.renderOrder = 20; o.frustumCulled = false; });
+    camera.add(g);
+    gun = { g, body, holo, lm, rings, cell, keys, tip, mf, kick: 0, flash: 0, heat: 0, spin: 0, base: g.position.clone() };
+  }
+  const _tipV = { v: null };
+  function gunTip() {
+    _tipV.v ||= new THREE.Vector3();
+    if (!gun) return camera.localToWorld(_tipV.v.set(0.42, -0.5, -0.8));
+    camera.updateMatrixWorld(); gun.tip.updateWorldMatrix(true, false);
+    return gun.tip.getWorldPosition(_tipV.v);
+  }
+  function updateGun(st, dt) {
+    if (!gun) return;
+    const G2 = gun, show = st.mode === 'play';
+    G2.g.visible = show && !st.boss?.dying;
+    if (!show) return;
+    G2.kick = Math.max(0, G2.kick - dt * 9);
+    G2.flash = Math.max(0, G2.flash - dt);
+    const heat = Math.min(1, (st.combo || 0) / 40);
+    G2.heat += (heat - G2.heat) * Math.min(1, dt * 4);
+    const t = st.t;
+    // idle sway, then the kick: back and up, with a little roll
+    const k = G2.kick * G2.kick;
+    // it drops out of the way while a prompt panel sits over the bottom of the view
+    G2.low = (G2.low || 0) + ((st.prompt ? 1 : 0) - (G2.low || 0)) * Math.min(1, dt * 6);
+    G2.g.position.set(G2.base.x + Math.sin(t * 1.3) * 0.006, G2.base.y + Math.sin(t * 2.1) * 0.005 + k * 0.012 - G2.low * 0.2, G2.base.z + k * 0.07);
+    G2.g.rotation.set(0.05 + k * 0.16, 0.13, -k * 0.05);
+    G2.spin += dt * (2 + G2.heat * 14 + G2.kick * 10);
+    G2.rings.forEach((r, i) => { r.rotation.z = G2.spin * (i % 2 ? -1 : 1); r.material.color.copy(bright(G2.heat > 0.6 ? '#bff8ff' : Theme.hex('accent'), 1.6 + G2.heat * 1.6 + G2.kick)); });
+    G2.cell.material.color.copy(bright(G2.heat > 0.5 ? '#3ee6ff' : Theme.hex('accent'), 1.2 + G2.heat * 2 + Math.sin(t * 6) * 0.2));
+    G2.holo.uniforms.uTime.value = t; G2.holo.uniforms.uFlash.value = G2.kick * 0.12;
+    for (const K of G2.keys) { K.glow = Math.max(0, K.glow - dt * 5); K.m.material.color.copy(bright(K.glow > 0.05 ? '#ffffff' : Theme.hex('accent'), 0.35 + K.glow * 2.6)); }
+    const f = G2.flash > 0 ? G2.flash / 0.06 : 0;
+    G2.mf.scale.setScalar(f > 0 ? 0.14 + f * 0.22 : 0.001);
   }
   let _dot = null;
   function dotTex() {
@@ -271,6 +396,11 @@ window.Breach3D = (() => {
       L.s.visible = true;
     }
     ring(p, col, 0.6 * big);
+    const DBG = window._b3d || {};
+    if (!DBG.noFlash) { flash(p, '#ffffff', 1.1 * big, 0.08, 1); flash(p, col, 2.2 * big, 0.3, 1.4); }
+    if (!DBG.noShock) shock(p, col, big);
+    if (!CALM) sparks(p, '#ffffff', Math.round(10 * big), 1.3);
+    if (!DBG.noPulse) { shotPos ||= new THREE.Vector3(); shotPos.set(p.x, p.y - 1.2, p.z); shotI = 1.8; }
   }
   function ring(p, col, size = 1) {
     if (!ready) return;
@@ -279,17 +409,21 @@ window.Breach3D = (() => {
     R.m.material.color = bright(col, 1.3);
     R.m.position.set(p.x, p.y, p.z); R.m.visible = true;
   }
-  let GUN = null;
+  const BOLT_T = 0.08, BOLT_FADE = 0.08;
   function beam(to, col) {
     if (!ready) return;
     shotPos ||= new THREE.Vector3();
     const B = beams.find(b => b.life <= 0) || beams[0];
-    B.life = 0.09; B.to = new THREE.Vector3(to.x, to.y, to.z);
-    shotPos.set(to.x, to.y - 1.2, to.z); shotI = 1;
-    B.m.material.color = bright(col || '#7dffb3', 1.6);
-    B.side = (Math.random() - 0.5) * 0.25;
-    B.m.visible = true; B.tip.visible = true;
+    B.life = BOLT_T + BOLT_FADE; B.to = new THREE.Vector3(to.x, to.y, to.z); B.hit = false;
+    B.from = gunTip().clone();
+    B.col = col || Theme.hex('accent');
+    B.m.material.color = bright(B.col, 1.15);
+    B.m.visible = true; B.core.visible = true; B.tip.visible = true;
     muzzle = 0.07;
+    if (gun) {
+      gun.kick = 1; gun.flash = 0.06;
+      const K = gun.keys[Math.floor(Math.random() * gun.keys.length)]; K.glow = 1;
+    }
   }
   let muzzle = 0, shotI = 0, DARK = 0, train = null;
   let shotPos = null;
@@ -331,19 +465,43 @@ window.Breach3D = (() => {
       R.m.lookAt(camera.position);
       if (R.life <= 0) R.m.visible = false;
     }
-    GUN ||= new THREE.Vector3(0.42, -0.5, -0.8);
-    const gun = camera.localToWorld(GUN.clone());
     for (const B of beams) {
       if (B.life <= 0) continue;
       B.life -= dt;
-      const from = gun.clone().add(new THREE.Vector3(B.side, 0, 0));
-      const dir = B.to.clone().sub(from), len = dir.length();
-      B.m.position.copy(from).addScaledVector(dir, 0.5);
-      B.m.scale.set(1 + B.life * 20, len, 1 + B.life * 20);
-      B.m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-      B.tip.position.copy(B.to); B.tip.scale.setScalar(0.9);
-      B.m.material.opacity = B.life / 0.09; B.tip.material.opacity = B.life / 0.09;
-      if (B.life <= 0) { B.m.visible = false; B.tip.visible = false; }
+      // the bolt runs from the muzzle to the target, its tail catching up after it lands
+      const k = 1 - Math.max(0, B.life - BOLT_FADE) / BOLT_T, fade = B.life < BOLT_FADE ? B.life / BOLT_FADE : 1;
+      const dir = B.to.clone().sub(B.from);
+      const head = Math.min(1, k), tail = B.life < BOLT_FADE ? 1 - fade : Math.max(0, k - 0.55);
+      const a = B.from.clone().addScaledVector(dir, tail), b = B.from.clone().addScaledVector(dir, head);
+      const seg = b.clone().sub(a), len = Math.max(0.001, seg.length());
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), seg.clone().normalize());
+      for (const m of [B.m, B.core]) { m.position.copy(a).addScaledVector(seg, 0.5); m.quaternion.copy(q); }
+      B.m.scale.set(1, len, 1); B.core.scale.set(1, len, 1);
+      B.m.material.opacity = fade * 0.75; B.core.material.opacity = fade;
+      B.tip.position.copy(b); B.tip.scale.setScalar(0.8 + (1 - fade) * 0.5); B.tip.material.opacity = fade;
+      if (!B.hit && k >= 1) {
+        B.hit = true;
+        shotPos.copy(B.to); shotPos.y -= 1.2; shotI = Math.max(shotI, 1);
+        flash(B.to, B.col, CALM ? 0.8 : 1.3, 0.14, 1.4);
+        if (!CALM) sparks(B.to, B.col, 5, 0.8);
+      }
+      if (B.life <= 0) { B.m.visible = false; B.core.visible = false; B.tip.visible = false; }
+    }
+    for (const F of flashes) {
+      if (F.life <= 0) continue;
+      F.life -= dt;
+      const k = Math.max(0, F.life / F.max);
+      F.s.scale.setScalar(F.size * (1 + (1 - k) * F.grow));
+      F.s.material.opacity = k * k;
+      if (F.life <= 0) F.s.visible = false;
+    }
+    for (const S of shocks) {
+      if (S.life <= 0) continue;
+      S.life -= dt;
+      const k = 1 - Math.max(0, S.life / S.max);
+      S.m.scale.setScalar((0.4 + (1 - Math.pow(1 - k, 2)) * 3.4) * S.size);
+      S.m.material.opacity = (1 - k) * 0.9;
+      if (S.life <= 0) S.m.visible = false;
     }
   }
 
@@ -549,7 +707,27 @@ window.Breach3D = (() => {
         r.position.set(s.x - fz * side, s.y + 0.05, s.z + fx * side); group.add(r);
       }
     }
-    lv = { src: L, group, mats, streams, streamMats, panels, gates, props, tiles, lifts, faceCam };
+    // a sky: dark at the top, the chapter's colour glowing along the horizon, faint stars of data
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(320, 32, 16), new THREE.ShaderMaterial({
+      uniforms: { uTop: { value: new THREE.Color('#000000') }, uHor: { value: new THREE.Color(fogCol) }, uGlow: { value: bright(col2, 0.32) }, uGlow2: { value: bright(col, 0.18) } },
+      vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 uTop; uniform vec3 uHor; uniform vec3 uGlow; uniform vec3 uGlow2; varying vec3 vD;
+        float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+        void main(){
+          float y = vD.y;
+          vec3 c = mix(uHor, uTop, smoothstep(0.0, 0.55, y));
+          c += uGlow * exp(-abs(y - 0.03) * 14.0) + uGlow2 * exp(-abs(y - 0.12) * 5.0) * 0.6;
+          vec3 cell = floor(vD * 220.0);
+          float st = step(0.996, h(cell)) * smoothstep(0.08, 0.5, y);
+          c += vec3(st) * 0.55 * (0.5 + 0.5 * h(cell + 3.1));
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+      side: THREE.BackSide, depthWrite: false, fog: false,
+    }));
+    sky.renderOrder = -10; sky.frustumCulled = false; sky.userData.sky = true;
+    group.add(sky);
+    lv = { src: L, group, mats, streams, streamMats, panels, gates, props, tiles, lifts, faceCam, sky };
+    buildMotes(col, col2);
   }
   function TTshuffle(a) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -658,6 +836,40 @@ window.Breach3D = (() => {
       }
     }
     return props;
+  }
+  // drifting motes of light around the camera: 500 points in a box that wraps as the camera moves
+  let motes = null;
+  function buildMotes(col, col2) {
+    if (motes) { scene.remove(motes); motes.geometry.dispose(); motes.material.dispose(); motes = null; }
+    const N = 500, pos = new Float32Array(N * 3), cl = new Float32Array(N * 3), c1 = new THREE.Color(col), c2 = new THREE.Color(col2);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = Math.random() * 44; pos[i * 3 + 1] = Math.random() * 44; pos[i * 3 + 2] = Math.random() * 44;
+      const c = Math.random() < 0.5 ? c1 : c2; cl[i * 3] = c.r; cl[i * 3 + 1] = c.g; cl[i * 3 + 2] = c.b;
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(cl, 3));
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uCam: { value: new THREE.Vector3() }, uTime: { value: 0 }, uPx: { value: renderer.getPixelRatio() } },
+      vertexShader: `uniform vec3 uCam; uniform float uTime; uniform float uPx; attribute vec3 color; varying vec3 vC; varying float vA;
+        void main(){
+          vec3 p = mod(position + vec3(sin(uTime * 0.2 + position.z) * 0.6, uTime * 0.35, cos(uTime * 0.15 + position.x) * 0.6) - uCam + 22.0, 44.0) - 22.0 + uCam;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          float d = -mv.z;
+          vA = smoothstep(22.0, 8.0, d) * smoothstep(0.6, 2.5, d);
+          vC = color;
+          gl_PointSize = uPx * 34.0 / max(d, 0.5);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `varying vec3 vC; varying float vA;
+        void main(){ float r = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, r) * vA; gl_FragColor = vec4(vC * a * 0.7, 1.0); }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
+    motes = new THREE.Points(g, m); motes.frustumCulled = false; scene.add(motes);
+  }
+  function updateMotes(t) {
+    if (!motes) return;
+    motes.material.uniforms.uCam.value.copy(camera.position);
+    motes.material.uniforms.uTime.value = t;
+    motes.visible = !CALM || true;
   }
   function clearLevel() {
     if (!lv) return;
@@ -918,7 +1130,37 @@ window.Breach3D = (() => {
     // glitch in: jitter and scale up when spawned or teleporting
     let s = 1;
     if (f.glitch > 0) { s = 1 - f.glitch * 0.6; if (!CALM) a.root.position.x += (Math.random() - 0.5) * 0.3 * f.glitch; }
-    if (f.dying) { const k = 1 - Math.max(0, f.dying) / 0.35; s = 1 + k * 0.4; a.mat.uniforms.uFlash.value = k * 0.4; }
+    if (f.dying && !(window._b3d || {}).noShatter) {
+      // the hologram comes apart: every piece flies out from the middle, spinning, and fades
+      const k = 1 - Math.max(0, f.dying) / 0.35;
+      if (!a.shards) {
+        a.shards = a.body.children.map(c => {
+          const d = c.position.clone(); if (d.lengthSq() < 0.01) d.set(Math.random() - 0.5, Math.random(), Math.random() - 0.5);
+          d.normalize().multiplyScalar(3.2 + Math.random() * 3.2); d.y += 1.2;
+          return { c, p0: c.position.clone(), v: d, r: new THREE.Vector3((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 16) };
+        });
+      }
+      const e = k * 0.35;
+      for (const sh of a.shards) {
+        sh.c.position.set(sh.p0.x + sh.v.x * e, sh.p0.y + sh.v.y * e - 4 * e * e, sh.p0.z + sh.v.z * e);
+        sh.c.rotation.set(sh.r.x * e, sh.r.y * e, sh.r.z * e);
+      }
+      s = 1 + k * 0.12;
+      a.mat.uniforms.uFlash.value = (1 - k) * 0.5;
+      a.mat.uniforms.uAlpha.value *= 1 - k * 0.85;
+      a.lm.opacity *= 1 - k;
+    } else if (f.flash > 0) {
+      // each hit knocks it back a little and lights it up
+      const k = f.flash / 0.06;
+      a.body.position.z = -0.14 * k; a.body.rotation.x = -0.12 * k;
+      a.mat.uniforms.uFlash.value = 0.25 + 0.35 * k;
+    } else if (a.body.rotation.x) { a.body.rotation.x *= 0.7; a.body.position.z *= 0.7; }
+    if (P.orb) {
+      const k = f.windup || 0;
+      if (!P.orbGlow) { P.orbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#ff4d5e', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); P.orbGlow.position.copy(P.orb.position); a.body.add(P.orbGlow); }
+      P.orbGlow.scale.setScalar(0.2 + k * 1.3 + (k > 0.6 ? Math.sin(t * 40) * 0.15 : 0));
+      P.orbGlow.material.opacity = 0.3 + k * 0.7;
+    }
     a.root.scale.setScalar(Math.max(0.01, s) * a.base);
     if (P.ring) P.ring.position.y = ((f.floor ?? f.pos.y) + 0.04 - f.pos.y) / a.root.scale.y;
   }
@@ -1197,6 +1439,41 @@ window.Breach3D = (() => {
     R.visible = true;
   }
 
+  // Hits, attacks and the death of a boss as events: a hit lights the core with sparks and a ring,
+  // an attack going off throws a red flash and a floor shock, and a dying boss breaks up in a chain
+  // of blasts across its body that ends in one big one.
+  function bossFx(a, b, core, dt, col, col2) {
+    if (!core) core = b.pos;
+    const S = a.fx || (a.fx = { flash: 0, atk: 0, boomT: 0, last: false });
+    if (b.flash > S.flash + 0.01) {
+      flash(core, '#ffffff', 2.2, 0.1, 1); flash(core, col, 3.6, 0.25, 1.2);
+      if (!CALM) sparks(core, col2, 10, 1.6);
+      ring(core, col, 1.2);
+    }
+    S.flash = b.flash || 0;
+    const atk = b.attackAnim || 0;
+    if (atk > S.atk + 0.01 && atk > 0.3) {
+      flash(core, '#ff4d5e', 4.5, 0.3, 1.5);
+      shock(b.pos, '#ff4d5e', 3);
+    }
+    S.atk = atk;
+    if (b.state === 'dying' && b.dying > 0) {
+      S.boomT -= dt;
+      const sc = BOSS_SCALE[a.art] || 1;
+      if (S.boomT <= 0) {
+        S.boomT = 0.13 + Math.random() * 0.1;
+        const p = { x: core.x + (Math.random() - 0.5) * 6 * sc, y: core.y + (Math.random() - 0.6) * 5 * sc, z: core.z + (Math.random() - 0.5) * 3 * sc };
+        burst(p, '', Math.random() < 0.5 ? col : col2, 1.2);
+      }
+      if (b.dying < 0.25 && !S.last) {
+        S.last = true;
+        flash(core, '#ffffff', 9, 0.5, 1.6); flash(core, col, 14, 0.9, 1.3);
+        shock(b.pos, col, 5); shock(b.pos, col2, 3.4);
+        if (!CALM) sparks(core, '#ffffff', 40, 2.6);
+      }
+    }
+  }
+
   // ---------- per frame ----------
   const tmpV = () => new THREE.Vector3();
   let lastT = 0;
@@ -1224,9 +1501,10 @@ window.Breach3D = (() => {
     if (lv) {
       for (const m of lv.mats) {
         m.uniforms.uTime.value = t; m.uniforms.uCam.value.copy(camera.position);
-        m.uniforms.uDark.value = DARK; m.uniforms.uShot.value.copy(shotPos); m.uniforms.uShotI.value = shotI * DARK;
+        m.uniforms.uDark.value = DARK; m.uniforms.uShot.value.copy(shotPos); m.uniforms.uShotI.value = shotI * (0.3 + 0.7 * DARK);
       }
       lv.streamMats.forEach(m => { m.opacity = 1 - DARK * 0.85; });
+      lv.sky.position.copy(camera.position);
       // bridge tiles fall away one after another, the far end last
       for (const [i, tl] of lv.tiles.entries()) {
         if (!tl.s.bridge.fallen) continue;
@@ -1296,7 +1574,11 @@ window.Breach3D = (() => {
     for (const p of st.projs) {
       live.add(p);
       let a = actors.get(p);
-      if (!a) { a = makeProj(); actors.set(p, a); }
+      if (!a) {
+        a = makeProj(); actors.set(p, a);
+        // a new enemy shot: a red muzzle flash where it left
+        flash(p.pos, '#ff4d5e', 1.4, 0.22, 1.2); ring(p.pos, '#ff4d5e', 0.5);
+      }
       a.root.position.set(p.pos.x, p.pos.y, p.pos.z);
       a.root.lookAt(camPos);
       a.root.children[0].rotation.z = a.root.children[1].rotation.z = a.root.children[2].rotation.z = t * 6 + a.spin;
@@ -1331,9 +1613,12 @@ window.Breach3D = (() => {
     if (st.boss) {
       if (!bossA || bossA.src !== st.boss) { removeBoss(); bossA = makeBoss(st.boss, lv ? lv.src.color : Theme.hex('accent'), col2); }
       animateBoss(bossA, st.boss, t, dt, camPos);
+      bossFx(bossA, st.boss, st.bossCore, dt, lv ? lv.src.color : Theme.hex('accent'), col2);
     } else removeBoss();
     // muzzle light and particles
     muzzle = Math.max(0, muzzle - dt);
+    updateGun(st, dt);
+    updateMotes(t);
     updateParticles(dt);
     post.uniforms.time.value = t;
     post.uniforms.hurt.value = Math.min(1, st.hurt * 1.4);
@@ -1372,8 +1657,8 @@ window.Breach3D = (() => {
     bloom.dispose(); composer.dispose && composer.dispose();
     renderer.dispose(); renderer.forceContextLoss();
     renderer = null; ready = false; lv = null;
-    voxData = []; letters = []; rings = []; beams = [];
+    voxData = []; letters = []; rings = []; beams = []; flashes.length = 0; shocks.length = 0; gun = null; motes = null;
   }
 
-  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; } };
+  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; }, get _dbg() { return { beams, flashes, gun }; } };
 })();

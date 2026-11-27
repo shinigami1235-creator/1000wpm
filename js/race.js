@@ -546,9 +546,12 @@ window.RaceView = (() => {
             const k = (c.wz - P.z1) / SEG;
             const cp = project(0, P.seg.y, c.wz, P.camX1 + (P.camX2 - P.camX1) * k);
             // a car level with yours is drawn beside you at most full size
-            const sc = Math.min(1.0, cp.sc * 3000);
-            const cy = Math.min(cp.y, H - 30);
-            if (cp.y <= P.clip + 6) this.car(ctx, Math.min(cp.x, W - 250), cy, sc, c.color, c.boost, 0, c.name, 0, now);
+            const sc = Math.min(0.92, cp.sc * 3000);
+            const cy = Math.min(cp.y, H - 34);
+            // close up it pulls over to the right so it never sits on top of your car
+            const near = clamp((sc - 0.45) / 0.4, 0, 1);
+            const cx = Math.min(cp.x + near * Math.max(0, W / 2 + 205 - cp.x), W - 110);
+            if (cp.y <= P.clip + 6) this.car(ctx, cx, cy, sc, c.color, c.boost, 0, c.name, 0, now);
           }
         }
       }
@@ -634,8 +637,8 @@ window.RaceView = (() => {
       }
       // shoulder, rumble strips, asphalt
       if (near && !T.grid) quad(p1.x, p1.y, p1.w * 1.16, p2.x, p2.y, p2.w * 1.16, shade(T.ground[alt], -0.25));
-      const r1 = p1.w / (T.grid ? 13 : 9), r2 = p2.w / (T.grid ? 13 : 9);
-      quad(p1.x, p1.y, p1.w + r1, p2.x, p2.y, p2.w + r2, alt ? col(T, T.rumble[1]) : (T.grid ? mix(col(T, T.rumble[0]), '#000000', 0.45) : col(T, T.rumble[0])));
+      const r1 = p1.w / (T.grid ? 16 : 9), r2 = p2.w / (T.grid ? 16 : 9);
+      quad(p1.x, p1.y, p1.w + r1, p2.x, p2.y, p2.w + r2, alt ? col(T, T.rumble[1]) : (T.grid ? mix(col(T, T.rumble[0]), '#000000', 0.62) : col(T, T.rumble[0])));
       const finish = i >= this.finishSeg && i < this.finishSeg + 2, start = i >= this.startSeg - 1 && i < this.startSeg + 1;
       quad(p1.x, p1.y, p1.w, p2.x, p2.y, p2.w, T.road[alt]);
       if (finish || start) {
@@ -889,7 +892,7 @@ window.RaceView = (() => {
     drawResult(ctx, now) {
       const R = this.result, e = (now - R.t0) / 1000;
       const k = Math.min(1, e / 0.35), ek = 1 - Math.pow(1 - k, 3);
-      const w = 460, h = 156, x = W / 2 - w / 2, y = 96 + (1 - ek) * 30;
+      const w = 540, h = 156, x = W / 2 - w / 2, y = 96 + (1 - ek) * 30;
       ctx.save(); ctx.globalAlpha = ek;
       ctx.fillStyle = 'rgba(2,6,4,.86)';
       ctx.beginPath(); ctx.moveTo(x + 14, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h - 14); ctx.lineTo(x + w - 14, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + 14); ctx.closePath(); ctx.fill();
@@ -910,7 +913,7 @@ window.RaceView = (() => {
         const kk = clamp((e - 0.25 - i * 0.1) / 0.25, 0, 1);
         ctx.globalAlpha = ek * kk;
         ctx.font = '12px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(234,255,243,.55)'; ctx.fillText(lab, cx, y + 104);
-        ctx.font = '600 26px "JetBrains Mono", monospace'; ctx.fillStyle = '#f4fff9'; ctx.fillText(val, cx, y + 134);
+        ctx.font = '600 23px "JetBrains Mono", monospace'; ctx.fillStyle = '#f4fff9'; ctx.fillText(val, cx, y + 134);
       });
       ctx.restore();
     }

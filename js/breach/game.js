@@ -970,7 +970,7 @@
   // ---------- typing ----------
   function shoot(o) {
     if (use3D) R3.beam(anchor(o), o.kind === 'pickup' ? C.cyan : null);
-    S.play('shot');
+    S.play('shot', combo);
   }
   function onChar(c) {
     S.unlock();
@@ -1285,7 +1285,7 @@
         if (def.fireEvery) {
           fo.fireT -= dt * sp;
           fo.windup = clamp(1 - fo.fireT / 0.6, 0, 1);
-          if (fo.fireT <= 0) { fireAt(add(fo.pos, v3(0, 0.4, 0))); fo.fireT = def.fireEvery - d() * 0.2; fo.windup = 0; }
+          if (fo.fireT <= 0) { fireAt(add(fo.pos, v3(0, 0.4, 0))); S.play('enemyFire'); fo.fireT = def.fireEvery - d() * 0.2; fo.windup = 0; }
         }
       }
       let delta = v3(dir.x * Math.min(fd, fo.speed * dt * sp * moveK), 0, dir.z * Math.min(fd, fo.speed * dt * sp * moveK));
@@ -2176,7 +2176,7 @@
       R3.frame({
         t, dt: paused ? 0 : dt, cam: camPose, calm: calm(), shake: shakeT * (calm() ? 0.08 : 0.4), hurt: calm() ? 0 : hurtT * 0.4, glitch: calm() ? 0 : glitchT * 0.45, slow: slowT > 0,
         foes: inPlay ? foes : [], projs: inPlay ? projs : [], pickups: inPlay ? pickups : [], rush: inPlay ? rush : [],
-        boss: inPlay ? boss : null, bossCore: boss ? corePos() : null, target, mode,
+        boss: inPlay ? boss : null, bossCore: boss ? corePos() : null, target, mode, combo, prompt: !!(prompt || (boss && boss.spell)),
         barriers: inPlay ? barriers : [], choices: inPlay ? choices : [], dark: darkK, freeze: freezeT > 0,
         train: inPlay && steps[stepI] && steps[stepI].kind === 'chase' ? { pos: level.rail.at(Math.max(0, cam.s - 10)), fwd: camFwd() } : null,
         cloak: o => cloakVis(o),
@@ -2378,6 +2378,7 @@
       return f.words.join(' ');
     },
     bossAct(name) { if (boss && !boss.dying) bossState(name); },
+    bossDamage(n) { if (boss && !boss.dying) damageBoss(n); },
     endRun() { if (mode === 'play') gameOver(); },
     title() { goTitle(); },
     start(i) { startChapter(i); },
