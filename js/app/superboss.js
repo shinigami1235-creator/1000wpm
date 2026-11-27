@@ -414,7 +414,7 @@
     const A = window.SuperAudio;
     const cs = window.Combat && Combat.Audio ? Combat.Audio.create({ ctx: () => A.combat().ac, out: () => A.combat().bus, on: () => A.on }) : null;
     const c = (n, x) => { if (cs) cs.play(n, x); };
-    let boss = 'hydra', lastCount = -1;
+    let boss = 'hydra', lastCount = -1, lastS = null;
     function event(n, d, snap) {
       switch (n) {
         case 'hit':
@@ -422,6 +422,7 @@
           else if (d.src === 'sever') A.play('sever');
           else if (d.src === 'weak') A.play('weak');
           else if (d.src === 'packet') A.play('packet');
+          else if (d.src === 'counter') A.play('counter');
           else if (d.crit) A.play('crit');
           else { A.play('hit', d.tier || 0); if (d.tier >= 1) c('shot' + Math.min(4, d.tier)); }
           break;
@@ -434,7 +435,14 @@
         case 'hurt': A.play('hurt'); break;
         case 'shielded': A.play('shielded'); break;
         case 'block': A.play('block'); break;
-        case 'windup': if (d.kind !== 'spit') A.play('windup', d.ms); else A.play('weakOpen'); break;
+        case 'windup':
+          if (d.kind === 'spit' || d.kind === 'bomb') A.play('weakOpen');
+          else if (d.kind === 'slam') A.play('windupSlam', d.ms);
+          else if (d.kind === 'laser') A.play('windupLaser', d.ms);
+          else if (d.kind === 'breach') A.play('windupBreach', d.ms);
+          else A.play('windup', d.ms);
+          break;
+        case 'key': if (d.finish && d.good) A.play('key', lastS && lastS.typed ? lastS.typed.length : 0); break;
         case 'attack': if (d.kind === 'bite') A.play('bite'); if (d.kind === 'mend') A.play('mend'); break;
         case 'regrow': A.play('regrow'); break;
         case 'neck': if (d.on) A.play('neck'); break;
@@ -458,7 +466,7 @@
       void snap;
     }
     function state(s) {
-      boss = s.boss;
+      boss = s.boss; lastS = s;
       if (s.status === 'countdown') { const n = Math.ceil(s.countdown / 1000); if (n !== lastCount && n > 0) { lastCount = n; A.play('count', false); } }
       else lastCount = -1;
     }

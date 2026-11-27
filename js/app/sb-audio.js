@@ -21,6 +21,8 @@ window.SuperAudio = (() => {
     hit: 4, crit: 1.6, sever: 0.8, regrow: 1.2, windup: 0.9, bite: 1.5, mend: 1.4, block: 1.4, hurt: 1.5, shielded: 1.6,
     compile: 1.2, fix: 2.4, order: 6, weakOpen: 2.6, weak: 1.3, decoy: 3.2, packet: 6, packetHit: 4.5, typo: 9, neck: 0.9,
     count: 9, support: 1.8, chaos: 2.2, hype: 0.8, phase: 0.75, enrage: 1.1, finish: 0.7, win: 0.8, lose: 0.75,
+    snap: 2.2, roar: 1.0, slam: 1.0, splash: 1.1, boom: 0.9, assemble: 1.6, launch: 1.4, thunder: 0.9, dive: 1.2, plates: 1.6, spit: 1.6, pop: 1.6,
+    windupSlam: 1.0, windupLaser: 1.2, windupBreach: 1.2, counter: 1.4, key: 8,
   };
   const STINGERS = new Set(['support', 'chaos', 'hype', 'phase', 'enrage', 'finish', 'win', 'lose', 'count']);
   let ac = null, master, limiter, outG, musicBus, duckG, sfxBus, stingBus;
@@ -209,6 +211,29 @@ window.SuperAudio = (() => {
       packetHit(t) { tone(t, 'sawtooth', 260, 80, 0.2, 0.22); hiss(t, 0.15, 900, 0.8, 0.25, 'lowpass'); },
       typo(t) { tone(t, 'square', 150, 140, 0.06, 0.08); },
       neck(t) { tone(t, 'sine', 60, 40, 0.8, 0.6); hiss(t, 0.8, 300, 0.7, 0.3, 'lowpass', 0.01, 120); chord(t + 0.05, [196, 247, 294], 'sawtooth', 0.6, 0.05); },
+      // the bosses' own moves (sb-hydra.js, sb-compiler.js, sb-leviathan.js)
+      snap(t) { hiss(t, 0.06, 2600, 1.2, 0.5, 'bandpass', 0.001); tone(t, 'sine', 160, 50, 0.18, 0.6); tone(t + 0.01, 'square', 900, 300, 0.04, 0.12); },
+      roar(t) { const o = c.createOscillator(), lfo = c.createOscillator(), lg = c.createGain(), g = c.createGain(), f = c.createBiquadFilter();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(48, t + 1.6);
+        lfo.frequency.value = 23; lg.gain.value = 0.5; lfo.connect(lg).connect(g.gain);
+        f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(260, t + 1.6);
+        env(g, t, 0.15, 0.32, 1.5); o.connect(f).connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + 1.8); lfo.stop(t + 1.8);
+        hiss(t, 1.5, 700, 0.8, 0.3, 'bandpass', 0.2, 180); tone(t, 'sine', 55, 35, 1.4, 0.4, 0.1); },
+      slam(t) { tone(t, 'sine', 70, 24, 0.9, 0.9); hiss(t, 1.4, 1800, 0.5, 0.6, 'lowpass', 0.005, 200); hiss(t + 0.05, 0.6, 3500, 0.8, 0.25, 'bandpass', 0.01, 900); tone(t, 'square', 110, 40, 0.25, 0.15); },
+      splash(t) { hiss(t, 0.7, 2400, 0.7, 0.45, 'bandpass', 0.005, 700); tone(t, 'sine', 120, 45, 0.3, 0.35); for (let i = 0; i < 5; i++) tone(t + 0.1 + i * 0.07 + Math.random() * 0.04, 'sine', 600 + Math.random() * 900, 300, 0.05, 0.05); },
+      boom(t) { tone(t, 'sine', 60, 22, 2.0, 1.0); hiss(t, 2.0, 1200, 0.5, 0.7, 'lowpass', 0.004, 60); hiss(t, 0.3, 5000, 0.6, 0.3, 'highpass'); for (let i = 0; i < 8; i++) hiss(t + 0.2 + Math.random() * 1.2, 0.05, 3000 + Math.random() * 3000, 2, 0.12); },
+      assemble(t) { for (let i = 0; i < 8; i++) tone(t + i * 0.055, 'square', 300 * Math.pow(1.12, i), 320 * Math.pow(1.12, i), 0.04, 0.06); hiss(t, 0.5, 1500, 2, 0.1, 'bandpass', 0.3, 6000); },
+      launch(t) { for (const w of [0, 0.18]) { hiss(t + w, 0.4, 800, 1, 0.3, 'bandpass', 0.05, 5000); tone(t + w, 'sawtooth', 200, 900, 0.3, 0.08, 0.02); } },
+      thunder(t) { hiss(t, 0.15, 4000, 0.4, 0.35, 'highpass', 0.002); hiss(t + 0.05, 2.4, 500, 0.4, 0.55, 'lowpass', 0.3, 70); tone(t + 0.1, 'sine', 45, 28, 2, 0.4, 0.3); },
+      dive(t) { hiss(t, 0.8, 3000, 0.8, 0.35, 'bandpass', 0.05, 300); for (let i = 0; i < 6; i++) tone(t + 0.3 + i * 0.09, 'sine', 400 + Math.random() * 500, 900, 0.06, 0.05); },
+      plates(t) { tone(t, 'square', 220, 200, 0.08, 0.12); tone(t + 0.06, 'square', 180, 160, 0.08, 0.12); tone(t, 'triangle', 2600, 2500, 0.5, 0.06); hiss(t, 0.1, 5000, 2, 0.15, 'bandpass'); },
+      spit(t) { tone(t, 'sine', 320, 70, 0.2, 0.4); hiss(t, 0.15, 1500, 1, 0.3, 'bandpass', 0.002, 400); tone(t + 0.02, 'square', 900, 2400, 0.12, 0.06); },
+      pop(t) { hiss(t, 0.18, 1600, 0.8, 0.35, 'lowpass'); tone(t, 'sine', 140, 50, 0.22, 0.4); tone(t, 'square', 1200 * vary(), 400, 0.05, 0.08); },
+      windupSlam(t, ms = 2500) { const len = Math.min(3, ms / 1000) * 0.5; tone(t, 'sawtooth', 38, 85, len, 0.2, len * 0.9); hiss(t, len, 200, 0.7, 0.3, 'lowpass', len * 0.9, 1200); tone(t, 'square', 880, 880, 0.08, 0.08); tone(t + 0.14, 'square', 880, 880, 0.08, 0.08); },
+      windupLaser(t, ms = 2000) { const len = Math.min(2.6, ms / 1000); const o = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(300, t); o.frequency.exponentialRampToValueAtTime(1900, t + len); lfo.frequency.setValueAtTime(6, t); lfo.frequency.linearRampToValueAtTime(30, t + len); lg.gain.value = 0.4; lfo.connect(lg).connect(g.gain); env(g, t, len * 0.8, 0.12, len * 0.25); o.connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + len * 1.1); lfo.stop(t + len * 1.1); tone(t, 'square', 1100, 1100, 0.06, 0.08); },
+      windupBreach(t, ms = 2400) { const len = Math.min(3, ms / 1000); hiss(t, len, 300, 0.6, 0.25, 'lowpass', len * 0.8, 900); for (let i = 0; i < 16; i++) { const w = len * 0.3 + Math.random() * len * 0.7; tone(t + w, 'sine', 200 + Math.random() * 400, 600 + Math.random() * 500, 0.05, 0.06); } },
+      counter(t) { tone(t, 'triangle', 600, 1800, 0.12, 0.25); tone(t + 0.08, 'sine', 90, 40, 0.4, 0.5); hiss(t, 0.3, 4000, 0.8, 0.25, 'bandpass', 0.002, 1200); },
+      key(t, k = 0) { const f = 520 * Math.pow(2, Math.min(24, k) / 12); tone(t, 'triangle', f, f, 0.05, 0.08); },
       count(t, go) { tone(t, 'square', go ? 1320 : 880, go ? 1320 : 880, go ? 0.35 : 0.12, 0.14); if (go) tone(t, 'sine', 110, 55, 0.4, 0.4); },
       // stingers and alerts, on their own bus so they cut through the music
       support(t) { chord(t, [784, 988, 1175, 1568], 'triangle', 0.3, 0.13, 0.06); hiss(t, 0.4, 7000, 1, 0.08, 'highpass'); },
@@ -277,7 +302,7 @@ window.SuperAudio = (() => {
     const src = c.createBufferSource(); src.buffer = buf; src.connect(g.duck); src.start(0, loopOf(trackName)[0] + 8);
     const k = kit(c);
     const at = (name, t, arg) => { k.set(STINGERS.has(name) ? g.st : g.sfx, name); k.voices[name](t, arg); };
-    at('phase', 0.5); at('crit', 1.2); for (let i = 0; i < 12; i++) at('hit', 1.5 + i * 0.09, 4); at('hurt', 2.4); at('support', 3); at('sever', 3.3); at('win', 4.2);
+    at('phase', 0.5); at('roar', 0.8); at('crit', 1.2); at('slam', 2.0); at('boom', 4.5); for (let i = 0; i < 12; i++) at('hit', 1.5 + i * 0.09, 4); at('hurt', 2.4); at('support', 3); at('sever', 3.3); at('win', 4.2);
     // the combat layer's own sounds go through the same effects bus
     if (window.Combat && Combat.Audio) { const cs = Combat.Audio.create({ ctx: () => c, out: () => g.sfx, on: () => true }); ['shot4', 'electro-storm', 'zero-day', 'void-sphere'].forEach(n => cs.play(n)); }
     const out = await c.startRendering();

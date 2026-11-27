@@ -372,6 +372,7 @@ window.SuperScene = (() => {
       // where a blocked attack stops: Art's barrier, a little in front of him
       shieldAt: out => out.set(artPos.x, 2.2, artPos.z - 3.2),
     };
+    const sup = SuperSupport.create(THREE, scene, K, { artPos, glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
     function mountModel(id) {
       if (model) { scene.remove(model.group, model.props); model.dispose(); }
       if (release) release();
@@ -591,6 +592,8 @@ window.SuperScene = (() => {
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (model) model.event(n, d, t);
+      sup.event(n, d);
+      if (n === 'key' && d.finish && d.good && model) { model.anchor('core', v1); K.fx.beam(v2.copy(artPos).setY(2), v1, '#ffffff', 0.18, 0.12, { grow: 0.06 }); K.fx.burst(v1, 8, '#ffffff', { speed: 6, g: 2, life: 0.35, size: 0.3 }); }
       if (n === 'countdown') cam.want('intro');
       if (n === 'phase') cam.want('phase', model && model.face ? model.face : 'core');
       if (n === 'sever') cam.want('sever', d.head);
@@ -719,14 +722,15 @@ window.SuperScene = (() => {
       if (dead) deadT = Math.min(3, deadT + dt);
       nB = 0;
       for (const pl of pools) pl.w = 0;
-      if (model) { model.update(t, adt, { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
+      if (model) { model.update(t, adt * sup.timeScale(), { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's marker
       put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
       put(v1.copy(artPos).setY(0.08), 3.2, 0.06, 0.18, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       put(v1.copy(artPos).setY(0.08), 0.18, 0.06, 3.2, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
-      if (snap && snap.art.shield) for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + t; put(v2.copy(artPos).add(v3.set(Math.cos(a) * 1.8, 1.2, Math.sin(a) * 1.8)), 0.5, 0.9, 0.12, 0, -a, 0, C('#f2c230'), 1.8); }
+      sup.update(t, adt, snap);
+      if (false) for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + t; put(v2.copy(artPos).add(v3.set(Math.cos(a) * 1.8, 1.2, Math.sin(a) * 1.8)), 0.5, 0.9, 0.12, 0, -a, 0, C('#f2c230'), 1.8); }
       kick = Math.max(0, kick - dt * 3);
       // debris
       for (let i = debris.length - 1; i >= 0; i--) {
@@ -799,6 +803,7 @@ window.SuperScene = (() => {
       renderer.setAnimationLoop(null);
       if (fx) fx.dispose();
       if (release) release();
+      sup.dispose();
       K.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
