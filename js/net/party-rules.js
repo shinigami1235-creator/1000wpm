@@ -77,7 +77,9 @@
   };
   const TEAM_TIERS = [{ at: 0, mult: 1 }, { at: 15, mult: 1.1 }, { at: 40, mult: 1.2 }, { at: 80, mult: 1.35 }, { at: 150, mult: 1.5 }];
   const CONFIG = {
-    hp: 100, startMs: 3000, clearMs: 6000, artMult: 1.2, artWarn: 1500, counterX: 4, slamEvery: 3, slamK: 0.6,
+    // lead: ms an attack's counter word is in the players' lines before the boss starts to wind up, since
+    // special words only go in past the middle line (Gid, 27 Nov 2026; js/app/combat/inline.js)
+    hp: 100, startMs: 3000, clearMs: 6000, artMult: 1.2, artWarn: 1500, lead: 2000, counterX: 4, slamEvery: 3, slamK: 0.6,
     heal: 22, healLow: 10, healCd: 4500, shieldCd: 8000, shieldK: 0.25, downMs: 12000, clearHeal: 25, reviveHp: 40, rebootHp: 25, rebootStep: 1000,
   };
   const KINDS = { hydra: 'Hydra', swarm: 'Swarm', snake: 'Snake', golem: 'Golem', twins: 'Twins' };
@@ -251,16 +253,18 @@
       if (slam) dmg = Math.round(dmg * cfg.slamK);
       let windup = boss.windup + (art ? cfg.artWarn : 0);
       if (boss.kind === 'hydra') windup *= 0.85 + 0.15 * (3 - alive().length);
-      attack = { id, word, start: clock, land: clock + windup, done: false, dmg, target, from: from ? from.id : null };
-      emit({ type: 'attack', id, word, start: clock, land: attack.land, dmg, target, from: attack.from, at: clock });
+      // the next attack's gap is picked now, so the lead never pushes this one past its start
+      let gap = boss.every[0] + r() * (boss.every[1] - boss.every[0]);
+      if (boss.kind === 'hydra') gap *= [1, 1, 0.85, 0.7][alive().length] || 1;
+      if (boss.kind === 'twins' && alive().length === 1) gap *= 0.75;
+      const lead = Math.max(0, Math.min(cfg.lead || 0, gap - windup - 500));
+      attack = { id, word, start: clock, show: clock + lead, land: clock + lead + windup, done: false, dmg, target, from: from ? from.id : null };
+      emit({ type: 'attack', id, word, start: clock, show: attack.show, land: attack.land, dmg, target, from: attack.from, at: clock });
       if (art) {
         const who = target === 'team' ? 'everyone' : P.get(target).name;
         emit({ type: 'callout', text: hasUp('guard') ? `Hit coming at ${who}. Guard, type ${word}.` : `Hit coming at ${who}. Type ${word}.`, at: clock });
       }
       schedule(attack.land, () => landAttack(id));
-      let gap = boss.every[0] + r() * (boss.every[1] - boss.every[0]);
-      if (boss.kind === 'hydra') gap *= [1, 1, 0.85, 0.7][alive().length] || 1;
-      if (boss.kind === 'twins' && alive().length === 1) gap *= 0.75;
       schedule(clock + gap, nextAttack);
     }
 
@@ -591,7 +595,7 @@
         weak: Math.max(0, weakUntil - clock), relink: relinkAt ? Math.max(0, relinkAt - clock) : 0,
         teamCombo, teamTier: tierOf(teamCombo), teamMult: +dmgMult().toFixed(2), meter, buffOffer: buffOffer && buffOffer.slice(), buffN,
         overclock: Math.max(0, overUntil - clock), firewall, art, maxHp: cfg.hp,
-        attack: attack && !attack.done ? { id: attack.id, word: attack.word, land: attack.land, start: attack.start, target: attack.target, from: attack.from, dmg: attack.dmg } : null,
+        attack: attack && !attack.done ? { id: attack.id, word: attack.word, land: attack.land, start: attack.start, show: attack.show, target: attack.target, from: attack.from, dmg: attack.dmg } : null,
         players: [...P.values()].map(p => ({
           id: p.id, name: p.name, role: p.role, bot: !!p.bot, handle: p.handle, hp: Math.max(0, Math.round(p.hp)), down: p.down, downLeft: p.down ? Math.max(0, p.downUntil - clock) : 0,
           shield: !!p.shield, target: p.target, healIn: Math.max(0, p.healAt - clock), shieldIn: Math.max(0, p.shieldAt - clock),
@@ -629,6 +633,7 @@
     v.offers = p.down ? [] : offers; v.offerId = p.offerUntil;
     const guardUp = st.players.some(x => x.role === 'guard' && !x.down);
     v.counter = st.attack && !p.down && (p.role === 'guard' || !guardUp) ? st.attack.word : null; v.counterId = st.attack && st.attack.id;
+    v.counterLead = st.attack && st.attack.show ? Math.max(0, st.attack.show - st.clock) : 0;
     v.buffs = p.role === 'support' && !p.down && st.buffOffer ? st.buffOffer.map(b => BUFFS[b].word) : null; v.buffId = st.buffN;
     if (p.down) return v;
     const slot = Math.floor(st.clock / 2500);

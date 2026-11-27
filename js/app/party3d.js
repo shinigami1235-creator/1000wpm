@@ -791,7 +791,8 @@ window.PartyScene = (() => {
       for (const f of foes.values()) if (cre.charge) cre.charge(f.id, 0);
       if (!atk || !st) return;
       const now = opts.now ? opts.now() : 0;
-      const k = clamp((now - atk.start) / Math.max(1, atk.land - atk.start), 0, 1);
+      const s0 = atk.show || atk.start;   // the counter word comes first; the wind-up shows after the lead
+      const k = clamp((now - s0) / Math.max(1, atk.land - s0), 0, 1);
       if (atk.from && cre.charge) cre.charge(atk.from, smooth(k));
       cre.hitPos(atk.from, fromV);
       const ids = atk.target === 'team' ? st.players.filter(p => !p.down).map(p => p.id) : [atk.target];

@@ -59,6 +59,11 @@ Router.register('boss', (() => {
   // (tags[i] goes with stack[i]); typing them in order does the thing. A tag whose moment has passed
   // just drops off and the word counts as a normal hit, so nothing vanishes under you.
   let tags = [], inLine = new Set(), runs = {}, assistN = {};
+  // Gid, 27 Nov 2026 (after playing it): specials only take over words past the middle line
+  // (WordFlow.far), never the ones you're about to type. To make that reachable, attacks on the shared
+  // clock are seen coming: their words go into the line early (soon), and words typed before the
+  // attack opens wait armed and fire the moment it does
+  let soon = [], soonAt = 0, armed = new Map(), liveCps = 0, lastWordAt = 0, spared = new Set();
   let sess = null, recorded = false, feed = [], others = [], lastOther = 0, lastNum = 0, lastStage = -1, lastPhase = -1;
   let mech = [], mechKey = '', sent = new Set(), done = new Set(), mine = new Set(), warned = {};
   let wordTimes = [], staggerAt = 0, critLeft = 0, jamUntil = 0, lockUntil = 0, lastKeyAt = 0, weakWas = false, shieldWas = false;
@@ -71,6 +76,7 @@ Router.register('boss', (() => {
   let me = null, cSnd = null, words = null, spellT = [], wordT0 = 0, grace = {}, frostMs = 0, castDmg = {}, avoid = new Set(), comboShown = false;
   const STACK_DIFF = [[1, 4], [2, 4], [2, 5], [3, 5], [3, 6]];
   const cSfx = (n, a) => { if (cSnd) cSnd.play(n, a); };
+  const tr = (...a) => { if (window._wbLog) window._wbLog.push([Math.round(now() % 1e6), ...a]); };
   const later = (ms, fn) => { const id = setTimeout(() => { spellT = spellT.filter(x => x !== id); fn(); }, ms); spellT.push(id); };
 
   const q = k => el && el.querySelector(`[data-k="${k}"]`);
@@ -103,6 +109,7 @@ Router.register('boss', (() => {
       now, demo: d, raiders: d && d.raiders ? d.raiders() : [],
       me: { name: WPM.profile().name, division: div ? div.id : null, recruit: !!(window.Ops && Ops.clearance().i === 0) },
       dodgeWord: () => TT.wordOfLength(...DODGE[tier]),
+      reach: () => reachMs(),
     });
     if (words && tier < 3) words.set({ maxLen: [5, 6, 7][tier] });
     // the squad mates stand beside you in the scene, each with a look of their own
@@ -132,6 +139,7 @@ Router.register('boss', (() => {
     feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     flow = null;
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
+    soon = []; soonAt = 0; armed = new Map(); liveCps = 0; lastWordAt = 0; spared = new Set();
     setCount = 0; threatOn = false; threatId = null; boomWant = false; livesKey = ''; livesHp = -1;
     wordTimes = []; staggerAt = 0; critLeft = 0; jamUntil = 0; lockUntil = 0; weakWas = false; shieldWas = false; miles = new Set();
     spellT.forEach(clearTimeout); spellT = []; grace = {}; frostMs = 0; castDmg = {}; avoid = new Set(); comboShown = false;
@@ -502,6 +510,9 @@ Router.register('boss', (() => {
   }
   // the common end of every word: history, the flow, a fresh line
   function after(word, ok, kind) {
+    const tw = performance.now();
+    if (lastWordAt && tw - lastWordAt < 4000) { const c = 1000 * (word.length + 1) / (tw - lastWordAt); liveCps = liveCps ? liveCps * 0.75 + c * 0.25 : c; }
+    lastWordAt = tw;
     hist.push({ word, ok });
     if (hist.length > 3) hist.shift();
     if (flow) flow.push(word, typed, ok, kind || false);
@@ -523,8 +534,19 @@ Router.register('boss', (() => {
     if (tag.kind === 'spell') { castSpell(tag.spell, ok && wasClean); return; }
     if (!ok) { missWord(word); return; }
     countWord(wasClean);
-    if (tag.kind === 'assist') { assist(tag, t); return; }
-    if (m && t < m.due) act(m, t);
+    if (tag.kind === 'assist') {
+      if (t < tag.ev.start + R.COVER_AFTER) { armed.set(tag.src, tag); pop('COVER READY', 'cyan'); sfx('blockOk'); return; }
+      assist(tag, t); return;
+    }
+    if (m && t < m.due) { act(m, t); return; }
+    // typed before its attack opened: it waits and fires the moment the attack does
+    const f = !m && soon.find(x => x.id === tag.src);
+    if (f) {
+      armed.set(f.id, f);
+      streak(t);
+      sfx('blockOk');
+      pop(f.kind === 'block' ? 'SHIELD READY' : 'READY', 'cyan');
+    }
   }
   function countWord(c) {
     sess.good++;
@@ -542,7 +564,8 @@ Router.register('boss', (() => {
     streak(t);
     mine.add(m.id);
     if (m.who && squad) {
-      squad.act(m, t);
+      const r = squad.act(m, t);
+      if (r && r.kind === 'ready') { sfx('blockOk'); pop('DODGE READY', 'cyan'); }
     } else if (m.kind === 'block') {
       sess.blocks++;
       WorldBossNet.sendBlock(m.id, m.word, { grace: grace[m.id] || 0, tier });
@@ -585,7 +608,7 @@ Router.register('boss', (() => {
   function place(words, tag, from = 1) {
     if (stack.length < 40) stack.push(...moreWords(60));
     syncTags();
-    for (let i = Math.max(1, from); i + words.length <= stack.length; i++) {
+    for (let i = Math.max(1, from, WordFlow.far(flow)); i + words.length <= stack.length; i++) {
       let free = true;
       for (let j = 0; j < words.length; j++) if (tags[i + j]) { free = false; break; }
       if (!free) continue;
@@ -594,27 +617,77 @@ Router.register('boss', (() => {
     }
     return -1;
   }
-  // each frame: new attacks, packets, bugs and squad calls take over words; ones that are over drop their tags
+  // your speed right now in letters a second: the last few words, leaning on your usual speed
+  function speed() { return 0.9 * Math.max(1.2, liveCps ? 0.8 * liveCps + 0.2 * cps : cps); }
+  // ms until you reach the first word a special may take
+  function reachMs(at) {
+    const n = at == null ? WordFlow.far(flow) : at;
+    let L = typed ? Math.max(0, (stack[0] || '').length - typed.length) : (stack[0] || '').length;
+    for (let i = 1; i < n && i < stack.length; i++) L += stack[i].length + 1;
+    return 1000 * (L + 1) / speed();
+  }
+  // the attacks coming in the next 20 s on the shared clock, before they start: a block's words and
+  // each packet's word, with when they open and when you'd ideally reach them
+  const SOON_MS = 20000;
+  function foresee(t) {
+    if (t - soonAt < 250) return;
+    soonAt = t;
+    const seen = new Map();
+    for (let x = t + 250; x <= t + SOON_MS; x += 500)
+      for (const e of R.eventsAt(st, x, 0)) if (!seen.has(e.id) && (e.type === 'slam' || e.type === 'volley')) seen.set(e.id, e);
+    const out = [];
+    for (const e of seen.values()) {
+      if (e.type === 'slam' && e.start > t) {
+        const due = e.hit + (grace[e.id] || 0);
+        out.push({ kind: 'block', id: e.id, word: R.blockWord(e, tier), opens: e.start, due, total: due - e.start, ev: e, arrive: e.start + 0.35 * (e.hit - e.start) });
+      }
+      if (e.type === 'volley') for (const sh of e.shots) if (sh.launch > t) out.push({ kind: 'return', id: sh.id, word: sh.word, opens: sh.launch, due: sh.arrive, total: sh.arrive - sh.launch, arrive: sh.launch + 0.3 * (sh.arrive - sh.launch) });
+    }
+    soon = out;
+  }
+  // each frame: new attacks, packets, bugs and squad calls take over words past the middle line;
+  // ones that are over drop their tags
   function syncLine(t, isDown) {
     syncTags();
-    const live = new Map(mech.map(m => [m.id, m]));
+    if (st && !st.defeatedAt && !isDown) foresee(t); else soon = [];
+    const live = new Map([...soon, ...mech].map(m => [m.id, m]));
     for (let i = 1; i < tags.length; i++) {
       const g = tags[i]; if (!g || g.kind === 'spell') continue;
       const m = live.get(g.src);
       // a cover word placed behind your block waits while the block is still to type
-      if (!m && g.kind === 'assist' && g.ev && live.has(g.ev.id)) continue;
+      if (!m && g.kind === 'assist' && g.ev && (live.has(g.ev.id) || armed.has(g.ev.id))) continue;
+      if (!m && armed.has(g.src)) continue;
       if (!m) { tags[i] = null; if (runs[g.src]) delete runs[g.src]; continue; }
-      g.due = m.due; g.total = m.total;
+      g.due = m.due; g.total = m.total; g.soon = !!(m.opens && m.opens > t);
+    }
+    // words typed early fire as their attack opens
+    for (const [id, a] of armed) {
+      if (a.kind === 'assist') { if (t >= a.ev.start + R.COVER_AFTER) { armed.delete(id); assist(a, t); } else if (t >= a.due) armed.delete(id); continue; }
+      const m = mech.find(x => x.id === id);
+      if (m) { armed.delete(id); act(m, t); }
+      else if (t >= a.due) armed.delete(id);
     }
     if (isDown) return;
-    for (const m of mech) {
-      if (inLine.has(m.id)) continue;
-      const tag = { kind: m.kind, src: m.id, due: m.due, total: m.total, ev: m.ev, k: m.k, word: m.word };
-      const at = place(m.word.split(' '), tag);
+    const far = WordFlow.far(flow), toFar = reachMs(far);
+    for (const m of [...mech, ...soon]) {
+      if (inLine.has(m.id) || mine.has(m.id) || armed.has(m.id)) continue;
+      // one still to come goes in once it's within a line or so of your reach, at the word you'd get to
+      // about as it opens (typed early, it waits armed); anything already open goes in at the first free
+      // word past the middle line
+      const coming = m.opens && m.opens > t;
+      if (coming && m.arrive - t > toFar + 9000) continue;
+      const typeMs = 1000 * (m.word.length + 1) / speed();
+      let at = far;
+      if (coming) while (at < 40 && reachMs(at + 1) < m.arrive - t && reachMs(at + 1) + typeMs < m.due - t - 400) at++;
+      // out of reach at your speed (you just joined, or it's still the opening line): an attack isn't
+      // aimed at you, so no words and no hit; anything else just isn't offered
+      if (m.due && t + reachMs(at) + typeMs > m.due) { if (m.sticky) continue; if (m.kind === 'block' || m.kind === 'return') spared.add(m.id); inLine.add(m.id); tr('spared', m.kind, m.id, Math.round(toFar), Math.round(m.due - t)); continue; }
+      const tag = { kind: m.kind, src: m.id, due: m.due, total: m.total, ev: m.ev, k: m.k, word: m.word, soon: !!(m.opens && m.opens > t) };
+      at = place(m.word.split(' '), tag, at);
+      tr('placed', m.kind, m.id, at, Math.round(toFar), Math.round(m.due - t));
       if (at >= 0) {
         inLine.add(m.id);
         if (m.kind === 'block') {
-          sfx('warn');
           // your first cover word goes straight after your block words, so it's already waiting there
           const id = `a:${m.ev.id}:0`, cw = R.coverWord(m.ev, 'you#0');
           if (!inLine.has(id) && place([cw], { kind: 'assist', src: id, ev: m.ev, k: 0, word: cw, due: m.due, total: m.total }, at + m.word.split(' ').length) >= 0) inLine.add(id);
@@ -657,7 +730,7 @@ Router.register('boss', (() => {
     me.on('spellEarned', e => {
       if (!el) return;
       const sp = e.spell;
-      if (place(sp.word.split(' '), { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color }, 3) < 0) return;
+      if (place(sp.word.split(' '), { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color }, WordFlow.far(flow) + 1) < 0) return;
       cSfx('offer');
       tip('spell');
       pushFeed({ text: `Combo ${e.combo}: ${sp.word} is in your line`, cls: 'mile' });
@@ -784,8 +857,9 @@ Router.register('boss', (() => {
     // the special words are in the line itself, styled by what they do, each run with its own timer
     syncTags();
     const t = now();
-    const tg = tags.slice(0, 51).map(g => g && { kind: g.kind, color: g.color, first: g.part === 0, last: g.part === g.of - 1,
-      ms: g.total && g.due ? g.total : 0, el: g.total && g.due ? Math.max(0, g.total - (g.due - t)) : 0 });
+    // a word whose attack hasn't opened yet has no timer: it's coming, and you can already type it
+    const tg = tags.slice(0, 51).map(g => g && { kind: g.kind, color: g.color, first: g.part === 0, last: g.part === g.of - 1, soon: !!g.soon,
+      ms: g.total && g.due && !g.soon ? g.total : 0, el: g.total && g.due && !g.soon ? Math.max(0, g.total - (g.due - t)) : 0 });
     flow.render({ cur: stack[0], typed, mine: true, next: stack.slice(1, 51), tags: tg });
     if (me && q('track') && !q('track').dataset.key) paintTrack(me.state());
     q('combo').textContent = combo;
@@ -882,6 +956,7 @@ Router.register('boss', (() => {
           if (squad) squad.raidHit(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
           if (mine.has(e.id)) sfx('impact', true);
           else if (coveredMe[e.id]) { sfx('impact', true); pop('COVERED', 'cyan'); }
+          else if (spared.has(e.id)) sfx('impact', false);
           else if (active() && !isDown) {
             const stunned = me && me.status('stunned-target');
             const r = me ? me.hurt('slam') : { blocked: false };
@@ -892,7 +967,7 @@ Router.register('boss', (() => {
             } else {
               if (!(me && me.status('purge'))) jamUntil = t + JAM_MS;
               if (!me) combo = 0;
-              sess.fails++;
+              sess.fails++; tr('hit', e.id, inLine.has(e.id), armed.has(e.id), stack.slice(0, 20).map((w, i) => tags[i] && tags[i].src === e.id ? i : -1).filter(i => i >= 0).join(','));
               if (squad) squad.hitMe(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
               if (scene) scene.hurt();
               flashTint();
@@ -908,7 +983,7 @@ Router.register('boss', (() => {
           if (t >= s.launch && !sent.has('l:' + s.id)) { sent.add('l:' + s.id); if (t < s.launch + 600) sfx('launch'); }
           if (t >= s.arrive && !done.has(s.id)) {
             done.add(s.id);
-            if (!mine.has(s.id) && active() && !isDown) {
+            if (!mine.has(s.id) && !spared.has(s.id) && active() && !isDown) {
               const had = combo;
               const r = me ? me.hurt('packet') : { blocked: false };
               if (!r.blocked) {
@@ -929,11 +1004,7 @@ Router.register('boss', (() => {
         }
       }
     }
-    // a dodge shows in your line once its window opens, the same as a block
-    for (let i = list.length - 1; i >= 0; i--) {
-      const m = list[i];
-      if (m.kind === 'dodge') { const w = winMs(m.word); if (t < m.due - w) list.splice(i, 1); else m.total = Math.min(m.total, w); }
-    }
+    // a lock-on at you is picked early enough for its dodge word to sit past your middle line (boss-squad.js)
     list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
     if (gone.size > 40) gone.clear();
     mech = list;
@@ -1826,6 +1897,8 @@ Router.register('boss', (() => {
       mech: () => mech.map(m => ({ kind: m.kind, id: m.id, word: m.word, due: m.due - now() })),
       stack: () => stack[0],
       line: n => stack.slice(0, n || 6),
+      soon: () => soon.map(m => ({ kind: m.kind, id: m.id, word: m.word, opens: m.opens - now(), arrive: m.arrive - now(), placed: inLine.has(m.id) })),
+      far: () => ({ far: WordFlow.far(flow), reach: reachMs(), speed: speed(), armed: [...armed.keys()] }),
       sess: () => ({ ...sess }),
       feed: () => feed.map(f => f.text),
       typed: () => typed,

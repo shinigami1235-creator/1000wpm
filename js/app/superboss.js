@@ -27,7 +27,7 @@
           <div class="sb-hpn"><b data-a="hp">0</b><span data-a="hpp"></span></div>
           <div class="sb-enrage" data-a="enrage"></div>
         </div>
-        <div class="sb-code" data-a="code" hidden><div class="sb-code-h"><span>build.js</span><span>Fix the oldest line first</span></div><ol data-a="lines"></ol></div>
+        <div class="sb-code" data-a="code" hidden><div class="sb-code-h"><span>build.js</span><span>Fixes come up in your line</span></div><ol data-a="lines"></ol></div>
         <div class="sb-labels" data-a="labels" aria-hidden="true"></div>
         <div class="sb-pops" data-a="pops" aria-hidden="true"></div>
         <ol class="sb-ticker" data-a="ticker" aria-label="Damage"></ol>
@@ -54,6 +54,10 @@
     const a = k => root.querySelector(`[data-a="${k}"]`);
     let s = null, rx = 0, B = SuperData.boss(boss), lastPhase = 0, enrageShown = false;
     const labels = new Map(), chips = new Map(), lineEls = new Map();
+    // the one line (Gid, 27 Nov 2026): Art's words as a block of lines with every special in them
+    let flow = null, lineWas = null, missed = false;
+    // the Hydra's heads in their colours in the arena (sb-scene.js)
+    const OWN = { fork: Theme.hex('accent'), root: '#3ee6ff', patch: '#f2c230' };
     let dpsWin = [];
     const scene = SuperScene.mount(root, { boss, onPop: pop, onFrame: frame, reduceShake: opts().reduceShake });
     scene.ready.then(ok => { const l = root.querySelector('.sb-loading'); if (ok && l) l.remove(); if (onReady) onReady(); })
@@ -127,8 +131,20 @@
         const h = `<small>Finish it</small><div class="sb-fw">${letters(s.finish.phrase, typed, true)}</div><i class="sb-tbar"><i data-a="ftbar"></i></i>`;
         if (fin.dataset.h !== typed + s.finish.phrase) { fin.innerHTML = h; fin.dataset.h = typed + s.finish.phrase; }
       } else { fin.hidden = true; fin.dataset.h = ''; }
+      // the one line: everything to type is in Art's own words; the corner row stays empty
+      a('type').classList.toggle('inline', !!s.line);
+      if (s.line) {
+        if (!flow) { a('line').innerHTML = ''; flow = WordFlow.create(a('line'), { lines: 3 }); }
+        // the front word changed: the old one stays on the line as typed, red if it was missed
+        const key = s.line.cur + '|' + (s.line.head ? s.line.head.id : 'stack:' + s.stack.length + ':' + s.line.next[0]);
+        if (lineWas && lineWas.key !== key && lineWas.cur) { flow.push(lineWas.cur, lineWas.typed || lineWas.cur, !missed, lineWas.kind || false); missed = false; }
+        lineWas = { key, cur: s.line.cur, typed: typed || (lineWas && lineWas.key === key ? lineWas.typed : ''), kind: s.line.head ? s.line.head.kind : null };
+        const tags = s.line.tags.map(g => g && (g.kind === 'head' ? { ...g, color: OWN[g.own] } : g));
+        flow.render({ cur: s.line.cur, typed, mine: true, next: s.line.next, tags });
+        if (a('next').innerHTML) { a('next').innerHTML = ''; a('next').dataset.h = ''; }
+      }
       // attack row: blocks, packets, spells and the crowd spell
-      const row = s.targets.filter(x => ['block', 'spell', 'crowd'].includes(x.kind));
+      const row = s.line ? [] : s.targets.filter(x => ['block', 'spell', 'crowd'].includes(x.kind));
       const live = new Set(row.map(x => x.id));
       for (const [id, e] of chips) if (!live.has(id)) { e.classList.add('gone'); chips.delete(id); setTimeout(() => e.remove(), 250); }
       for (const x of row) {
@@ -151,7 +167,8 @@
       // the word line: the stack word, or an echo of what Art is typing at a head or segment
       const line = a('line'), next = a('next');
       let lh = '', nh = '';
-      if (s.status === 'fight' && s.stack.length) {
+      if (s.line) { /* drawn above */ }
+      else if (s.status === 'fight' && s.stack.length) {
         const on = s.cur === 'stack' || (!s.cur && typed);
         lh = `<span class="sb-w cur">${letters(s.stack[0], on ? typed : '', true)}</span>`;
         nh = s.stack.slice(1, 6).map((w, i) => `<span style="opacity:${(1 - i * 0.16).toFixed(2)}">${esc(w)}</span>`).join('');
@@ -160,8 +177,9 @@
         lh = `<span class="sb-echo${tg ? '' : typed ? ' stray' : ''}">${typed ? esc(typed) : ''}<span class="at"></span></span>`;
         nh = B.id === 'hydra' ? '<span class="sb-hint">Type a head\'s word to hit it</span>' : '';
       }
-      if (line.dataset.h !== lh) { line.innerHTML = lh; line.dataset.h = lh; }
-      if (next.dataset.h !== nh) { next.innerHTML = nh; next.dataset.h = nh; }
+      if (!s.line && flow) { flow = null; line.dataset.h = ''; }
+      if (!s.line && line.dataset.h !== lh) { line.innerHTML = lh; line.dataset.h = lh; }
+      if (!s.line && next.dataset.h !== nh) { next.innerHTML = nh; next.dataset.h = nh; }
       // labels pinned to the boss in 3D
       const pinned = s.targets.filter(x => ['head', 'weak', 'decoy', 'packet'].includes(x.kind));
       const keep = new Set(pinned.map(x => x.id));
@@ -180,7 +198,8 @@
         }
         l.x = x;
         const on = s.cur === x.id;
-        const h = letters(x.word, typed, on);
+        // in the one line a head's label shows its name and HP; its words are in the line
+        const h = s.line && x.kind === 'head' ? '' : letters(x.word, typed, on);
         const w = l.el.querySelector('b');
         if (w.dataset.h !== h) { w.innerHTML = h; w.dataset.h = h; }
         l.el.classList.toggle('on', on);
@@ -242,6 +261,7 @@
     // ---------- events: ticker, popups, alerts, banners ----------
     function event(n, d) {
       scene.event(n, d);
+      if (n === 'miss' || n === 'fizzle') missed = true;
       if (n === 'hit') {
         const name = d.src === 'spell' ? (Combat.spell(d.spell) || {}).word : d.src === 'sever' ? 'head cut' : d.src === 'weak' ? 'weak point' : d.src === 'packet' ? 'packet back' : d.src === 'fix' ? 'bug fix' : d.word;
         addTick(d.amount, name || '', d.src, d.crit);
@@ -355,7 +375,7 @@
       box.hidden = false;
     }
     function dispose() { clearInterval(dpsT); clearTimeout(bannerT); scene.dispose(); }
-    return { root, state, event, ready, result, dispose, scene, banner, setReduce: on => scene.setReduce(on), get snap() { return s; } };
+    return { root, state, event, ready, result, dispose, scene, banner, setReduce: on => scene.setReduce(on), get snap() { return s; }, get flow() { return flow; } };
   }
 
   // ---------- the side column: camera slot, hype train and chat ----------
@@ -541,7 +561,7 @@
     function newFight() {
       if (host) host.close();
       offs.forEach(f => f()); offs.length = 0;
-      fight = SuperFight.create({ boss: B.id, dial: T.id });
+      fight = SuperFight.create({ boss: B.id, dial: T.id, inline: { flow: () => arena.flow } });
       host = SuperStream.host([bc], { fight, name: 'Art', sim: true, onChat: m => side.chat(m), onViewers: n => side.watching(n) });
       offs.push(fight.on('*', (n, d) => {
         arena.event(n, d);

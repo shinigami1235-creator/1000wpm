@@ -44,6 +44,8 @@ window.RushPage = (() => {
     const tags = new Map();   // signature id -> its word tag or pop-up window
     const ghostAt = new Map();
     let flow = null;
+    // the one line (js/app/combat/inline.js): every special goes into your own words past the middle line
+    let line = null, earned = [], liveCps = 0, lastWordAt = 0;
     try { seen = new Set(JSON.parse(localStorage.getItem('wpm-rush-tips') || '[]')); } catch (e) {}
     const q = k => host.querySelector(`[data-k="${k}"]`);
     const A = window.RushAudio;
@@ -152,7 +154,7 @@ window.RushPage = (() => {
       run = { id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), n: 1, score: 0, retryUsed: false, fights: [], coins: 0, xp: 0, done: false };
       dir = RushDirector.create({ model: RushBoard.director(), prior: priorWpm(), say: e => { if (debugLog()) console.debug('[rush director]', e); } });
       dir.startRun();
-      me = Combat.create({ perks: window.Ops ? Ops.perks() : null, targetHp: () => { const S = f && f.state(now()); return S && S.max ? S.hp / S.max : null; } });
+      me = Combat.create({ earn: true, perks: window.Ops ? Ops.perks() : null, targetHp: () => { const S = f && f.state(now()); return S && S.max ? S.hp / S.max : null; } });
       wireCombat();
       comboShown = false;
       fightView();
@@ -168,7 +170,9 @@ window.RushPage = (() => {
       if (flow) flow.clear();
       plan = dir.plan(run.n, { retry });
       if (me) me.closeOffer('next');
-      f = RushFight.create({ plan, me, now, emit: onFight });
+      if (!line) line = InlineLine.create({ flow: () => flow, cps: speed });
+      line.clear(); earned = [];
+      f = RushFight.create({ plan, me, now, emit: onFight, lead: () => (line ? line.reach(f ? f.stack() : []) : 0) });
       scene.setBoss(plan.slot);
       f.start(now());
       paintHead(); paintYou(); paintStrip();
@@ -213,87 +217,97 @@ window.RushPage = (() => {
       }
     }
 
-    // ---------- typing ----------
-    function targets(t) {
+    // ---------- typing: one line ----------
+    // what each fight chip looks like in the line (the World Boss's colours, wordflow.js)
+    const LOOK = { block: 'block', gift: 'add', speaker: 'add', popup: 'add', packet: 'return', byte: 'return', fix: 'fix', answer: 'fix', sign: 'fix', page: 'fix', mute: 'add', boost: 'boost', weak: 'weak' };
+    // your speed in letters a second: the last few words, leaning on your usual speed
+    function speed() { const base = priorWpm() * 5 / 60; return 0.9 * Math.max(1.2, liveCps ? 0.8 * liveCps + 0.2 * base : base); }
+    // the specials live now, in the order they should sit in the line; decoys stay out (they're bait
+    // in the arena), and of the spelled-right choices only the right one goes in
+    function specials(t) {
       if (!f || f.phase !== 'fight') return [];
-      const list = f.chips(t).filter(c => !(c.kind === 'speaker' && !c.next));
-      const o = me.offer();
-      if (o) for (const id of o.spells) { const sp = Combat.spell(id); list.push({ kind: 'spell', id: 'spell:' + id, word: sp.word, spell: sp, due: o.until, total: o.until - o.at }); }
-      return list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
+      const list = f.chips(t).filter(c => c.kind !== 'decoy' && !(c.kind === 'answer' && !c.right))
+        .sort((a, b) => (ORDER[a.kind] - ORDER[b.kind]) || ((a.order || 0) - (b.order || 0)) || ((a.due || 0) - (b.due || 0)));
+      const out = list.map(c => ({ id: c.id, kind: LOOK[c.kind] || 'add', word: c.word, due: c.due, total: c.total, chip: c.kind }));
+      for (const sp of earned) out.push({ id: sp.key, kind: 'spell', word: sp.word, color: sp.color, spell: sp });
+      return out;
     }
-    const top = () => (f ? f.stack()[0] || '' : '');
-    const wordOf = tg => (tg && tg.kind ? tg.word : top());
-    // a special word that leaves while you type it stays the target while your letters match it,
-    // so the rest of it isn't typos; the space clears it as TOO LATE (same as the World Boss)
-    function retarget() {
-      const list = targets(now());
-      if (target && target.kind && (target.gone || !list.some(x => x.id === target.id))) {
-        if (typed && target.word.startsWith(typed)) { if (!target.gone) target = { ...target, gone: true }; return; }
-        target = null;
-      }
-      if (target && wordOf(target).startsWith(typed)) return;
-      const m = list.find(x => x.word.startsWith(typed));
-      if (m) { target = m; return; }
-      if (top().startsWith(typed)) { target = { stack: true }; return; }
-      if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
+    function syncLine() {
+      if (!line || !f) return;
+      const before = line.items().length;
+      const fresh = line.sync(specials(now()), f.stack());
+      if (fresh.length || line.items().length !== before) renderQueue();
     }
+    const head = () => (line && f ? line.view(f.stack()).head : null);
+    const top = () => { const h = head(); return h ? h.word : (f ? f.stack()[0] || '' : ''); };
     function onChar(ch) {
       A.unlock();
       if (!f || f.phase !== 'fight' || over) return;
+      const h = head(), w = top();
       if (ch === ' ') {
-        if (target && target.kind && target.word.startsWith(typed + ' ')) { typed += ' '; renderQueue(); paintChips(true); return; }
+        if (h && w.startsWith(typed + ' ')) { typed += ' '; renderQueue(); return; }
         if (typed) submit();
         return;
       }
       if (!typed) wordT0 = now();
       typed += ch;
-      retarget();
-      const w = wordOf(target);
+      if (h) h.typing = true;
       const good = typed.length <= w.length && ch === w[typed.length - 1];
       if (!good) clean = false;
       f.key(good);
       TT.click(false);
-      renderQueue(); paintChips(true);
+      renderQueue();
     }
     function onBack(whole) {
       if (!typed) return;
       typed = whole ? '' : typed.slice(0, -1);
-      if (!typed) target = null; else retarget();
-      renderQueue(); paintChips(true);
+      renderQueue();
+    }
+    function heard(word) {
+      const tw = performance.now();
+      if (lastWordAt && tw - lastWordAt < 4000) { const c = 1000 * (word.length + 1) / (tw - lastWordAt); liveCps = liveCps ? liveCps * 0.75 + c * 0.25 : c; }
+      lastWordAt = tw;
     }
     function submit() {
       if (!typed || !f || f.phase !== 'fight') return;
-      const t = now(), list = targets(t);
-      const exact = list.find(x => x.word === typed);
-      if (!exact && target && target.gone && typed !== top()) {
+      const t = now(), h = head(), sent = typed;
+      heard(sent);
+      if (h) {
+        // a special at the head of the line: typed right it does its thing, a typo fails it
+        line.done(h.id);
+        const ok = sent === h.word;
+        if (h.kind === 'spell') {
+          earned = earned.filter(x => x.key !== h.id);
+          if (flow) flow.push(h.word, sent, ok && clean, 'spell');
+          castSpell(h.spell, ok && clean);
+          return;
+        }
+        if (flow) flow.push(h.word, sent, ok, h.kind);
+        const live = f.chips(t).some(c => c.id === h.id);
         typed = ''; target = null; clean = true;
-        pop('TOO LATE', 'white');
-        renderQueue(); paintChips(true);
+        if (!live) { if (ok) pop('TOO LATE', 'white'); renderQueue(); paintChips(true); return; }
+        const r = f.submit(sent, { clean: ok && clean, ms: t - wordT0, target: h.id, t });
+        if (r && (r.kind === 'sig' || r.kind === 'weak')) {
+          scene.hit({ amount: r.amount, tier: Math.max(r.kind === 'weak' ? 1 : 0, r.tier), crit: r.crit || r.kind === 'weak', kind: r.kind === 'weak' ? 'weak' : 'word' });
+          if (r.kind === 'weak') A.play('weak'); else if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
+        }
+        TT.click(!ok);
+        renderQueue(); paintChips(true); paintStrip();
         return;
       }
-      if (exact && exact.kind === 'spell') { castSpell(exact.spell, clean); return; }
-      if (!exact && target && target.kind === 'spell') { castSpell(target.spell, false); return; }
-      const word = top(), sent = typed;
-      const aim = !exact && typed !== word && target && target.kind ? target.id : null;
-      const r = f.submit(typed, { clean, ms: t - wordT0, target: aim, t });
-      if (flow && r && !aim) {
-        if (r.kind === 'word') flow.push(word, sent, true);
-        else if (r.kind === 'miss' || r.kind === 'pen') flow.push(word, sent, false);
+      const word = f.stack()[0] || '';
+      const r = f.submit(sent, { clean, ms: t - wordT0, t });
+      if (r && (r.kind === 'word' || r.kind === 'miss' || r.kind === 'pen')) {
+        line.shift();
+        if (flow) flow.push(word, sent, r.kind === 'word');
       }
       if (r && r.kind === 'word') {
         scene.hit({ amount: r.amount, tier: r.tier, crit: r.crit, kind: 'word', color: me.status('hyper') ? '#ffb066' : me.status('root') ? '#ffc46b' : null });
         if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
         TT.click(true);
         hist.push({ word, ok: true });
-      } else if (r && r.kind === 'sig') {
-        scene.hit({ amount: r.amount, tier: r.tier, crit: r.crit, kind: 'word' });
-        if (r.tier >= 1) cSfx('shot' + Math.min(4, r.tier));
-        TT.click(true);
-      } else if (r && r.kind === 'weak') {
-        scene.hit({ amount: r.amount, tier: Math.max(1, r.tier), crit: true, kind: 'weak' });
-        A.play('weak');
-      } else if (r && r.kind === 'miss' && !aim) hist.push({ word, ok: false });
-      else if (r && r.kind === 'pen') hist.push({ word: typed, ok: false });
+      } else if (r && r.kind === 'miss') hist.push({ word, ok: false });
+      else if (r && r.kind === 'pen') hist.push({ word: sent, ok: false });
       if (hist.length > 3) hist.shift();
       typed = ''; target = null; clean = true;
       renderQueue(); paintChips(true); paintStrip();
@@ -581,10 +595,7 @@ window.RushPage = (() => {
       const t = now();
       f.tick(t);
       if (!f) return;
-      if (target && target.kind && !target.gone && !targets(t).some(x => x.id === target.id)) {
-        if (typed && target.word.startsWith(typed)) target = { ...target, gone: true }; else { target = null; typed = ''; }
-        renderQueue();
-      }
+      syncLine();
       paintChips(false);
       paintFlags(t);
       paintTip(t);
@@ -661,66 +672,28 @@ window.RushPage = (() => {
       }
       return s;
     }
+    // the corner row only says when the next attack comes; everything to type is in the line
     function paintChips(force) {
       const row = q('chips'); if (!row) return;
       const t = now();
       const live = f && f.phase === 'fight';
-      const all = live ? f.chips(t).filter(c => !ARENA.has(c.kind)) : [];
-      const o = live ? me.offer() : null;
-      const spells = o ? o.spells.map(id => ({ kind: 'spell', id: 'spell:' + id, word: Combat.spell(id).word, spell: Combat.spell(id), due: o.until, total: o.until - o.at })) : [];
-      const list = all.slice().sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (a.order || 0) - (b.order || 0) || (a.kind === 'packet' ? a.due - b.due : 0));
-      const on = id => target && target.kind && target.id === id;
-      const key = list.map(c => c.id + (c.next ? '*' : '')).join('|') + '#' + spells.map(x => x.id).join('|') + '#' + (target && target.kind ? target.id + ':' + typed : '');
-      if (force || key !== chipKey) {
-        chipKey = key;
-        let html = '';
-        const attacks = list.filter(c => c.kind !== 'weak' && c.kind !== 'boost');
-        if (live && !attacks.length) {
-          const S = f.state(t);
-          if (!S.action && S.nextAttack > 0 && !S.stunned) html += `<span class="wb-next">Next attack in <b data-k="nexts">${Math.ceil(S.nextAttack / 1000)}s</b></span>`;
-        }
-        // the six speakers share one chip and one timer, the next one lit
-        const spk = list.filter(c => c.kind === 'speaker');
-        if (spk.length) {
-          const nx = spk.find(c => c.next) || spk[0];
-          html += `<span class="wb-chip add speakers${on(nx.id) ? ' on' : ''}" data-id="${esc(nx.id)}"><small>Mute in order</small>${spk.map(c => `<span class="w${c === nx ? '' : ' dim'}">${lettersHtml(c.word, on(c.id) ? typed : '', on(c.id))}</span>`).join('')}<i class="bar"><i></i></i><em class="secs"></em></span>`;
-        }
-        let answered = false;
-        html += list.filter(c => c.kind !== 'speaker').map(c => {
-          let label = c.kind === 'block' && c.frozen ? 'Block, frozen' : LABEL[c.kind];
-          if (c.kind === 'answer') { label = answered ? '' : label; answered = true; }
-          const word = c.kind === 'fix'
-            ? `<span class="w sign">${esc(c.shown)}</span>${on(c.id) ? `<span class="w typed">${lettersHtml(c.word, typed, true)}</span>` : ''}`
-            : `<span class="w">${lettersHtml(c.word, on(c.id) ? typed : '', on(c.id))}</span>`;
-          const timed = c.due && c.kind !== 'weak';
-          return `<span class="wb-chip ${CLS[c.kind]} k-${c.kind}${on(c.id) ? ' on' : ''}${c.kind === 'block' && list[0] === c ? ' first' : ''}${c.kind === 'speaker' && !c.next ? ' wait' : ''}${c.frozen ? ' frozen' : ''}" data-id="${esc(c.id)}">
-            ${label ? `<small>${label}</small>` : ''}${word}${timed ? '<i class="bar"><i></i></i><em class="secs"></em>' : ''}</span>`;
-        }).join('');
-        if (spells.length) html += `<span class="wb-spells" aria-label="Spells">${spells.map(x => `<span class="wb-chip spell r${x.spell.rarity}${on(x.id) ? ' on' : ''}" data-id="${esc(x.id)}" style="--sc:${x.spell.color}"><small>${esc(x.spell.label)}</small><span class="w">${lettersHtml(x.word, on(x.id) ? typed : '', on(x.id))}</span><i class="bar"><i></i></i><em class="secs"></em></span>`).join('')}</span>`;
-        row.innerHTML = html;
-      }
-      const pn = performance.now();
-      const spkNext = list.find(c => c.kind === 'speaker' && c.next);
-      for (const c of [...list.filter(x => x.kind !== 'speaker'), ...(spkNext ? [spkNext] : []), ...spells]) {
-        if (!c.due || c.kind === 'weak') continue;
-        const n = row.querySelector(`[data-id="${CSS.escape(c.id)}"]`); if (!n) continue;
-        const left = Math.max(0, c.due - (c.kind === 'spell' ? pn : t));
-        const bar = n.querySelector('.bar i'); if (bar) bar.style.width = (100 * left / c.total).toFixed(1) + '%';
-        const s = n.querySelector('.secs'); if (s) s.textContent = Math.ceil(left / 1000) + 's';   // whole seconds: tenths ticking pulled the eye off the words
-        n.classList.toggle('late', c.kind !== 'boost' && left < (c.kind === 'spell' ? 4000 : 1500));
-      }
+      const S = live ? f.state(t) : null;
+      const show = live && !S.action && S.nextAttack > 0 && !S.stunned;
+      const key = show ? 'next' : '';
+      if (force || key !== chipKey) { chipKey = key; row.innerHTML = show ? `<span class="wb-next">Next attack in <b data-k="nexts">${Math.ceil(S.nextAttack / 1000)}s</b></span>` : ''; }
       const ns = row.querySelector('[data-k="nexts"]');
-      if (ns && live) ns.textContent = Math.ceil(f.state(t).nextAttack / 1000) + 's';
+      if (ns && show) ns.textContent = Math.ceil(S.nextAttack / 1000) + 's';
     }
-    // the words as a block of lines, the same as the World Boss (js/app/wordflow.js)
+    // the words as a block of lines, the same as the World Boss (js/app/wordflow.js); the specials sit
+    // in it past the middle line, each in its own colour with a timer under the timed ones
     function renderQueue() {
       const box = q('queue'); if (!box) return;
       if (!flow) flow = WordFlow.create(box, { lines: 3 });
       const st = f ? f.stack() : [];
-      const mine = !target || target.stack;
+      const v = line ? line.view(st, now()) : { cur: st[0] || '', next: st.slice(1, 50), tags: null };
       const pens = {};
-      if (f) for (const m of f.marks()) if (m.i >= 0 && m.i < 50) pens[m.i] = m.fake;
-      flow.render({ cur: st[0] || '', typed: mine ? typed : '', mine, next: st.slice(1, 50), pens });
+      if (f && line) for (const m of f.marks()) { const k = line.indexOf(st, m.i); if (k >= 0 && k < 50) pens[k] = m.fake; }
+      flow.render({ cur: v.cur, typed, mine: true, next: v.next, pens, tags: v.tags });
       paintTags();
     }
     function paintCombo(drop) {
@@ -739,14 +712,8 @@ window.RushPage = (() => {
       me.on('combo', c => { paintCombo(['hurt', 'typo', 'wrong', 'fizzle'].includes(c.reason)); if (c.combo && c.combo % 5 === 0 && c.reason === 'word') WPM.track('combo', { n: c.combo, mode: 'rush' }); });
       me.on('tierUp', e => { if (!q('cbox')) return; cSfx('tierUp', e.tier); pop(e.name.toUpperCase(), 'green'); tip('combo'); const b = q('cbox'); b.classList.remove('up'); void b.offsetWidth; b.classList.add('up'); });
       me.on('miss', e => { if (e.from >= 10) cSfx('break'); });
-      me.on('spellOffer', () => { cSfx('offer'); tip('spell'); paintChips(true); });
-      me.on('offerEnd', () => {
-        if (target && target.kind === 'spell' && !target.gone) {
-          if (typed && target.word.startsWith(typed)) target = { ...target, gone: true }; else { target = null; typed = ''; }
-          renderQueue();
-        }
-        paintChips(true);
-      });
+      // a combo milestone earns a spell: its words go into your line past the middle line and wait there
+      me.on('spellEarned', e => { const sp = e.spell; earned.push({ ...sp, key: 'spell:' + sp.id + ':' + Math.round(performance.now()) }); cSfx('offer'); tip('spell'); syncLine(); });
       me.on('ward', () => { cSfx('ward'); scene && scene.fxEvent('ward'); });
       me.on('perk', e => pop(e.name.toUpperCase(), 'white'));
       me.on('guard', () => { cSfx('guard'); scene && scene.fxEvent('guard'); pop('COMBO KEPT', 'white'); });
@@ -789,7 +756,7 @@ window.RushPage = (() => {
     function clearTags() { for (const x of tags.values()) x.el.remove(); tags.clear(); }
     function paintTags(force) {
       for (const [id, x] of tags) {
-        const t = target && target.kind && target.id === id ? typed : '';
+        const h = head(), t = h && h.id === id ? typed : '';
         if (!force && x.typed === t) continue;
         x.typed = t;
         x.el.querySelector('.w').innerHTML = lettersHtml(x.word, t, !!t);
@@ -902,6 +869,8 @@ window.RushPage = (() => {
       summary: () => f && f.summary(),
       chips: () => (f ? f.chips(now()).map(c => ({ kind: c.kind, word: c.word, id: c.id, next: c.next })) : []),
       stack: () => (f ? f.stack().slice(0, 6) : []),
+      line: () => (f && line ? line.view(f.stack()) : null),
+      items: () => (line ? line.items().map(x => ({ id: x.id, kind: x.kind, word: x.word, pos: x.pos })) : []),
       win: () => f && f.debug.win(now()),
       lose: left => f && f.debug.lose(now(), left === undefined ? 0.4 : left),
       setHp: x => f && (f.debug.setHp(x, now()), paintHead()),

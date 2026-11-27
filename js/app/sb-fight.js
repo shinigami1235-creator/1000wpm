@@ -12,6 +12,12 @@
 //   f.on(name, fn)             events, listed in SUPERBOSS.md
 //   f.debug                    test hooks: phase(n), hp(frac), finish(), enrage(), artHp(n), combo(n), offer(ids), crowd()
 //
+// opts.inline = { flow: () => WordFlow } turns on the one line (Gid, 27 Nov 2026; js/app/combat/inline.js):
+// blocks, packets, weak points, bug fixes, the crowd spell and earned spells go into Art's own words past
+// the middle line, and the word at the front of the line is the only thing to type. Every timed one gets
+// the time it takes to reach it. The Hydra's line keeps its stack on, and each stack word belongs to a
+// head: typing it hits that head (state().line has the tags).
+//
 // Every typeable thing is a target: { id, kind, word, due }. Kinds, in the order a shared
 // first letter is matched: finish, block, packet, decoy, weak, crowd, fix, spell, head, stack.
 window.SuperFight = (() => {
@@ -30,13 +36,15 @@ window.SuperFight = (() => {
     const bus = Combat.Bus();
     const emit = (n, p = {}) => bus.emit(n, p);
     // the streamer has no HP to heal here, so Binary rain stays out of the offers
-    const me = Combat.create({ now, rng, spells: Combat.SPELLS().map(s => s.id).filter(id => id !== 'binary-rain') });
+    const IL = o.inline && window.InlineLine ? InlineLine.create({ flow: o.inline.flow, cps: () => Math.max(T.wpm * 0.8, wpmNow()) * 5 / 60 }) : null;
+    const me = Combat.create({ now, rng, earn: !!IL, spells: Combat.SPELLS().map(s => s.id).filter(id => id !== 'binary-rain') });
     const maxHp = Math.round(T.wpm * 26 * B.hpK * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('superboss') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
     const ART_MAX = 100;
 
     let hp = maxHp, phase = 1, status = 'ready', t0 = 0, endAt = 0, enraged = false, lastTick = 0;
     const art = { hp: ART_MAX, max: ART_MAX };
-    let targets = [], stack = [], stackOn = B.id !== 'hydra';
+    let targets = [], stack = [], stackOn = B.id !== 'hydra' || !!IL;
+    let stackOwn = [], earned = [], modRef = null;   // the one line: which head owns each stack word (Hydra), spells earned into the line
     let typed = '', cur = null, clean = true, wordT0 = 0, idN = 0;
     let sched = [];
     const sup = { shield: 0, overUntil: 0, slowUntil: 0, healAt: -1e9 };
@@ -76,14 +84,19 @@ window.SuperFight = (() => {
     }
     const STACK_THEME = B.id === 'compiler' ? ['cyber', 'common'] : B.id === 'hydra' ? ['cyber'] : ['mix'];
     function refill() {
-      while (stack.length < 8) {
-        const avoid = stack.length ? new Set() : first();
-        stack.push(pick(STACK_THEME, [3, 9], avoid));
+      while (stack.length < (IL ? 36 : 8)) {
+        const avoid = stack.length && !IL ? new Set() : IL ? new Set() : first();
+        const own = IL && modRef && modRef.owner ? modRef.owner() : null;
+        const h = own && B.heads ? B.heads.find(x => x.id === own) : null;
+        stack.push(h ? pick(h.theme, h.len, new Set()) : pick(STACK_THEME, [3, 9], avoid));
+        stackOwn.push(own);
       }
     }
+    function shiftStack() { stack.shift(); stackOwn.shift(); if (IL) IL.shift(); refill(); fixStack(); }
     // a stack word may not share a first letter with a live target, so the first key picks one
+    // (with the one line only the front word can be typed, so nothing to fix)
     function fixStack() {
-      if (!stack.length) return;
+      if (!stack.length || IL) return;
       const live = new Set(targets.map(x => x.word[0]).concat(spellTargets().map(x => x.word[0])));
       if (!live.has(stack[0][0])) return;
       const j = stack.findIndex((w, i) => i > 0 && !live.has(w[0]));
@@ -94,6 +107,7 @@ window.SuperFight = (() => {
     // ---------- targets ----------
     function addTarget(kind, word, ms, extra = {}) {
       const at = t();
+      if (IL && isFinite(ms) && kind !== 'crowd' && kind !== 'head' && kind !== 'decoy' && kind !== 'fix') ms += IL.reach(stack);
       const tg = { id: kind[0] + (++idN), kind, word, born: at, due: ms === Infinity ? Infinity : at + ms, total: ms, ...extra };
       targets.push(tg);
       if (stackOn && cur !== 'stack') fixStack();
@@ -107,7 +121,15 @@ window.SuperFight = (() => {
       if (!of || status !== 'fight') return [];
       return of.spells.map(id => { const sp = Combat.spell(id); return { id: 'spell:' + id, kind: 'spell', word: sp.word, spell: id, due: of.until, total: of.until - of.at, born: of.at }; });
     }
+    // the one line: what goes in it, in order
+    const LINE_KINDS = new Set(['block', 'packet', 'weak', 'fix', 'crowd']);
+    const lineList = () => [...targets.filter(x => LINE_KINDS.has(x.kind)), ...earned];
     function typeables() {
+      if (IL && status === 'fight') {
+        const h = IL.view(stack).head;
+        if (h) { const x = h.x.kind === 'spell' ? earned.find(e => e.id === h.id) : get(h.id); return x ? [x] : [{ ...h.x, gone: true }]; }
+        return stack.length ? [{ id: 'stack', kind: 'stack', word: stack[0], due: Infinity }] : [];
+      }
       const out = status === 'finish' && finish ? [{ id: 'finish', kind: 'finish', word: finish.phrase, due: finish.due }] : [...targets, ...spellTargets()];
       if (status === 'fight' && stackOn && stack.length) out.push({ id: 'stack', kind: 'stack', word: stack[0], due: Infinity });
       return out;
@@ -145,7 +167,7 @@ window.SuperFight = (() => {
         return;
       }
       stats.keys++;
-      if (!typed) { wordT0 = at; clean = true; }
+      if (!typed) { wordT0 = at; clean = true; if (IL) IL.hold(stack); }
       typed += ch;
       retarget();
       const w = cur && wordOf(cur);
@@ -158,22 +180,30 @@ window.SuperFight = (() => {
       if (!typed) return;
       typed = whole ? '' : typed.slice(0, -1);
       if (status === 'finish') return;
+      if (IL && !typed) IL.release();
       if (!typed) cur = null; else retarget();
     }
     function submit() {
       if (!typed || status !== 'fight') return;
       const all = typeables();
       const exact = all.filter(x => x.word === typed).sort((a, b) => PRIO[a.kind] - PRIO[b.kind] || a.due - b.due)[0];
-      const tg = exact || (cur && all.find(x => x.id === cur));
+      const tg = IL ? all[0] : exact || (cur && all.find(x => x.id === cur));
       const text = typed, wasClean = clean;
       stats.keys++;
       typed = ''; cur = null; clean = true;
+      // the one line: the front special leaves it whether typed right or wrong (a block typed wrong
+      // still lands); one whose moment passed while you typed it just counts as a word
+      if (IL && tg && tg.kind !== 'stack') {
+        IL.done(tg.id);
+        if (tg.kind === 'spell') { earned = earned.filter(e => e.id !== tg.id); return castSpell(tg, wasClean && tg.word === text); }
+        if (tg.gone) { if (tg.word === text) { stats.good++; me.word({ letters: 0, clean: wasClean }); emit('late', { word: text }); } else { stats.missed++; me.miss('wrong'); emit('miss', { typed: text, word: tg.word }); } return; }
+      }
       if (!tg || tg.word !== text) {
         if (tg && tg.kind === 'spell' && tg.word.length === text.length) return castSpell(tg, false);
         stats.missed++;
         me.miss('wrong');
         emit('miss', { typed: text, word: tg ? tg.word : null });
-        if (tg && tg.kind === 'stack') { stack.shift(); refill(); fixStack(); }
+        if (tg && tg.kind === 'stack') shiftStack();
         return;
       }
       stats.good++;
@@ -205,7 +235,10 @@ window.SuperFight = (() => {
       return { amount: w.amount * (t() < sup.overUntil ? 1.5 : 1), tier: w.tier, crit: w.crit, mult: w.mult, combo: w.combo };
     }
     function hitStack(text, wasClean) {
-      stack.shift(); refill(); fixStack();
+      const own = stackOwn[0];
+      shiftStack();
+      // the Hydra's line: a word that belongs to a head hits that head
+      if (own && mod.typed) { const h = targets.find(x => x.kind === 'head' && x.owner === own); if (h) return mod.typed(h, text, wasClean); }
       const x = wordHit(text.length, wasClean);
       const k = mod.stackK ? mod.stackK() : 1;
       deal(x.amount * k * (x.crit ? 2 : 1), { src: 'word', word: text, tier: x.tier, crit: x.crit || k > 1, at: mod.stackAt ? mod.stackAt() : 'body' });
@@ -316,6 +349,7 @@ window.SuperFight = (() => {
     }
     me.on('tierUp', e => emit('tier', { up: true, ...e }));
     me.on('miss', e => emit('comboDrop', e));
+    me.on('spellEarned', e => { if (IL) earned.push({ id: 'spell:' + e.spell.id + ':' + (++idN), kind: 'spell', word: e.spell.word, spell: e.spell.id, due: Infinity, total: null }); });
     me.on('spellOffer', o2 => { if (stackOn) fixStack(); emit('offer', { spells: o2.spells.map(s => s.id), until: o2.until }); });
     me.on('offerEnd', e => emit('offerEnd', { reason: e.reason }));
     me.on('ward', () => emit('ward', {}));
@@ -388,10 +422,12 @@ window.SuperFight = (() => {
     // ---------- boss mechanics ----------
     const F = { T, B, me, rng, now: t, emit, addTarget, drop, get, deal, heal, hurtArt, chip, wordHit, pick, phrase, win, gap, later, first,
       get phase() { return phase; }, get hp() { return hp; }, maxHp, get targets() { return targets; }, get typed() { return typed; }, get cur() { return cur; },
-      setStack(on) { stackOn = on; if (on) { refill(); fixStack(); } else if (cur === 'stack') { cur = null; typed = ''; } },
+      setStack(on) { if (IL) on = true; stackOn = on; if (on) { refill(); fixStack(); } else if (cur === 'stack') { cur = null; typed = ''; } },
+      lead: () => (IL ? IL.reach(stack) : 0), inline: !!IL,
       stunned: () => !!me.status('stunned-target'),
     };
     const mod = (MODS[B.id] || MODS.hydra)(F);
+    modRef = mod;
 
     // ---------- clock ----------
     function start() {
@@ -422,6 +458,14 @@ window.SuperFight = (() => {
       const due = sched.filter(s => s.at <= at);
       if (due.length) { sched = sched.filter(s => s.at > at); due.forEach(s => s.fn()); }
       if (status === 'fight' && mod.tick) mod.tick(at, dt);
+      if (IL && status === 'fight') IL.sync(lineList(), stack);
+    }
+    // the line for the page and the stream: the specials' tags, and each Hydra word's head
+    function lineSnap() {
+      if (!IL || status !== 'fight') return null;
+      const v = IL.view(stack, t());
+      const tags = v.tags.map((g, i) => { if (g) return g; const k = v.stackAt(i); const own = k >= 0 && stackOwn[k]; return own ? { kind: 'head', own, first: true, last: true } : null; });
+      return { cur: v.cur, next: v.next, tags, head: v.head ? { id: v.head.id, kind: v.head.kind, word: v.head.word } : null };
     }
 
     // ---------- reading ----------
@@ -438,7 +482,7 @@ window.SuperFight = (() => {
           shield: sup.shield, over: Math.max(0, Math.round(sup.overUntil - at)), slow: Math.max(0, Math.round(sup.slowUntil - at)),
           buffs: c.statuses.map(s => ({ name: s.name, left: s.until ? Math.max(0, Math.round(s.until - at)) : null, charges: s.charges || 0 })),
         },
-        typed, cur, stack: stackOn ? stack.slice(0, 6) : [], targets: tg,
+        typed, cur, stack: stackOn ? stack.slice(0, 6) : [], targets: tg, line: lineSnap(),
         finish: finish ? { phrase: finish.phrase, left: Math.max(0, Math.round(finish.due - at)), total: finish.total } : null,
         chaos: { fog: Math.max(0, Math.round(chaos.fogUntil - at)), speed: Math.max(0, Math.round(chaos.speedUntil - at)), block: chaosBlock() },
         hype: { n: Math.round(hype), goal: hypeGoal },
@@ -491,7 +535,8 @@ window.SuperFight = (() => {
       const REGROW = [0, 9000, 7500, 6000], REGEN = [0, 0.08, 0.1, 0.13];
       let neckUntil = 0, nextBite = 0, nextBreath = 0, nextMend = 0, biteWarn = false, mendAt = 0;
       const head = id => heads.find(h => h.id === id);
-      const size = h => Math.round(WORDS[h.id] * AVG[h.id] * 1.6 * (1 + 0.15 * (F.phase - 1)) * (T.wpm / 150 * 0.5 + 0.5));
+      // in the one line a head can't be picked to focus on, so heads are a little smaller there
+      const size = h => Math.round(WORDS[h.id] * AVG[h.id] * 1.6 * (1 + 0.15 * (F.phase - 1)) * (T.wpm / 150 * 0.5 + 0.5) * (F.inline ? 0.8 : 1));
       function newWord(h) {
         if (h.tid) F.drop(h.tid);
         h.word = F.pick(h.theme, h.len);
@@ -585,6 +630,18 @@ window.SuperFight = (() => {
           h.tid = F.addTarget('head', h.word, Infinity, { owner: h.id }).id;
           return true;
         },
+        // the one line: who owns the next stack word. Heads that are up take turns, so each one keeps
+        // taking hits; with every head down (the neck open) the words belong to no one and hit x3
+        owner() {
+          const up = heads.filter(h => h.up);
+          if (!up.length) return null;
+          // most words go to the head worth cutting first (Fork stops the bites; from phase 2 Patch,
+          // since it reattaches heads), the rest to the others so they still take some hits
+          const order = F.phase >= 2 ? ['patch', 'fork', 'root'] : ['fork', 'root', 'patch'];
+          const first = order.map(head).find(h => h && h.up);
+          if (first && F.rng() < 0.65) return first.id;
+          return up[Math.floor(F.rng() * up.length)].id;
+        },
         snap(at) {
           return {
             heads: heads.map(h => ({ id: h.id, name: h.name, role: h.role, hp: Math.max(0, Math.round(h.hp)), max: h.max, up: h.up, tid: h.tid, regrowIn: h.up ? 0 : Math.max(0, Math.round((neckUntil || h.downUntil) - at)) })),
@@ -621,7 +678,7 @@ window.SuperFight = (() => {
         if (two) good.push(F.pick(['cyber', 'common'], [4, 7], new Set([...avoid, good[0][0]])));
         const letters = good.reduce((a, w) => a + w.length, 0);
         const lastDue = lines.filter(l => l.state === 'live').reduce((m, l) => Math.max(m, l.due), 0);
-        const ms = F.win(letters, 1.9) + F.gap([0, 2800, 2200, 1700][F.phase]);
+        const ms = F.win(letters, 1.9) + F.gap([0, 2800, 2200, 1700][F.phase]) + F.lead();
         const due = Math.max(at + ms, lastDue + 700);
         const line = { id: 'L' + (++lid), tpl, fixes: good.map(g => ({ good: g, bad: mutate(g), done: false })), k: 0, born: at, due, total: due - at, state: 'live', endAt: 0, tid: null };
         lines.push(line);
@@ -641,6 +698,7 @@ window.SuperFight = (() => {
           if (!inOrder) { F.me.miss('order'); F.emit('order', { line: line.id }); F.chip(3, 'order'); }
           line.fixes[line.k].done = true; line.k++;
           F.drop(tg.id); line.tid = null;
+          if (line.k < line.fixes.length && F.inline) line.due = Math.max(line.due, F.now() + F.lead() + F.win(line.fixes[line.k].good.length, 1.2));
           if (line.k < line.fixes.length) line.tid = F.addTarget('fix', line.fixes[line.k].good, Math.max(300, line.due - F.now()), { owner: line.id, line: line.id }).id;
           else { done(line, 'fixed'); F.emit('fix', { line: line.id, inOrder }); }
         },

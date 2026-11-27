@@ -15,6 +15,13 @@
 //                                             and runs a timer under it when ms is set
 //   flow.push(word, typed, ok, threat)        after a word is submitted (threat: true or the tag's kind)
 //   flow.clear()
+//   flow.ahead()                              how many of the next words are already planned: the rest of
+//                                             the line you're on and all of the middle line. Special words
+//                                             only ever take over words after these (Gid, 27 Nov 2026), so
+//                                             nothing you're about to type changes under you
+//
+// WordFlow.far(flow, min)  the first index (0 = the current word) a special word may take: past
+// flow.ahead(), and never closer than min words
 window.WordFlow = (() => {
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -32,14 +39,14 @@ window.WordFlow = (() => {
 
   function create(box, { lines = 3 } = {}) {
     let done = [];
-    let last = null;
+    let last = null, ahead = 6;
     function paint(st) {
       const { cur, typed = '', mine = true, next = [], pens = null, fog = 0, threat = null, tags = null } = st;
       const fg = i => (i < fog ? ' fog' : '');
       // the timer and the slashes run as CSS animations started in the past (a negative delay),
       // so a repaint on every key carries on from where they were
       const tg = i => tags && tags[i];
-      const th = i => (threat && threat.i === i ? ' threat' : '') + (tg(i) ? ` tag t-${tg(i).kind}${tg(i).first ? ' first' : ''}${tg(i).last ? ' last' : ''}` : '');
+      const th = i => (threat && threat.i === i ? ' threat' : '') + (tg(i) ? ` tag t-${tg(i).kind}${tg(i).first ? ' first' : ''}${tg(i).last ? ' last' : ''}${tg(i).soon ? ' soon' : ''}` : '');
       const thAttr = i => {
         if (threat && threat.i === i) return ` style="--tw:${Math.round(threat.ms)}ms;--te:-${Math.round(threat.el)}ms"`;
         const g = tg(i); if (!g) return '';
@@ -62,18 +69,29 @@ window.WordFlow = (() => {
         const words = [...box.querySelectorAll('.fw')], cur = box.querySelector('.fw.cur');
         if (!cur || !words.length) return;
         const tops = [...new Set(words.map(w => w.offsetTop))].sort((a, b) => a - b);
-        if (tops.indexOf(cur.offsetTop) < 2) return;
+        if (tops.indexOf(cur.offsetTop) < 2) { count(words, cur, tops); return; }
         const top = words.filter(w => w.offsetTop === tops[0]).length;
-        if (!top || top > done.length) return;
+        if (!top || top > done.length) { count(words, cur, tops); return; }
         done = done.slice(top);
         paint(st);
       }
     }
+    // the words after the current one that sit on its line or on the middle line
+    function count(words, cur, tops) {
+      if (!cur.offsetParent) { ahead = Math.max(ahead, 20); return; }   // hidden: assume two full lines
+      const lock = tops[Math.max(1, tops.indexOf(cur.offsetTop))];
+      const after = words.slice(words.indexOf(cur) + 1);
+      let n = 0;
+      for (const w of after) { if (w.offsetTop <= lock) n++; else break; }
+      ahead = n;
+    }
     return {
       render,
+      ahead: () => ahead,
       push(word, typed, ok, threat) { done.push({ word, typed, ok, threat: typeof threat === 'string' ? threat : !!threat }); if (done.length > 120) done = done.slice(-120); },
-      clear() { done = []; if (last) render(last); },
+      clear() { done = []; ahead = 20; if (last) render(last); },
     };
   }
-  return { create };
+  const far = (flow, min = 3) => Math.max(min, (flow && flow.ahead ? flow.ahead() : 6) + 1);
+  return { create, far };
 })();

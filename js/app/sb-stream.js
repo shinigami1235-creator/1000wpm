@@ -176,7 +176,7 @@ window.SuperStream = (() => {
     function startSim(boss, dial) {
       const [hostLink, viewLink] = loopback();
       const t0 = performance.now();
-      simFight = SuperFight.create({ boss, dial, now: () => performance.now() });
+      simFight = SuperFight.create({ boss, dial, now: () => performance.now(), inline: { flow: () => null } });
       simBot = SuperBot.create({ state: simFight.state, char: simFight.char, back: simFight.back, now: () => performance.now() }, { wpm: SuperData.dial(dial).wpm + 20, acc: 0.985, react: 260 });
       simHost = host(hostLink, { fight: simFight, name: 'Art', sim: true });
       use(viewLink, 'sim');

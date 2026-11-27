@@ -19,6 +19,9 @@
 //   f.key(ok)                     every key press
 //   f.submit(text, { clean, ms, target })   a finished word; target is the chip id the page aimed at
 //   f.cast(result, t)             a spell the engine cast; its hits land on time
+//     lead   () => ms (optional): how long the player needs to reach a word put past their middle line
+//            (js/app/combat/inline.js). Every attack and move waits that much longer, and a wind-up
+//            shows for its usual length at the end of it, so the words arrive first
 //   f.state(t)  f.summary()  f.shift(ms)  f.debug
 window.RushFight = (() => {
   const INTRO_MS = 1800;
@@ -33,6 +36,7 @@ window.RushFight = (() => {
     const B = plan.boss, K = plan.knobs, tw = new Set(plan.twists);
     const max = Math.round(K.hp * (typeof Combat !== 'undefined' && Combat.hpScale ? Combat.hpScale('rush') : 1));   // Combat.HP_SCALE: Art's combo levels hit harder
     const rnd = (a, b) => a + rng() * (b - a);
+    const leadOf = () => (o.lead ? Math.max(0, Math.min(15000, o.lead() || 0)) : 0);
 
     let phase = 'new', fightAt = 0, endAt = 0, idN = 0, lastCounter = '', fightBest = 0;
     const boss = { hp: max, max, shield: null, shieldDone: false, stunUntil: 0, stunLong: false, panicUntil: 0, enraged: false, heat: 0, action: null, attackAt: 0, cycle: 0 };
@@ -189,7 +193,7 @@ window.RushFight = (() => {
     function addSig(t, o2) {
       const word = sigWord();
       const c = { id: nid(o2.kind), kind: o2.kind, word, born: t };
-      if (o2.timed) { c.total = flyMs(word); c.due = t + c.total; }
+      if (o2.timed) { c.total = flyMs(word) + leadOf(); c.due = t + c.total; }
       sigs.push(c);
       if (o2.kind !== 'decoy') stats.sigs++;
       emit('sig', { id: c.id, kind: c.kind, word, due: c.due, total: c.total, n: sigs.length });
@@ -261,42 +265,43 @@ window.RushFight = (() => {
       if (chain === 2) dur *= 0.85;
       if (boss.enraged) dur *= 0.85;
       const grace = frost; frost = 0;
-      const a = { type: 'windup', start: t, due: t + dur, total: dur, words, chain, ids: [], grace };
-      for (const w of words) { const id = nid('block'); a.ids.push(id); mech.push({ id, kind: 'block', word: w, due: a.due, total: dur, frozen: grace > 0 }); }
+      const lead = leadOf();
+      const a = { type: 'windup', start: t, due: t + lead + dur, total: lead + dur, words, chain, ids: [], grace, showAt: t + lead, shown: false };
+      for (const w of words) { const id = nid('block'); a.ids.push(id); mech.push({ id, kind: 'block', word: w, due: a.due, total: a.total, frozen: grace > 0 }); }
       boss.action = a;
-      emit('windup', { due: a.due, words, chain, ms: dur });
+      if (!lead) { a.shown = true; emit('windup', { due: a.due, words, chain, ms: dur }); }
     }
     function startMove(t) {
       stats.moves++;
-      const m = B.move;
+      const m = B.move, lead = leadOf();
       const L = (n, lo, hi) => pick({ count: n, theme: B.theme || 'mix', difficulty: [Math.max(1, K.diff[0] - 0.5), K.diff[1]], minLen: lo, maxLen: hi, distinctFirst: true });
       if (m === 'press') { emit('move', { move: m }); windup(t, 1); return; }
       const a = { type: m, start: t, ids: [] };
       if (m === 'gifts') {
         const ws = L(3, K.minLen, Math.min(8, K.maxLen));
         const letters = ws.join(' ').length;
-        a.due = t + K.react + K.perChar * letters * 0.85 + 1200; a.total = a.due - t;
+        a.due = t + lead + K.react + K.perChar * letters * 0.85 + 1200; a.total = a.due - t;
         ws.forEach(w => { const id = nid('gift'); a.ids.push(id); mech.push({ id, kind: 'gift', word: w, due: a.due, total: a.total }); });
       } else if (m === 'fixsign') {
         const [shown, answer] = D.SIGNS[Math.floor(rng() * D.SIGNS.length)];
-        a.due = t + K.react + 900 + K.perChar * answer.length * 1.3; a.total = a.due - t; a.shown = shown;
+        a.due = t + lead + K.react + 900 + K.perChar * answer.length * 1.3; a.total = a.due - t; a.shown = shown;
         const id = nid('fix'); a.ids.push(id);
         mech.push({ id, kind: 'fix', word: answer, shown, due: a.due, total: a.total });
       } else if (m === 'speakers') {
         const ws = L(6, 2, 4);
         const letters = ws.join(' ').length;
-        a.due = t + K.react + K.perChar * letters * 1.1 + 1500; a.total = a.due - t;
+        a.due = t + lead + K.react + K.perChar * letters * 1.1 + 1500; a.total = a.due - t;
         ws.forEach((w, i) => { const id = nid('spk'); a.ids.push(id); mech.push({ id, kind: 'speaker', word: w, order: i + 1, due: a.due, total: a.total }); });
       } else if (m === 'spell') {
         const set = D.SPELL[Math.floor(rng() * D.SPELL.length)];
         const opts = set.slice().sort(() => rng() - 0.5);
         const len = Math.max(...set.map(x => x.length));
-        a.due = t + Math.min(11000, Math.max(4500, K.react + 2600 + K.perChar * len * 1.2)); a.total = a.due - t; a.right = set[0];
+        a.due = t + lead + Math.min(11000, Math.max(4500, K.react + 2600 + K.perChar * len * 1.2)); a.total = a.due - t; a.right = set[0];
         opts.forEach(w => { const id = nid('ans'); a.ids.push(id); mech.push({ id, kind: 'answer', word: w, right: w === set[0], due: a.due, total: a.total }); });
       } else if (m === 'volley') {
         const ws = L(4, K.minLen, Math.min(6, Math.max(K.minLen + 1, K.maxLen)));
         a.packets = ws.map((w, i) => {
-          const launch = t + 500 + i * 700, fly = K.react + K.perChar * w.length * 1.25 + 700;
+          const launch = t + 500 + i * 700, fly = K.react + K.perChar * w.length * 1.25 + 700 + lead;
           return { id: nid('pkt'), word: w, launch, due: launch + fly, total: fly, done: false };
         });
         a.returned = 0;
@@ -358,6 +363,8 @@ window.RushFight = (() => {
         }
         return;
       }
+      // the wind-up shows once the player is about to reach its words
+      if (a.type === 'windup' && !a.shown && t >= a.showAt) { a.shown = true; emit('windup', { due: a.due, words: a.words, chain: a.chain, ms: a.due - t }); }
       if (t < a.due) return;
       // time ran out on the attack or the move
       if (a.type === 'windup') {
@@ -497,7 +504,7 @@ window.RushFight = (() => {
         track(me.word({ letters: 0, clean }));
         if (a && a.type === 'windup' && !a.reacted) {
           a.reacted = true;
-          const r = t - a.start - (ms || 0);
+          const r = t - (a.showAt || a.start) - (ms || 0);
           if (r > 0 && r < 8000) stats.reacts.push(r);
         }
         emit('blockWord', { id: c.id, word: c.word });

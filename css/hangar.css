@@ -35,3 +35,13 @@
   .hg-view { min-height: 48vh; }
   .hg-panel { max-height: none; }
 }
+/* bought parts (REWARDS.shop.bot): a price on the ones you don't own, and the Buy row under the options */
+.hg .seg button.locked { border-style: dashed; }
+.hg-price { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font: 400 11px/1 var(--f-mono); font-style: normal; color: var(--gold, #f2c230); }
+.hg-price svg, .hg-price img { width: 11px; height: 11px; }
+.hg-dot.locked { outline: 1px dashed var(--gold, #f2c230); outline-offset: 2px; }
+.hg-wrap { flex-wrap: wrap; }
+.hg-buy { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid rgba(242,194,48,.45); border-radius: var(--r); background: rgba(242,194,48,.06); }
+.hg-buy[hidden] { display: none; }
+.hg-buyrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.hg-buyrow .btn .hg-price { color: inherit; }

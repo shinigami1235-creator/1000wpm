@@ -39,7 +39,10 @@ Router.register('shop', (() => {
     const day = WPM.day(), inSeason = g => (!g.from || day >= g.from) && (!g.until || day <= g.until);
     const gear = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).filter(g => inSeason(g) || WPM.owns(g.id))
       .map(g => ({ ...g, category: g.kb ? 'Keyboards' : 'Operator' }));
-    return [...gear, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
+    // bot parts for the hangar (REWARDS.shop.bot), each with a picture of a bot wearing it
+    const bot = ((window.REWARDS && REWARDS.shop && REWARDS.shop.bot) || []).filter(g => inSeason(g) || WPM.owns(g.id))
+      .map(g => ({ ...g, category: 'Bots', icon: 'bot:' + g.id, desc: g.desc || 'Try it on in the hangar first.' }));
+    return [...gear, ...bot, ...list].filter(i => i && i.id && !i.gift).map(i => ({ item: i, cat: String(i.category || i.cat || i.type || 'other') }));
   }
   function categories(list) {
     const named = window.RoomItems.categories;
@@ -55,6 +58,7 @@ Router.register('shop', (() => {
       const order = named.map(x => x.id || x);
       ids = [...order.filter(id => ids.includes(id)), ...ids.filter(id => !order.includes(id))];
       if (ids.includes('Operator')) ids = ['Operator', ...ids.filter(id => id !== 'Operator')];
+      if (ids.includes('Bots')) ids = ['Bots', ...ids.filter(id => id !== 'Bots')];
     }
     return ids.map(id => ({ id, name: name(id), n: list.filter(x => x.cat === id).length }));
   }
@@ -135,6 +139,7 @@ Router.register('shop', (() => {
   }
   // Stand-in pictures for operator gear until the generated models have their own renders
   function gearIcon(kind) {
+    if (String(kind).startsWith('bot:') && window.BotKit && BotKit.icon) { const it = (REWARDS.shop.bot || []).find(x => 'bot:' + x.id === kind); if (it) return BotKit.icon(it); }
     const c = (window.Theme && Theme.hex('accent')) || '#39ff88';
     const keys = (x, y, w, n, rows, gap = 4) => { let k = ''; for (let r = 0; r < rows; r++) for (let i = 0; i < n; i++) k += `<rect x="${x + i * (w + gap)}" y="${y + r * (w + gap)}" width="${w}" height="${w}" rx="2"/>`; return k; };
     const art = {

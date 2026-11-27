@@ -1476,8 +1476,14 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .fw.t-return { --kc: #6bffb8; }
 .fw.t-add    { --kc: #c58bff; }
 .fw.t-heal, .fw.t-revive, .fw.t-cover { --kc: #8fe8a0; }
+.fw.t-fix    { --kc: #ffb36b; }
+.fw.t-weak   { --kc: #ffcf4a; font-weight: 600; }
+.fw.t-boost  { --kc: #7fd8ff; }
 .fw.t-spell  { --kc: var(--sc, #ff5cf0); text-shadow: 0 0 10px color-mix(in srgb, var(--kc) 55%, transparent); }
 .fw.done.was-block i.ok, .fw.done.was-assist i.ok { color: var(--cyan); }
+/* coming, not open yet: the colour without the timer, and it can already be typed (it waits armed) */
+.fw.tag.soon { color: color-mix(in srgb, var(--kc) 70%, var(--ink-3)); }
+.fw.tag.soon.first { text-decoration: underline dotted color-mix(in srgb, var(--kc) 60%, transparent); text-underline-offset: .28em; }
 .fw.done.was-spell i.ok { color: #ff9bf5; }
 /* the raid's shield on the arena while a block attack winds up */
 .page-boss .wb-shieldbar { position: absolute; inset: auto auto 14px 50%; width: max-content; height: auto; transform: translateX(-50%); z-index: 5; display: grid; justify-items: center; gap: 5px;

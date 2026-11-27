@@ -10,6 +10,7 @@ Router.register('lab', (() => {
 
   function mount(root) {
     el = root;
+    if (window.IdleAudio) IdleAudio.music('operator');   // the operator page's own idle loop (tools/music/idle.py)
     P = saved();
     el.classList.add('page-full');
     el.innerHTML = `
@@ -245,6 +246,7 @@ Router.register('lab', (() => {
   }
 
   function unmount() {
+    if (window.IdleAudio) IdleAudio.stop();
     if (stop) stop(); stop = null;
     if (offTheme) offTheme(); offTheme = null;
     el = null;

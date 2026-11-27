@@ -9,14 +9,15 @@ const ctx = { console, Math, JSON, Set, Map, Array, Object, Number, String, perf
 ctx.window = ctx; ctx.globalThis = ctx;
 vm.createContext(ctx);
 for (const f of ['js/wordbank-common.js', 'js/wordbank.js', 'js/app/combat/bus.js', 'js/app/combat/spells.js', 'js/app/combat/combo.js',
-  'js/app/combat/damage.js', 'js/app/combat/engine.js', 'js/app/rewards-config.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js']) {
+  'js/app/combat/damage.js', 'js/app/combat/engine.js', 'js/app/combat/inline.js', 'js/app/rewards-config.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 }
 function rngOf(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function fight(boss, dial, wpm, seed, acc = 0.985) {
   clock = 0;
   const rng = rngOf(seed);
-  const f = ctx.SuperFight.create({ boss, dial, now: () => clock, rng });
+  // INLINE=1: the one line (Gid, 27 Nov 2026), the way the streamer page runs it
+  const f = ctx.SuperFight.create({ boss, dial, now: () => clock, rng, inline: process.env.INLINE ? { flow: () => null } : null });
   const bot = ctx.SuperBot.create({ state: f.state, char: f.char, back: f.back, now: () => clock }, { wpm, acc, rng, react: 300 });
   f.start();
   let phases = 1;

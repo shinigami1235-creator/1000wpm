@@ -38,10 +38,10 @@ window.SuperData = (() => {
     {
       id: 'hydra', name: 'Kernel Hydra', n: 1, hpK: 1, enrageS: 270,
       look: 'Three heads on one body, in a flooded server pit.',
-      core: 'Each head has its own word. Type it to hit that head. Heads you leave alone heal and cut heads grow back.',
+      core: 'Each word in your line belongs to a head and is in its colour. Typing it hits that head. Heads you leave alone heal and cut heads grow back.',
       phases: [
-        'Each head has its own word. Heads you leave alone heal and cut heads grow back.',
-        'Cut Patch first since it puts cut heads back on now.',
+        'Each word in your line belongs to a head. Heads you leave alone heal and cut heads grow back.',
+        'Patch puts cut heads back on now, so more of your words go to Patch.',
         'The heads grow back in 6 seconds and Root\'s breath needs two words to block.',
       ],
       finish: ['sever every head', 'cut the kernel loose', 'no head grows back'],
@@ -60,9 +60,9 @@ window.SuperData = (() => {
     {
       id: 'compiler', name: 'The Compiler', n: 2, hpK: 0.9, enrageS: 285,
       look: 'A tower of screens that writes code at you.',
-      core: 'Type the fixed word for each red bug before its line compiles. Fix the oldest line first or lose HP.',
+      core: 'The fixed word for each red bug comes up in your line. Type it before its line compiles.',
       phases: [
-        'Type the fixed word for each red bug before its line compiles. Fix the oldest line first.',
+        'The fixed word for each red bug comes up in your line. Type it before its line compiles.',
         'Some lines have two bugs. Fix them left to right.',
         'Lines compile faster and two can arrive at once.',
       ],
@@ -83,10 +83,10 @@ window.SuperData = (() => {
     {
       id: 'leviathan', name: 'Packet Leviathan', n: 3, hpK: 1, enrageS: 270,
       look: 'A serpent made of packets that circles the arena.',
-      core: 'The weak point word shows on the segment facing you. Type it before it passes for triple damage.',
+      core: 'The weak point word comes up in your line when a segment opens. Type it before it passes for triple damage.',
       phases: [
-        'The weak point word shows on the segment facing you. Type it before it passes.',
-        'A red decoy word shows on a second segment. Typing it costs HP.',
+        'The weak point word comes up in your line. Type it before the segment passes.',
+        'A second segment shows a red decoy. It stays out of your line, so let it pass.',
         'The weak point windows get shorter and the tail sweep needs two words to block.',
       ],
       finish: ['drop every packet', 'close the last port', 'sink the leviathan'],

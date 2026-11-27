@@ -397,3 +397,10 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
 @keyframes sb-artflash { 0% { background: rgba(255,40,60,.45); } 100% { background: transparent; } }
 @keyframes sb-redge { 0% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .sb-arena.jolt, .sb-arena.jolt-big { animation: none; } .sb-call { animation-duration: 1ms; animation-fill-mode: none; } }
+
+/* the one line (Gid, 27 Nov 2026): Art's words as a block of lines with every special in it */
+.sb-type.inline { left: 21%; right: 7%; }
+.sb-type.inline .sb-line { display: block; width: 100%; background: var(--scrim); padding: 1cqh 2.4cqh 1.2cqh; }
+.sb-type.inline .fw-lines { font-size: calc(var(--k) * 3.8cqh); color: var(--ink-2); }
+.sb-type.inline .sb-next { display: none; }
+.fw.t-head { --kc: var(--sc, #ff8a3d); }

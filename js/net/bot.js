@@ -78,7 +78,9 @@
 
     function choose(now, v) {
       const ck = 'c:' + (v.counterId || v.counter), bk = 'b:' + (v.buffId || (v.buffs || []).join()), ok = 'o:' + (v.offerId || (v.offers || []).join());
-      if (v.counter && !seen.has(ck)) {
+      // a counter word sits ahead in the line for the attack's lead (party-rules.js cfg.lead); the bot
+      // keeps typing its stream and reaches it about as the boss starts to wind up
+      if (v.counter && !seen.has(ck) && !(v.counterLead > 0)) {
         seen.add(ck);
         if (r() < (o.guard != null ? o.guard : 0.85)) return { word: v.counter, kind: 'counter', delay: react[0] + r() * (react[1] - react[0]) };
       }

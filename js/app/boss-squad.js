@@ -113,18 +113,25 @@ window.BossSquad = (() => {
           const weights = alive.map(m => (m.you ? 1.3 : 1));
           let x = Math.random() * weights.reduce((a, b) => a + b, 0), m = alive[0];
           for (let i = 0; i < alive.length; i++) { x -= weights[i]; if (x < 0) { m = alive[i]; break; } }
-          m.lockUntil = t + LOCK_WIND; m.lockId = 'lock' + (++lockSeq);
+          // your dodge word sits past your middle line (Gid, 27 Nov 2026), so the lock-on on you is
+          // picked early: the word arrives first, the red sight line about as you reach it
+          const lead = m.you && o.reach ? Math.max(0, o.reach() - 0.4 * LOCK_WIND) : 0;
+          m.lockAt = t + lead; m.lockUntil = m.lockAt + LOCK_WIND; m.lockId = 'lock' + (++lockSeq);
+          m.lockShown = false; m.evadeAt = 0;
           m.dodgeWord = m.you ? (o.dodgeWord ? o.dodgeWord() : 'dodge') : null;
-          emit('lock', { who: m, until: m.lockUntil });
           // simulated raiders decide now whether they dodge and whether a Sentinel covers them
           if (!m.you) m.plan = { dodge: Math.random() < 0.5 + (m.acc - 0.9) * 2, at: t + rnd(1200, 3800) };
         }
         const k = 1 - 0.08 * phase;
         nextLock = t + rnd(LOCK_EVERY[0] * k, LOCK_EVERY[1] * k);
       }
-      // lock-ons landing, dodges and covers
+      // lock-ons showing, landing, dodges and covers
       for (const m of M) {
         if (!m.lockUntil) continue;
+        if (t < m.lockAt) continue;
+        if (!m.lockShown) { m.lockShown = true; emit('lock', { who: m, until: m.lockUntil }); }
+        // you typed the dodge before the lock-on showed: your bot rolls out of it a moment later
+        if (m.you && m.evadeAt && t >= m.evadeAt) { m.lockUntil = 0; m.evadeAt = 0; st.dodges++; emit('dodge', { who: m }); continue; }
         if (!m.you && m.plan && t >= m.plan.at && m.plan.dodge) { m.lockUntil = 0; m.plan = null; emit('dodge', { who: m }); continue; }
         // a simulated Sentinel covers a squadmate a second before the hit
         const sen = M.find(x => !x.you && x !== m && x.division === 'sentinel' && !x.down);
@@ -164,11 +171,11 @@ window.BossSquad = (() => {
     function targets(t) {
       const out = [];
       if (youM.down) return out;
-      if (youM.lockUntil) out.push({ kind: 'dodge', id: youM.lockId, word: youM.dodgeWord, due: youM.lockUntil, total: LOCK_WIND, who: youM });
+      if (youM.lockUntil && !youM.evadeAt) out.push({ kind: 'dodge', id: youM.lockId, word: youM.dodgeWord, opens: youM.lockAt, due: youM.lockUntil, total: LOCK_WIND, who: youM });
       for (const m of M) {
         if (m.you) continue;
         if (m.down) { out.push({ kind: 'revive', id: 'rev:' + m.id, word: m.handle, due: m.downUntil, total: DOWN_MS, who: m }); continue; }
-        if (m.lockUntil && youM.division === 'sentinel') out.push({ kind: 'cover', id: 'cov:' + m.lockId, word: m.handle, due: m.lockUntil, total: LOCK_WIND, who: m });
+        if (m.lockUntil && m.lockShown && youM.division === 'sentinel') out.push({ kind: 'cover', id: 'cov:' + m.lockId, word: m.handle, due: m.lockUntil, total: LOCK_WIND, who: m });
       }
       // one heal at a time: the most hurt squadmate, once the heal is ready
       const arch = youM.division === 'architect';
@@ -180,6 +187,7 @@ window.BossSquad = (() => {
     }
     function act(m, t) {
       const w = m.who;
+      if (m.kind === 'dodge' && youM.lockUntil && youM.lockId === m.id && t < youM.lockAt + 300) { youM.evadeAt = Math.max(t, youM.lockAt) + 700; return { kind: 'ready' }; }
       if (m.kind === 'dodge' && youM.lockUntil && youM.lockId === m.id) { youM.lockUntil = 0; st.dodges++; emit('dodge', { who: youM }); return { kind: 'dodge' }; }
       if (m.kind === 'cover' && w.lockUntil) { w.lockUntil = 0; w.coverTried = false; st.saves++; st.covered++; emit('covered', { who: w, by: youM }); return { kind: 'cover', who: w }; }
       if (m.kind === 'revive' && w.down) { up(w, REVIVE_HP, youM); st.saves++; st.revives++; return { kind: 'revive', who: w }; }

@@ -220,3 +220,15 @@ Counts: 8000 common words in five bands (1000, 1500, 2000, 2000, 1500), 900 more
 3. Show `me.offer()` as typing targets. When one is typed, `me.cast(word, { clean })`, run its `hits` on timers and pass them to `fx.cast`.
 4. When the other side attacks, `me.hurt()` first.
 5. For PvP, the target adapter is the opponent's figure and the hits go to their HP. `js/net/duel-rules.js` does this for the duels: `ward` blocks the next shot or spell, `stun` locks the other side's keys for a moment and `freeze` halves their word damage. NET.md has the PvP numbers and how a server checks them.
+
+## One line of words in every boss mode (Gid, 27 Nov 2026)
+
+There are no extra words to look up for. Every special (a block, a dodge, a cover, a packet, a bug, a weak point, a bug fix, a heal, a revive, a buff, a spell) is a word in your own line, in its own colour, and typing it does the thing. Gid's rule after playing it: a special only ever goes in **past the middle line**, so the words you're about to type never change. `WordFlow.far(flow)` (js/app/wordflow.js) gives the first index a special may take: past the rest of the line you're on and all of the middle line, and never closer than 3 words.
+
+Since the words sit further away, each mode gives you the time to reach them:
+
+- **World Boss** (shared clock, boss.js): attacks are seen coming 20 s ahead on the schedule (`foresee`). A block or packet goes in at the word you'd reach about as it opens (dotted underline, no timer yet). Typed before it opens, it waits armed ("SHIELD READY") and fires the moment the attack does. An attack you can't reach in time at your speed (you just joined, or it's still the opening line) isn't aimed at you: no words and no hit. Lock-ons at you are picked early (boss-squad.js `reach`), so the dodge word comes first and the red sight line about as you get to it.
+- **Boss Rush, Superboss, Party**: the fight owns its stack, so `InlineLine` (js/app/combat/inline.js) puts specials in between the stack words. Rush (`RushFight` option `lead`) and the Superboss (`inline: { flow }`) add the time to reach a special to its window, and a wind-up only shows for its usual length at the end. Party (`PartyRules` `cfg.lead`, 2 s) puts the counter word in everyone's line before the boss starts to wind up, without changing how often it attacks.
+- Spells are earned into the line in every mode (`Combat.create({ earn: true })`): one per combo milestone.
+- The Superboss's Hydra keeps its stack on in the one line, and each stack word belongs to a head (in that head's colour); most go to the head worth cutting first. Decoys stay out of the line. Party's Hydra and Twins aim for you (each player's words hit a different head).
+- Checks: `INLINE=1 node tools/superboss/balance.js` runs the Superboss with the one line.
