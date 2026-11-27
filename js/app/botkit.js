@@ -117,9 +117,9 @@ window.BotKit = (() => {
   // a shop picture for a bought part: a little bot wearing it (an SVG data URL)
   function icon(it) {
     const acc = (window.Theme && Theme.hex('accent')) || '#8cff58';
-    const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a', cherry: '#d8343f', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: '#22306a', holo: '#e8f0ff' };
+    const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a', cherry: '#d8343f', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: '#22306a', holo: '#e8f0ff', gunmetal: '#4d535c', black: '#1f2226', chrome: '#b8bec7', ivory: '#efe6d2', jade: '#3fae86', ocean: '#1f6f9a', sunset: '#ff9a6a', carbon: '#2b2e33', obsidian: '#141318' };
     const body = it.part === 'shell' ? shellC[it.v] || '#d8dce2' : '#d8dce2';
-    const FXG = { rainbow: ['#ff5c8a', '#ffd23d', '#3effc8', '#8c7bff'], ember: ['#c41c1c', '#ff6a1f', '#ffe066', '#ff6a1f'], frost: ['#3b7dff', '#7fe8ff', '#ffffff', '#7fe8ff'], galaxy: ['#3b2bff', '#9b6bff', '#ff5cd6', '#5cc8ff'] };
+    const FXG = { rainbow: ['#ff5c8a', '#ffd23d', '#3effc8', '#8c7bff'], ember: ['#c41c1c', '#ff6a1f', '#ffe066', '#ff6a1f'], frost: ['#3b7dff', '#7fe8ff', '#ffffff', '#7fe8ff'], galaxy: ['#3b2bff', '#9b6bff', '#ff5cd6', '#5cc8ff'], toxic: ['#2f8a12', '#9dff2e', '#f4ff9a', '#9dff2e'], ocean: ['#2266ff', '#2ee6d6', '#9ffcff', '#2ee6d6'], sunset: ['#ffd166', '#ff7a59', '#d94f9a', '#ff7a59'], neon: ['#ff2bd6', '#ff2bd6', '#20e7ff', '#20e7ff'] };
     const fxg = FXG[it.part === 'color' && it.v] || FXG.rainbow;
     const glowC = it.part === 'color' ? 'url(#rb)' : acc;
     let eyes = `<rect x="78" y="96" width="12" height="12" rx="3" fill="${acc}"/><rect x="110" y="96" width="12" height="12" rx="3" fill="${acc}"/>`;
@@ -135,6 +135,11 @@ window.BotKit = (() => {
         squint: `<path d="M77 95l13 7-13 7M123 95l-13 7 13 7" stroke="${acc}" stroke-width="4" fill="none" stroke-linejoin="round"/>`,
         glasses: `<rect x="74" y="93" width="20" height="18" rx="3" stroke="${acc}" stroke-width="3" fill="none"/><rect x="106" y="93" width="20" height="18" rx="3" stroke="${acc}" stroke-width="3" fill="none"/><path d="M94 100h12" stroke="${acc}" stroke-width="3"/><circle cx="84" cy="102" r="3" fill="${acc}"/><circle cx="116" cy="102" r="3" fill="${acc}"/>`,
         cyclops: `<circle cx="100" cy="102" r="11" fill="${acc}"/><circle cx="103" cy="98" r="4" fill="#000"/>`,
+        code: `<path d="M90 94l-12 8 12 8M110 94l12 8-12 8" stroke="${acc}" stroke-width="4" fill="none"/>`,
+        cross: `<path d="M84 93v18M75 102h18M116 93v18M107 102h18" stroke="${acc}" stroke-width="5"/>`,
+        moon: `<path d="M88 94a9 9 0 1 0 0 16a7 7 0 1 1 0-16zM120 94a9 9 0 1 0 0 16a7 7 0 1 1 0-16z" fill="${acc}"/>`,
+        diamond: `<path d="M84 92l9 10-9 10-9-10zM116 92l9 10-9 10-9-10z" fill="${acc}"/>`,
+        dizzy: `<path d="M84 102a3 3 0 1 1 3 3a6 6 0 1 1 -6-6a9 9 0 1 1 9 9M116 102a3 3 0 1 0 -3 3a6 6 0 1 0 6-6a9 9 0 1 0 -9 9" stroke="${acc}" stroke-width="2.5" fill="none"/>`,
       };
       eyes = E[it.v] || eyes;
     }
@@ -155,6 +160,11 @@ window.BotKit = (() => {
       chef: '<rect x="76" y="50" width="48" height="20" fill="#f4f4f4"/><circle cx="84" cy="44" r="13" fill="#f4f4f4"/><circle cx="100" cy="38" r="15" fill="#f4f4f4"/><circle cx="116" cy="44" r="13" fill="#f4f4f4"/>',
       wizard: `<path d="M100 6l-6 4 26 56h-46l22-48z" fill="#3b2bff"/><ellipse cx="98" cy="66" rx="40" ry="7" fill="#3b2bff"/><path d="M96 40l3 6 6 1-5 4 1 6-5-3-5 3 1-6-5-4 6-1z" fill="#f2c230"/>`,
       halo: '<ellipse cx="100" cy="44" rx="30" ry="8" stroke="#f2c230" stroke-width="5" fill="none"/>',
+      twinant: `<path d="M86 64l-8-34M114 64l8-34" stroke="#8a919b" stroke-width="4"/><circle cx="78" cy="28" r="7" fill="${acc}"/><circle cx="122" cy="28" r="7" fill="${acc}"/>`,
+      mohawk: `<path d="M84 64l6-24 6 10 6-16 6 14 6-8 4 24z" fill="#2f3a33"/><path d="M90 40l6 10 6-16 6 14 6-8" stroke="${acc}" stroke-width="2" fill="none"/>`,
+      dish: `<path d="M100 64v-18" stroke="#8a919b" stroke-width="4"/><path d="M72 30a28 16 0 0 0 56 0z" fill="#aeb4bd" transform="rotate(-15 100 36)"/><circle cx="104" cy="22" r="4" fill="${acc}"/>`,
+      tophat: `<rect x="74" y="58" width="52" height="8" rx="3" fill="#141418"/><rect x="82" y="22" width="36" height="38" rx="3" fill="#141418"/><rect x="82" y="50" width="36" height="6" fill="${acc}"/>`,
+      unicorn: `<path d="M100 14l9 48h-18z" fill="#fbf3ff"/><path d="M94 52l14-6M95 40l11-5M97 28l7-3" stroke="${acc}" stroke-width="2.5"/>`,
     };
     const top = it.part === 'top' ? TOPS[it.v] || '' : '';
     const BACKS = {
@@ -165,10 +175,35 @@ window.BotKit = (() => {
       bat: '<path d="M60 96l-44-18q8 14 2 26q10-6 14 6q8-8 14 2q4-10 14-6zM140 96l44-18q-8 14-2 26q-10-6-14 6q-8-8-14 2q-4-10-14-6z" fill="#2a2f37"/>',
       backpack: `<rect x="134" y="84" width="34" height="48" rx="10" fill="#e8a23a"/><rect x="138" y="110" width="26" height="14" rx="4" fill="#c27f1e"/><circle cx="151" cy="96" r="3" fill="${acc}"/>`,
       rocket: `<path d="M150 60q10 14 10 44h-20q0-30 10-44z" fill="#e8ecf2"/><path d="M140 96l-8 14h8zM160 96l8 14h-8z" fill="#d8343f"/><circle cx="150" cy="82" r="5" fill="#5cc8ff"/><path d="M144 106l6 24 6-24z" fill="${acc}"/>`,
+      jetpack: `<rect x="34" y="80" width="22" height="50" rx="9" fill="#d8dce2"/><rect x="144" y="80" width="22" height="50" rx="9" fill="#d8dce2"/><path d="M36 132l9 34 9-34zM146 132l9 34 9-34z" fill="${acc}"/><path d="M34 96h22M144 96h22" stroke="#8a919b" stroke-width="3"/>`,
+      solar: `<rect x="6" y="74" width="44" height="32" fill="#16264a" stroke="#8a919b" stroke-width="3"/><rect x="150" y="74" width="44" height="32" fill="#16264a" stroke="#8a919b" stroke-width="3"/><path d="M28 74v32M6 90h44M172 74v32M150 90h44" stroke="#2c4a80" stroke-width="2"/><path d="M50 90h12M138 90h12" stroke="#8a919b" stroke-width="4"/>`,
+      butterfly: `<ellipse cx="34" cy="78" rx="28" ry="22" fill="${acc}" opacity=".6"/><ellipse cx="166" cy="78" rx="28" ry="22" fill="${acc}" opacity=".6"/><ellipse cx="44" cy="120" rx="18" ry="14" fill="${acc}" opacity=".6"/><ellipse cx="156" cy="120" rx="18" ry="14" fill="${acc}" opacity=".6"/><ellipse cx="34" cy="78" rx="18" ry="13" stroke="${acc}" stroke-width="3" fill="none"/><ellipse cx="166" cy="78" rx="18" ry="13" stroke="${acc}" stroke-width="3" fill="none"/>`,
+      dragon: '<path d="M60 96L30 56L4 50Q16 76 6 96Q24 90 26 110Q38 98 46 116Q52 102 60 104zM140 96L170 56L196 50Q184 76 194 96Q176 90 174 110Q162 98 154 116Q148 102 140 104z" fill="#3a1a1e" stroke="#9aa0a8" stroke-width="3"/>',
     };
     const back = it.part === 'back' ? BACKS[it.v] || '' : '';
+    // an arm tool on the bot's left, a trail under it, motion lines for an emote, sparkles for a victory pose
+    const ARMS = {
+      blaster: `<rect x="22" y="112" width="36" height="16" rx="4" fill="#aeb4bd"/><rect x="8" y="116" width="16" height="8" fill="#8a919b"/><circle cx="8" cy="120" r="5" fill="${acc}"/>`,
+      shield: `<path d="M38 92l20 12v24l-20 12-20-12v-24z" fill="#aeb4bd" stroke="${acc}" stroke-width="4"/>`,
+      claw: `<rect x="40" y="114" width="18" height="12" fill="#aeb4bd"/><path d="M40 114l-16-10M40 120l-20 0M40 126l-16 10" stroke="#8a919b" stroke-width="5" stroke-linecap="round"/>`,
+      drill: `<rect x="44" y="112" width="14" height="16" fill="#aeb4bd"/><path d="M44 112l-30 8 30 8z" fill="#8a919b"/><path d="M38 114l2 12M30 116l2 8" stroke="${acc}" stroke-width="2"/>`,
+      saber: `<rect x="44" y="116" width="14" height="8" fill="#8a919b"/><path d="M44 120L6 150" stroke="${acc}" stroke-width="7" stroke-linecap="round"/><path d="M44 120L6 150" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>`,
+      cannon: `<rect x="18" y="108" width="40" height="24" rx="6" fill="#aeb4bd"/><circle cx="18" cy="120" r="9" fill="#16191e"/><circle cx="18" cy="120" r="5" fill="${acc}"/>`,
+    };
+    const TRAILS = {
+      spark: () => [0, 1, 2, 3, 4, 5].map(i => `<circle cx="${92 + (i % 3) * 8}" cy="${160 + i * 6}" r="${3 - i * 0.35}" fill="${acc}"/>`).join(''),
+      pixels: () => [0, 1, 2, 3, 4].map(i => `<rect x="${90 + (i * 7) % 20}" y="${160 + i * 7}" width="6" height="6" fill="${acc}"/>`).join(''),
+      ribbon: () => `<path d="M100 156q-14 14 0 22t0 22" stroke="${acc}" stroke-width="6" fill="none" stroke-linecap="round"/>`,
+      hearts: () => '<path d="M86 172l-6-6a4 4 0 0 1 6-5a4 4 0 0 1 6 5zM112 186l-5-5a3 3 0 0 1 5-4a3 3 0 0 1 5 4zM96 194l-4-4a3 3 0 0 1 4-3a3 3 0 0 1 4 3z" fill="#ff6fae"/>',
+      flame: () => '<path d="M100 154q16 18 0 44q-16-26 0-44z" fill="#ff7a2a"/><path d="M100 162q8 12 0 26q-8-14 0-26z" fill="#ffe08a"/>',
+      stars: () => '<path d="M90 166l2 5 5 1-4 3 1 5-4-3-4 3 1-5-4-3 5-1zM112 182l2 4 4 1-3 3 1 4-4-2-4 2 1-4-3-3 4-1z" fill="#fff6c8"/>',
+    };
+    const arm = it.part === 'arm' ? ARMS[it.v] || '' : '';
+    const trail = it.part === 'trail' && TRAILS[it.v] ? TRAILS[it.v]() : '';
+    const moves = it.part === 'emote' ? `<path d="M40 80q-10 24 0 48M28 72q-14 32 0 64M160 80q10 24 0 48M172 72q14 32 0 64" stroke="${acc}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".8"/>`
+      : it.part === 'victory' ? [[40, 40, '#ffd23d'], [160, 46, '#ff6fae'], [30, 140, '#5cc8ff'], [170, 136, acc], [100, 20, '#fff']].map(([x, y, c]) => `<path d="M${x} ${y - 9}l3 6 6 3-6 3-3 6-3-6-6-3 6-3z" fill="${c}"/>`).join('') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
-      <rect width="200" height="200" fill="#050a07"/>${back}<circle cx="100" cy="104" r="44" fill="${body}"/><path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
+      <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
       <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
@@ -1127,6 +1162,18 @@ window.BotKit = (() => {
       arm: r(8) < 0.6 ? 'none' : OPTIONS.arm[1 + Math.floor(r(9) * (OPTIONS.arm.length - 1))][0], trail: 'none',
       victory: OPTIONS.victory[Math.floor(r(1) * OPTIONS.victory.length)][0] }) };
   }
+  // one moment of a victory pose: height above the hover, turn, tilt, flip (radians) and the face
+  const VP = { y: 0, turn: 0, tilt: 0, flip: 0, face: 'happy' };
+  function victoryPose(kind, t, out = {}) {
+    out.y = 0; out.turn = 0; out.tilt = 0; out.flip = 0; out.face = 'happy';
+    if (kind === 'spin') { out.y = 0.3 + Math.sin(t * 3) * 0.15; out.turn = t * 5; }
+    else if (kind === 'float') { out.y = 0.8 + Math.sin(t * 1.5) * 0.25; out.turn = Math.sin(t * 0.7) * 0.9; out.tilt = Math.sin(t * 1.2) * 0.15; out.face = 'heart'; }
+    else if (kind === 'dance') { const b = t * 6; out.y = Math.abs(Math.sin(b)) * 0.4; out.turn = Math.sin(b / 2) * 0.8; out.tilt = Math.sin(b) * 0.25; }
+    else if (kind === 'flip') { const u = (t % 1.8) / 1.8, fu = Math.min(1, u / 0.55); out.y = Math.sin(Math.min(1, u / 0.6) * Math.PI) * 1.1; out.flip = -fu * fu * (3 - 2 * fu) * Math.PI * 2; }
+    else if (kind === 'fireworks') { out.y = Math.abs(Math.sin(t * 4)) * 0.35; out.turn = Math.sin(t * 1.6) * 0.4; out.face = 'star'; }
+    else { out.y = Math.abs(Math.sin(t * 5)) * 0.5; out.turn = Math.sin(t * 2.5) * 0.5; }
+    return out;
+  }
   function actor(THREE, id, look = {}, o = {}) {
     const V = THREE.Vector3, bot = create(THREE, id, { ...look, scale: o.scale || 1 });
     const group = new THREE.Group(); group.add(bot.group);
@@ -1146,15 +1193,7 @@ window.BotKit = (() => {
       const sc = t - castAt, lunge = sc < 0.4 ? Math.sin(sc / 0.4 * Math.PI) * 0.9 : 0;   // a dart forward on a cast
       let y = hover, face, tilt = 0, turn = 0, flip = 0;
       if (anim === 'defeat') { y = hover * 0.4 + Math.sin(t * 1.3) * 0.04; face = 'x'; tilt = 0.7 + Math.sin(t * 0.9) * 0.05; }
-      else if (anim === 'victory') {
-        face = 'happy';
-        if (VIC === 'spin') { y = hover + 0.3 + Math.sin(t * 3) * 0.15; turn = t * 5; }
-        else if (VIC === 'float') { y = hover + 0.8 + Math.sin(t * 1.5) * 0.25; turn = Math.sin(t * 0.7) * 0.9; tilt = Math.sin(t * 1.2) * 0.15; face = 'heart'; }
-        else if (VIC === 'dance') { const b = t * 6; y = hover + Math.abs(Math.sin(b)) * 0.4; turn = Math.sin(b / 2) * 0.8; tilt = Math.sin(b) * 0.25; }
-        else if (VIC === 'flip') { const u = (t % 1.8) / 1.8, fu = Math.min(1, u / 0.55); y = hover + Math.sin(Math.min(1, u / 0.6) * Math.PI) * 1.1; flip = -fu * fu * (3 - 2 * fu) * Math.PI * 2; }
-        else { y = hover + Math.abs(Math.sin(t * 5)) * 0.5; turn = Math.sin(t * 2.5) * 0.5; }
-        bot.cheer(t, VIC);
-      }
+      else if (anim === 'victory') { victoryPose(VIC, t, VP); y = hover + VP.y; turn = VP.turn; tilt = VP.tilt; flip = VP.flip; face = VP.face; bot.cheer(t, VIC); }
       else if (anim === 'type' || sc < 0.4) face = sc < 0.4 ? 'angry' : 'focus';
       bot.group.position.set(0, y, lunge);
       bot.group.rotation.set(flip, turn, tilt);
@@ -1189,5 +1228,5 @@ window.BotKit = (() => {
     return { meshes, dispose() { keep.forEach(x => x.dispose && x.dispose()); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, FX, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon };
+  return { create, FX, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon, victoryPose };
 })();
