@@ -224,6 +224,18 @@ window.RushData = (() => {
     brute: { kind: 'page', name: 'Pistons', gap: 2.5, heat: 5, text: 'Type pistons before they reach you. Five in a row overheats it.' },
     syntax: { kind: 'byte', name: 'Packets', gap: 2.6, text: 'Type packets to send them back. From phase 3 the red ones are fakes so let them land.' },
   };
+  // Each titan's own attacks: a wind-up picks one of three. wind scales the wind-up's length and hit the
+  // integrity it costs when it lands; a slower, bigger blow hits harder and a quick one hits lighter, so the
+  // three average 1 and the fight's balance stays as the director sized it. short is the word on the lit
+  // counter words (BLOCK SLAM). The Siege Titan's double slam (its own move) always uses its slam at 1 and 1.
+  const ATTACKS = {
+    siege: [{ id: 'fists', name: 'Double-fist slam', short: 'SLAM', wind: 1.12, hit: 1.1 }, { id: 'hook', name: 'Siege hook', short: 'HOOK', wind: 0.95, hit: 0.8 }, { id: 'stomp', name: 'Quake stomp', short: 'STOMP', wind: 1, hit: 1 }],
+    warden: [{ id: 'bash', name: 'Shield bash', short: 'BASH', wind: 0.95, hit: 0.8 }, { id: 'sweep', name: 'Blade sweep', short: 'SWEEP', wind: 1, hit: 1 }, { id: 'cleave', name: 'Firewall cleave', short: 'CLEAVE', wind: 1.12, hit: 1.1 }],
+    colossus: [{ id: 'storm', name: 'Block storm', short: 'STORM', wind: 1.12, hit: 1.1 }, { id: 'lash', name: 'Tail lash', short: 'LASH', wind: 0.95, hit: 0.8 }, { id: 'beam', name: 'Core beam', short: 'BEAM', wind: 1, hit: 1 }],
+    king: [{ id: 'shock', name: 'Throne shockwave', short: 'SHOCKWAVE', wind: 1.12, hit: 1.1 }, { id: 'decree', name: 'Royal decree', short: 'DECREE', wind: 0.95, hit: 0.8 }, { id: 'crush', name: 'Gauntlet crush', short: 'CRUSH', wind: 1, hit: 1 }],
+    half: [{ id: 'split', name: 'Glitch split', short: 'SPLIT', wind: 1, hit: 1 }, { id: 'lash', name: 'Wire lash', short: 'LASH', wind: 0.95, hit: 0.8 }, { id: 'crash', name: 'Stack crash', short: 'CRASH', wind: 1.12, hit: 1.1 }],
+    brute: [{ id: 'piston', name: 'Piston punch', short: 'PUNCH', wind: 0.95, hit: 0.8 }, { id: 'vent', name: 'Steam blast', short: 'STEAM', wind: 1, hit: 1 }, { id: 'pound', name: 'Hammer pound', short: 'POUND', wind: 1.12, hit: 1.1 }],
+  };
   const SIG_HIT = 4;          // integrity a landed signature attack costs at mark I, +2 a mark, at most 14
   // each boss's music, one track at three speeds, one per phase (audio/rush-<id>-<phase>.mp3)
   const musicFor = (id, stage) => `rush-${(ROSTER.find(b => b.id === id) || {}).music || id}-${stage}`;
@@ -253,7 +265,7 @@ window.RushData = (() => {
   }
 
   return {
-    ROSTER, TWISTS, FLOORS, FLOOR_STEP, SIGNS, SPELL, GLITCH, BOOST_WORDS, STAGES, PACE, STAGE_PAUSE, SIG, SIG_HIT, musicFor,
+    ROSTER, TWISTS, FLOORS, FLOOR_STEP, SIGNS, SPELL, GLITCH, BOOST_WORDS, STAGES, PACE, STAGE_PAUSE, SIG, SIG_HIT, ATTACKS, musicFor,
     UNIT, PLAYER_HP, STUN_MS, LONG_STUN_MS, STUN_MULT, WEAK_FRAC, SHIELD_FRAC, SPELL_REF, SPELL_CAP, SPELL_CAP_ULT,
     slot, twistsFor, markName, bossScore,
   };

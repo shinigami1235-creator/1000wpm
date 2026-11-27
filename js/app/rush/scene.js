@@ -56,7 +56,7 @@ window.RushScene = (() => {
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
       'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
-      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge']) ctl[n] = (...a) => call(n, ...a);
+      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
 
@@ -70,7 +70,10 @@ window.RushScene = (() => {
     const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
     const ease = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
     const C = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
-    const nowS = () => performance.now() / 1000;
+    // the scene's clock: real time, or for review shots a fixed step a frame (window.__rushStep, tests only)
+    let vclock = 0;
+    const pnow = () => (window.__rushStep ? vclock * 1000 : performance.now());
+    const nowS = () => pnow() / 1000;
     // GPU resources: the arena's stay until dispose, each boss's go when the next boss arrives
     const keep = [];
     let bucket = null;
@@ -78,7 +81,7 @@ window.RushScene = (() => {
 
     const flashes = [];
     function canFlash() {
-      const t = performance.now();
+      const t = pnow();
       while (flashes.length && t - flashes[0] > 1000) flashes.shift();
       if (flashes.length >= (calm ? 2 : 3)) return false;
       flashes.push(t); return true;
@@ -87,6 +90,7 @@ window.RushScene = (() => {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));
     renderer.toneMapping = THREE.NoToneMapping;
+    renderer.localClippingEnabled = true;   // the titans' reveal and dissolve
     renderer.info.autoReset = false;      // info() reports the whole frame, every pass
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
@@ -178,6 +182,167 @@ window.RushScene = (() => {
       parent.add(g); return g;
     }
 
+    // ---------- reflections for the titans' metal ----------
+    // A small studio for each titan, baked once into an environment map: a soft white key overhead and in
+    // front, strips of the titan's colour behind and below, dark everywhere else, so polished trim catches a
+    // highlight and the plates pick up the arena's colour at their edges. 128 px, rebuilt per boss.
+    let pmrem = null, reviewCam = null;
+    // the camera director (js/app/camdir.js), made once the camera is placed; want() asks it for a shot
+    let director = null, threatMs = Infinity;
+    const want = (n, x) => (director ? director.want(n, x === undefined ? {} : { x }) : false);   // reviewCam: a fixed camera for review shots (tests only)
+    function envFor(b) {
+      try {
+        pmrem ||= new THREE.PMREMGenerator(renderer);
+        const es = new THREE.Scene(), tmp = [];
+        const T = x => (tmp.push(x), x);
+        es.background = new THREE.Color(b.base || '#050608').multiplyScalar(0.6);
+        const panel = (w, h, col, k, x, y, z, rx, ry) => {
+          const m = new THREE.Mesh(T(new THREE.PlaneGeometry(w, h)), T(new THREE.MeshBasicMaterial({ color: C(col, k), side: THREE.DoubleSide })));
+          m.position.set(x, y, z); m.rotation.set(rx, ry, 0); es.add(m);
+        };
+        panel(14, 6, '#ffffff', 1.6, -3, 9, 6, Math.PI / 2.6, 0);         // the key, high and in front
+        panel(30, 2.5, b.color, 1.8, 0, 2, -12, 0, 0);                      // a band of the titan's colour behind
+        panel(2, 14, b.color, 1.3, 12, 4, -4, 0, -Math.PI / 2.5);           // a rim strip on each side
+        panel(2, 14, b.color2 || b.color, 1.1, -12, 4, -4, 0, Math.PI / 2.5);
+        panel(40, 40, b.color, 0.12, 0, -4, 0, -Math.PI / 2, 0);             // the floor's glow
+        const rt = pmrem.fromScene(es, 0.04, 0.1, 100, { size: 128 });
+        tmp.forEach(x => x.dispose());
+        own({ dispose: () => rt.dispose() });
+        return rt.texture;
+      } catch (e) { return null; }
+    }
+
+    // ---------- each titan's arena ----------
+    // A floor that reflects the titan's colour, a soft contact shadow under it, dust in the light, and
+    // props that say whose ground this is, kept to the sides and the back so nothing stands between the
+    // titan and you: rubble and broken walls for the Siege Titan, firewall gates for the Warden, drifting
+    // data blocks for the Colossus, a hall of gold-capped columns and a carpet for the King, half-built
+    // scaffolds for Half-Compiled, and pipes, stacks and furnace grates for the Brute. Static props are
+    // merged into one mesh per material.
+    function mergeGeos(list) {
+      const geos = list.map(([g, m]) => { const x = g.index ? g.toNonIndexed() : g.clone(); x.applyMatrix4(m); return x; });
+      const n = geos.reduce((a, x) => a + x.attributes.position.count, 0);
+      const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+      let o = 0;
+      for (const x of geos) { pos.set(x.attributes.position.array, o * 3); nor.set(x.attributes.normal.array, o * 3); o += x.attributes.position.count; x.dispose(); }
+      const g = own(new THREE.BufferGeometry());
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      return g;
+    }
+    const shadowTex = canvasTex(128, 128, c => {
+      const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(0.5, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+    }, false);
+    function arenaFor(b, env) {
+      const group = new THREE.Group(), id = b.kit;
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), Sc = new V(), P0 = new V();
+      const at = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => M.compose(P0.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), Sc.set(sx, sy, sz)).clone();
+      const box = own(new THREE.BoxGeometry(1, 1, 1)), cyl = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 10)), oct = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 8));
+      const solid = [], lit = [];
+      const mat = own(new THREE.MeshLambertMaterial({ color: new THREE.Color(b.base).lerp(new THREE.Color('#3a3f45'), 0.75), flatShading: true }));
+      const glowMat = own(new THREE.MeshBasicMaterial({ color: C(b.color, 2.2) }));
+      // the floor: dark, polished, picking up the titan's colour from the environment
+      // the floor: dark with a pool of the titan's light round where it stands, painted once into a texture
+      // (a full-screen lit floor cost too much on slow machines for what it showed)
+      const pool = new THREE.Color(b.color), base = new THREE.Color(b.base);
+      const floorTex = canvasTex(256, 256, (c, w, h) => {
+        c.fillStyle = '#' + base.clone().multiplyScalar(1.15).getHexString(); c.fillRect(0, 0, w, h);
+        const g = c.createRadialGradient(w / 2, h * 0.47, 0, w / 2, h * 0.47, w * 0.5);
+        const rgba = (k, a) => `rgba(${Math.round(pool.r * 255 * k)},${Math.round(pool.g * 255 * k)},${Math.round(pool.b * 255 * k)},${a})`;
+        g.addColorStop(0, rgba(0.55, 0.5)); g.addColorStop(0.18, rgba(0.4, 0.28)); g.addColorStop(0.5, rgba(0.25, 0.08)); g.addColorStop(1, rgba(0, 0));
+        c.fillStyle = g; c.fillRect(0, 0, w, h);
+      });
+      const floor = new THREE.Mesh(own(new THREE.PlaneGeometry(90, 90)), own(new THREE.MeshBasicMaterial({ map: floorTex })));
+      floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.02, -8); group.add(floor);
+      const shadow = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, color: '#000000' })));
+      shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.012; shadow.scale.set(11, 9, 1); shadow.renderOrder = 1; group.add(shadow);
+      let anim = () => {};
+      if (id === 'siege') {
+        // rubble piles and the stumps of broken walls with hazard lamps
+        for (const [px, pz] of [[-9, -4], [10, -5], [-13, -9], [14, -10], [-6, -12], [7, -13]]) for (let i = 0; i < 10; i++) {
+          const s = rnd(0.4, 1.5); solid.push([box, at(px + rnd(-1.6, 1.6), s * 0.35, pz + rnd(-1.2, 1.2), rnd(0, 3), rnd(0, 3), rnd(0, 3), s, s * rnd(0.5, 1), s)]);
+        }
+        for (const [px, pz, h] of [[-11, -15, 6], [-4, -17, 4], [5, -16, 7], [12, -14, 5]]) {
+          solid.push([box, at(px, h / 2, pz, 0, rnd(-0.2, 0.2), rnd(-0.06, 0.06), 3.4, h, 0.9)]);
+          for (let k = 0; k < 3; k++) solid.push([box, at(px + rnd(-1.2, 1.2), h + 0.3, pz, 0, 0, rnd(-0.5, 0.5), rnd(0.5, 1.1), rnd(0.4, 1), 0.85)]);
+          lit.push([box, at(px + 1.2, h * 0.7, pz + 0.5, 0, 0, 0, 0.5, 0.25, 0.1)]);
+        }
+      } else if (id === 'warden') {
+        // gates of firewall: pylons with a wall of moving light between each pair
+        const fwMat = own(new THREE.ShaderMaterial({ uniforms: { uT: { value: 0 }, uCol: { value: C(b.color, 0.9) } },
+          vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+          fragmentShader: `uniform float uT; uniform vec3 uCol; varying vec2 vUv;
+            void main(){ float s = step(0.55, fract(vUv.y * 14.0 - uT * 0.8)) * 0.35 + step(0.92, fract(vUv.x * 9.0)) * 0.3;
+              float a = (s + 0.12) * smoothstep(0.0, 0.15, vUv.y) * (1.0 - smoothstep(0.75, 1.0, vUv.y)); gl_FragColor = vec4(uCol * a, a); }`,
+          transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        for (const [x0, x1, z] of [[-15, -9, -9], [9, 15, -9], [-5, 5, -18]]) {
+          for (const x of [x0, x1]) { solid.push([box, at(x, 5, z, 0, 0, 0, 1.0, 10, 1.0)]); solid.push([box, at(x, 10.2, z, 0, 0, 0, 1.5, 0.5, 1.5)]); lit.push([box, at(x, 5, z + 0.52, 0, 0, 0, 0.14, 8.6, 0.05)]); }
+          const w = new THREE.Mesh(own(new THREE.PlaneGeometry(x1 - x0 - 1, 9)), fwMat); w.position.set((x0 + x1) / 2, 4.8, z); group.add(w);
+        }
+        anim = t => { fwMat.uniforms.uT.value = t; };
+      } else if (id === 'colossus') {
+        // data blocks drifting in the dark round it
+        const N = 16, im = new THREE.InstancedMesh(box, own(new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(b.color, 0.9) } },
+          vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+          fragmentShader: `uniform vec3 uCol; varying vec2 vUv; void main(){ vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y); gl_FragColor = vec4(vec3(0.03, 0.025, 0.05) + uCol * smoothstep(0.1, 0.02, d), 1.0); }` })), N);
+        const seeds = Array.from({ length: N }, (_, i) => ({ x: (i % 2 ? 1 : -1) * rnd(9, 18), y: rnd(1.5, 9), z: rnd(-18, -6), s: rnd(0.4, 1.1), p: rnd(0, 6) }));
+        const o3 = new THREE.Object3D();
+        anim = t => { seeds.forEach((q, i) => { o3.position.set(q.x, q.y + Math.sin(t * 0.6 + q.p) * 0.5, q.z); o3.rotation.set(t * 0.2 + q.p, t * 0.3, 0); o3.scale.setScalar(q.s); o3.updateMatrix(); im.setMatrixAt(i, o3.matrix); }); im.instanceMatrix.needsUpdate = true; };
+        anim(0); group.add(im);
+      } else if (id === 'king') {
+        // a hall of columns with gold capitals, and a carpet to the throne
+        const gold = own(new THREE.MeshStandardMaterial({ color: '#c9982f', metalness: 0.9, roughness: 0.32, flatShading: true, envMap: env, envMapIntensity: 0.7 }));
+        const goldList = [];
+        for (const z of [-3, -9, -15]) for (const sx of [-1, 1]) {
+          const x = sx * (10.5 + (z === -15 ? 2 : 0));
+          solid.push([oct, at(x, 6, z, 0, 0, 0, 1.7, 12, 1.7)]);
+          goldList.push([box, at(x, 0.3, z, 0, 0, 0, 2.4, 0.6, 2.4)], [box, at(x, 12.1, z, 0, 0, 0, 2.5, 0.5, 2.5)], [oct, at(x, 11.6, z, 0, 0, 0, 2.1, 0.5, 2.1)]);
+          lit.push([box, at(x, 6, z + 0.9 * 1, 0, 0, 0, 0.12, 9, 0.05)]);
+        }
+        const carpet = new THREE.Mesh(own(new THREE.PlaneGeometry(4.2, 16)), own(new THREE.MeshStandardMaterial({ color: new THREE.Color(b.color2).multiplyScalar(0.22), roughness: 0.95, metalness: 0 })));
+        carpet.rotation.x = -Math.PI / 2; carpet.position.set(0, 0.004, -1); group.add(carpet);
+        for (const sx of [-1, 1]) goldList.push([box, at(sx * 2.2, 0.02, -1, 0, 0, 0, 0.18, 0.04, 16)]);
+        const gm = new THREE.Mesh(mergeGeos(goldList), gold); group.add(gm);
+      } else if (id === 'half') {
+        // half-built scaffolds: frames of lit lines, some of them filled in
+        const lines = [];
+        for (const [px, pz] of [[-12, -8], [13, -9], [-15, -15], [16, -15], [0, -19]]) for (let k = 0; k < 3; k++) {
+          const w = rnd(1.5, 3), h = rnd(1.5, 3.5), y = k * 2.6 + h / 2;
+          const m = at(px + rnd(-1, 1), y, pz + rnd(-1, 1), 0, rnd(0, 1), 0, w, h, w);
+          if (Math.random() < 0.45) solid.push([box, m]); else lines.push(m);
+        }
+        const eg = own(new THREE.EdgesGeometry(box)), arr = [];
+        for (const m of lines) { const a = eg.attributes.position.array; for (let i = 0; i < a.length; i += 3) { P0.set(a[i], a[i + 1], a[i + 2]).applyMatrix4(m); arr.push(P0.x, P0.y, P0.z); } }
+        const lg = own(new THREE.BufferGeometry()); lg.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+        group.add(new THREE.LineSegments(lg, own(new THREE.LineBasicMaterial({ color: C(b.color, 0.8) }))));
+      } else if (id === 'brute') {
+        // pipes along the back wall, two stacks breathing steam and a row of furnace grates
+        for (const y of [1.6, 3.4, 5.2]) { solid.push([cyl, at(0, y, -14, 0, 0, Math.PI / 2, 1.1, 36, 1.1)]); for (let x = -15; x <= 15; x += 6) solid.push([cyl, at(x + rnd(-1, 1), y, -14, 0, 0, Math.PI / 2, 1.5, 0.4, 1.5)]); }
+        for (const sx of [-1, 1]) { solid.push([cyl, at(sx * 11, 6, -10, 0, 0, 0, 2.2, 12, 2.2)]); solid.push([cyl, at(sx * 11, 12.1, -10, 0, 0, 0, 2.8, 0.6, 2.8)]); }
+        for (let x = -9; x <= 9; x += 4.5) { solid.push([box, at(x, 1.4, -12.6, 0, 0, 0, 3.2, 2.8, 0.6)]); for (let k = 0; k < 4; k++) lit.push([box, at(x, 0.6 + k * 0.6, -12.25, 0, 0, 0, 2.6, 0.16, 0.05)]); }
+        let acc = 0;
+        anim = (t, dt) => { acc += dt; if (tfx && acc > 0.12) { acc = 0; for (const sx of [-1, 1]) tfx.burst(v1.set(sx * 11, 12.6, -10), 1, { kind: 'steam', col: '#bdb6ad', speed: 1.6, dir: v2.set(0, 1, 0.1), spread: 0.3, size: 2.4, life: 2.4, grow: 3, alpha: 0.35 }); } };
+      }
+      if (solid.length) group.add(new THREE.Mesh(mergeGeos(solid), mat));
+      if (lit.length) group.add(new THREE.Mesh(mergeGeos(lit), glowMat));
+      // dust in the light
+      const DN = reduce ? 70 : 150, dpos = new Float32Array(DN * 3), dseed = [];
+      for (let i = 0; i < DN; i++) { dseed.push([rnd(-18, 18), rnd(0, 11), rnd(-16, 7), rnd(0, 6)]); }
+      const dg = own(new THREE.BufferGeometry()); dg.setAttribute('position', new THREE.BufferAttribute(dpos, 3).setUsage(THREE.DynamicDrawUsage));
+      const dust = new THREE.Points(dg, own(new THREE.PointsMaterial({ map: glowTex, color: C(b.color, 0.9), size: 0.16, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })));
+      dust.frustumCulled = false; group.add(dust);
+      let clock = 0;
+      function update(t, dt, bossPos) {
+        clock += dt;
+        shadow.position.x = bossPos.x; shadow.position.z = bossPos.z + 0.3;
+        for (let i = 0; i < DN; i++) { const q = dseed[i]; dpos[i * 3] = q[0] + Math.sin(clock * 0.2 + q[3]) * 0.8; dpos[i * 3 + 1] = (q[1] + clock * 0.25) % 11; dpos[i * 3 + 2] = q[2] + Math.cos(clock * 0.17 + q[3]) * 0.8; }
+        dg.attributes.position.needsUpdate = true;
+        anim(clock, dt);
+      }
+      return { group, update, dispose: () => {} };
+    }
+
     // ---------- the bosses ----------
     // Each builder returns { root, P, core, scale, dome, anim(t, dt, s) }. Shapes follow
     // js/breach/render.js with fewer parts.
@@ -248,19 +413,30 @@ window.RushScene = (() => {
       // with its own lights since the rest of the arena is lines and glow
       kit(b) {
         const root = new THREE.Group(), P = {};
-        const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color });
-        root.add(k.group);
-        const hemi = new THREE.HemisphereLight('#c8d2da', '#06080a', 0.55);
-        const key = new THREE.DirectionalLight('#ffffff', 1.5); key.position.set(-6, 10, 9);
+        const plain = !!window.__rushPlain;   // tests only: the titans as they were, for frame-time comparisons
+        const env = b.kit === 'syntax' || plain ? null : envFor(b);
+        const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color, detail: !plain, env });
+        // mover: the titan's own offsets for its entrance, lunges and glitches, under the scene's sway and recoil
+        const mover = new THREE.Group(); root.add(mover); mover.add(k.group);
+        const hemi = new THREE.HemisphereLight('#c8d2da', '#06080a', b.kit === 'syntax' ? 0.55 : 0.7);
+        const key = new THREE.DirectionalLight('#ffffff', b.kit === 'syntax' ? 1.5 : 2.4); key.position.set(-6, 10, 9);
         const rim = new THREE.DirectionalLight(b.color, 2.2); rim.position.set(5, 7, -8);
         root.add(hemi, key, rim);
+        P.lights = { hemi, hemi0: hemi.intensity, hc: hemi.color.clone() };
         if (bucket) bucket.push({ dispose: () => k.dispose && k.dispose() });
         const H = BossKit.BOSSES[b.kit].height;
         P.kit = k;
         let reel = 0;
+        if (k.rich && window.RushTitans && tfx) {
+          P.T = RushTitans.create({ THREE, id: b.kit, kit: k, root, mover, tfx, you: YOU, col: b.color, col2: b.color2, juice, sfx: (n, a) => opts.sfx && opts.sfx(n, a), cam: (n, x) => want(n, x) });
+          if (bucket) bucket.push({ dispose: () => P.T.dispose() });
+          P.set = arenaFor(b, env);
+        }
         return {
-          root, P, scale: 7.8 / H, dome: [0, H * 0.55, H * 0.42], coreObj: k.core, coreOff: new V(0, 0, 0),
-          anim(t, dt, s) {
+          root, P, scale: 7.8 / H, dome: [0, H * 0.55, H * 0.42], coreObj: k.core, coreOff: new V(0, 0, 0), height: 7.8,
+          enter: P.T ? () => P.T.enter() : null,
+          anim(t, dt, s, rdt) {
+            if (P.T) { P.T.anim(t, dt, s, rdt); return; }
             reel += ((s.stun ? 0.55 : 0) - reel) * Math.min(1, dt * 6);
             const rl = Math.max(reel, s.reel || 0);
             const L = [];
@@ -433,7 +609,7 @@ window.RushScene = (() => {
       if (kind === 'gift') p.to.set((slotI - 1) * 3.2, 2.2 + (slotI === 1 ? 0.8 : 0), 5.4);
       else if (kind === 'decoy') p.to.copy(YOU).add(v1.set(rnd(-2.2, 2.2), rnd(0.2, 1.6), -0.8));
       else p.to.copy(YOU).add(v1.set(rnd(-1.4, 1.4), rnd(0.4, 1.4), -0.6));
-      p.t0 = nowS(); p.t1 = p.t0 + Math.max(0.6, (due - performance.now()) / 1000);
+      p.t0 = nowS(); p.t1 = p.t0 + Math.max(0.6, (due - pnow()) / 1000);
       p.g.visible = true; p.g.scale.setScalar(kind === 'packet' || kind === 'decoy' ? 0.55 : 0.8);
     }
     function drop(id) { const p = flyer(id); if (p) { p.id = ''; p.g.visible = false; } }
@@ -461,13 +637,19 @@ window.RushScene = (() => {
       map: canvasTex(256, 176, (c, w, h) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1b2a22'; for (let i = 0; i < 6; i++) c.fillRect(20, 22 + i * 24, i % 3 === 2 ? 120 : 214, 9); }) }));
     const pageEdge = own(new THREE.LineBasicMaterial({ color: C('#c8ff3d', 2.2) })), pageEdgeGeo = own(new THREE.EdgesGeometry(pageGeo));
     let stageN = 1, coneNext = 0;
+    // the titans' own throws: the Siege Titan's falling rubble and the Brute's pistons, in place of the
+    // Signboard's signs and the Press's pages (same paths and timing, so the words sit where they did)
+    const rockGeo = own(new THREE.IcosahedronGeometry(0.95, 0)), rockEdge = own(new THREE.EdgesGeometry(rockGeo));
+    const slugGeo = own(new THREE.CylinderGeometry(0.34, 0.34, 1.8, 10)), slugEdge = own(new THREE.EdgesGeometry(slugGeo, 30));
+    const titanLine = own(new THREE.LineBasicMaterial({ color: C('#ffb020', 2.2) }));
+    const titanSig = () => (fig && fig.P.T ? fig.P.T.id : '');
     // hidden copies of each new shape, so the shader warm-up before the first frame covers them
     { const w = new THREE.Group(); w.visible = false;
       w.add(new THREE.Mesh(signGeo, DARK), new THREE.LineSegments(signEdge, signLine), new THREE.Mesh(faceGeo, signFace), new THREE.Mesh(shadowGeo, shadowMat),
         new THREE.Mesh(pageGeo, pageMat), new THREE.LineSegments(pageEdgeGeo, pageEdge), new THREE.LineSegments(boxEdge, badLine));
       scene.add(w); }
     function sigAdd(id, kind, due) {
-      const t0 = nowS(), t1 = t0 + Math.max(0.6, ((due || performance.now()) - performance.now()) / 1000);
+      const t0 = nowS(), t1 = t0 + Math.max(0.6, ((due || pnow()) - pnow()) / 1000);
       if (kind === 'byte' || kind === 'decoy') { launch(id, kind === 'byte' ? 'packet' : 'decoy', due, 0); sigObj.set(id, { kind, t0, t1 }); return; }
       if (kind === 'mute') {
         const cones = fig && fig.P.cones;
@@ -480,13 +662,17 @@ window.RushScene = (() => {
       if (kind === 'popup') { sigObj.set(id, { kind, t0, t1 }); return; }
       const g = new THREE.Group(), o = { kind, g, t0, t1, from: new V(), to: new V(), pop: -1 };
       if (kind === 'sign') {
-        g.add(new THREE.Mesh(signGeo, DARK)); g.add(new THREE.LineSegments(signEdge, signLine));
-        const face = new THREE.Mesh(faceGeo, signFace); face.position.z = 0.11; g.add(face);
+        if (titanSig() === 'siege') { o.rock = true; g.add(new THREE.Mesh(rockGeo, DARK), new THREE.LineSegments(rockEdge, titanLine)); g.scale.set(1.25, 0.95, 1.05); }
+        else {
+          g.add(new THREE.Mesh(signGeo, DARK)); g.add(new THREE.LineSegments(signEdge, signLine));
+          const face = new THREE.Mesh(faceGeo, signFace); face.position.z = 0.11; g.add(face);
+        }
         o.to.set(rnd(-2.6, 2.6), 1.2, YOU.z - rnd(1.2, 2.4));
         o.from.set(o.to.x * 1.4 + rnd(-1, 1), 13, o.to.z - 4);
         o.shadow = new THREE.Mesh(shadowGeo, shadowMat); o.shadow.rotation.x = -Math.PI / 2; o.shadow.position.set(o.to.x, 0.04, o.to.z); scene.add(o.shadow);
       } else {
-        g.add(new THREE.Mesh(pageGeo, pageMat)); g.add(new THREE.LineSegments(pageEdgeGeo, pageEdge));
+        if (titanSig() === 'brute') { o.slug = true; const sg = new THREE.Group(); sg.rotation.z = Math.PI / 2; sg.add(new THREE.Mesh(slugGeo, DARK), new THREE.LineSegments(slugEdge, titanLine)); g.add(sg); }
+        else { g.add(new THREE.Mesh(pageGeo, pageMat)); g.add(new THREE.LineSegments(pageEdgeGeo, pageEdge)); }
         coreWorld(o.from); o.from.x += rnd(-2.6, 2.6); o.from.y = 1; o.from.z += 1;
         o.to.set(rnd(-2.4, 2.4), 0.6, YOU.z - 0.6);
       }
@@ -502,6 +688,11 @@ window.RushScene = (() => {
       }
       if (o.kind === 'mute') { const c = fig && fig.P.cones && fig.P.cones[o.cone]; if (c) c.userData.on = false; sigObj.delete(id); return; }
       if (!o.g) { sigObj.delete(id); return; }
+      if (tfx && (o.rock || o.slug)) {
+        const col = slotNow ? slotNow.boss.color : '#ffb020';
+        if (how === 'done') { tfx.debris(o.g.position, 8, { col, speed: 6, up: 3, size: 0.3 }); tfx.burst(o.g.position, 22, { col, speed: 7, life: 0.5 }); if (o.slug) tfx.burst(o.g.position, 6, { kind: 'steam', col: '#cfc9c1', speed: 3, size: 1.4, life: 1 }); sigFree(id, o); return; }
+        if (how === 'hit') { v1.copy(o.g.position).setY(0.05); tfx.ring(v1, 0.3, 3, 0.4, col, { k: 2 }); tfx.debris(v1, 6, { col, speed: 5, up: 3 }); tfx.burst(v1, 8, { kind: 'dust', col: '#8a8f96', speed: 3, size: 1.3, life: 1 }); }
+      }
       if (how === 'done') { o.pop = 0; return; }   // bursts, then goes in the loop
       sigFree(id, o);
     }
@@ -523,13 +714,15 @@ window.RushScene = (() => {
           // drops into view, hangs swaying while it creeps lower, then falls the last stretch
           const y = k < 0.12 ? 12 - (k / 0.12) * 5.6 : k < 0.72 ? 6.4 - (k - 0.12) / 0.6 * 1.8 : 4.6 - Math.pow((k - 0.72) / 0.28, 2) * 3.4;
           o.g.position.set(o.from.x + (o.to.x - o.from.x) * k, y, o.from.z + (o.to.z - o.from.z) * k);
-          o.g.rotation.set(Math.sin(t * 3 + o.to.x) * 0.15 * (1 - k), Math.sin(t * 2) * 0.2, Math.sin(t * 2.5 + o.to.z) * 0.12);
+          if (o.rock) o.g.rotation.set(t * 1.4 + o.to.x, t * 0.9, t * 0.6);
+          else o.g.rotation.set(Math.sin(t * 3 + o.to.x) * 0.15 * (1 - k), Math.sin(t * 2) * 0.2, Math.sin(t * 2.5 + o.to.z) * 0.12);
           o.shadow.scale.setScalar(0.3 + 0.9 * k);
           shadowMat.opacity = 0.18 + 0.4 * k;
         } else {
           o.g.position.lerpVectors(o.from, o.to, k);
           o.g.position.y = 0.35 + Math.abs(Math.sin(t * 7 + o.to.x)) * 0.25;
-          o.g.rotation.set(-0.9 + Math.sin(t * 6 + o.to.x) * 0.25, Math.sin(t * 2) * 0.3, Math.sin(t * 5) * 0.1);
+          if (o.slug) { o.g.rotation.set(0, Math.sin(t * 3 + o.to.x) * 0.2, 0); o.g.position.y = 0.42; if (tfx && Math.random() < 0.3) tfx.burst(o.g.position, 1, { kind: 'steam', col: '#c9c3bb', speed: 1, size: 0.9, life: 0.7, up: 1 }); }
+          else o.g.rotation.set(-0.9 + Math.sin(t * 6 + o.to.x) * 0.25, Math.sin(t * 2) * 0.3, Math.sin(t * 5) * 0.1);
         }
       }
     }
@@ -561,7 +754,7 @@ window.RushScene = (() => {
       pixelHeight: () => renderer.domElement.height,
       juice: {
         shake: k => { shake = Math.max(shake, k); },
-        stop: ms => { stopUntil = Math.max(stopUntil, performance.now() + ms); },
+        stop: ms => { stopUntil = Math.max(stopUntil, pnow() + ms); },
         glitch: (k, secs) => { glitchK = Math.max(glitchK, k); glitchUntil = Math.max(glitchUntil, nowS() + secs); },
         dim: (k, secs) => { dimK = k; dimUntil = nowS() + secs; },
         tint: (hex, k) => { tintHex = hex; tintAmt = Math.max(tintAmt, (calm ? 0.6 : 1) * k); },
@@ -569,6 +762,18 @@ window.RushScene = (() => {
       },
     }) : null;
     const v1 = new V(), v2 = new V(), v3 = new V(), c1 = new THREE.Color();
+    // the titans' own effects (js/app/rush/titanfx.js) and the hooks they shake, slow and tint the view with
+    const tfx = window.RushTitanFX ? RushTitanFX.create(THREE, scene, { calm, reduce, glowTex,
+      // a blow's flash lifts the titan's fill light toward the flash's colour for a moment
+      onFlash: (col, k) => { const L = fig && fig.P.lights; if (!L) return; L.hemi.intensity = L.hemi0 + k * 1.6; L.hemi.color.copy(L.hc).lerp(col, Math.min(1, k)); } }) : null;
+    let slowUntil = 0;
+    const juice = {
+      shake: k => { shake = Math.max(shake, k); },
+      stop: ms => { stopUntil = Math.max(stopUntil, pnow() + ms); },
+      tint: (hex, k) => { tintHex = hex; tintAmt = Math.max(tintAmt, (calm ? 0.6 : 1) * k); },
+      glitch: (k, secs) => { glitchK = Math.max(glitchK, k); glitchUntil = Math.max(glitchUntil, nowS() + secs); },
+      slow: secs => { if (!reduce) slowUntil = Math.max(slowUntil, pnow() + secs * 1000); },
+    };
     const caster = { pos: out => out.copy(YOU) };
     function coreWorld(out) {
       if (!fig) return out.set(0, 4.5, 0);
@@ -592,7 +797,7 @@ window.RushScene = (() => {
       composer.setSize(w, h);
       bloom.resolution.set(w / 2, h / 2);
       camera.aspect = w / h;
-      const half = THREE.MathUtils.degToRad(camera.fov / 2);
+      const half = THREE.MathUtils.degToRad(44 / 2);
       // keep the boss's height on wide screens and the gifts' spread on narrow ones
       const dist = Math.max(13.5, 6.2 / (Math.tan(half) * camera.aspect) + 5);
       camBase.set(0, 4.4, dist);
@@ -603,6 +808,55 @@ window.RushScene = (() => {
       youRing.position.set(0, 0.03, YOU.z); youGem.position.copy(YOU);
     }
     const ro = new ResizeObserver(fit); ro.observe(host);
+
+    // ---------- the camera director ----------
+    // The game shot is the home view above, on the line from the titan to you; every cutaway but the
+    // kill's orbit keeps to its right-hand side (the 180-degree rule), so the titan never swaps sides.
+    // Every other shot is a cutaway the fight asks for, and CamDir plays it only when no attack, wind-up or thrown word is coming at you (the page passes the time to
+    // the next one with threat()), so a cutaway never hides something to answer. The fights' cutaways:
+    //   enter    the titan's entrance, during the 3-2-1 count: a low wide that pushes in, then up at its face
+    //   block    you blocked: low behind your barrier as the blow bounces off, slowed, then side on as it reels
+    //   hit      its blow landed: side on, low, as it follows through
+    //   phase    a new phase: a crane round it as it roars (no attacks for 1.6 s)
+    //   stunned  its own move beaten: close on the stunned titan
+    //   kill     the last word: a slow orbit as it comes apart, in slow motion for the first beat
+    const bossAt = out => out.set(fig ? fig.root.position.x : 0, 0, fig ? fig.root.position.z : 0);
+    const bossH = () => (fig && fig.height ? fig.height : 7.8) * (1 + 0.07 * (stageN - 1));
+    const fitD = (h, share, fov) => h / share / (2 * Math.tan(THREE.MathUtils.degToRad(fov / 2)));
+    const dA = new V(), dB = new V();
+    const SP = (pose, more) => Object.assign({ pose: (c, o) => pose(c.u, o.pos, o.look, c) }, more);
+    const dirCtx = { threatAt: Infinity };
+    function makeDirector() {
+      if (!window.CamDirector || director) return;
+      director = CamDirector.create(THREE, camera, {
+        reduce, lockBefore: 1.2, gap: 3.5, budget: 3,
+        onPart: (name, i, p) => { if (p.slow) juice.slow(p.slow); },
+        shots: {
+          game: { pose: (c, o) => { o.pos.copy(camBase); o.look.copy(camLook); o.fov = 44; }, omega: 7 },
+          enter: { pri: 4, free: true, parts: [
+            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.62, 40); o.set(dA.x + d * 0.42, 1.0 + 0.6 * u, dA.z + d * (0.95 - 0.15 * u)); l.set(dA.x, H * 0.52, dA.z); }, { len: 1.5, cut: 1, fov: 40, omega: 5 }),
+            SP((u, o, l) => { bossAt(dA); const H = bossH(); o.set(dA.x + 3.6 - 0.8 * u, 0.9, dA.z + 7.6 - 0.8 * u); l.set(dA.x, H * 0.8, dA.z); }, { len: 1.1, cut: 1, fov: 38, omega: 5 }),
+          ] },
+          block: { pri: 3, parts: [
+            SP((u, o, l) => { coreWorld(dB); o.set(YOU.x + 2.1, 1.3 + 0.3 * u, YOU.z + 2.2 - 0.4 * u); l.copy(dB); l.y -= 0.6; }, { len: 0.6, slow: 0.45, cut: 1, fov: 40, omega: 12 }),
+            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42); o.set(dA.x + d * 0.85, H * 0.38, dA.z + d * 0.5); l.set(dA.x, H * 0.48, dA.z + 1.2); }, { len: 0.9, cut: 1, fov: 42, omega: 8 }),
+          ] },
+          hit: { pri: 2, parts: [
+            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.68, 42) * (1 - 0.06 * u); o.set(dA.x + d * 0.5, 2.2 + 0.5 * u, dA.z + d * 0.86); l.set(dA.x - 0.4, H * 0.5, dA.z + 1.4); }, { len: 0.9, slow: 0.3, cut: 1, fov: 42, omega: 9 }),
+          ] },
+          phase: { pri: 3, parts: [
+            SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42), a = 0.75 - 0.5 * u; o.set(dA.x + Math.sin(a) * d, 0.8 + H * 0.45 * u, dA.z + Math.cos(a) * d); l.set(dA.x, H * 0.62, dA.z); }, { len: 1.5, cut: 1, fov: 42, omega: 4 }),
+          ] },
+          stunned: { pri: 2, parts: [
+            SP((u, o, l) => { coreWorld(dB); bossAt(dA); const H = bossH(); o.set(dA.x + 3.2 - 0.6 * u, H * 0.55, dA.z + 7.2 - 0.8 * u); l.copy(dB); }, { len: 1.2, cut: 1, fov: 40, omega: 6 }),
+          ] },
+          kill: { pri: 4, free: true, parts: [
+            SP((u, o, l) => { bossAt(dA); coreWorld(dB); const H = bossH(), r = fitD(H, 0.7, 42), a = 0.55 + 1.0 * u; o.set(dA.x + Math.sin(a) * r, 2.2 + 2.2 * u, dA.z + Math.cos(a) * r); l.copy(dB).lerp(dA.set(dA.x, H * 0.3, dA.z), 0.4 * u); }, { len: 3.0, slow: 0.6, cut: 1, fov: 42, omega: 5 }),
+          ] },
+        },
+      });
+    }
+    makeDirector();
     let visible = true;
     const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; }); io.observe(host);
     fit();
@@ -628,17 +882,24 @@ window.RushScene = (() => {
       fig.res = bucket; bucket = null;
       fig.root.scale.setScalar(0.01);
       scene.add(fig.root);
+      if (fig.P.set) scene.add(fig.P.set.group);
+      scene.fog.near = fig.P.T ? 18 : 22; scene.fog.far = fig.P.T ? 62 : 70;
       if (s.mark > 1) fig.root.position.z = -0.5;
+      threatMs = Infinity; slowUntil = 0;
+      titanLine.color.copy(C(b.color, 2.2));
       introT = 0; dying = -1; enraged = false; windOn = false; frac = 1; shieldF = null; heat = 0; moveOn = false;
       stageN = 1; sigClear(); coneNext = 0;
       if (fig.P.cones) fig.P.cones.forEach(c => { c.userData.on = false; });
       charge.visible = false; halo.visible = false; dome.visible = false;
       pool.forEach(p => { p.id = ''; p.g.visible = false; });
       if (fx) fx.clear();
+      if (tfx) tfx.clear();
+      if (fig.enter) { introT = 1; fig.root.scale.setScalar(fig.scale); fig.enter(); want('enter'); }
       glitchK = Math.max(glitchK, 0.8); glitchUntil = nowS() + 0.6;
     }
     function disposeFig(f) {
       scene.remove(f.root);
+      if (f.P.set) { scene.remove(f.P.set.group); f.P.set.dispose(); }
       f.res.forEach(d => d.dispose && d.dispose());
       if (f.P.faceMat && f.P.faceMat.map) f.P.faceMat.map.dispose();
     }
@@ -657,7 +918,8 @@ window.RushScene = (() => {
       } else if (kind === 'stagger') {
         // a block breaks the attack off: the wind-up drops, it's thrown back and reels
         windOn = false; atkT = 0; reelAt = nowS(); jolt = 0;
-        recoilV -= 2.4; shake = Math.max(shake, 0.6); stopUntil = Math.max(stopUntil, performance.now() + 110);
+        if (fig.P.T) { fig.P.T.strike(false); want('block'); }
+        recoilV -= 2.4; shake = Math.max(shake, 0.6); stopUntil = Math.max(stopUntil, pnow() + 110);
         if (canFlash()) flash = calm ? 0.5 : 1;
       } else if (kind === 'flash') { recoilV -= 0.35; if (canFlash()) flash = calm ? 0.5 : 1; }
       else if (kind === 'break') { recoilV -= 2.4; shake = Math.max(shake, 0.9); if (canFlash()) flash = 1; }
@@ -691,13 +953,14 @@ window.RushScene = (() => {
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); if (renderer.initTexture) renderer.initTexture(pageMat.map); } catch (e) {}
     renderer.setAnimationLoop(() => {
+      if (window.__rushStep) vclock += window.__rushStep;
       const t = nowS();
       let dt = Math.min(0.05, t - last); last = t;
       if (paused) dt = 0;
       if (!visible || document.hidden) return;
       frames++;
       renderer.info.reset();
-      const adt = performance.now() < stopUntil ? dt * 0.1 : dt;
+      const adt = (pnow() < stopUntil ? dt * 0.1 : dt) * (pnow() < slowUntil ? 0.3 : 1);
       const iced = t < freezeUntil, stunned = t < stunUntil;
       at += adt * (stunned ? 0.15 : iced ? 0.3 : 1);
       if (palT < 1) { palT = Math.min(1, palT + dt / 1.2); applyPal(Math.min(1, dt * 3)); }
@@ -712,14 +975,15 @@ window.RushScene = (() => {
       if (fig) {
         if (introT < 1) introT = Math.min(1, introT + dt / 0.9);
         let s = fig.scale * ease(introT);
-        if (dying >= 0) {
+        if (dying >= 0 && fig.P.T) { dying += dt; fig.root.scale.setScalar(fig.scale * (1 + 0.07 * (stageN - 1))); }
+        else if (dying >= 0) {
           dying += dt;
           const k = Math.min(1, dying / 1.3);
           fig.root.visible = Math.random() > k * 0.5;
           fig.root.scale.set(fig.scale * (1 + k * 0.25), fig.scale * Math.max(0.02, 1 - k * k), fig.scale * (1 + k * 0.25));
         } else fig.root.scale.setScalar(Math.max(0.01, s * (1 + 0.07 * (stageN - 1))));
         // wind-up builds over its length, the slam lunges forward
-        const wk = windOn ? clamp((performance.now() - windAt) / Math.max(1, windMs), 0, 1) : 0;
+        const wk = windOn ? clamp((pnow() - windAt) / Math.max(1, windMs), 0, 1) : 0;
         pose.wind += (wk - pose.wind) * Math.min(1, dt * 8);
         atkT = Math.max(0, atkT - adt * 1.8);
         pose.atk = Math.sin(Math.min(1, atkT) * Math.PI) * (atkT > 0 ? 1 : 0);
@@ -727,7 +991,8 @@ window.RushScene = (() => {
         const rk = t - reelAt;
         jolt = Math.max(0, jolt - adt * 2.6);
         pose.reel = Math.max(rk < 1.1 ? Math.sin(Math.min(1, rk / 1.1) * Math.PI) * 0.9 : 0, jolt) * (reduce ? 0.4 : 1);
-        if (dying < 0) fig.anim(at, adt, pose);
+        if (dying < 0 || fig.P.T) fig.anim(at, adt, pose, dt);
+        if (fig.P.set) fig.P.set.update(at, adt, fig.root.position);
         recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt; recoil = clamp(recoil, -1.1, 0.4);
         fig.root.position.z = (slotNow && slotNow.mark > 1 ? -0.5 : 0) + recoil;
         // pushed back, it leans back with it (every boss, kit-built or not)
@@ -748,7 +1013,7 @@ window.RushScene = (() => {
         }
         // shared parts
         coreWorld(v2);
-        charge.visible = pose.wind > 0.02 && dying < 0;
+        charge.visible = pose.wind > 0.02 && dying < 0 && !fig.P.T;   // a titan draws its own charge
         if (charge.visible) { charge.position.copy(v2).add(v1.set(0, 0, 1)); charge.scale.setScalar(0.6 + pose.wind * 3.2 + (calm ? 0 : Math.sin(t * 40) * 0.2)); }
         halo.visible = stunned && dying < 0;
         if (halo.visible) halo.children.forEach((sp, i) => { const a = t * 2.5 + i / 8 * Math.PI * 2; sp.position.set(v2.x + Math.cos(a) * 2.4, v2.y + 2.4 + Math.sin(a * 2) * 0.2, v2.z + Math.sin(a) * 2.4); });
@@ -785,15 +1050,34 @@ window.RushScene = (() => {
       }
       drawSigs(t, dt);
       if (fx) fx.update(adt);
+      if (tfx) { tfx.setScale(renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))); tfx.update(adt); }
       // camera shake and post
       shake = Math.max(0, shake - dt * 2.2);
       const sk = shake * (reduce ? 0.12 : calm ? 0.55 : 1) * 0.5;
-      camera.position.set(camBase.x + (Math.random() - 0.5) * sk, camBase.y + (Math.random() - 0.5) * sk, camBase.z);
-      camera.lookAt(camLook);
+      if (director) {
+        dirCtx.threatAt = t + threatMs / 1000;
+        // its springs are stepped at 60 Hz or finer, so a slow frame can't make the camera overshoot
+        const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 60))));
+        for (let i = n - 1; i >= 0; i--) director.update(t - i * dt / n, dt / n, dirCtx);
+        camera.position.x += (Math.random() - 0.5) * sk; camera.position.y += (Math.random() - 0.5) * sk;
+      } else {
+        camera.position.set(camBase.x + (Math.random() - 0.5) * sk, camBase.y + (Math.random() - 0.5) * sk, camBase.z);
+        camera.lookAt(camLook);
+      }
+      if (reviewCam) { camera.position.set(...reviewCam.pos); camera.lookAt(...reviewCam.look); if (camera.fov !== (reviewCam.fov || 44)) { camera.fov = reviewCam.fov || 44; camera.updateProjectionMatrix(); } }
       tintAmt = Math.max(0, tintAmt - dt * 1.6);
       if (t >= glitchUntil) glitchK = 0;
       const dimNow = t < dimUntil ? dimK : 0;
       paintVfx(tintAmt, dimNow, glitchK * (calm ? 0.5 : 1));
+      if (window.__camProbe && fig) {   // camera test probe: logs where the camera and the fighters are each frame
+        const P2 = (v, n) => { v1.copy(v).project(camera); return [n, +v1.x.toFixed(3), +v1.y.toFixed(3), +v1.z.toFixed(3)]; };
+        coreWorld(v2); const H = bossH();
+        const head = v3.set(fig.root.position.x, H * 0.92, fig.root.position.z);
+        window.__camLog.push({ t: +t.toFixed(3), fov: +camera.fov.toFixed(2), cam: camera.position.toArray().map(x => +x.toFixed(2)),
+          q: camera.quaternion.toArray().map(x => +x.toFixed(4)), cut: director && director.shot() !== 'game' ? director.shot() : '',
+          wind: windOn || threatMs <= 0, threat: threatMs, dead: dying >= 0,
+          pts: [P2(head.clone(), 'head'), P2(v2, 'core'), P2(new V(fig.root.position.x, 0, fig.root.position.z), 'feet'), P2(YOU, 'you')] });
+      }
       composer.render();
     });
 
@@ -818,12 +1102,14 @@ window.RushScene = (() => {
     function dispose() {
       renderer.setAnimationLoop(null);
       if (fx) fx.dispose();
+      if (tfx) tfx.dispose();
       ro.disconnect(); io.disconnect();
       if (old) disposeFig(old);
       if (fig) disposeFig(fig);
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
       keep.forEach(d => d.dispose && d.dispose());
       bloom.dispose();
+      if (pmrem) pmrem.dispose();
       if (composer.dispose) composer.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -835,9 +1121,9 @@ window.RushScene = (() => {
       live: () => visible && !document.hidden,
       setBoss,
       setFrac: f => { frac = f; },
-      windup: ms => { windOn = true; windAt = performance.now(); windMs = ms; },
-      windupEnd: () => { windOn = false; },
-      slam: () => { windOn = false; atkT = 1; shake = Math.max(shake, 0.8); tintAmt = Math.max(tintAmt, calm ? 0.5 : 0.8); tintHex = '#ff4d5e'; },
+      windup: (ms, atk) => { windOn = true; windAt = pnow(); windMs = ms; if (fig && fig.P.T) fig.P.T.windup(atk, ms); },
+      windupEnd: () => { windOn = false; if (fig && fig.P.T) fig.P.T.cancel(); },
+      slam: () => { windOn = false; if (fig && fig.P.T) { fig.P.T.strike(true); want('hit'); } else atkT = 1; shake = Math.max(shake, 0.8); tintAmt = Math.max(tintAmt, calm ? 0.5 : 0.8); tintHex = '#ff4d5e'; },
       stun: ms => { stunUntil = nowS() + ms / 1000; windOn = false; },
       enrage: on => { enraged = !!on; if (on) { glitchK = 0.6; glitchUntil = nowS() + 0.5; } },
       setShield: f => { shieldF = f; },
@@ -859,19 +1145,28 @@ window.RushScene = (() => {
       hurt: () => { shake = Math.max(shake, 0.6); tintAmt = Math.max(tintAmt, calm ? 0.45 : 0.75); tintHex = '#ff4d5e'; },
       defeat: () => {
         if (!fig) return;
-        if (fx) fx.cast('neon-nova', { caster, target, hits: [], effect: {} });
+        if (fig.P.T) { threatMs = Infinity; fig.P.T.die(); want('kill'); juice.slow(0.7); }
+        else if (fx) fx.cast('neon-nova', { caster, target, hits: [], effect: {} });
         dying = 0; windOn = false; shake = Math.max(shake, 1); glitchK = 1; glitchUntil = nowS() + 0.8;
         pool.forEach(p => { p.id = ''; p.g.visible = false; });
         sigClear();
       },
       pause: on => { paused = !!on; },
-      sig: (id, kind, due) => { sigAdd(id, kind, due); atkT = Math.max(atkT, 0.5); },
+      sig: (id, kind, due) => { sigAdd(id, kind, due); if (fig && fig.P.T) fig.P.T.sig(kind); else atkT = Math.max(atkT, 0.5); },
       sigDone: id => sigRemove(id, 'done'),
       sigHit: id => { sigRemove(id, 'hit'); shake = Math.max(shake, 0.35); },
       sigGone: id => sigRemove(id, 'gone'),
-      stage: n => { stageN = n; shake = Math.max(shake, 0.9); glitchK = 1; glitchUntil = nowS() + 0.7; recoilV += 1.2; if (canFlash()) flash = 1; },
-      lunge: () => { atkT = Math.max(atkT, 0.5); },
+      stage: n => { stageN = n; if (fig && fig.P.T) { fig.P.T.stage(n); want('phase'); } shake = Math.max(shake, 0.9); glitchK = 1; glitchUntil = nowS() + 0.7; recoilV += 1.2; if (canFlash()) flash = 1; },
+      lunge: () => { if (fig && fig.P.T) fig.P.T.sig('pen'); else atkT = Math.max(atkT, 0.5); },
+      threat: ms => { threatMs = ms; },
+      moveDone: () => { if (fig && fig.P.T) want('stunned'); },
+      preview: list => { if (fig && fig.P.T) { fig.P.T.preview(list); sigClear(); windOn = false; } },
+      titan: () => (fig && fig.P.T ? { mode: fig.P.T.mode(), attack: fig.P.T.attack(), shot: director ? director.shot() : 'game', cam: camera.position.toArray().map(x => +x.toFixed(2)), threat: threatMs, base: camBase.toArray().map(x => +x.toFixed(2)), fov: +camera.fov.toFixed(1), log: director ? director.log() : [] } : null),
       screen,
+      internals: () => ({ scene, fig, renderer, tfx, THREE, camera }),   // tests only
+      // tests only: the cost of drawing one frame, timed with the GPU finished, best of five batches
+      bench: (n = 4) => { const gl = renderer.getContext(), px = new Uint8Array(4), sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); let best = Infinity; for (let b = 0; b < 5; b++) { sync(); const t0 = performance.now(); for (let i = 0; i < n; i++) { composer.render(); sync(); } best = Math.min(best, (performance.now() - t0) / n); } return +best.toFixed(1); },
+      review: o => { reviewCam = o || null; if (!o) { camera.fov = 44; camera.updateProjectionMatrix(); } },
       info: () => ({ frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
       dispose,
     };
