@@ -396,7 +396,8 @@ window.Breach3D = (() => {
       L.s.visible = true;
     }
     ring(p, col, 0.6 * big);
-    flash(p, '#ffffff', 0.8 * big, 0.08, 1); flash(p, col, 1.8 * big, 0.3, 1.4);
+    // kept small so a kill near the middle never washes out the words beside it
+    flash(p, '#ffffff', 0.5 * big, 0.07, 1); flash(p, col, 1.1 * big, 0.24, 1.3);
     shock(p, col, big);
     if (!CALM) sparks(p, '#ffffff', Math.round(10 * big), 1.3);
     shotPos ||= new THREE.Vector3(); shotPos.set(p.x, p.y - 1.2, p.z); shotI = 1.8;
