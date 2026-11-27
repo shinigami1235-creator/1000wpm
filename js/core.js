@@ -319,10 +319,42 @@ window.TT = (() => {
     try { localStorage.setItem('wpm-sound', v ? 'on' : 'off'); } catch (e) {}
   }
 
+  // ---- the 3, 2, 1, GO before a game (Gid, 28 Nov 2026: every game shows when to start) ----
+  // Puts a big count over stage, beeps each number, calls onGo at GO and returns a cancel function.
+  function countdown(stage, onGo, { from = 3, step = 1000 } = {}) {
+    const c = document.createElement('div');
+    c.className = 'count3'; c.setAttribute('aria-live', 'assertive');
+    if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+    stage.append(c);
+    let n = from, timer = 0, dead = false;
+    const beep = go => {
+      if (!on) return;
+      try {
+        ac ||= new (window.AudioContext || window.webkitAudioContext)();
+        if (ac.state === 'suspended') ac.resume();
+        const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'square'; o.frequency.value = go ? 988 : 659;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + (go ? 0.35 : 0.12));
+        o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.4);
+      } catch (e) {}
+    };
+    const tick = () => {
+      if (dead) return;
+      c.textContent = n > 0 ? String(n) : 'GO';
+      c.classList.toggle('go', n <= 0);
+      c.classList.remove('tick'); void c.offsetWidth; c.classList.add('tick');
+      beep(n <= 0);
+      if (n <= 0) { if (onGo) onGo(); timer = setTimeout(() => c.remove(), 700); return; }
+      n--; timer = setTimeout(tick, step);
+    };
+    tick();
+    return () => { dead = true; clearTimeout(timer); c.remove(); };
+  }
+
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
-  return { randomWords, testWords, wordset, setWordset, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, useWeaponSound, setSound, soundOn: () => on, store, ART_WPM: 204 };
+  return { randomWords, testWords, wordset, setWordset, wordOfLength, pick, shuffle, captureKeys, TypeText, paceTimes, click, setProfile, useWeaponSound, setSound, soundOn: () => on, store, countdown, ART_WPM: 204 };
 })();

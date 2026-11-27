@@ -550,7 +550,10 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 .breach-box:fullscreen { width: 100vw; height: 100vh; align-items: center; }
 .race-panel { outline: none; }
 .race-panel.focused { border-color: var(--accent); }
-.race-canvas { display: block; width: 100%; aspect-ratio: 960 / 400; margin-bottom: 16px; background: #000; border: 1px solid var(--line-2); }
+/* the road shrinks to leave the words on screen without scrolling (Gid, 28 Nov 2026): about 500 px of
+   the window go to the header, the game tabs, the opponent row and the typing box */
+.race-stage { position: relative; width: min(100%, max(420px, calc((100svh - 500px) * 2.4))); margin: 0 auto 16px; }
+.race-canvas { display: block; width: 100%; aspect-ratio: 960 / 400; background: #000; border: 1px solid var(--line-2); }
 .race-text .typetext { font-size: clamp(20px, 2vw, 28px); }
 .race-note { color: var(--ink-2); font: 400 15px/1.4 var(--f-label); }
 .race-note b { color: var(--accent); font-weight: 400; }
@@ -1502,3 +1505,11 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .page-boss .wb-banner .in.team b { color: #3ee6ff; }
 
 .page-boss .boss-type { position: relative; }
+
+/* the 3, 2, 1, GO before a game (TT.countdown) */
+.count3 { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  font: 700 clamp(72px, 11vw, 150px)/1 var(--f-head); color: var(--ink); text-shadow: 0 0 24px rgba(var(--accent-rgb, 57,255,136), .55), 0 4px 0 rgba(0,0,0,.6); }
+.count3.go { color: var(--accent); }
+.count3.tick { animation: count3 1s var(--ease-out, ease-out); }
+@keyframes count3 { 0% { transform: scale(1.6); opacity: 0; } 18% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .count3.tick { animation: none; } }

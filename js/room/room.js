@@ -421,15 +421,16 @@ window.Room = (() => {
     s.phone = phone;
 
     // ---------- quality ----------
-    // high: 4x MSAA, 4096 shadows, 1.5x to 2x resolution even on 1x screens
-    // medium: 4x MSAA, 2048 shadows. low (phones, weak machines): no MSAA, 1024 shadows.
-    // AdaptiveQuality lowers the resolution if frames run slow.
+    // high and medium: N8AO at half resolution with SMAA, 2048 shadows. low (phones, weak machines): 4x MSAA,
+    // 1024 shadows, no AO. AdaptiveQuality lowers the resolution, then the AO, if frames run slow.
     const aq = s.aq = window.AdaptiveQuality ? AdaptiveQuality.create({
-      key: 'wpm-room', fps: 60, minScale: 0.6, minDetail: 1,
+      key: 'wpm-room', fps: 60, minScale: 0.6, minDetail: 0.55,
       onScale: v => { s.res = v; resize(s); },
+      onDetail: d => setDetail(s, d),
     }) : null;
     const lvl = s.lvl = aq ? aq.level : phone ? 'low' : 'high';
-    s.baseRatio = phone || lvl === 'low' ? Math.min(devicePixelRatio, 1.5) : Math.min(Math.max(devicePixelRatio, lvl === 'high' ? 1.5 : 1.25), 2);
+    // the screen's own pixels at most (1.5x cap): supersampling a 1x screen cost too much once AO and SMAA were in
+    s.baseRatio = Math.min(devicePixelRatio, lvl === 'high' ? 1.5 : 1.25);
     s.res = aq ? aq.scale : 1;
     if (aq) aq.loading();
 
@@ -477,14 +478,19 @@ window.Room = (() => {
     const composer = s.composer = new EffectComposer(renderer, rt);
     if (N8AOPass) {
       const ao = s.ao = new N8AOPass(scene, camera, 1, 1);
-      Object.assign(ao.configuration, { aoRadius: 0.55, distanceFalloff: 0.6, intensity: 2.6, gammaCorrection: false, halfRes: lvl !== 'high', screenSpaceRadius: false });
-      ao.setQualityMode(lvl === 'high' ? 'High' : 'Medium');
+      // half resolution and Medium quality: High (64 samples at full size) made a gaming laptop lag.
+      // transparencyAware off: glass and water would otherwise be drawn twice every frame
+      Object.assign(ao.configuration, { aoRadius: 0.55, distanceFalloff: 0.6, intensity: 2.6, gammaCorrection: false, halfRes: true, screenSpaceRadius: false, transparencyAware: false });
+      ao.setQualityMode(lvl === 'high' ? 'Medium' : 'Low');
       composer.addPass(ao);
+      // a plain render pass waits beside it, for when AdaptiveQuality turns the AO off
+      s.plain = new RenderPass(scene, camera); s.plain.enabled = false; composer.insertPass(s.plain, 0);
     } else composer.addPass(new RenderPass(scene, camera));
     s.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.55, 1.35);
     composer.addPass(s.bloom);
     composer.addPass(new OutputPass());
     if (s.ao) composer.addPass(s.smaa = new SMAAPass(1, 1));
+    if (aq && s.ao) setDetail(s, aq.detail);
     // the room page's own detail: woven fabric normals, then the room lights itself (captureEnv)
     if (s.hdTex) K.hdSet('weave').then(t => K.useWeave(t.normal)).catch(() => {});
 
@@ -525,8 +531,8 @@ window.Room = (() => {
       resize(s, true);
       const clock = new THREE.Clock();
       s.t = 0;
-      renderer.setAnimationLoop(() => {
-        if (document.hidden) return;
+      renderer.setAnimationLoop(now => {
+        if (document.hidden || skipFrame(s, now)) return;
         const dt = Math.min(0.05, clock.getDelta());
         s.t += dt;
         controls.update();
@@ -551,8 +557,8 @@ window.Room = (() => {
 
     const clock = new THREE.Clock();
     s.t = 0;
-    renderer.setAnimationLoop(() => {
-      if (document.hidden) return;
+    renderer.setAnimationLoop(now => {
+      if (document.hidden || skipFrame(s, now)) return;
       const dt = Math.min(0.05, clock.getDelta());
       s.t += dt;
       controls.update();
@@ -562,6 +568,26 @@ window.Room = (() => {
       composer.render();
       frameDone(s);
     });
+  }
+
+  // 60 frames a second at most: a 144 or 165 Hz laptop screen would otherwise draw the room two or
+  // three times as often for nothing. The shadow map is redrawn every third frame (the furniture only
+  // moves when you move it), and right away after a change.
+  function skipFrame(s, now) {
+    if (s.lastF && now - s.lastF < 15.5) return true;
+    s.lastF = now;
+    const sm = s.renderer.shadowMap;
+    sm.autoUpdate = false;
+    s.fno = (s.fno || 0) + 1;
+    if (s.fno % 3 === 0 || s.shadowNow > 0 || s.placing) { sm.needsUpdate = true; if (s.shadowNow > 0) s.shadowNow--; }
+    return false;
+  }
+  // AdaptiveQuality's detail step: lower AO quality, then no AO
+  function setDetail(s, d) {
+    if (!s.ao) return;
+    const off = d < 0.7;
+    s.ao.enabled = !off; if (s.plain) s.plain.enabled = off;
+    if (!off) s.ao.setQualityMode(d < 0.9 ? 'Performance' : s.lvl === 'high' ? 'Medium' : 'Low');
   }
 
   // the first frame clears the crash flag; every frame feeds the quality governor
@@ -688,7 +714,7 @@ window.Room = (() => {
     const k = Math.sqrt(W * D / (4.2 * 3.8)), span = Math.max(4.2, Math.max(W, D));
     key.position.set(W / 2 + 1.9 * k, 6.5 * k, D / 2 + 3.6 * k); key.target.position.set(W / 2, 0, D / 2);
     key.castShadow = true;
-    const sm = s.lvl === 'high' ? 4096 : s.lvl === 'medium' ? 2048 : 1024; key.shadow.mapSize.set(sm, sm);
+    const sm = s.lvl === 'low' ? 1024 : 2048; key.shadow.mapSize.set(sm, sm);
     Object.assign(key.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 14 * k + 6 });
     key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03 * k;
     shell.add(key, key.target);
@@ -853,7 +879,7 @@ window.Room = (() => {
     const lights = [];
     for (const p of s.items) p.obj.traverse(o => { if (o.isPointLight) lights.push(o); });
     lights.sort((a, b) => b.intensity - a.intensity);
-    lights.forEach((l, i) => { l.visible = i < (s.phone ? 4 : 8); });
+    lights.forEach((l, i) => { l.visible = i < (s.phone ? 2 : 4); });   // every light costs every pixel
   }
   const serialize = s => ({ v: 1, size: s.size.id, paper: s.paper || undefined, floor: s.floorF || undefined, view: s.viewF || undefined, items: s.items.map(p => ({ id: p.id, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), rot: p.rot, wall: p.wall })) });
 
@@ -878,6 +904,7 @@ window.Room = (() => {
   }
   function markDirty(s) {
     captureEnv(s);
+    s.shadowNow = 2;
     s.dirty = true;
     s.ui.dot.hidden = false;
     renderStrip(s);

@@ -461,6 +461,8 @@ window.BotKit = (() => {
     // where the top of each head is, and how wide it is there
     const TOP = { orbit: [0, 0.97, 0, 0.85], pixel: [0, 0.68, -0.05, 0.9], nova: [0, 0.9, -0.05, 0.8], kite: [0, sig ? 1.15 : 1.32, sig ? -0.1 : -0.42, 0.7], beep: [0, 0.88, 0.02, 0.7], raze: [0, 0.78, 0, 0.9] };
     if (opts.top && opts.top !== 'none') {
+      // on Kite a hat replaces its own straw hat, so two hats never stack
+      if (id === 'kite' && !sig && ['cap', 'party', 'propeller', 'crown', 'wizard', 'chef', 'beanie', 'cat', 'horns'].includes(opts.top) && parts.hat) { parts.hat.visible = false; TOP.kite = [0, 0.86, 0, 0.78]; }
       const [tx, ty, tz, tw] = TOP[id] || [0, 1, 0, 0.8];
       const top = new THREE.Group(); body.add(top); top.position.set(tx, ty, tz); parts.top = top;
       const mat = c => own(new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, metalness: 0.15 }));
@@ -535,12 +537,27 @@ window.BotKit = (() => {
         for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, puff = mesh(new THREE.SphereGeometry(tw * 0.28, 14, 10), m, top); puff.position.set(Math.sin(a) * tw * 0.3, 0.32, Math.cos(a) * tw * 0.3); }
         mesh(new THREE.SphereGeometry(tw * 0.32, 14, 10), m, top).position.y = 0.42;
       } else if (k === 'wizard') {
-        const m = own(new THREE.MeshStandardMaterial({ color: '#3b2bff', roughness: 0.7, side: THREE.DoubleSide }));
-        const brim = mesh(new THREE.CylinderGeometry(tw * 0.85, tw * 0.85, 0.04, 28), m, top); brim.position.y = -0.04;
+        // one smooth felt cone whose top flops over to the side, on a wide brim that droops at the edge
+        const m = own(new THREE.MeshStandardMaterial({ color: '#3b2bff', roughness: 0.85, side: THREE.DoubleSide }));
+        const brimG = new THREE.RingGeometry(tw * 0.4, tw * 1.0, 48, 4); brimG.rotateX(-Math.PI / 2);
+        const bp = brimG.attributes.position;
+        for (let i = 0; i < bp.count; i++) { const x = bp.getX(i), z = bp.getZ(i), r = Math.hypot(x, z), f = (r - tw * 0.4) / (tw * 0.6); bp.setY(i, -0.07 * f * f + 0.015 * f * Math.sin(Math.atan2(z, x) * 5)); }
+        brimG.computeVertexNormals();
+        mesh(brimG, m, top).position.y = -0.03;
+        const H = 0.95, pts = [];
+        for (let i = 0; i <= 20; i++) { const t2 = i / 20; pts.push(new THREE.Vector2(Math.max(0.004, tw * 0.44 * Math.pow(1 - t2, 0.85)), t2 * H)); }
+        const coneG = new THREE.LatheGeometry(pts, 40), cp = coneG.attributes.position;
+        for (let i = 0; i < cp.count; i++) { const f = Math.pow(cp.getY(i) / H, 2.4); cp.setX(i, cp.getX(i) - 0.32 * f); cp.setY(i, cp.getY(i) - 0.12 * f); cp.setZ(i, cp.getZ(i) - 0.08 * f); }
+        coneG.computeVertexNormals();
         const hat = new THREE.Group(); top.add(hat); parts.hatTip = hat;
-        let y = 0, r = tw * 0.5;
-        for (let i = 0; i < 4; i++) { const h = 0.26, c = mesh(new THREE.CylinderGeometry(r * 0.72, r, h, 20), m, hat); c.position.set(-i * i * 0.025, y + h / 2, 0); y += h * 0.95; r *= 0.72; }
-        const star = mesh(new THREE.OctahedronGeometry(0.09), own(new THREE.MeshBasicMaterial({ color: new THREE.Color('#f2c230').multiplyScalar(1.4), toneMapped: false })), hat); star.position.set(0.05, 0.25, tw * 0.42);
+        mesh(coneG, m, hat).position.y = -0.03;
+        const band = mesh(new THREE.TorusGeometry(tw * 0.43, 0.035, 8, 40), own(new THREE.MeshStandardMaterial({ color: '#f2c230', roughness: 0.35, metalness: 0.8 })), hat); band.rotation.x = Math.PI / 2; band.position.y = 0.04;
+        const gold = own(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd23d').multiplyScalar(1.5), toneMapped: false }));
+        for (const [y, a, s2] of [[0.3, 0.3, 0.07], [0.52, -0.6, 0.05], [0.18, -1.3, 0.045]]) {
+          const f = Math.pow(y / H, 2.4), r = tw * 0.44 * Math.pow(1 - y / H, 0.85);
+          const st = mesh(new THREE.OctahedronGeometry(s2), gold, hat); st.scale.z = 0.4;
+          st.position.set(Math.sin(a) * r - 0.32 * f, y - 0.12 * f, Math.cos(a) * r - 0.08 * f); st.rotation.y = a;
+        }
       } else if (k === 'halo') {
         const h = new THREE.Group(); top.add(h); h.position.y = 0.32; parts.goldHalo = h;
         const r = mesh(new THREE.TorusGeometry(tw * 0.55, 0.045, 10, 40), own(new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd23d').multiplyScalar(1.5), toneMapped: false })), h); r.rotation.x = Math.PI / 2 - 0.45;
@@ -569,7 +586,7 @@ window.BotKit = (() => {
         ray.set(P, D); ray.far = far;
         return ray.intersectObjects(objs, false)[0] || null;
       };
-      const all = []; body.traverse(o => { if (o.isMesh) all.push(o); });
+      const all = []; body.traverseVisible(o => { if (o.isMesh) all.push(o); });   // a hidden part (Kite's hat under a bought hat) takes no stickers
       const used = [];
       // one sticker or scratch at direction dir: it has to land on a shell part (not the screen, a
       // joint or a glow) and fit there whole; it goes on that part's own group, so it moves with it

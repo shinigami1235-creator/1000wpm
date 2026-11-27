@@ -226,7 +226,7 @@
   let foes = [], projs = [], pickups = [], rush = [], pops = [], queue = [], barriers = [], choices = [], comms = null, darkK = 0, freezeT = 0;
   let spawnT = 0, target = null, hack = null, boss = null, prompt = null;
   let hearts = 3, shield = false, score = 0, combo = 0, maxCombo = 0;
-  let slowT = 0, doubleT = 0, flashT = 0, hurtT = 0, shakeT = 0, stopT = 0, glitchT = 0, banner = null;
+  let slowT = 0, doubleT = 0, flashT = 0, hurtT = 0, shakeT = 0, stopT = 0, glitchT = 0, banner = null, countT = 0;
   let stats = null, result = null, reward = null, keyFlash = 0, missT = 0, edgeFx = null, settingsRect = null;
   // Hit feedback is a short tint at the screen edges, at most about three a second.
   function edge(rgb, a = 0.45, dur = 0.45) {
@@ -273,7 +273,7 @@
     steps.push({ kind: 'boss', stop: level.stops[level.stops.length - 1] });
     stepI = 0; stepT = 0;
     cam = { s: 0, v: 0, pos: level.rail.at(0), look: v3(0, EYE, -10), lat: 0, yawBias: 0 };
-    showStory(ch.intro, () => { mode = 'play'; S.music(ch.music); enterStep(); });
+    showStory(ch.intro, () => { mode = 'play'; countT = 3; S.music(ch.music); enterStep(); });
     S.music('menu');
   }
   function enterStep() {
@@ -875,7 +875,7 @@
     E = { daily, rng: daily ? mulberry(seed) : Math.random, level: 1, maxLevel: 1, streak: 0, longest: 0, kills: 0,
       spawnT: 1.2, pickT: 16, grace: 0, mut, mult: m, milestone: 1000, best: daily ? ((dailyScores(runDiff)[todayKey()] || {}).score || 0) : bestEndless() };
     hearts = mut.onelife ? 1 : 3;
-    mode = 'play'; paused = false;
+    mode = 'play'; paused = false; countT = 3;
     S.music(ch.music); enterStep();
   }
   function endlessPick() {
@@ -979,6 +979,7 @@
     if ((mode === 'title' || mode === 'select' || mode === 'endless-menu') && c.toLowerCase() === 'd') { setDifficulty(DIFFS[(DIFFS.indexOf(settings.difficulty) + 1) % 3]); return; }
     if (mode === 'endless-menu' && /[1-3]/.test(c)) { toggleMut(+c - 1); return; }
     if (mode !== 'play' || paused) return;
+    if (countT > 0) return;   // keys wait for GO
     if (boss && boss.state === 'intro') return;
     c = c.toLowerCase();
     stats.keys++; keyFlash = 0.12;
@@ -1109,6 +1110,12 @@
     if (comms && mode === 'play' && !paused) { comms.t -= dt; if (comms.t <= 0) comms = null; }
     if (story) story.shown += dt * 60;
     if (mode !== 'play' || paused) return;
+    // 3, 2, 1, GO before the run moves (Gid, 28 Nov 2026: every game shows when to start)
+    if (countT > 0) {
+      const was = Math.ceil(countT); countT -= dt; const n = Math.ceil(countT);
+      if (n !== was || !banner) { banner = { text: n > 0 ? String(n) : 'GO', sub: n > 0 ? 'Get ready' : '', col: n > 0 ? C.cyan : C.green, t: n > 0 ? 1.05 : 0.8 }; S.play(n > 0 ? 'select' : 'warn'); }
+      if (countT > 0) return;
+    }
     if (stopT > 0) { stopT -= dt; return; }
     stats.ms += dt * 1000;
     slowT = Math.max(0, slowT - dt); doubleT = Math.max(0, doubleT - dt);

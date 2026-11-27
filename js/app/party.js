@@ -13,6 +13,7 @@ Router.register('party', (() => {
   const R = () => PartyRules;
   const ROLE_ICON = { striker: 'bolt', guard: 'lock', support: 'flame' };
   let el = null, off = [], view = '', run = null, words = [], scene = null, keys = null, ty = null, onDoc = null, onSound = null, onResize = null, raf = 0, lastState = null, endShown = false;
+  let counted = false;
   let create = { run: 'relay', difficulty: 'normal' };
   // lit words (Gid, 27 Nov 2026): you only type your stream; counters, mites, heals, revives, shields,
   // buffs and spells light up stream words two or more ahead (PartyRules lit, players[i].marks)
@@ -535,6 +536,9 @@ Router.register('party', (() => {
       bar(el.querySelector('[data-bhp]'), st.boss.hp, st.boss.maxHp, UI.fmt(st.boss.hp));
     }
     el.querySelector('[data-fight]').textContent = st.phase === 'count' ? 'Get ready' : `Fight ${Math.max(1, st.fight + 1)} of ${st.of}`;
+    // 3, 2, 1, GO over the stage while the run's start counts down
+    if (st.phase === 'count' && !counted) { counted = true; const left = Math.ceil((3000 - (st.clock || 0)) / 1000); const sg = el.querySelector('[data-stage]'); if (sg && left > 0) TT.countdown(sg, null, { from: Math.min(3, left) }); }
+    if (st.phase !== 'count') counted = false;
     el.querySelector('[data-tc]').textContent = st.teamCombo;
     el.querySelector('[data-tm]').textContent = `x${st.teamMult.toFixed(2)}`;
     el.querySelector('[data-tm]').className = st.teamMult > 1 ? 'green' : '';

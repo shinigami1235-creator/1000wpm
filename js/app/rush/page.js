@@ -326,6 +326,7 @@ window.RushPage = (() => {
       if (!f && name !== 'intro') return;
       const S = f ? f.state(now()) : null;
       switch (name) {
+        case 'intro': { const st = q('stage'); if (st) TT.countdown(st, null, { step: p.ms / 3 }); break; }
         case 'fight': renderQueue(); paintChips(true); if (plan.slot.n > 1) tip('weak'); break;
         case 'windup':
           scene.windup(p.ms);

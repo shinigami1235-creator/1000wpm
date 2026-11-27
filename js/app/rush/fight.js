@@ -25,7 +25,7 @@
 //            shows for its usual length at the end of it, so the words arrive first
 //   f.state(t)  f.summary()  f.shift(ms)  f.debug
 window.RushFight = (() => {
-  const INTRO_MS = 1800;
+  const INTRO_MS = 3000;   // the page counts 3, 2, 1 over it and the fight starts on GO
 
   function create(o) {
     const D = window.RushData;

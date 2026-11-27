@@ -15,7 +15,7 @@ window.RaceGame = (() => {
         </div>
         <p class="race-note" aria-live="polite"></p>
       </div>
-      <canvas class="race-canvas" width="960" height="400"></canvas>
+      <div class="race-stage"><canvas class="race-canvas" width="960" height="400"></canvas></div>
       <div class="race-text typebox"></div>`;
     const host = panel.querySelector('.race-text');
     const note = panel.querySelector('.race-note');
@@ -26,29 +26,30 @@ window.RaceGame = (() => {
     let phase = 'p1';         // duo: p1 then p2
     let p1 = null;            // player 1's run for the duo
     let ghost = null;         // { times, name, color }
-    let running = false, finished = false, text = '', seed = 0, first = true;
+    let cd = null, running = false, finished = false, text = '', seed = 0, first = true;
     let stamps = [], streak = 0, skid = 0, raf = 0;
 
     const newText = () => TT.testWords(26).join(' ');
     function prepare(keepCourse) {
       running = false; finished = false;
+      if (cd) { cd(); cd = null; }
       if (!keepCourse) { text = newText(); seed = Math.floor(Math.random() * 1e9); }
       ghost = null;
       if (opp === 'art') {
         ghost = { times: TT.paceTimes(text, ART), name: 'Art', color: ART_C };
-        note.innerHTML = `Art drives at <b>${ART} wpm</b>. Start typing to race him.`;
+        note.innerHTML = `Art drives at <b>${ART} wpm</b>. Press any key to start.`;
       } else if (opp === 'best') {
         const b = TT.store.get('wpm-race-best2', null);
         if (b) {
           text = b.text; seed = b.seed;
           ghost = { times: b.times, name: 'Your best', color: BEST_C };
-          note.innerHTML = `Your best run is <b>${b.wpm} wpm</b>. Start typing to beat it.`;
+          note.innerHTML = `Your best run is <b>${b.wpm} wpm</b>. Press any key to start.`;
         } else note.innerHTML = 'Finish a race first to save your best run.';
       } else if (phase === 'p1') {
-        note.innerHTML = 'Player 1, start typing. Player 2 races your run next on the same course.';
+        note.innerHTML = 'Player 1, press any key to start. Player 2 races your run next on the same course.';
       } else {
         ghost = { times: p1.times, name: 'Player 1', color: P1_C };
-        note.innerHTML = 'Player 2, start typing to race Player 1.';
+        note.innerHTML = 'Player 2, press any key to start.';
       }
       tt.set(text);
       view.newCourse(seed, first);
@@ -140,10 +141,11 @@ window.RaceGame = (() => {
       label: 'Race',
       onChar(ch) {
         if (finished) return;
+        // the first key starts a 3, 2, 1; the race and the ghost both start on GO
         if (!running) {
           if (opp === 'best' && !ghost) return;
-          running = true;
-          host.classList.remove('idle');
+          if (!cd) cd = TT.countdown(panel.querySelector('.race-stage'), () => { cd = null; running = true; tt.startT = performance.now(); host.classList.remove('idle'); });
+          return;
         }
         const ok = tt.input(ch);
         if (ok) { stamps.push(performance.now()); streak++; }
@@ -175,7 +177,7 @@ window.RaceGame = (() => {
 
     return {
       focus: () => keys.focus(),
-      destroy() { alive = false; cancelAnimationFrame(raf); view.destroy(); document.removeEventListener('keydown', forward); },
+      destroy() { alive = false; if (cd) cd(); cancelAnimationFrame(raf); view.destroy(); document.removeEventListener('keydown', forward); },
     };
   }
 

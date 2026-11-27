@@ -617,12 +617,17 @@ Router.register('boss', (() => {
   const NEAR = 2;
   const who = m => (m.who && m.who.handle ? ' ' + m.who.handle.toUpperCase() : '');
   const LABEL = m => ({ block: 'BLOCK', dodge: 'DODGE', return: 'SEND BACK', add: 'BUG', assist: 'COVER', heal: 'HEAL' + who(m), revive: 'REVIVE' + who(m), cover: 'COVER' + who(m) })[m.kind] || '';
-  function place(n, tag, from = NEAR) {
+  // Gid, 28 Nov 2026: lit words came one after another and the raid got dizzying. Each special keeps
+  // about GAP_S seconds of plain words (at your speed) clear on both sides; a block or a packet that
+  // can't get a spot in time is spared, the same as one you can't reach.
+  const GAP_S = 3.5;
+  const gapWords = () => Math.max(4, Math.round(GAP_S * speed() / 6));
+  function place(n, tag, from = NEAR, gap = 0) {
     if (stack.length < 40) stack.push(...moreWords(60));
     syncTags();
     for (let i = Math.max(NEAR, from); i + n <= stack.length; i++) {
       let free = true;
-      for (let j = 0; j < n; j++) if (tags[i + j]) { free = false; break; }
+      for (let j = -gap; j < n + gap; j++) if (i + j >= 0 && tags[i + j]) { free = false; break; }
       if (!free) continue;
       for (let j = 0; j < n; j++) tags[i + j] = { ...tag, part: j, of: n };
       return i;
@@ -695,7 +700,16 @@ Router.register('boss', (() => {
       // aimed at you, so no words and no hit; anything else just isn't offered
       if (m.due && t + reachMs(at) + typeMs > m.due) { if (m.sticky) continue; if (m.kind === 'block' || m.kind === 'return') spared.add(m.id); inLine.add(m.id); tr('spared', m.kind, m.id, Math.round(toFar), Math.round(m.due - t)); continue; }
       const tag = { kind: m.kind, src: m.id, due: m.due, total: m.total, ev: m.ev, k: m.k, word: m.word, soon: !!(m.opens && m.opens > t) };
-      at = place(m.word.split(' ').length, { ...tag, label: LABEL(m) }, at);
+      const nw = m.word.split(' ').length, at0 = at;
+      at = place(nw, { ...tag, label: LABEL(m) }, at, gapWords());
+      // a lock-on can't be spared (the boss is aiming at you), so it goes in without the gap
+      if (m.kind === 'dodge' && at >= 0 && m.due && t + reachMs(at) + typeMs > m.due) { for (let j = 0; j < nw; j++) tags[at + j] = null; at = place(nw, { ...tag, label: LABEL(m) }, at0); }
+      // pushed back past the others it can't be typed in time: spare it instead
+      if (at >= 0 && m.due && t + reachMs(at) + typeMs > m.due) {
+        for (let j = 0; j < nw; j++) tags[at + j] = null;
+        if (m.kind === 'block' || m.kind === 'return') spared.add(m.id);
+        inLine.add(m.id); tr('spared-gap', m.kind, m.id); continue;
+      }
       tr('placed', m.kind, m.id, at, Math.round(toFar), Math.round(m.due - t));
       if (at >= 0) {
         inLine.add(m.id);
@@ -742,7 +756,7 @@ Router.register('boss', (() => {
     me.on('spellEarned', e => {
       if (!el) return;
       const sp = e.spell;
-      if (place(sp.word.split(' ').length, { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color, label: sp.word.toUpperCase() }, NEAR + 1) < 0) return;
+      if (place(sp.word.split(' ').length, { kind: 'spell', src: 'spell:' + sp.id + ':' + performance.now().toFixed(0), spell: sp, color: sp.color, label: sp.word.toUpperCase() }, NEAR + 1, gapWords()) < 0) return;
       cSfx('offer');
       tip('spell');
       pushFeed({ text: `Combo ${e.combo}: ${sp.word}`, cls: 'mile' });
