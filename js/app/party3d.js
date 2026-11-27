@@ -55,6 +55,7 @@ window.PartyScene = (() => {
       shield: (id, by) => impl && impl.shield(id, by),
       up: id => impl && impl.up(id),
       director: () => (impl ? impl.director() : null),
+      _impl: () => impl,   // tests
       clear: () => impl && impl.clear(),
       anchors: () => (impl ? impl.anchors() : new Map()),
       info: () => (impl ? impl.info() : null),
@@ -187,6 +188,7 @@ window.PartyScene = (() => {
     let pI = 0;
     function burst(at, n, speed, col, o = {}) {
       if (reduce) n = Math.ceil(n / 3);
+      if (!col.isColor) col = C(col);   // a hex string here once turned every spark NaN and blacked out the frame
       for (let k = 0; k < n; k++) {
         const p = parts[pI = (pI + 1) % PN];
         p.s.material.color.copy(col).multiplyScalar(o.k || 1.6);
@@ -232,6 +234,27 @@ window.PartyScene = (() => {
     // short bolts for chip hits and heals
     const bolts = Array.from({ length: 10 }, () => ({ m: mkStrip(), t: 1, life: 0.3, a: new V(), b: new V(), col: new THREE.Color(), w: 0.3 }));
     let boI = 0;
+    // word streaks: a bright thin core and a soft glow running along an arc from a player's hand to a foe
+    const streaks = Array.from({ length: 16 }, () => ({ core: mkStrip(), glow: mkStrip(), on: false, t: 0, dur: 0.25, a: new V(), c: new V(), to: null, col: new THREE.Color(), cb: null, k: 1 }));
+    let stI = 0;
+    const _h = new V(), _tl = new V(), _bt = new V();
+    function streak(a, to, col, dur, cb, k = 1) {
+      const S = streaks[stI = (stI + 1) % streaks.length];
+      if (S.on && S.cb) { const f = S.cb; S.cb = null; f(); }
+      S.a.copy(a); to(_bt); S.c.lerpVectors(a, _bt, 0.5).add(v4.set(rnd(-1.5, 1.5), 2.2 + rnd(0, 1.2), 0));
+      S.to = to; S.col.copy(col); S.dur = dur; S.t = 0; S.on = true; S.cb = cb; S.k = k;
+      S.core.material.color.copy(col).lerp(WHITE, 0.6).multiplyScalar(1.8); S.glow.material.color.copy(col).multiplyScalar(1.2);
+    }
+    function drawStreaks(dt) {
+      for (const S of streaks) {
+        if (!S.on) { S.core.visible = S.glow.visible = false; continue; }
+        S.t += dt; const u = S.t / S.dur;
+        S.to(_bt);
+        bez(S.a, S.c, _bt, Math.min(1, ease(u)), _h); bez(S.a, S.c, _bt, Math.max(0, Math.min(1, ease(u - 0.3))), _tl);
+        strip(S.core, _tl, _h, 0.09 * S.k, 1); strip(S.glow, _tl, _h, 0.42 * S.k, 0.45);
+        if (u >= 1) { S.on = false; S.core.visible = S.glow.visible = false; if (S.cb) { const f = S.cb; S.cb = null; f(); } }
+      }
+    }
     function bolt(a, b, col, life = 0.32, w = 0.35) { const x = bolts[boI = (boI + 1) % bolts.length]; x.a.copy(a); x.b.copy(b); x.col.copy(col); x.t = 0; x.life = life; x.w = w; x.m.material.color.copy(col); }
 
     // ---------- combat effects (tier shots and spells) ----------
@@ -402,7 +425,7 @@ window.PartyScene = (() => {
         hit(id, k) { const h = byFoe(id); if (h) h.mat.uniforms.uHit.value = Math.min(1.5, h.mat.uniforms.uHit.value + k); },
         charge(id, k) { const h = byFoe(id); if (h) h.charge = k; },
         lunge(id, at, k = 1) { const h = byFoe(id); if (h && (k >= 1 || h.lunge < 0.3)) { h.lunge = 1; h.lk = k; h.lungeTo.copy(at); } },
-        gone(id) { const h = byFoe(id); if (h) { h.alive = false; burst(h.head.position, 30, 8, pal.a, { up: 0.5 }); } },
+        gone(id) { const h = byFoe(id); if (h) { h.alive = false; burst(h.head.position, 30, 8, C(pal.a), { up: 0.5 }); } },
         regrow(id) { const h = byFoe(id); if (h) { h.alive = true; h.mat.uniforms.uHit.value = 1.5; } },
         update(dt, t) {
           tail.forEach((m, k) => { m.position.x = Math.sin(t * 1.6 - k * 0.6) * 0.5 * k * 0.3 * still; });
@@ -992,8 +1015,11 @@ window.PartyScene = (() => {
         if (opts.onImpact) opts.onImpact(h, p ? p.x : null, p ? p.y : null);
       };
       // teammates' shots stay small so four streams don't wash the boss out
-      if (fx) fx.shot(h.you ? Math.min(3, h.tier || 0) : Math.min(1, h.tier || 0), from, to, land, { color: col, kb: h.you ? myKb : null });
-      else land();
+      // plain words fly as a thin streak on an arc (the combat layer's basic bolt is drawn for a far
+      // camera and filled the near screen here); your combo shots and keyboard signatures use the combat layer
+      const tier = h.you ? Math.min(3, h.tier || 0) : 0;
+      if (fx && (tier >= 2 || (h.you && myKb && myKb !== 'slab'))) fx.shot(tier, from, to, land, { color: col, kb: h.you ? myKb : null, w: 0.5 });
+      else streak(from, to, col ? C(col) : h.you ? C('#eafff4') : colorOf(h.id), h.crit ? 0.3 : 0.26, land, h.you ? 1 : 0.7);
     }
     function cast(id, c = {}) {
       teamAct(c.from || 'me', 'cast');
@@ -1070,7 +1096,7 @@ window.PartyScene = (() => {
     function down(id) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.5), 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); smoke(v1, 5, 2, { size: 1.8, op: 0.4 }); snd('knock'); }
     function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); if (by && by !== id) teamAct(by, 'cast'); snd('heal'); }
     function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.5), 16, 3, SHIELD, { up: 1, grav: -1 }); if (by && by !== id) teamAct(by, 'cast'); snd('shield'); }
-    function up(id) { const m = team.get(id); if (m && m.mv) m.mv.act('getup'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
+    function up(id) { const m = team.get(id); if (m && m.mv) m.mv.act('cast'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
     // the boss dies: it bursts into pieces, slow motion, and the camera circles where it stood
     function clear() {
       teamWon = true; deadAt = nowS(); atk = null;
@@ -1132,7 +1158,7 @@ window.PartyScene = (() => {
         { len: 1.25, cut: 1, slow: 0.4, fov: 36, pose(c, out) { const x = c.x || bossAt; out.pos.set(x.x * 0.6 + 4, x.y + 1.2, x.z + 11 - c.u * 1.5); out.look.copy(x); } },
       ] },
       weak: { pri: 2, len: 1.5, fov: 34, pose(c, out) { out.pos.set(3.5, 6.5, 8.5 - c.u * 1.2); out.look.copy(bossAt); } },
-      kill: { pri: 5, free: true, parts: [
+      kill: { pri: 5, free: true, duringThreat: true, parts: [
         { len: 1.4, cut: 1, slow: 0.3, fov: 40, pose(c, out) { out.pos.set(killAt.x + 6, 2.2, killAt.z + 10); out.look.set(killAt.x, killAt.y, killAt.z); } },
         { len: 2.0, cut: 1, fov: 44, omega: 2.5, pose(c, out) { const a = -0.7 + c.u * 1.2; out.pos.set(killAt.x + Math.sin(a) * 16, 5 + c.u * 2, killAt.z + Math.cos(a) * 16); out.look.set(killAt.x, 3.5, killAt.z); } },
       ] },
@@ -1189,6 +1215,7 @@ window.PartyScene = (() => {
         p.s.scale.setScalar(p.size * (1.7 - k * 0.9)); p.s.material.opacity = p.op * Math.min(1, (1 - k) * 6) * k;
       }
       drawFrags(dt);
+      drawStreaks(dt);
       for (const w of rings) {
         if (!w.m.visible) continue;
         w.t += dt; const k = w.t / w.life;
@@ -1240,7 +1267,8 @@ window.PartyScene = (() => {
     }
     const live = () => visible && !document.hidden;
     const info = () => ({ kind, foes: foes.size, cre: !!cre, fx: fx ? fx.info() : null });
-    return { setFight, sync, shot, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir };
+    return { setFight, sync, shot, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
+      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }) } };
   }
 
   return { mount };

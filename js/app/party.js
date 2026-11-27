@@ -380,7 +380,7 @@ Router.register('party', (() => {
       } else if (f.kind === 'head' && st.boss.kind === 'hydra' || f.kind === 'twin') {
         word = f.name; cls = 'aim' + (me.target === f.id ? ' mine' : '');
         const n = st.players.filter(p => p.target === f.id && !p.down);
-        sub = `<span class="pa-tag-hp"><i style="width:${(100 * f.hp / f.maxHp).toFixed(0)}%"></i></span>${n.map(p => `<i class="dot" style="background:${colorOf(p.id)}"></i>`).join('')}`;
+        sub = `<span class="pa-tag-hp"><i style="width:${Math.min(100, 100 * f.hp / f.maxHp).toFixed(0)}%"></i></span>${n.map(p => `<i class="dot" style="background:${colorOf(p.id)}"></i>`).join('')}`;
       } else continue;
       want.add(f.id);
       let t = tagEls.get(f.id);
@@ -392,15 +392,25 @@ Router.register('party', (() => {
     }
     for (const [id, t] of tagEls) if (!want.has(id)) { t.remove(); tagEls.delete(id); }
   }
+  // tags that would sit on top of each other (two heads close together) are stacked instead, so
+  // every word stays readable; a tag's size is measured only when its content changes
   function placeTags() {
     if (!scene || !tagEls.size) return;
     const at = scene.anchors();
+    const live = [];
     for (const [id, t] of tagEls) {
       const a = at.get(id);
       if (!a) { t.style.visibility = 'hidden'; continue; }
       t.style.visibility = '';
-      t.style.transform = `translate(${a.x.toFixed(1)}px, ${a.y.toFixed(1)}px) translate(-50%, -100%)`;
+      if (t._sz !== t.dataset.v) { t._sz = t.dataset.v; t._w = t.offsetWidth; t._h = t.offsetHeight; }
+      live.push({ t, x: a.x, y: a.y, w: t._w || 60, h: t._h || 30 });
     }
+    live.sort((p, q) => q.y - p.y);
+    for (let i = 0; i < live.length; i++) for (let j = 0; j < i; j++) {
+      const p = live[i], q = live[j];
+      if (Math.abs(p.x - q.x) < (p.w + q.w) / 2 + 4 && Math.abs(p.y - q.y) < p.h + 4) p.y = q.y - q.h - 4;
+    }
+    for (const p of live) p.t.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`;
   }
 
   // the words this player may type besides the stream; the rules decide what they do

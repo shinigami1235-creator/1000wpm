@@ -217,7 +217,7 @@ window.DuelArena = (() => {
           vec3 p = position; p.y += sin(uT * (2.0 + side * 6.0) + ph) * (0.06 + side * 0.3) + side * 0.15; p.x += sin(uT * 1.3 + ph) * 0.12;
           vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
           vA = 0.45 + 0.55 * step(0.25, fract(ph * 0.37 + uT * 0.05)) * (0.6 + 0.4 * sin(uT * 3.0 + ph)) + side;
-          vC = color; gl_PointSize = uPx * (9.0 + side * 6.0) * 10.0 / -mv.z; }`,
+          vC = color; gl_PointSize = min(uPx * (9.0 + side * 6.0) * 10.0 / -mv.z, uPx * 7.0); }`,
       fragmentShader: `varying vec3 vC; varying float vA; void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = smoothstep(0.5, 0.0, r); gl_FragColor = vec4(vC * (1.4 + vA), a * min(1.0, vA)); }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
@@ -228,11 +228,11 @@ window.DuelArena = (() => {
     const grid = (L, cell = 4) => { const c = L.c; c.fillStyle = 'rgba(0,0,0,0.35)'; for (let x = 0; x < L.cv.width; x += cell) c.fillRect(x, 0, 1, L.cv.height); for (let y = 0; y < L.cv.height; y += cell) c.fillRect(0, y, L.cv.width, 1); };
     const frameMat = own(new THREE.MeshBasicMaterial({ color: '#0b1013' }));
     const J = led(1024, 432);
-    const jumbo = new THREE.Group(); jumbo.position.set(0, 10.2, -31); root.add(jumbo);
-    const jScreen = new THREE.Mesh(own(new THREE.PlaneGeometry(17, 7.2)), own(new THREE.MeshBasicMaterial({ map: J.t, toneMapped: false, color: C('#ffffff', 0.92), fog: false })));
+    const jumbo = new THREE.Group(); jumbo.position.set(0, 8.7, -31); root.add(jumbo);
+    const jScreen = new THREE.Mesh(own(new THREE.PlaneGeometry(17, 7.2)), own(new THREE.MeshBasicMaterial({ map: J.t, toneMapped: false, color: C('#ffffff', 0.6), fog: false })));
     jumbo.add(jScreen);
     const jFrame = new THREE.Mesh(own(new THREE.BoxGeometry(17.8, 8, 0.6)), frameMat); jFrame.position.z = -0.34; jumbo.add(jFrame);
-    for (const sx of [-1, 1]) { const strut = new THREE.Mesh(own(new THREE.BoxGeometry(0.4, 11, 0.4)), frameMat); strut.position.set(sx * 6, -9, -0.6); jumbo.add(strut); }
+    for (const sx of [-1, 1]) { const strut = new THREE.Mesh(own(new THREE.BoxGeometry(0.4, 11, 0.4)), frameMat); strut.position.set(sx * 6, -8.5, -0.6); jumbo.add(strut); }
     const banners = [0, 1].map(i => {
       const L = led(256, 640);
       const b = new THREE.Group(); b.position.set((i ? 1 : -1) * 21, 9.5, -19); b.rotation.y = (i ? -1 : 1) * 0.62; root.add(b);

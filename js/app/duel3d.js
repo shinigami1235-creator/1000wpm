@@ -437,7 +437,9 @@ window.DuelScene = (() => {
       own(arcGeo);
       const arcs = new THREE.LineSegments(arcGeo, arcMat); arcs.position.z = 0.06; arcs.visible = false; arcs.frustumCulled = false; f.card.add(arcs);
       const stars = Array.from({ length: 3 }, () => sprite(glowTex, 1, 8));
-      Object.assign(f, { frost, spikes, arcs, stars, ice: 0, wasFrozen: false, arcT: 0, poison: 0, bubbleT: 0, smokeT: 0 });
+      // on an operator the crystals grow up out of the floor round the feet, a prison of ice to the knees
+      if (f.op) spikes.forEach((m, k) => { const a = k / spikes.length * Math.PI * 2; m.position.set(Math.cos(a) * 1.5, -2.55 + rnd(0, 0.25), Math.sin(a) * 0.9); m.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35); m.userData.len *= 1.3; });
+      Object.assign(f, { iceGroup: ice, frost, spikes, arcs, stars, ice: 0, wasFrozen: false, arcT: 0, poison: 0, bubbleT: 0, smokeT: 0 });
     });
     const _sp = new V();
     function zigzag(f) {
@@ -472,6 +474,7 @@ window.DuelScene = (() => {
         f.wasFrozen = frozen;
         f.frost.visible = f.ice > 0.01 && !f.op; f.frost.material.opacity = f.ice * 0.75;
         for (const m of f.spikes) m.scale.set(1, Math.max(0.001, f.ice * m.userData.len), 1);
+        f.iceGroup.visible = f.ice > 0.01;   // flattened spikes still showed as white specks round the body
         if (frozen && Math.random() < dt * 8) burst(centre(i, tmp).add(tmp2.set(rnd(-1.5, 1.5), rnd(-1.6, 1.6), 0.3)), 1, 0.4, ICE, { size: 0.16, life: 0.6, grav: 1 });
         // locked: arcs and circling sparks
         const stunned = f.stun > 0 && !f.broken;
@@ -847,7 +850,7 @@ window.DuelScene = (() => {
         { len: 0.8, cut: 1, fov: 40, omega: 3, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set(fp[i].x - d * 5, 4.6, 13); out.look.set(fp[1 - i].x * 0.6, 2.4, 0); } },
       ] },
       ko: { pri: 4, free: true, parts: [
-        { len: 1.5, cut: 1, slow: 0.28, fov: 36, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set(fp[i].x + d * 3.8, 1.0, fp[i].z + 5.2); out.look.set(fc[i].x - d * 0.8, 1.6, fc[i].z); } },
+        { len: 1.5, cut: 1, slow: 0.28, fov: 44, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set(fp[i].x + d * 4.2, 1.5, fp[i].z + 6.6); out.look.set(fp[i].x - d * 1.4, 2.0, fp[i].z); } },
         { len: 1.7, cut: 1, slow: 0.7, fov: 40, omega: 2.5, pose(c, out) { const i = c.x, j = 1 - i, d = F[j].dir; out.pos.set(fp[j].x - d * 3.2, 3.2 + c.u * 0.6, fp[j].z + 6.5 - c.u * 1.2); out.look.set((fp[i].x + fp[j].x) / 2, 1.8, 0); } },
       ] },
       victory: { pri: 5, free: true, len: 3.6, fov: 34, omega: 3, pose(c, out) {
