@@ -1462,3 +1462,46 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
   .page-boss .boss-type > :not(.typebox):not(.wb-mech) { order: 3; }
   .page-boss .wb-chips { justify-content: flex-start; }
 }
+
+/* ---------- World Boss defend mode (Art, 27 Nov 2026) ----------
+   While a block attack winds up, the typing area turns into the raid's shield: your block word,
+   the teammates you can cover, and one cell per raider that lights up as each segment locks. */
+.page-boss .wb-defend { display: grid; gap: 12px; justify-items: center; padding: 14px 16px 16px; margin: 0 auto 6px; max-width: 760px;
+  border: 1px solid rgba(255,77,94,.55); border-radius: 10px; background: linear-gradient(180deg, rgba(255,77,94,.12), rgba(255,77,94,.03));
+  animation: wd-in 180ms ease-out; }
+.page-boss .wb-defend[hidden] { display: none; }
+@keyframes wd-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+.page-boss .wd-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; }
+.page-boss .wd-head b { font: 700 var(--t-s)/1 var(--f-head); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.page-boss .wd-time { height: 4px; border-radius: 2px; background: rgba(255,77,94,.18); overflow: hidden; }
+.page-boss .wd-time i { display: block; height: 100%; background: var(--red); transform-origin: left; }
+.page-boss .wd-head em { font: 600 var(--t-s)/1 var(--f-mono, monospace); font-style: normal; color: var(--red); min-width: 3.5em; text-align: right; }
+.page-boss .wd-main { display: grid; justify-items: center; gap: 6px; min-height: 58px; }
+.page-boss .wd-main small, .page-boss .wd-g small { font: 500 12px/1 var(--f-head); color: var(--ink-2); letter-spacing: .04em; }
+.page-boss .wd-word { font: 600 clamp(26px, 3.4vw, 38px)/1.1 var(--f-mono, monospace); color: #ffd0d5; letter-spacing: .02em; }
+.page-boss .wd-word .c.ok, .page-boss .wd-g .c.ok { color: #3ee6ff; }
+.page-boss .wd-word .c.bad, .page-boss .wd-g .c.bad { color: var(--red); text-decoration: underline; }
+.page-boss .wd-help { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; min-height: 0; }
+.page-boss .wd-g { display: grid; justify-items: center; gap: 4px; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(62,230,255,.35);
+  background: rgba(62,230,255,.06); font: 600 20px/1.1 var(--f-mono, monospace); color: #bff6ff; }
+.page-boss .wd-g.cur { border-color: #3ee6ff; box-shadow: 0 0 0 1px #3ee6ff, 0 0 18px rgba(62,230,255,.35); }
+.page-boss .wd-g.other { border-color: rgba(255,210,61,.45); background: rgba(255,210,61,.06); color: #ffe9a6; }
+.page-boss .wd-shield { display: grid; justify-items: center; gap: 6px; width: 100%; }
+.page-boss .wd-cells { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 560px; }
+.page-boss .wd-cells i { width: 10px; height: 12px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: rgba(255,255,255,.12); transition: background 150ms, transform 150ms; }
+.page-boss .wd-cells i.me { outline: none; background: rgba(255,255,255,.3); }
+.page-boss .wd-cells i.on { background: #3ee6ff; transform: scale(1.15); }
+.page-boss .wd-shield b { font: 600 var(--t-s)/1 var(--f-head); color: var(--ink-2); }
+/* your own line waits underneath, and the arena goes red at the edges */
+.page-boss.is-defending .wb-mech { display: none; }
+/* the word box keeps the keyboard focus, so it shrinks out of sight instead of being removed */
+.page-boss.is-defending .boss-words { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.page-boss.is-defending .boss-stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  box-shadow: inset 0 0 90px rgba(255,77,94,.55); animation: wd-pulse 900ms ease-in-out infinite alternate; }
+@keyframes wd-pulse { from { opacity: .55; } to { opacity: 1; } }
+.page-boss .wb-banner .in.team b { color: #3ee6ff; }
+@media (prefers-reduced-motion: reduce) {
+  .page-boss .wb-defend { animation: none; }
+  .page-boss.is-defending .boss-stage::after { animation: none; opacity: .8; }
+}
+.page-boss .boss-type { position: relative; }

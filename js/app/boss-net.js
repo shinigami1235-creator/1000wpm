@@ -11,6 +11,8 @@
 //                                                             A server must check mult against the player's combo, statuses
 //                                                             and casts rather than trust it (see COMBAT.md).
 //   WorldBossNet.sendBlock(attackId, text, opt) -> Promise<{ ok }> the counter word typed before the hit
+//   WorldBossNet.sendCover(attackId, raiderId, text) -> Promise<{ ok }> lock a teammate's shield segment
+//                                                             with their cover word (WorldBossRules.coverWord)
 //                                                             opt.grace: ms past the hit still allowed (cryo lock, up to 6000)
 //   WorldBossNet.sendReturn(shotId, word)   -> Promise<{ ok }> a thrown word sent back
 //   WorldBossNet.sendAddKill(addId, word)   -> Promise<{ ok }> an add destroyed
@@ -73,7 +75,7 @@ window.WorldBossNet = (() => {
       s.name = R.BOSS.name;
       s.phase = phaseOf(s.hp / s.maxHp);
       if (!Array.isArray(s.phaseAt)) { s.phaseAt = [s.startedAt, null, null, null, null]; if (s.phase) s.phaseAt[s.phase] = now(); }
-      s.shield ||= null; s.brk ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
+      s.shield ||= null; s.brk ||= null; s.weak ||= null; s.blocks ||= {}; s.addsDown ||= {}; s.done ||= {}; s.locked ||= {}; s.team ||= { fw: 0, rootUntil: 0 };
       s.raiders.forEach((r, i) => { r.blocks ||= 0; if (/^raider_\d+$/.test(r.name || '')) r.name = name(i); });
       return s;
     }
@@ -91,6 +93,8 @@ window.WorldBossNet = (() => {
         bossId: st.bossId, name: st.name, maxHp: st.maxHp, hp: st.hp, dealt: st.maxHp - st.hp, startedAt: st.startedAt, defeatedAt: st.defeatedAt,
         lastHit: st.lastHit, demo: true, training: !!st.training, phase: st.phase, phaseAt: st.phaseAt.slice(), shield: st.shield && { ...st.shield }, brk: st.brk && { ...st.brk }, weak: st.weak && { ...st.weak },
         blocks: { ...st.blocks }, addsDown: { ...st.addsDown }, raiders,
+        // who has locked each raider's segment of the shield, for the block attacks still to land
+        locked: Object.fromEntries(Object.entries(st.locked || {}).map(([k, v]) => [k, { ...v }])),
         team: { ...(st.team || { fw: 0, rootUntil: 0 }) },
       };
     }
@@ -104,7 +108,7 @@ window.WorldBossNet = (() => {
       if (p <= st.phase || st.defeatedAt) return;
       st.phase = p; st.phaseAt[p] = t;
       // a phase change ends the shield, the weak point and the attacks in flight
-      st.shield = null; st.brk = null; st.weak = null; st.blocks = {}; st.addsDown = {}; st.done = {}; plans = {};
+      st.shield = null; st.brk = null; st.weak = null; st.blocks = {}; st.addsDown = {}; st.done = {}; st.locked = {}; plans = {};
       emitEvent({ type: 'phase', phase: p, at: t });
       emit();
     }
@@ -176,16 +180,27 @@ window.WorldBossNet = (() => {
             const p = [0.72, 0.66, 0.6, 0.55, 0.5][st.phase];
             plans[e.id] = sims.filter(() => Math.random() < p).map(s => ({ s, at: rnd(e.start + 1200, e.hit - 150) }));
           }
-          for (const b of plans[e.id]) if (!b.done && t >= b.at && t < e.hit) { b.done = true; block(b.s.r.id, e); }
+          for (const b of plans[e.id]) if (!b.done && t >= b.at && t < e.hit) {
+            b.done = true; block(b.s.r.id, e);
+            // then, often, it covers a teammate who hasn't locked theirs, after the time to type a short word
+            const q = [0.45, 0.38, 0.32, 0.27, 0.22][st.phase];
+            if (Math.random() < q) (plans[e.id + ':c'] ||= []).push({ s: b.s, at: Math.max(t, e.start + R.COVER_AFTER) + rnd(500, 1300) * 80 / (b.s.r.wpm || 80) });
+          }
+          for (const c of plans[e.id + ':c'] || []) if (!c.done && t >= c.at && t < e.hit) {
+            c.done = true;
+            const L = st.locked[e.id] || {}, open = st.raiders.filter(r => !L[r.id]);
+            if (open.length) cover(c.s.r.id, e, open[Math.floor(Math.random() * open.length)].id);
+          }
           if (t >= e.hit && !st.done[e.id]) {
             st.done[e.id] = 1;
             // a late tick still counts the blocks that were typed before the hit
             for (const b of plans[e.id]) if (!b.done && b.at < e.hit) { b.done = true; block(b.s.r.id, e); }
-            const n = st.blocks[e.id] || 0, of = st.raiders.length;
-            const stun = n / of >= R.STAGGER_SHARE;
+            const n = Object.keys(st.locked[e.id] || {}).length, of = st.raiders.length, full = n >= of;
+            const stun = full || n / of >= R.STAGGER_SHARE;
             if (stun) st.weak = { until: e.hit + R.WEAK_MS, mult: R.PHASES[st.phase].weakMult };
             team(stun ? R.TEAM.stun : -R.TEAM.miss, t);
-            emitEvent({ type: 'impact', id: e.id, kind: e.kind, blocks: n, of, stun, at: e.hit });
+            emitEvent({ type: 'impact', id: e.id, kind: e.kind, blocks: n, of, stun, full, locked: { ...(st.locked[e.id] || {}) }, at: e.hit });
+            setTimeout(() => { if (st && st.locked) delete st.locked[e.id]; }, 3000);
           }
         } else if (e.type === 'volley') {
           if (!plans[e.id]) plans[e.id] = e.shots.filter(() => Math.random() < 0.35).map(sh => ({ sh, s: sims[Math.floor(Math.random() * sims.length)], at: rnd(sh.launch + 800, sh.arrive - 300) }));
@@ -240,8 +255,21 @@ window.WorldBossNet = (() => {
       st.blocked[k] = 1;
       st.blocks[e.id] = (st.blocks[e.id] || 0) + 1;
       r.blocks = (r.blocks || 0) + 1;
+      st.locked ||= {}; (st.locked[e.id] ||= {})[id] ||= nameOf(r);
       team(R.TEAM.block, now(), nameOf(r));
       damage(id, e.word.replace(/ /g, '').length, 'block');
+      return true;
+    }
+    // byId locks forId's segment of the shield: it counts as a block for the raid and credits the coverer
+    function cover(byId, e, forId) {
+      const by = st.raiders.find(x => x.id === byId), L = ((st.locked ||= {})[e.id] ||= {});
+      if (!by || L[forId] || !st.raiders.some(x => x.id === forId)) return false;
+      L[forId] = nameOf(by);
+      st.blocks[e.id] = (st.blocks[e.id] || 0) + 1;
+      by.covers = (by.covers || 0) + 1;
+      team(R.TEAM.block, now(), nameOf(by));
+      damage(byId, R.coverWord(e, forId).length, 'block');
+      if (forId === 'you') emitEvent({ type: 'covered', id: e.id, by: nameOf(by), at: now() });
       return true;
     }
     function killAdd(id, a) {
@@ -316,6 +344,11 @@ window.WorldBossNet = (() => {
         const want = opts && opts.tier != null ? R.blockWord(e, opts.tier) : e.word;
         if (!e || t >= e.hit + grace || text !== want) return { ok: false };
         return { ok: block('you', e) };
+      },
+      async sendCover(id, forId, text) {
+        const t = now(), e = st && R.eventsAt(st, t, 0).find(x => x.type === 'slam' && x.id === id);
+        if (!e || t >= e.hit || t < e.start + R.COVER_AFTER || text !== R.coverWord(e, forId)) return { ok: false };
+        return { ok: cover('you', e, forId) };
       },
       async sendReturn(id, word) {
         const t = now();
@@ -392,6 +425,7 @@ window.WorldBossNet = (() => {
     now: () => (impl.now ? impl.now() : Date.now()),
     sendDamage: (letters, opts) => impl.sendDamage(letters, opts),
     sendBlock: (id, text, opts) => impl.sendBlock(id, text, opts),
+    sendCover: (id, forId, text) => impl.sendCover(id, forId, text),
     sendReturn: (id, word) => impl.sendReturn(id, word),
     sendAddKill: (id, word) => impl.sendAddKill(id, word),
     onState: fn => impl.onState(fn),

@@ -213,6 +213,16 @@ window.WorldBossRules = (() => {
     return pickWords(rng(`${e.id}|t${tier}`), 1, T.min, T.max, new Set(), 0)[0];
   }
 
+  // ---------- covering a teammate (Art, 27 Nov 2026: "yay it's team work") ----------
+  // Each raider has one segment of the raid's shield for a block attack and locks it by typing their
+  // own block word. Once theirs is done, anyone can lock a teammate's segment for them by typing that
+  // segment's cover word, a short word seeded on the attack and the raider, so a server can check it.
+  // Every segment locked before the hit is a full team block.
+  //   coverWord(e, raiderId)  the word that covers raiderId against attack e
+  //   COVER_AFTER             ms after an attack starts before anyone can cover someone else
+  const COVER_AFTER = 1500;
+  function coverWord(e, raiderId) { return pickWords(rng(`${e.id}|c|${raiderId}`), 1, 3, 5, new Set(), 0)[0]; }
+
   // ---------- damage ----------
   function weakMult(s, now) { return s.weak && now < s.weak.until ? s.weak.mult : 1; }
   // ---------- the team firewall (Gid, 25 Nov 2026: try it first) ----------
@@ -240,6 +250,6 @@ window.WorldBossRules = (() => {
     BOSS, PHASES, ATTACK_NAME, FIRST_LEAD, LEAD, ARMOUR_PHASES, CHARGE_WIND, LASER_WIND, breakMax, ADD_LIFE, WEAK_MS, STAGGER_SHARE, RETURN_X, BLOCK_X, CRIT_X, MAX_X,
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
     TEAM, teamMult, teamGuard, teamRoot,
-    TIERS, tierOf, blockWord, pickWords,
+    TIERS, tierOf, blockWord, pickWords, coverWord, COVER_AFTER,
   };
 })();

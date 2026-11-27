@@ -37,7 +37,7 @@ Router.register('boss', (() => {
   const CHARGE_DMG = 50;
   const KIND = { block: 'Block', return: 'Send back', add: 'Debug', dodge: 'Dodge', cover: 'Cover', heal: 'Heal', revive: 'Revive' };
   // the word row's order: your own dodge first, then saving squadmates, then the raid's attacks
-  const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, return: 3, heal: 4, add: 5 };
+  const ORDER = { dodge: 0, revive: 1, cover: 1, block: 2, guard: 2.5, return: 3, heal: 4, add: 5 };
   // attacks on you show as a red phrase in your own word line, late enough to be a scare and early
   // enough for your speed (The Typing of the Dead, Gid 26 Nov 2026); the rest stay as corner chips
   const THREAT = new Set(['block', 'dodge']);
@@ -49,6 +49,9 @@ Router.register('boss', (() => {
   const BLOCK_MILESTONES = [1, 5, 10, 25, 50];
 
   let el, scene, offs = [], timers = [], keys = null;
+  // defend mode (Art, 27 Nov 2026): while a block attack winds up, the typing area turns into the
+  // raid's shield. You lock your own segment, then cover teammates who haven't locked theirs.
+  let defend = null, coveredMe = {}, myCovers = {}, defOver = {};
   let st = null;
   let stack = [], hist = [], typed = '', target = null, clean = true, combo = 0, best = 0;
   let sess = null, recorded = false, feed = [], others = [], lastOther = 0, lastNum = 0, lastStage = -1, lastPhase = -1;
@@ -74,7 +77,7 @@ Router.register('boss', (() => {
   const sfx = (n, a) => A.play(n, a);
 
   function newSession() {
-    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0 };
+    sess = { keys: 0, good: 0, letters: 0, words: 0, missed: 0, first: 0, last: 0, active: 0, blocks: 0, fails: 0, returns: 0, adds: 0, dmg: 0, casts: 0, covers: 0 };
     recorded = false;
   }
   // ---------- the squad (js/app/boss-squad.js) ----------
@@ -119,6 +122,7 @@ Router.register('boss', (() => {
   }
 
   function resetFight() {
+    defend = null; coveredMe = {}; myCovers = {}; defOver = {};
     newSession();
     feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
     flow = null;
@@ -261,6 +265,12 @@ Router.register('boss', (() => {
         </section>
         <section class="boss-type" aria-label="Your word stack">
           <div class="wb-mech" data-k="mechrow"><div class="wb-chips" data-k="chips"></div></div>
+          <div class="wb-defend" data-k="defend" hidden aria-live="polite">
+            <div class="wd-head"><b data-k="dname"></b><span class="wd-time"><i data-k="dtime"></i></span><em data-k="dleft"></em></div>
+            <div class="wd-main" data-k="dmain"></div>
+            <div class="wd-help" data-k="dhelp"></div>
+            <div class="wd-shield"><span class="wd-cells" data-k="dcells"></span><b data-k="dcount"></b></div>
+          </div>
           <div class="typebox boss-words" data-k="box" tabindex="-1">
             <div class="boss-queue" data-k="queue"></div>
             <div class="focus-note"><span class="fn-key">Click here or press any key to type</span><span class="fn-tap">Tap here to type</span></div>
@@ -425,6 +435,8 @@ Router.register('boss', (() => {
     if (target && wordOf(target).startsWith(typed)) return;
     const m = mech.find(x => x.word.startsWith(typed)) || spellTargets().find(x => x.word.startsWith(typed));
     if (m) { target = m; return; }
+    // defending: your own line waits, so letters go to the first word you can type for the shield
+    if (defend) { const d = mech.find(x => x.kind === 'block' || x.kind === 'guard'); if (d) { target = d; return; } }
     if (stack[0].startsWith(typed)) { target = { stack: true }; return; }
     // a slip in the first letters of a spell word was more likely meant for the stack
     if (!target || (target.kind === 'spell' && typed.length < 4)) target = { stack: true };
@@ -470,7 +482,7 @@ Router.register('boss', (() => {
     const spellHit = !exact && spellTargets().find(x => x.word === typed);
     if (exact) target = exact;
     else if (spellHit) target = spellHit;
-    else if (typed === stack[0]) target = { stack: true };
+    else if (typed === stack[0] && !defend) target = { stack: true };
     else if ((target && target.gone) || (gone.has(typed) && performance.now() - gone.get(typed) < 3000)) {
       // an attack word that just left the row: clear it without spending the stack word
       typed = ''; target = null; clean = true;
@@ -503,6 +515,14 @@ Router.register('boss', (() => {
           pop('BLOCKED', 'cyan');
           pushFeed({ text: `You blocked the ${R.ATTACK_NAME[m.ev.kind]}`, cls: 'you' });
           milestone('blocks', sess.blocks);
+        } else if (m.kind === 'guard') {
+          sess.covers++;
+          myCovers[m.ev.id] = (myCovers[m.ev.id] || 0) + 1;
+          WorldBossNet.sendCover(m.ev.id, m.rid, m.word);
+          if (defend && defend.L) defend.L[m.rid] = 'You';
+          sfx('blockOk');
+          pop('COVERED', 'cyan');
+          pushFeed({ text: `You covered ${m.name}`, cls: 'you' });
         } else if (m.kind === 'return') {
           sess.returns++;
           WorldBossNet.sendReturn(m.id, m.word);
@@ -754,6 +774,49 @@ Router.register('boss', (() => {
     return s;
   }
 
+  // ---------- defend mode ----------
+  const hashOf = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+  const KIND_LABEL = { dodge: 'Dodge', cover: 'Shield', revive: 'Revive', heal: 'Heal', return: 'Send back', add: 'Delete' };
+  let defendFor = null;
+  function renderDefend(t) {
+    const box = q('defend'); if (!box) return;
+    const on = !!defend && !!st && !st.defeatedAt;
+    if (el) el.classList.toggle('is-defending', on);
+    if (!on) { if (!box.hidden) box.hidden = true; defendFor = null; return; }
+    const d = defend, e = d.e, of = d.of, L = d.L || {};
+    if (box.hidden) box.hidden = false;
+    if (defendFor !== e.id) {
+      // a new attack: one cell per raider, yours marked
+      defendFor = e.id;
+      q('dname').textContent = `Incoming ${R.ATTACK_NAME[e.kind]}`;
+      q('dcells').innerHTML = st.raiders.map(r => `<i data-r="${esc(r.id)}"${r.you ? ' class="me"' : ''}></i>`).join('');
+    }
+    const left = Math.max(0, d.due - t), tot = Math.max(1, d.due - e.start);
+    q('dtime').style.transform = `scaleX(${(left / tot).toFixed(3)})`;
+    q('dleft').textContent = (left / 1000).toFixed(1) + 's';
+    let n = 0;
+    for (const c of q('dcells').children) { const k = !!L[c.dataset.r]; c.classList.toggle('on', k); if (k) n++; }
+    q('dcount').textContent = `${n} of ${of} blocked`;
+    // your own segment, then the teammates you can cover
+    const own = mech.find(m => m.kind === 'block' && m.ev.id === e.id);
+    const typing = m => target && target.id === m.id;
+    q('dmain').innerHTML = own
+      ? `<small>Your block</small><span class="wd-word">${lettersHtml(own.word, typing(own) ? typed : '', typing(own))}</span>`
+      : `<small>${coveredMe[e.id] ? `${esc(coveredMe[e.id])} covered you` : 'You blocked it'}</small>`;
+    const help = mech.filter(m => m.kind === 'guard' || (m.kind !== 'block' && KIND_LABEL[m.kind]));
+    q('dhelp').innerHTML = help.length ? help.map(m => `<span class="wd-g${typing(m) ? ' cur' : ''}${m.kind !== 'guard' ? ' other' : ''}"><small>${esc(m.kind === 'guard' ? `Cover ${m.name}` : KIND_LABEL[m.kind])}</small><span class="wd-gw">${lettersHtml(m.word, typing(m) ? typed : '', typing(m))}</span></span>`).join('')
+      : '';
+  }
+  // every segment locked: the whole raid blocked it
+  function teamBlock(e) {
+    const b = q('banner');
+    b.hidden = false;
+    b.innerHTML = `<div class="in team"><b>${e.of} blocked the attack.</b></div>`;
+    b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+    clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 2200);
+    sfx('shieldUp');
+  }
+
   // ---------- attacks on the shared clock ----------
   function tick() {
     if (!el || !st) return;
@@ -787,15 +850,32 @@ Router.register('boss', (() => {
         // cryo lock gives you extra time on one attack
         const due = e.hit + (grace[e.id] || 0);
         const bw = R.blockWord(e, tier), win = winMs(bw);
-        if (t < due && !mine.has(e.id) && !isDown && t >= due - win) {
-          list.push({ kind: 'block', id: e.id, word: bw, due, total: Math.min(win, due - e.start), ev: e });
-          const left = Math.ceil((due - t) / 1000);
-          if (warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
+        const L = (st.locked && st.locked[e.id]) || {};
+        if (L.you && !mine.has(e.id) && !coveredMe[e.id]) {
+          // a teammate locked your segment for you
+          coveredMe[e.id] = L.you;
+          if (scene) scene.block(e.id);
         }
+        const safe = mine.has(e.id) || !!coveredMe[e.id];
+        // the screen turns into the shield as soon as the wind-up starts (Art: "the screen could change")
+        if (t < due && !safe && !isDown && t >= e.start + 400) {
+          list.push({ kind: 'block', id: e.id, word: bw, due, total: Math.min(Math.max(win, due - e.start - 400), due - e.start), ev: e });
+          const left = Math.ceil((due - t) / 1000);
+          if (t >= due - win && warned[e.id] !== left) { warned[e.id] = left; sfx('warn'); }
+        }
+        // once yours is locked, cover the teammates who haven't locked theirs, a few at a time
+        if (t < due && safe && !isDown && t >= e.start + R.COVER_AFTER) {
+          const open = st.raiders.filter(r => !r.you && !L[r.id]).sort((a, b) => hashOf(e.id + a.id) - hashOf(e.id + b.id)).slice(0, 3);
+          for (const r of open) list.push({ kind: 'guard', id: `g:${e.id}:${r.id}`, word: R.coverWord(e, r.id), due, total: due - e.start - R.COVER_AFTER, ev: e, rid: r.id, name: r.name });
+          if (!open.length) defOver[e.id] = 1;   // nothing left for you to lock: back to your own line
+        }
+        if (t >= e.start && t < due && !isDown && !defend && !defOver[e.id]) defend = { e, due, L, of: st.raiders.length };
+        if (defend && defend.e.id === e.id) { defend.L = L; defend.due = due; }
         if (t >= due && !done.has(e.id)) {
           done.add(e.id);
           if (squad) squad.raidHit(Math.round(slamDmg(st.phase || 0) * R.teamGuard(st, now())), t);
           if (mine.has(e.id)) sfx('impact', true);
+          else if (coveredMe[e.id]) { sfx('impact', true); pop('COVERED', 'cyan'); }
           else if (active() && !isDown) {
             const stunned = me && me.status('stunned-target');
             const r = me ? me.hurt('slam') : { blocked: false };
@@ -848,10 +928,12 @@ Router.register('boss', (() => {
       const m = list[i];
       if (m.kind === 'dodge') { const w = winMs(m.word); if (t < m.due - w) list.splice(i, 1); else m.total = Math.min(m.total, w); }
     }
+    if (defend && (t >= defend.due || (squad && squad.down()) || defOver[defend.e.id])) defend = null;
     list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
     for (const m of mech) if (!list.some(x => x.id === m.id)) gone.set(m.word, performance.now());
     if (gone.size > 40) gone.clear();
     mech = list;
+    renderDefend(t);
     if (st.brk) { const n = q('brkt'); if (n) { const left = Math.max(0, (st.brk.hit - t) / 1000); n.textContent = left.toFixed(1) + 's'; } }
     const th = mech.find(m => THREAT.has(m.kind));
     if (!!th !== threatOn) { threatOn = !!th; A.threat(threatOn); }
@@ -1372,8 +1454,11 @@ Router.register('boss', (() => {
     }
     if (e.type === 'impact') {
       pushFeed({ text: `${e.blocks} of ${e.of} raiders blocked the ${R.ATTACK_NAME[e.kind]}${e.stun ? `. Kernel open for ${R.WEAK_MS / 1000}s` : ''}`, cls: e.stun ? 'shield' : 'alert' });
-      if (e.stun) card({ who: `${e.blocks} of ${e.of}`, what: `blocked the ${R.ATTACK_NAME[e.kind]}`, color: '#3ee6ff' });
+      if (e.full) teamBlock(e);
+      else if (e.stun) card({ who: `${e.blocks} of ${e.of}`, what: `blocked the ${R.ATTACK_NAME[e.kind]}`, color: '#3ee6ff' });
+      if (myCovers[e.id]) pushFeed({ text: `You covered ${myCovers[e.id]} ${myCovers[e.id] === 1 ? 'teammate' : 'teammates'}`, cls: 'you' });
     }
+    if (e.type === 'covered') pushFeed({ text: `${e.by} covered you`, cls: 'shield' });
     if (e.type === 'team' && e.up) {
       const tr = R.TEAM.tiers.find(x => x.id === e.tier);
       if (tr) {
