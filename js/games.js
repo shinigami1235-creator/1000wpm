@@ -22,6 +22,9 @@ window.RaceGame = (() => {
     const segBtns = panel.querySelectorAll('.seg button');
     const view = new RaceView(panel.querySelector('.race-canvas'));
     const tt = new TT.TypeText(host);
+    const snd = window.RaceAudio ? RaceAudio.create() : null;
+    view.onBoost = () => snd && snd.boost();
+    view.onOvertake = up => snd && (up ? snd.overtake() : snd.passed());
     let opp = 'art';          // art | best | duo
     let phase = 'p1';         // duo: p1 then p2
     let p1 = null;            // player 1's run for the duo
@@ -61,6 +64,7 @@ window.RaceGame = (() => {
     }
     function ghostAt(ms) {
       let i = 0;
+      ms *= window._race ? _race.ghostK : 1;
       while (i < ghost.times.length && ghost.times[i] <= ms) i++;
       return i;
     }
@@ -68,6 +72,9 @@ window.RaceGame = (() => {
       const a = Math.max(0, gi - 10), ta = a ? ghost.times[a - 1] : 0, tb = ghost.times[gi - 1];
       return ((gi - a) / 5) / (((tb - ta) || 1) / 60000);
     }
+    // test hook: the view, and how long its draw takes on average
+    const perf = { ms: 0, n: 0, reset() { this.ms = 0; this.n = 0; }, get avg() { return this.n ? this.ms / this.n : 0; } };
+    window._race = { view, perf, ghostK: 1 };
     let last = performance.now();
     function loop(now) {
       raf = requestAnimationFrame(loop);
@@ -85,11 +92,15 @@ window.RaceGame = (() => {
         const gWpm = gi > 0 && gi < text.length ? ghostWpmAt(gi) : 0;
         others.push({ progress: gi / text.length, name: ghost.name, color: ghost.color, boost: gWpm > 150 ? 0.6 : 0 });
       }
+      const kmh = Math.min(400, wpm * 1.6 * (1 + boost * 0.25));
       const youName = opp === 'duo' ? (phase === 'p1' ? 'Player 1' : 'Player 2') : 'You';
+      const t0 = performance.now();
       view.draw({
-        you: { progress: tt.pos / text.length, kmh: Math.min(400, wpm * 1.6 * (1 + boost * 0.25)), boost, skid, color: YOU, name: youName },
+        you: { progress: tt.pos / text.length, kmh, boost, skid, streak, color: YOU, name: youName },
         others,
       }, dt);
+      perf.ms += performance.now() - t0; perf.n++;
+      if (snd) snd.engine(running ? kmh / 320 : 0, boost);
     }
     raf = requestAnimationFrame(loop);
 
@@ -112,10 +123,13 @@ window.RaceGame = (() => {
       const times = tt.times.slice();
       const best = TT.store.get('wpm-race-best2', null);
       if (!best || wpm > best.wpm) TT.store.set('wpm-race-best2', { text, seed, times, wpm });
+      const stats = [['WPM', String(wpm)], ['ACCURACY', tt.accuracy() + '%'], ['TIME', (myMs / 1000).toFixed(1) + ' s']];
       if (opp === 'duo' && phase === 'p1') {
         const earned = record();
         p1 = { times, wpm };
         phase = 'p2';
+        view.finish({ title: 'P1 DONE', sub: `${wpm} wpm`, sub2: 'Player 2 races this run next', color: P1_C, stats, won: true });
+        if (snd) snd.finish(true);
         note.innerHTML = `Player 1 typed <b>${wpm} wpm</b>.${earned} Player 2, press <kbd>Enter</kbd> when ready.`;
         return;
       }
@@ -125,6 +139,9 @@ window.RaceGame = (() => {
         const me = opp === 'duo' ? 'Player 2' : 'You';
         const diff = Math.abs((myMs - gMs) / 1000).toFixed(1);
         const earned = record(won);
+        stats.push(['GAP', (won ? '-' : '+') + diff + ' s']);
+        view.finish({ title: won ? '1ST' : '2ND', sub: won ? `${me} won` : `${ghost.name} won`, sub2: `by ${diff} s`, color: won ? YOU : ghost.color, stats, won });
+        if (snd) snd.finish(won);
         note.innerHTML = (won
           ? `${me} won by ${diff} seconds with <b>${wpm} wpm</b>.`
           : `${ghost.name} won by ${diff} seconds. You typed <b>${wpm} wpm</b>.`) + earned + ' Press <kbd>Enter</kbd> for a new course.';
@@ -144,12 +161,13 @@ window.RaceGame = (() => {
         // the first key starts a 3, 2, 1; the race and the ghost both start on GO
         if (!running) {
           if (opp === 'best' && !ghost) return;
-          if (!cd) cd = TT.countdown(panel.querySelector('.race-stage'), () => { cd = null; running = true; tt.startT = performance.now(); host.classList.remove('idle'); });
+          if (!cd) { view.countdown(); if (snd) snd.engine(0.02, 0); cd = TT.countdown(panel.querySelector('.race-stage'), () => { cd = null; running = true; tt.startT = performance.now(); host.classList.remove('idle'); }); }
           return;
         }
         const ok = tt.input(ch);
-        if (ok) { stamps.push(performance.now()); streak++; }
-        else { streak = 0; skid = 0.4; }
+        if (ok) { stamps.push(performance.now()); streak++; if (ch === ' ') { view.word(); if (snd) snd.word(); } }
+        else { streak = 0; skid = 0.4; if (snd) snd.typo(); }
+        view.key(!!ok);
         TT.click(ch === ' ');
         if (tt.done()) finish();
       },
@@ -177,7 +195,7 @@ window.RaceGame = (() => {
 
     return {
       focus: () => keys.focus(),
-      destroy() { alive = false; if (cd) cd(); cancelAnimationFrame(raf); view.destroy(); document.removeEventListener('keydown', forward); },
+      destroy() { alive = false; if (cd) cd(); cancelAnimationFrame(raf); view.destroy(); if (snd) snd.stop(); document.removeEventListener('keydown', forward); },
     };
   }
 

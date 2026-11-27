@@ -193,6 +193,8 @@ Router.register('type', (() => {
         const want = tt.text[tt.pos];
         const ok = tt.input(ch);
         if (want !== undefined && ok !== null) noteKey(want, ok);
+        if (ok === false) flashCaret();
+        else if (ok && ch === ' ') cleanWord(tt.spans[tt.pos - 1]);
         TT.click(ch === ' ');
         scroll();
         if (tt.done()) finish();
@@ -253,6 +255,51 @@ Router.register('type', (() => {
   }
 
   function elapsed() { return running ? performance.now() - startT : 0; }
+
+  // ---------- small feedback, kept quiet so the text stays easy to read ----------
+  // a wrong key turns the caret red for a moment
+  let caretT = 0;
+  function flashCaret() {
+    if (!tt) return;
+    const c = tt.caret;
+    c.classList.add('err'); clearTimeout(caretT);
+    caretT = setTimeout(() => c.classList.remove('err'), 160);
+  }
+  // a word finished with no mistakes gets a short line under it
+  function cleanWord(space) {
+    const w = space && space.parentNode;
+    if (!w || ![...w.children].every(s => s.classList.contains('ok'))) return;
+    w.classList.remove('wclean'); void w.offsetWidth; w.classList.add('wclean');
+  }
+  // a soft two-note chime at the end, three notes on a new best
+  let ac = null;
+  function chime(best) {
+    if (!TT.soundOn()) return;
+    try {
+      ac ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const notes = best ? [659, 784, 988] : [587, 880];
+      notes.forEach((f, i) => {
+        const t = ac.currentTime + i * 0.11, o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.55);
+      });
+    } catch (e) {}
+  }
+  // the result number counts up from 0
+  function countUp(node, to) {
+    if (!node || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const t0 = performance.now(), dur = 650;
+    const step = now => {
+      if (!node.isConnected) return;
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      node.textContent = Math.round(to * e);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    node.textContent = '0';
+    requestAnimationFrame(step);
+  }
 
   function needle(v) {
     if (!gauge && window.Motion) gauge = Motion.gauge(el.querySelector('.wpm-gauge'), TT.ART_WPM);
@@ -333,6 +380,8 @@ Router.register('type', (() => {
       ? `You beat Art's ${ART} wpm by ${wpm - ART}.`
       : `You typed ${pct}% of Art's ${ART} wpm, ${ART - wpm} wpm short.`;
     const pb = r.newBest && prevBest > 0;
+    const myBest = Math.max(wpm, prevBest || 0), scale = Math.max(ART, myBest) * 1.08;
+    const at = v => (Math.min(1, v / scale) * 100).toFixed(1) + '%';
     el.q('stage').innerHTML = `
       ${pb ? `<p class="pb-banner" role="status"><b>New personal best</b><span>${wpm} wpm, up from ${prevBest} in ${UI.esc(UI.modeName(key))}</span></p>` : ''}
       <div class="result" aria-live="polite">
@@ -348,8 +397,17 @@ Router.register('type', (() => {
             ? `<span class="wk-list">${weak.map(w => `<span class="wk"><kbd>${UI.esc(keyLabel(w.k))}</kbd> ${w.bad} of ${w.n} missed</span>`).join('')}</span>`
             : '<span class="dim">No missed keys</span>'}</div>
           <p class="result-note">${vsArt}${r.newBest && !pb ? ` <span class="new">First ${UI.esc(UI.modeName(key))} run.</span>` : ''}</p>
+          <div class="vs-bar" aria-hidden="true">
+            <i class="vs-fill" style="--w:${at(wpm)}"></i>
+            ${prevBest > 0 && !pb && Math.abs(prevBest - wpm) > scale * 0.1 && Math.abs(prevBest - ART) > scale * 0.14 ? `<span class="vs-mk best" style="left:${at(prevBest)}"><b>Your best ${prevBest}</b></span>` : ''}
+            <span class="vs-mk you" style="left:${at(wpm)}"><b>${wpm}</b></span>
+            <span class="vs-mk art" style="left:${at(ART)}"><b>Art ${ART}</b></span>
+          </div>
         </div>
       </div>`;
+    el.q('stage').querySelectorAll('.result-grid > *').forEach((n, i) => n.style.setProperty('--i', i));
+    countUp(el.q('stage').querySelector('.result .big'), wpm);
+    chime(pb);
     el.q('help').innerHTML = 'Press <kbd>Tab</kbd> or the button to start over. <button class="btn out sm" type="button" data-k="again">Start over</button>';
     el.q('again').addEventListener('click', () => reset());
     // keep Tab working after the text is gone

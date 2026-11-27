@@ -30,6 +30,8 @@ window.BreachData = (() => {
     heavy:     { speed: 1.35, len: [4, 6], score: 60, phrase: 3 },
     // keeps its distance and puts a shield back on another typo every few seconds
     healer:    { speed: 2.2, len: [5, 7], score: 30, stopAt: 13, healEvery: 4.5 },
+    // stops far away, paints Art with a red sight line for 1.5 seconds, then fires a fast packet
+    sniper:    { speed: 2.4, len: [5, 7], score: 35, stopAt: 16, fireEvery: 5.2, aim: 1.5, shotK: 1.6 },
   };
 
   const PICKUPS = {
@@ -260,7 +262,7 @@ window.BreachData = (() => {
       // [type, first level it appears, weight]
       ['drone', 1, 6], ['bug', 1, 4], ['runner', 2, 4], ['flyer', 2, 3], ['shielded', 3, 3], ['glitcher', 3, 3],
       ['splitter', 4, 2], ['mimic', 4, 2], ['shooter', 5, 2], ['reflector', 5, 2], ['burrower', 6, 2], ['carrier', 6, 2],
-      ['cloaked', 7, 2], ['link', 8, 1], ['healer', 9, 1], ['heavy', 10, 1],
+      ['cloaked', 7, 2], ['sniper', 7, 2], ['link', 8, 1], ['healer', 9, 1], ['heavy', 10, 1],
     ],
     killsPerLevel: 10,
     pickups: ['health', 'debounce', 'freeze', 'macro', 'shield', 'double'],
