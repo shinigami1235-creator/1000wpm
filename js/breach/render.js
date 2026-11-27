@@ -1045,6 +1045,21 @@ window.Breach3D = (() => {
       P.rings = [];
       for (let k = 0; k < 2; k++) { const rg = new THREE.Mesh(geo('hr' + k, () => new THREE.TorusGeometry(0.62 + k * 0.14, 0.025, 6, 40)), basic(k ? '#3ee6ff' : col2, 1.5)); body.add(rg); P.rings.push(rg); }
       P.core = core(0.11, 0.12, 0.12);
+    } else if (type === 'sniper') {
+      // a tripod with a long rifle and a scope; its red lens is the core
+      part(oct(0.3), mat, dark, lm, body, 0, 0.25).scale.set(0.9, 1.1, 0.8);
+      for (let k = 0; k < 3; k++) {
+        const a = k / 3 * Math.PI * 2 + Math.PI / 2, leg = new THREE.Group(); leg.position.set(0, 0.05, 0); body.add(leg);
+        const l = part(geo('snl', () => new THREE.CylinderGeometry(0.04, 0.02, 1.5, 4)), mat, dark, lm, leg, Math.cos(a) * 0.34, -0.66, Math.sin(a) * 0.34);
+        l.rotation.set(Math.sin(a) * 0.42, 0, -Math.cos(a) * 0.42);
+        P['tleg' + k] = leg;
+      }
+      const gunG = new THREE.Group(); gunG.position.set(0, 0.42, 0); body.add(gunG); P.rifle = gunG;
+      part(box(0.1, 0.1, 1.5), mat, dark, lm, gunG, 0, 0, 0.35);
+      part(box(0.06, 0.06, 0.5), mat, dark, lm, gunG, 0, 0, 1.3);
+      const scope = part(geo('scp', () => new THREE.CylinderGeometry(0.07, 0.07, 0.42, 8)), mat, dark, lm, gunG, 0, 0.13, 0.2); scope.rotation.x = Math.PI / 2;
+      P.core = new THREE.Mesh(geo('s0.06', () => new THREE.SphereGeometry(0.06, 10, 6)), red); P.core.position.set(0, 0.13, 0.44); gunG.add(P.core);
+      P.muzzle = new THREE.Object3D(); P.muzzle.position.set(0, 0, 1.56); gunG.add(P.muzzle);
     } else if (type === 'node') {
       part(oct(0.38), mat, dark, lm, body);
       P.rings = [];
@@ -1067,7 +1082,7 @@ window.Breach3D = (() => {
     }
     scene.add(root);
     const base = { drone: 1.3, shielded: 1.35, shooter: 1.35, glitcher: 1.3, splitter: 1.3, runner: 1.2, flyer: 1.3, bug: 1.2, shard: 1.15, node: 1.2,
-      mimic: f.revealed ? 0.95 : 1.2, burrower: 1.3, carrier: 1.35, reflector: 1.4, link: 1.2, cloaked: 1.35, heavy: 1.55, healer: 1.3 }[type] || 1;
+      mimic: f.revealed ? 0.95 : 1.2, burrower: 1.3, carrier: 1.35, reflector: 1.4, link: 1.2, cloaked: 1.35, heavy: 1.55, healer: 1.3, sniper: 1.35 }[type] || 1;
     return { root, body, P, mat, lm, dark, type, base, seed: Math.random() * 10, disguised: !!P.disguise };
   }
   function animateFoe(a, f, t, camPos, isTarget) {
@@ -1155,6 +1170,31 @@ window.Breach3D = (() => {
       a.body.position.z = -0.14 * k; a.body.rotation.x = -0.12 * k;
       a.mat.uniforms.uFlash.value = 0.25 + 0.35 * k;
     } else if (a.body.rotation.x) { a.body.rotation.x *= 0.7; a.body.position.z *= 0.7; }
+    if (a.type === 'sniper') {
+      const k = f.windup || 0;
+      P.rifle.rotation.x = -0.08 - k * 0.05 + Math.sin(t * 1.7 + a.seed) * 0.02 * (1 - k);
+      if (!a.extra) {
+        const line = new THREE.Mesh(geo('sight', () => new THREE.CylinderGeometry(0.012, 0.012, 1, 5, 1, true)), addMat('#ff2a3c', 2.4));
+        const dot = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#ff4d5e', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+        scene.add(line); scene.add(dot); a.extra = [line, dot];
+      }
+      const [line, dot] = a.extra;
+      const on = k > 0 && !f.dying;
+      line.visible = dot.visible = on;
+      if (on) {
+        a.root.updateMatrixWorld(true);
+        const from = P.muzzle.getWorldPosition(new THREE.Vector3());
+        // it paints the blaster, so the line crosses the view instead of pointing straight at the lens
+        const to = gun && gun.g.visible ? gunTip().clone() : camPos.clone().add(new THREE.Vector3(0.4, -0.5, 0)), dir = to.clone().sub(from), full = dir.length();
+        const len = Math.max(0.1, full - 0.15); dir.normalize();
+        line.position.copy(from).addScaledVector(dir, len / 2);
+        line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        const pulse = CALM ? 1 : 0.7 + 0.3 * Math.sin(t * (10 + k * 30));
+        line.scale.set(1 + k * 1.5, len, 1 + k * 1.5);
+        line.material.opacity = (0.25 + k * 0.75) * pulse;
+        dot.position.copy(from); dot.scale.setScalar(0.3 + k * 0.6); dot.material.opacity = 0.5 + k * 0.5;
+      }
+    }
     if (P.orb) {
       const k = f.windup || 0;
       if (!P.orbGlow) { P.orbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: bright('#ff4d5e', 2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); P.orbGlow.position.copy(P.orb.position); a.body.add(P.orbGlow); }
@@ -1605,6 +1645,7 @@ window.Breach3D = (() => {
     for (const [obj, a] of actors) {
       if (!live.has(obj)) {
         scene.remove(a.root);
+        if (a.extra) a.extra.forEach(o => { scene.remove(o); if (o.material) o.material.dispose(); });
         a.root.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.dispose()); if (o.geometry && !Object.values(G).includes(o.geometry)) o.geometry.dispose(); });
         actors.delete(obj);
       }
@@ -1660,5 +1701,5 @@ window.Breach3D = (() => {
     voxData = []; letters = []; rings = []; beams = []; flashes.length = 0; shocks.length = 0; gun = null; motes = null;
   }
 
-  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; }, get _dbg() { return { beams, flashes, gun }; } };
+  return { init, resize, setLevel, frame, project, burst, beam, ring, setFloor, dispose, get ready() { return ready; }, get _dbg() { return { beams, flashes, gun, info: renderer && renderer.info }; } };
 })();

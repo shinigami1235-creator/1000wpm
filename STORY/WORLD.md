@@ -115,6 +115,7 @@ Each boss is a program the update built inside that chapter's system. Every boss
 | healer **[PROPOSED]** | keeps its distance and puts a shield back on another typo | 4 |
 | heavy **[PROPOSED]** | slow and big, carries a three or four word phrase | 4 |
 | cloaked **[PROPOSED]** | fades out and back in, its word hidden while faded | 5 |
+| sniper **[PROPOSED]** | stops far away, paints Art's blaster with a red sight line for a second and a half, then fires a fast packet to type down | endless, level 7 |
 
 Glitch words **[PROPOSED]**: a typo's word shows one or two letters swapped for digits or symbols (sp4m, r0ute, @rt). The player types it as shown. Off on Easy, from chapter 2 on Normal, from chapter 1 on Hard.
 

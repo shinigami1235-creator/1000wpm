@@ -370,7 +370,7 @@
 
   // ---------- spawning ----------
   const BODY_Y = { drone: 1.6, runner: 1.15, glitcher: 1.25, splitter: 1.2, shard: 0.9, shielded: 1.65, shooter: 1.75, flyer: 3.2, bug: 0.55, node: 0,
-    mimic: 1.5, burrower: 0.75, carrier: 2.1, reflector: 1.7, link: 1.1, cloaked: 1.5, heavy: 2.0, healer: 1.9 };
+    mimic: 1.5, burrower: 0.75, carrier: 2.1, reflector: 1.7, link: 1.1, cloaked: 1.5, heavy: 2.0, healer: 1.9, sniper: 1.7 };
   // Is p inside the camera's view, looking along the rail at the stop?
   function inView(p, margin = 0.95) {
     const f = camFwd(), r = camRight(), rel = sub(p, cam.pos);
@@ -1284,8 +1284,13 @@
         moveK = 0;
         if (def.fireEvery) {
           fo.fireT -= dt * sp;
-          fo.windup = clamp(1 - fo.fireT / 0.6, 0, 1);
-          if (fo.fireT <= 0) { fireAt(add(fo.pos, v3(0, 0.4, 0))); S.play('enemyFire'); fo.fireT = def.fireEvery - d() * 0.2; fo.windup = 0; }
+          fo.windup = clamp(1 - fo.fireT / (def.aim || 0.6), 0, 1);
+          // a sniper's sight line comes on with a rising whine before it fires
+          if (def.aim && fo.windup > 0 && !fo.aimed) { fo.aimed = true; S.play('aim'); }
+          if (fo.fireT <= 0) {
+            fireAt(add(fo.pos, v3(0, 0.45, 0)), def.shotK || 1); S.play(def.aim ? 'snipe' : 'enemyFire');
+            fo.fireT = def.fireEvery - d() * 0.2; fo.windup = 0; fo.aimed = false;
+          }
         }
       }
       let delta = v3(dir.x * Math.min(fd, fo.speed * dt * sp * moveK), 0, dir.z * Math.min(fd, fo.speed * dt * sp * moveK));

@@ -106,6 +106,9 @@ window.BreachAudio = (() => {
     },
     // an enemy shot leaving the muzzle
     enemyFire() { tone('sawtooth', 600, 160, 0.18, 0.18); burst(0.16, 1200, 1.2, 0.3, 'bandpass'); },
+    // the sniper's sight line charging, then its shot
+    aim() { tone('sine', 300, 1400, 1.45, 0.07); tone('triangle', 600, 2800, 1.45, 0.03); },
+    snipe() { burst(0.05, 6000, 0.8, 0.6, 'highpass'); tone('square', 1800, 120, 0.22, 0.2); burst(0.3, 500, 0.6, 0.4, 'lowpass', 0.02); },
     miss() { tone('square', 140, 110, 0.12, 0.18); },
     hurt() { tone('sawtooth', 120, 40, 0.4, 0.5); burst(0.3, 300, 0.7, 0.6, 'lowpass'); },
     pickup() { [660, 880, 1320].forEach((f, i) => tone('triangle', f, f * 1.01, 0.12, 0.25, i * 0.06)); },
