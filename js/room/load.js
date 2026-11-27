@@ -1,14 +1,14 @@
-// Adds the room styles and scripts to the page. The site includes only this file.
+// Adds My Room's styles and scripts to the page. The site includes only this file.
+// The tier rooms (28 Nov 2026) replaced the 3D room; its files stay in this folder and
+// js/room/load-3d.js still loads them (tools/room-bake.html uses it to bake item cut-outs).
 (() => {
   const me = document.currentScript && document.currentScript.src;
   const base = me ? me.slice(0, me.lastIndexOf('/') + 1) : 'js/room/';
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = base + 'room.css';
+  css.href = base + 'tier.css';
   document.head.appendChild(css);
-  const files = ['aq.js', 'kit.js', 'items.js', 'home-items.js', 'views.js', 'gift-items.js', 'room.js'];
-  if (!window.KB_LAYOUTS) files.unshift('../keyboards.js');
-  for (const f of files) {
+  for (const f of ['scenes.js', 'tier-items.js', 'tier-view.js', 'tier-page.js']) {
     const s = document.createElement('script');
     s.src = base + f;
     s.async = false;

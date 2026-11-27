@@ -1,4 +1,4 @@
-// #/u/<id>: a player's public profile, and #/u/<id>/room: their room, read only.
+// #/u/<id>: a player's public profile with a picture of their room, and #/u/<id>/room: their room, read only.
 // #/u/me shows this device's own profile the way other players see it.
 // Profiles come from Net.profiles (simulated players for now, the server later).
 Router.register('u', (() => {
@@ -13,7 +13,7 @@ Router.register('u', (() => {
     const n = ++seq;
     el.innerHTML = '<div class="loading-state">Loading</div>';
     const call = p[1] === 'room' ? Net.profiles.visit(id) : Net.profiles.get(id).then(profile => ({ profile }));
-    call.then(r => { if (n !== seq || !el) return; if (p[1] === 'room') room(r.profile, r.room); else profile(r.profile); })
+    call.then(r => { if (n !== seq || !el) return; if (p[1] === 'room') room(r.profile); else profile(r.profile); })
       .catch(err => { if (n === seq && el) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message || 'No operator with that name.')}</p><a class="btn out" href="#/duel">Players online</a></div>`; });
   }
 
@@ -83,8 +83,10 @@ Router.register('u', (() => {
             <dt>Best streak</dt><dd>${d.bestStreak || 0}</dd><dt>Vs Art</dt><dd>${d.vsArt ? `${d.vsArt.w} won, ${d.vsArt.l} lost` : '-'}</dd>
           </dl>`}
         </section>
+        ${`<section class="panel u-room" aria-label="Room" data-uroom><div class="ph">// ${me ? 'YOUR ROOM' : 'ROOM'}<span class="meta" data-tag></span></div><a class="rm-thumb big" href="#/u/${encodeURIComponent(p.id)}/room" data-pic aria-label="${me ? 'See your room' : 'Visit ' + e(p.name) + "'s room"}"></a></section>`}
       </div>`;
     friendButton(p);
+    roomPanel(p);
     // the live 3D avatar replaces the picture once it loads; drag to turn it
     if (!art && window.Avatar && Avatar.viewer) {
       const host = el.querySelector('[data-av]');
@@ -97,20 +99,26 @@ Router.register('u', (() => {
     }
   }
 
-  function room(p, r) {
+  // the room in tiers (js/room/tier-page.js), full width, read only
+  function room(p) {
     roomOn = false;
-    const me = p.id === 'me';
-    el.classList.add('page-full');
-    el.innerHTML = `
-      <div class="u-roomhead">
-        <a class="btn out sm" href="#/u/${encodeURIComponent(p.id)}">Back to ${me ? 'your public profile' : e(p.name) + "'s profile"}</a>
-        <p class="dim">${me ? 'Your room as visitors see it.' : 'Read only. Drag to look around.'}</p>
-        ${me ? '' : `<a class="btn sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to a duel</a>`}
-      </div>
-      <section class="panel room-host" aria-label="${e(p.name)}'s room" data-host></section>`;
+    el.classList.add('rm-full');
+    el.innerHTML = '<div data-host></div>';
     const host = el.querySelector('[data-host]');
-    const visit = me ? { name: p.name, layout: r.layout, owned: r.owned } : { name: p.name, layout: r && r.layout || null, owned: (r && r.owned) || [], size: r && r.size, preset: r && r.preset };
-    cancelRoom = UI.waitFor('Room', host, R => { R.mount(host, { visit }); roomOn = true; });
+    cancelRoom = UI.waitFor('Room', host, R => { R.mount(host, { visit: { profile: p } }); roomOn = true; });
+  }
+
+  // a picture of their room under the profile; it opens the room
+  function roomPanel(p) {
+    const box = el.querySelector('[data-uroom]'); if (!box) return;
+    const n = seq;
+    (window.Lazy ? Lazy.need('room') : Promise.resolve()).then(() => {
+      if (n !== seq || !box.isConnected || !window.RoomData) return;
+      const d = RoomData.of(p), T = RoomTiers.TIERS[d.tier];
+      box.querySelector('[data-tag]').textContent = `Tier ${d.tier} // ${T.name}`;
+      const v = RoomView.create(box.querySelector('[data-pic]'), { ...d, fit: 'cover' });
+      stops.push(() => v.dispose());
+    }).catch(() => { box.hidden = true; });
   }
 
   function stop() {
@@ -120,7 +128,7 @@ Router.register('u', (() => {
     if (cancelRoom) { cancelRoom(); cancelRoom = null; }
     if (roomOn && window.Room) { try { Room.unmount(); } catch (err) { console.error(err); } }
     roomOn = false;
-    if (el) el.classList.remove('page-full');
+    if (el) el.classList.remove('page-full', 'rm-full');
   }
   function unmount() { stop(); el = null; }
 

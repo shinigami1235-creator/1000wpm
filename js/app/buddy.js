@@ -54,7 +54,8 @@
 
   // ---------- perches ----------
   // at: out-r / out-l = beside the element with bottoms lined up, in-br = inside its bottom-right
-  // corner, below = under its left edge, text = right after a heading's text.
+  // corner, in-bl = inside its bottom-left corner, below = under its left edge, text = right after a
+  // heading's text.
   // face: which way it turns when it lands. bonus pulls it toward the perches that matter.
   const PERCHES = [
     { route: 'home', sel: '.hero-map .hm-go', at: 'out-r', dx: 18, dy: 30, face: 'left', bonus: 120, arrive: ['point', 'happy'] },
@@ -67,6 +68,9 @@
     { route: 'leaderboard', sel: '.lb-head h1', at: 'text', dx: 26, dy: 2, face: 'right', bonus: 20 },
     { route: 'shop', sel: '.shop-hero .coin-box', at: 'out-l', dx: -30, dy: 2, face: 'right', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'shop', sel: '.shop-bar .seg', at: 'out-r', dx: 40, dy: 6, face: 'right', bonus: -100 },
+    // My Room: in its seat at the left end of the shop bar (js/room/tier.css makes the room), so it
+    // never covers the room's slots; under the menu when the bar is shut
+    { route: 'room', sel: '.rm-bar', at: 'in-bl', dx: 8, dy: -10, face: 'right', bonus: 2000, arrive: ['point', 'happy'] },
     { route: 'room', sel: '.rm-menu', at: 'below', dx: 18, dy: 24, face: 'right', bonus: 90, arrive: ['point', 'happy'] },
     { route: 'profile', sel: '.avc-head h1', at: 'text', dx: 34, dy: 4, face: 'left', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'profile', sel: '.streak-top b', at: 'text', dx: 34, dy: 6, face: 'left', bonus: 90, arrive: ['point', 'proud'] },
@@ -363,6 +367,7 @@
     else if (p.at === 'out-l') { x = r.left - size + p.dx; y = r.bottom - size + p.dy; }
     else if (p.at === 'in-br') { x = r.right - size + p.dx; y = r.bottom - size + p.dy; }
     else if (p.at === 'below') { x = r.left + p.dx; y = r.bottom + p.dy; }
+    else if (p.at === 'in-bl') { x = r.left + p.dx; y = r.bottom - size + p.dy; }
     else { const t = textRect(el); x = t.right + p.dx; y = t.bottom - size + p.dy; }
     if (x < 4 || x + size > innerWidth - 4 || y < headerBottom() + 4 || y + size > vh - 4) return null;
     return { x, y };
