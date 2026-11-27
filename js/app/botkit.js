@@ -1185,7 +1185,14 @@ window.BotKit = (() => {
       if (kind === 'hit') bot.hit(new V(Math.random() < 0.5 ? -1 : 1, 0, -0.6), t);
       else if (kind === 'cast') { castAt = t; bot.fire(t); }
       else if (kind === 'emote') bot.emote(look.emote, t);
+      // the operator actions (operator3d.js ONCE) mapped onto a bot: a dash aside, a brace, love, a spin
+      else if (kind === 'dodge') { dodgeAt = t; dodgeSide = Math.random() < 0.5 ? -1 : 1; }
+      else if (kind === 'cover') braceAt = t;
+      else if (kind === 'heal') bot.emote('heart', t);
+      else if (kind === 'revive') bot.emote('spin', t);
+      else if (kind === 'attack') { castAt = t - 0.15; bot.fire(t); }
     }
+    let dodgeAt = -9, dodgeSide = 1, braceAt = -9;
     const VIC = look.victory || 'hop';
     const wv = new V();
     function update(dt, uo = {}) {   // uo.vel: how the actor is moving in the world, so the bot leans into it
@@ -1195,8 +1202,11 @@ window.BotKit = (() => {
       if (anim === 'defeat') { y = hover * 0.4 + Math.sin(t * 1.3) * 0.04; face = 'x'; tilt = 0.7 + Math.sin(t * 0.9) * 0.05; }
       else if (anim === 'victory') { victoryPose(VIC, t, VP); y = hover + VP.y; turn = VP.turn; tilt = VP.tilt; flip = VP.flip; face = VP.face; bot.cheer(t, VIC); }
       else if (anim === 'type' || sc < 0.4) face = sc < 0.4 ? 'angry' : 'focus';
-      bot.group.position.set(0, y, lunge);
-      bot.group.rotation.set(flip, turn, tilt);
+      const du = t - dodgeAt, dx = du < 0.55 ? Math.sin(du / 0.55 * Math.PI) * 1.4 * dodgeSide : 0;
+      const bu = t - braceAt, br = bu < 0.8 ? Math.sin(Math.min(1, bu / 0.12) * Math.PI / 2) * (1 - bu / 0.8) : 0;
+      if (br > 0.05) face = 'focus';
+      bot.group.position.set(dx, y - br * 0.2, lunge - br * 0.35);
+      bot.group.rotation.set(flip - br * 0.35, turn, tilt - dx * 0.25);
       vel.set(0, 0, (lunge - prevZ) / Math.max(1e-3, dt) + (anim === 'type' ? 2.5 : 0)); prevZ = lunge;
       if (uo.vel) { wv.copy(uo.vel).applyAxisAngle(new V(0, 1, 0), -group.rotation.y); vel.add(wv); }
       bot.update(t, dt, { vel, face });
