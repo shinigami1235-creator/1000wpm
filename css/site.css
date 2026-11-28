@@ -102,7 +102,7 @@ img { display: block; max-width: 100%; }
   position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; opacity: 0;
 }
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 kbd {
   font: 400 13px/1 var(--f-label); color: var(--accent);
   border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; background: var(--bg-3);
@@ -233,11 +233,17 @@ select.field { cursor: pointer; }
   .nav a { padding-left: 6px; padding-right: 6px; font-size: 14px; letter-spacing: .02em; }
   .logo small { display: none; }
 }
-/* ten nav items still fit on one line down to 1381px */
-@media (min-width: 1381px) and (max-width: 1600px) {
+/* eleven nav items, the streak, coins, sound and the operator fit on one line down to 1381px
+   once the nav is tighter and the operator shows only its picture (the name is on the profile) */
+@media (min-width: 1381px) and (max-width: 1800px) {
+  .top-in { gap: 12px; }
+  .top-right { gap: 6px; }
   .nav { gap: 0; }
   .nav a { padding-left: 4px; padding-right: 4px; font-size: 13px; letter-spacing: 0; }
+  .me { padding: 3px; }
+  .me span { display: none; }
 }
+@media (min-width: 1381px) and (max-width: 1440px) { .nav a { padding-left: 3px; padding-right: 3px; } }
 @media (max-width: 1380px) {
   .menu-btn { display: inline-grid; }
   .nav {
@@ -501,7 +507,7 @@ body:has(.page-duel) #rain, body:has(.page-party) #rain { opacity: .035; }
 /* how far through the test: a thin line along the top of the text */
 .type-prog { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: rgba(var(--accent-rgb),.08); }
 .type-prog i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb),.6); }
-.type-run { position: absolute; right: 18px; top: 8px; font: 400 12px/1 var(--f-label); letter-spacing: .08em; color: var(--ink-3); }
+.type-run { position: absolute; right: 18px; top: 8px; font: 400 12px/1 var(--f-label); letter-spacing: .08em; color: var(--ink-2); }
 .type-window { position: relative; height: calc(4 * 1.6em); overflow: hidden; font-size: clamp(20px, 2vw, 28px); }
 .type-window .typetext { font-size: inherit; transition: transform 140ms ease; }
 @media (prefers-reduced-motion: reduce) { .type-window .typetext { transition: none; } }
@@ -618,7 +624,7 @@ table.board { width: 100%; border-collapse: separate; border-spacing: 0 6px; fon
 .store-pack span { font: 400 14px/1 var(--f-mono); color: var(--ink-2); }
 .store-pack b > :first-child { width: 22px; height: 22px; flex: none; }
 .store .btn[disabled] { opacity: .55; cursor: not-allowed; }
-.store-note { grid-column: 1 / -1; margin: 0; font: 400 13px/1.3 var(--f-mono); color: var(--ink-3); }
+.store-note { grid-column: 1 / -1; margin: 0; font: 400 13px/1.3 var(--f-mono); color: var(--ink-2); }
 .item.premium { box-shadow: inset 0 0 0 1px rgba(255,210,61,.5); }
 .item .prem { display: inline-block; margin-bottom: 6px; padding: 2px 6px; font: 600 11px/1.2 var(--f-label); letter-spacing: .1em; text-transform: uppercase; color: var(--bg); background: var(--gold); }
 @media (max-width: 760px) { .store { grid-template-columns: 1fr; } .store-packs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -1345,14 +1351,15 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .pk-name { font: 700 clamp(26px, 3vw, 40px)/1.05 var(--f-head); letter-spacing: .01em; color: var(--ink-2); white-space: nowrap; }
 .pk-name span.ok { color: var(--c); text-shadow: 0 0 12px color-mix(in srgb, var(--c) 60%, transparent); }
 .pk-mode { font: 400 13px/1 var(--f-label); letter-spacing: .06em; color: var(--ink-2); padding: 4px 8px; border: 1px solid var(--line); }
-.pk-sub { grid-column: 2 / -1; margin-top: 4px; font: 400 14px/1.35 var(--f-head); color: var(--ink-3); }
+.pk-sub { grid-column: 2 / -1; margin-top: 4px; font: 400 14px/1.35 var(--f-head); color: var(--ink-2); }
 .pk-row.on { background: color-mix(in srgb, var(--c) 8%, transparent); }
 .pk-row.on .pk-name { color: var(--ink); }
 .pk-row.on .pk-name::after {
   content: ''; display: inline-block; width: .5em; height: .82em; margin-left: .12em; vertical-align: -.06em;
   background: var(--c); box-shadow: 0 0 12px var(--c); animation: pk-blink 1s steps(2) infinite;
 }
-.pk-row.on .pk-n, .pk-row.on .pk-sub { color: var(--ink-2); }
+.pk-row.on .pk-n { color: var(--ink-2); }
+.pk-row.on .pk-sub { color: var(--ink); }
 .pk-row.on .pk-mode { color: var(--c); border-color: color-mix(in srgb, var(--c) 55%, transparent); }
 .pk-row:focus-visible { outline: 2px solid var(--c); outline-offset: -2px; }
 .pk-row.dim { opacity: .28; }
@@ -1365,7 +1372,7 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .pk-ps { color: var(--ink-3); }
 .pk-in { color: var(--ink); white-space: pre; }
 .pk-caret { width: 11px; height: 22px; background: var(--accent); box-shadow: var(--glow); animation: pk-blink 1s steps(2) infinite; }
-.pk-hint { margin-left: 6px; font: 400 15px/1.2 var(--f-head); color: var(--ink-3); }
+.pk-hint { margin-left: 6px; font: 400 15px/1.2 var(--f-head); color: var(--ink-2); }
 .pk-cmd.bad .pk-caret { background: var(--red); box-shadow: 0 0 12px var(--red); }
 .pk-cmd.shake { animation: pk-shake 220ms linear; }
 @keyframes pk-shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
@@ -1388,6 +1395,8 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .pk-info .pk-me { font: 400 14px/1.3 var(--f-mono); color: var(--accent); }
 .pk-info .btn { margin-top: 6px; }
 
+/* on a short window the screen gives up height so the Start button stays in view */
+@media (min-width: 861px) { .pk-screen { max-height: max(240px, 100svh - 420px); } }
 @media (max-width: 860px) {
   .pk { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .pk-side { position: static; order: -1; }

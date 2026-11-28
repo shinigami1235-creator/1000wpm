@@ -61,7 +61,7 @@
 
 /* hide button on hover, and the tab that brings it back */
 .buddy-x {
-  position: absolute; left: -8px; top: -2px; width: 22px; height: 22px; padding: 0; pointer-events: auto;
+  position: absolute; left: -10px; top: -4px; width: 24px; height: 24px; padding: 0; pointer-events: auto;
   display: grid; place-items: center; cursor: pointer;
   background: var(--bg-3); border: 1px solid var(--line); border-radius: var(--r); color: var(--ink-2);
   opacity: 0; transition: opacity .2s;
@@ -82,7 +82,9 @@
 
 @media (max-width: 759px) {
   .buddy-say { max-width: 190px; font-size: 14px; }
-  .buddy-x { opacity: .75; width: 20px; height: 20px; }
+  /* 24px drawn, with an invisible edge that makes it 40px to a thumb */
+  .buddy-x { opacity: .75; }
+  .buddy-x::before { content: ""; position: absolute; inset: -8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .buddy-body-wrap, .buddy-body, .buddy-body[class*="m-"], .buddy .bd-caret, .buddy-nap b { animation: none !important; }

@@ -10,7 +10,7 @@ Router.register('shop', (() => {
     el = root;
     el.innerHTML = `
       <div class="panel shop-hero">
-        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR MY ROOM AND AVATAR</p></div>
+        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR YOUR ROOM, OPERATOR AND BOTS</p></div>
         <div class="shop-wallet">
           <div class="panel coin-box hot">${UI.coin()}<b data-coins>${UI.fmt(WPM.coins())}</b></div>
           <button type="button" class="btn out sm test-coins" data-test aria-pressed="${WPM.testing()}">${WPM.testing() ? 'Test coins: on' : 'Test coins: off'}</button>
@@ -201,11 +201,15 @@ Router.register('shop', (() => {
     }
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
     if (owned) {
-      row.innerHTML = item.kb || item.acc ? `<span class="owned">Owned</span><a class="btn out sm" href="#/lab">Operator</a>` : `<span class="owned">Owned</span><a class="btn out sm" href="#/room">My Room</a>`;
+      // bot parts are worn in the hangar, gear on the operator, the rest goes in the room
+      const [href, where] = item.category === 'Bots' ? ['#/hangar', 'Hangar'] : item.kb || item.acc || item.category === 'Operator' ? ['#/lab', 'Operator'] : ['#/room', 'My Room'];
+      row.innerHTML = `<span class="owned">Owned</span><a class="btn out sm" href="${href}">${where}</a>`;
       card.querySelector('[data-msg]').textContent = '';
       return;
     }
-    row.innerHTML = `${price}<button class="btn sm" type="button" aria-label="Buy ${UI.esc(item.name || item.id)}">${UI.icon('cart')}Buy</button>`;
+    // a price you can't pay yet gets the quiet button, so the ones you can buy stand out
+    const short = (item.price || 0) > WPM.coins();
+    row.innerHTML = `${price}<button class="btn sm${short ? ' out' : ''}" type="button" aria-label="Buy ${UI.esc(item.name || item.id)}">${UI.icon('cart')}Buy</button>`;
     const btn = row.querySelector('button');
     btn.querySelector('svg').style.cssText = 'width:16px;height:16px';
     btn.addEventListener('click', () => {

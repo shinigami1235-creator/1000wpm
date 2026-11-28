@@ -100,18 +100,26 @@ window.WorldMap = (() => {
     try { const v = localStorage.getItem(VIEW_KEY); if (['missions', 'players', 'both'].includes(v)) view = v; } catch (err) {}
 
     // ---------- geometry ----------
-    let lastSW = 0;
+    let lastSW = 0, lastVH = 0;
     function layout() {
       const sw = stage.clientWidth;
       if (!sw) return false;
       lastSW = sw;
       W = sw < 640 ? Math.max(sw, 600) : sw;
+      // on a short desktop window (1366x768 with the browser bars) the full-width map runs past the
+      // bottom and takes "Start typing" with it, so the map shrinks until it fits, down to 860px wide
+      lastVH = innerHeight;
+      if (sw >= 1000) {
+        const room = innerHeight - (stage.getBoundingClientRect().top + scrollY) - 8;
+        if (room < W * ASPECT) W = Math.max(860, Math.min(W, Math.round(room / ASPECT)));
+      }
       H = Math.round(W * ASPECT);
       s = W / (2 * XMAX);
       dpr = Math.min(2, devicePixelRatio || 1);
       box.style.width = W + 'px'; box.style.height = H + 'px';
       box.style.setProperty('--mk', W < 900 ? '24px' : W < 1200 ? '30px' : '34px');
       box.classList.toggle('small', W < 900);
+      box.classList.toggle('fit', sw >= 1000 && W < sw);
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       cv.style.width = W + 'px'; cv.style.height = H + 'px';
       return true;
@@ -850,12 +858,14 @@ window.WorldMap = (() => {
     io.observe(stage);
     on(document, 'visibilitychange', sync);
     on(reduce, 'change', () => { if (data) { playBtn.hidden = reduce.matches; paintLit(); } sync(); });
-    const ro = new ResizeObserver(() => {
+    const relayout = () => {
       const w = stage.clientWidth;
-      if (!data || !w || w === lastSW) return;
+      if (!data || !w || (w === lastSW && innerHeight === lastVH)) return;
       if (layout()) { shapes(); paintLand(); build(); placeMissions(); center(); callouts(); paintStill(); hideCard(); }
-    });
+    };
+    const ro = new ResizeObserver(relayout);
     ro.observe(stage);
+    on(window, 'resize', relayout);
     function center() {
       const h = pts.get(hub);
       if (h && W > stage.clientWidth) stage.scrollLeft = Math.max(0, h[0] - stage.clientWidth / 2);
