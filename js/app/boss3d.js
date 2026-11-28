@@ -81,7 +81,8 @@ window.BossScene = (() => {
       sideAttack: (k, kind, outcome) => impl && impl.sideAttack(k, kind, outcome),   // test hook
       orbitInfo: () => impl && impl.orbitInfo(),
       director: () => impl && impl.director && impl.director(),
-      dbg: () => impl && impl.dbg(),   // tests: the scene, camera, renderer and the dress
+      dbg: () => impl && impl.dbg(),
+      aq: () => impl && impl.aq(),   // tests: the scene, camera, renderer and the dress
       raidInfo: () => impl && impl.raidInfo(),
       // with no scene (WebGL off or still loading) the release lands at once
       release: (tier, power, onLand) => { if (impl && impl.live()) impl.release(tier, power, onLand); else if (onLand) onLand(null, null); },
