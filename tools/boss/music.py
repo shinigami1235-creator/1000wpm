@@ -50,8 +50,9 @@ RIFF = [(0, 0, 1), (3, 0, 1), (4, 12, 3), (7, 0, 1), (10, 0, 1), (11, 7, 3), (14
 
 PA = ['i', 'VI', 'iv', 'V']                               # the theme's chords: Dm Bb Gm A
 PB = ['i', 'i', 'bII', 'bII', 'i', 'i', 'VII', 'V']       # menace: Dm Dm Eb Eb Dm Dm C A
-PC = ['VI', 'VI', 'III', 'III', 'iv', 'iv', 'V', 'V']     # the lift: Bb Bb F F Gm Gm A A
+PC = ['i', 'i', 'VI', 'VI', 'iv', 'iv', 'V', 'V']        # the breakdown: the theme's chords at half speed, under the theme at half speed
 PD = ['i', 'bII', 'i', 'bII', 'i', 'bII', 'VII', 'V']     # the panic: Dm Eb Dm Eb Dm Eb C A
+PF = ['VI', 'iv']                                        # under the theme's head at double speed: Bb Gm
 
 def make_theme(tonic=62):
     return Theme(tonic, BPM, {'theme': THEME, 'head': HEAD, 'answer': ANSWER, 'counter': COUNTER}, RIFF,
@@ -106,7 +107,7 @@ ARR = {
     ],
     # Kernel panic: up a semitone, a siren, the theme at double speed then in octaves.
     'enrage': [
-        sec(8, PD, drums='blast', bass='roll16', siren=0.8, theme=('head', 'lead', 0, {'speed': 0.5}), stabs=0.8, hot=0.95, growl=0.6, glitch=[(7, 12, 4)]),
+        sec(8, PF, drums='blast', bass='roll16', siren=0.8, theme=('head', 'lead', 0, {'speed': 0.5}), stabs=0.8, hot=0.95, growl=0.6, glitch=[(7, 12, 4)]),
         sec(8, PA, drums='drive', bass='riff', siren=0.6, theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), gate=0.8, choir=0.8, hot=1.0, fill='roll', riser=1),
         sec(8, PB, drums='break', bass='riff', stabs=1.0, siren=0.8, arp='16', hot=1.0, growl=0.7, glitch=[(3, 8, 8), (7, 12, 4)], fill='toms', riser=1),
         sec(8, PA, drums='blast', bass='roll16', theme=('theme', 'lead', 0, {'harm': True, 'oct': -1, 'oct_inst': 'brass'}), choir=1.0, gate=0.6, hot=1.0, fill='kicks', riser=2),
@@ -114,8 +115,8 @@ ARR = {
 }
 TONIC = {'p1': 62, 'p2': 62, 'p3': 62, 'p4': 62, 'enrage': 63}
 LUFS = {'p1': -15.5, 'p2': -15.0, 'p3': -15.0, 'p4': -14.6, 'enrage': -14.4}
-MIX = {   # per-loop bus balance on top of the Song defaults
-    'p1': dict(lead=0.75, music=0.62), 'p2': {}, 'p3': {}, 'p4': {}, 'enrage': {},
+MIX = {   # per-loop bus balance on top of the Song defaults: phase 1 leans on its brass
+    'p1': dict(music=1.35, sub=0.6), 'p2': {}, 'p3': {}, 'p4': {}, 'enrage': {},
 }
 
 def build_loop(name, seed=1):
@@ -207,8 +208,8 @@ def build_faceoff():
     # the charge is a crescendo: it starts well under the clash and grows into it
     g = np.ones(len(x))
     s1, s2, s3 = S.s(1), S.s(2.5), S.s(FO_CLASH - 0.5)
-    g[s1:s2] = np.linspace(1, 0.4, s2 - s1)
-    g[s2:s3] = 0.4 + 0.6 * np.linspace(0, 1, s3 - s2) ** 1.6
+    g[s1:s2] = np.linspace(1, 0.5, s2 - s1)
+    g[s2:s3] = 0.5 + 0.5 * np.linspace(0, 1, s3 - s2) ** 1.6
     # the breath before the clash: everything stops for half a beat
     a, b = S.s(FO_CLASH - 0.5), S.s(FO_CLASH) - 40
     g[a:b] = 0.04; g[a - 300:a] = np.linspace(g[a - 300], 0.04, 300)

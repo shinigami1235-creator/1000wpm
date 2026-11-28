@@ -233,11 +233,11 @@ def theme(S, T, b0, sec):
             m = T.tonic + s + 12 * octv
             beat = start + o * speed; ln = l * speed * 0.96
             if beat >= (b0 + sec['bars']) * 4: break
-            play_note(S, inst, beat, m, ln, hot, opt, last)
+            c = ch[min(len(ch) - 1, int((beat - b0 * 4) // 4))]
+            play_note(S, inst, beat, m, ln, hot, {**opt, 'under': below(T, c, m - 2)}, last)
             if opt.get('harm'):
-                c = ch[min(len(ch) - 1, int((beat - b0 * 4) // 4))]
                 play_note(S, inst, beat, below(T, c, m), ln, hot, {**opt, 'gain': opt.get('gain', 1.0) * 0.5}, None, pan=-0.25)
-            if opt.get('oct'):
+            if opt.get('oct') and l * speed >= 1:      # the doubling keeps to the long notes
                 play_note(S, opt.get('oct_inst', inst), beat, m + 12 * opt['oct'], ln, hot, {**opt, 'gain': opt.get('gain', 1.0) * opt.get('oct_gain', 0.6)}, None)
             last = m
 
@@ -257,8 +257,8 @@ def play_note(S, inst, beat, m, ln, hot, opt, last, pan=0.0):
                glide_from=glide, delay=0.18, hall=0.22, sub=0.3)
     elif inst == 'brass':
         S.chord('music', E.brass, beat, [m], ln, pan=pan, gain=1.1 * g, cut=800 + 1100 * hot, hall=0.3, delay=0.05)
-    elif inst == 'brass5':     # a low brass section in fifths: the theme as a threat
-        S.chord('music', E.brass, beat, [m, m + 7], ln, pan=pan, gain=1.0 * g, cut=700 + 1000 * hot, hall=0.3)
+    elif inst == 'brass5':     # a low brass section, the theme over a chord tone under it: the theme as a threat
+        S.chord('music', E.brass, beat, [opt.get('under', m - 5), m], ln, pan=pan, gain=1.0 * g, cut=700 + 1000 * hot, hall=0.3)
     elif inst == 'bell':
         S.note('music', E.bell, beat, m, ln, pan=pan, gain=0.9 * g, hall=0.45, delay=0.3)
     elif inst == 'pluck':

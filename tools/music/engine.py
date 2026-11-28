@@ -598,6 +598,7 @@ class Song:
         self.kicks = []
         self.pump_extra = []
         self.edits = []
+        self.events = []      # (bus, beat, beats, [midi], voice) for the harmony check
         self.gain = {'kick': 0.75, 'drums': 0.75, 'perc': 0.6, 'bass': 0.8, 'sub': 0.7, 'lead': 1.5, 'music': 1.2, 'pad': 0.9, 'fx': 0.55}
         self.pump = {'bass': 0.9, 'sub': 1.0, 'pad': 0.6, 'music': 0.35, 'lead': 0.2, 'fx': 0.15, 'perc': 0.25, 'hall': 0.6, 'delay': 0.4}
         self.hall_ir = make_ir(2.6, 0.025, 0.35)
@@ -626,9 +627,11 @@ class Song:
         self.put(bus or ('perc' if name in ('metal', 'ride') else 'drums'), beat, x, pan, v, hall=hall, room=room)
 
     def note(self, bus, fn, beat, m, beats, pan=0.0, gain=1.0, hall=0.0, room=0.0, delay=0.0, **kw):
+        self.events.append((bus, beat, beats, [m], getattr(fn, '__name__', '?')))
         self.put(bus, beat, fn(m, beats * self.spb, **kw), pan, gain, hall=hall, room=room, delay=delay)
 
     def chord(self, bus, fn, beat, ms, beats, pan=0.0, gain=1.0, hall=0.0, room=0.0, delay=0.0, **kw):
+        self.events.append((bus, beat, beats, list(ms), getattr(fn, '__name__', '?')))
         self.put(bus, beat, fn(ms, beats * self.spb, **kw), pan, gain, hall=hall, room=room, delay=delay)
 
     def duck_at(self, beat, depth=1.0):
@@ -761,15 +764,15 @@ def master_to(x, path, lufs=-15.0, ceiling=-1.6, bitrate='112k', loop=True, head
         if not loop:     # drop the silence after the last tail
             e = np.abs(y).max(axis=1); live = np.nonzero(e > db(-66))[0]
             if len(live): y = fadeout(y[:min(len(y), live[-1] + SR // 10)].copy(), 60)
-        for k in range(2):
+        for k in range(5):
             out = np.concatenate([y, y[:int(SR * head_s)]]) if loop and head_s else y
             write_wav(wav, out)
             subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-b:a', bitrate, path], check=True)
             res = measure(path)
             # the encoder's low pass takes a little loudness off: make it up, staying under the ceiling
             err = lufs - res['I']
-            if k or (abs(err) < 0.2 and res['TP'] <= -1.05): break
-            y = y * db(min(err, -1.15 - res['TP']))
+            if (abs(err) < 0.2 or k) and res['TP'] <= -1.05: break
+            y = y * db(min(err if not k else 0, -1.15 - res['TP']))
         res['gain_db'] = round(g, 2); res['wav_I'] = m['I']; res['wav_TP'] = m['TP']
         return res, y
 
