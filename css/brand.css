@@ -220,3 +220,6 @@
 .en-ping.calm .pl { animation: none; stroke-dashoffset: 0; }
 .en-ping.calm .pp { animation: none; opacity: 1; }
 .en-ping.calm .pr { animation: none; opacity: .6; }
+
+/* the result window's label carries the wing mark */
+.gg-mark { width: auto; height: 14px; margin-right: 8px; vertical-align: -2px; color: var(--ink-hi); }

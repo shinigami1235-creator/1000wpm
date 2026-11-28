@@ -158,6 +158,9 @@ window.REWARDS = {
       { id: 'bot-orb-ember', name: 'Ember orb', price: 7500, part: 'orb', v: 'ember' },
       { id: 'bot-orb-frost', name: 'Frost orb', price: 8000, part: 'orb', v: 'frost' },
       { id: 'bot-orb-prism', name: 'Prism orb', price: 11000, part: 'orb', v: 'prism' },
+      // the CTRL livery (28 Nov 2026, from the official merch): matte black shell, wing mark, cyan glow and slashes.
+      // A full paint job, so it sits between the orbs and the armour sets. The small CTRL tag sticker is free.
+      { id: 'bot-livery-ctrl', name: 'CTRL livery', price: 12000, part: 'livery', v: 'ctrl' },
       { id: 'bot-orb-void', name: 'Void orb', price: 15000, part: 'orb', v: 'void' },
     ],
     // the reasons WPM.addCoins doubles while the pass runs: coins earned by playing,
