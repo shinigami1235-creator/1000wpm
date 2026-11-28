@@ -187,7 +187,7 @@ window.WorldBossNet = (() => {
         st.fo = { id: e.id, need: R.resistNeed(st.raiders.length, st.phase), by: {}, win: null, over: false };
         // how much of the raid is on it this time varies (some are mid-word, some away), so a big raid can lose too
         const focus = foFocus != null ? foFocus : cfg.fresh ? 1 : rnd(0.32, 0.9);
-        foPlan = sims.filter(() => Math.random() < focus).map(s => ({ s, next: e.charge + rnd(500, 1600) * 80 / Math.max(25, s.r.wpm || 80) + (Math.random() < 0.08 ? rnd(2000, 5000) : 0) }));
+        foPlan = sims.filter(() => Math.random() < focus).map(s => ({ s, next: e.charge + rnd(400, 1200) + (Math.random() < 0.08 ? rnd(2000, 5000) : 0) }));
         emitEvent({ type: 'faceoffStart', id: e.id, need: st.fo.need, at: t });
       }
       const F = st.fo;

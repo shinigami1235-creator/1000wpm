@@ -482,7 +482,7 @@ Router.register('boss', (() => {
   }
   function submit() {
     if (!typed || !st || st.defeatedAt) return;
-    if (foSaved) { foSubmit(); return; }
+    if (foSaved && tags[0] && tags[0].kind === 'resist') { foSubmit(); return; }
     sess.keys++;                      // the space
     const t = now();
     syncTags();
@@ -511,10 +511,12 @@ Router.register('boss', (() => {
   let foE = null, foHud = null, foSaved = null, foShown = null, foPow = 0, foMine = { ok: 0, bad: 0 }, foNext = 0;
   function foWords(e, n) { const out = []; for (let i = 0; i < n; i++) out.push(e.words[(foNext + i) % e.words.length]); foNext += n; return out; }
   function foTag(i) { return { kind: 'resist', src: foE.id, color: '#5ce8ff', label: i === 0 ? 'RESIST' : '', part: 0, of: 1 }; }
+  // the word you're in the middle of stays at the front, so nothing changes under your fingers (Gid, 27 Nov)
   function foSwap(on) {
-    if (on) { foSaved = { stack, tags }; foNext = 0; stack = foWords(foE, 30); tags = stack.map((w, i) => foTag(i)); }
-    else { stack = foSaved.stack; tags = foSaved.tags; foSaved = null; }
-    typed = ''; target = null; clean = true;
+    const mid = typed ? stack[0] : null;
+    if (on) { foSaved = { stack: stack.slice(mid ? 1 : 0), tags: tags.slice(mid ? 1 : 0) }; foNext = 0; const w = foWords(foE, 30); stack = mid ? [mid, ...w] : w; tags = stack.map((x, i) => (mid && i === 0 ? null : foTag(i - (mid ? 1 : 0)))); }
+    else { stack = mid ? [mid, ...foSaved.stack] : foSaved.stack; tags = mid ? [null, ...foSaved.tags] : foSaved.tags; foSaved = null; }
+    if (!mid) { typed = ''; target = null; clean = true; }
     const box = q('queue'); if (box) box.innerHTML = '';
     flow = null; renderQueue();
   }
@@ -611,7 +613,7 @@ Router.register('boss', (() => {
     if (hist.length > 3) hist.shift();
     if (flow) flow.push(word, typed, ok, kind || false);
     typed = ''; target = null; clean = true;
-    if (stack.length < 40) stack.push(...moreWords(60));
+    if (stack.length < 40 && !foSaved) stack.push(...moreWords(60));
     tick(); renderQueue(); paintYou();
   }
   // a tagged word. A spell or a block can be a few words: each one has to be right, and the last one
