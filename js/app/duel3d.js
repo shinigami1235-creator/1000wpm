@@ -784,7 +784,8 @@ window.DuelScene = (() => {
         burst(at, 22, 11, col, { shard: true, size: 0.4, life: 0.9, dir: away * 1.2, up: 0.6, grav: 10, k: 1.5 });
         smoke(at, 8, 2.2, { size: 1.8, life: 1.2, op: 0.4 });
         flare(at, WHITE, 3.2, 0.16);
-        after(0.09, () => { if (how.ring2) ringAt(to, how.ring2, 3.4, 0.6); else ringAt(to, WHITE, 6.5, 0.6); flare(centre(to, new V()), col, 2.4, 0.14); });
+        const r2 = how.ring2 || (how.od ? odColOf(1 - to, how.od) : null);
+        after(0.09, () => { if (r2) ringAt(to, r2, 3.4, 0.6); else ringAt(to, WHITE, 6.5, 0.6); flare(centre(to, new V()), col, 2.4, 0.14); });
         xs('crit', 1, to);
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 170); shake = Math.max(shake, 0.55); punch = 1; }
       }
@@ -1387,6 +1388,8 @@ window.DuelScene = (() => {
       else if (B && o.close && !B.dodged && A.tier <= 2 && B.tier <= 2 && lastScene !== 'clash') kind = 'clash';
       if (A) lastScene = kind;
       STG.xCloseT = 1.2;   // they close in for the exchange
+      // a charge with nothing behind it (no clean overdrive word, or a dodged strike) goes out as the exchange starts
+      strikes.forEach(a2 => { if (!a2.od || a2.dodged) after(0.15, () => odRelease(a2.from)); });
       const acc = o.acc || [1, 1];
       const howOf = a2 => ({ graze: !a2.crit && acc[a2.from] < 0.9, heavy: !!a2.crit && a2.tier >= 2, od: a2.dodged ? 0 : a2.od || 0 });
       let end = 0;
@@ -1603,14 +1606,14 @@ window.DuelScene = (() => {
       }
     }
     // the charge goes into the strike: the column collapses into the bot and bursts off it
-    function odRelease(i) {
+    function odRelease(i, quiet = false) {
       const S = OD[i];
       if (!S.on) return;
       S.on = false; S.rel = 1;
       const at = chest(i, new V()), col = odColOf(i);
       flare(at, col, 1.8 + S.tier * 0.3, 0.18);
       burst(at, 14 + S.tier * 6, 7 + S.tier * 2, col, { size: 0.22, life: 0.5, grav: 1, k: 1.3 });
-      xs('odRelease', 0.6 + S.tier * 0.15, i);
+      if (!quiet) xs('odRelease', 0.6 + S.tier * 0.15, i);
     }
     function odClear() {
       OD.forEach((S, i) => {
@@ -1737,6 +1740,7 @@ window.DuelScene = (() => {
       const i = a2.from, j = a2.to, od = a2.dodged ? 0 : a2.od || 0;
       if (!od) { if (a2.odDmg) after(at, () => onOd(a2)); return at; }
       if (od === 1) {
+        after(at, () => odRelease(i));
         after(at + 0.12, () => { odHit(j, i, true, 1); onOd(a2); });
         return at + 0.2;
       }
@@ -1748,7 +1752,11 @@ window.DuelScene = (() => {
           if (!alive || F[i].ko) return;
           if (F[i].bf) F[i].bf.move(k % 2 ? 'sidestep' : 'jab', { len: 0.26, strike: true, power: 0.5 + 0.2 * k, side: k % 2 ? 1 : -1 });
           xs('odHit', 0.6 + 0.15 * k, i);
-          shot(i, 1, null, { orb: true, noMove: true, plain: true, noCut: true, ms: 230, color: odHex(i), size: 0.7 + 0.15 * k, arc: 0.4 + 0.3 * (k % 2), land: () => { odHit(j, i, last, od); if (last) onOd(a2); } });
+          shot(i, 2, null, { orb: true, noMove: true, plain: true, noCut: true, ms: 230, color: odHex(i), size: 1.15 + 0.15 * k, arc: 0.4 + 0.3 * (k % 2), land: () => {
+            const at2 = centre(j, new V()), dv = tmp.subVectors(at2, centre(i, new V()));
+            slashArc(at2, dv, (k % 2 ? -1 : 1) * (0.7 + 0.2 * k), 1.5 + 0.2 * k, odColOf(i, od), 0.26);
+            odHit(j, i, last, od); if (last) onOd(a2);
+          } });
         });
       }
       return at + 0.05 + (n - 1) * gap + 0.3;
@@ -1786,7 +1794,7 @@ window.DuelScene = (() => {
         after(tt, () => { STG.lift[i] = 0.35; f.bf.move(mv, { len, strike: true, power: 1, side: sd }); xs(mv === 'spin' ? 'spin' : 'slash', 0.9, i); });
         after(tt + len * hit, () => {
           const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
-          slashArc(at, dirV, roll, 1.9, col, 0.34); slashArc(at, dirV, roll + 0.5, 1.5, sc, 0.16);
+          slashArc(at, dirV, roll, 1.9, col, 0.34);   // the overdrive finisher's cut slashArc(at, dirV, roll + 0.5, 1.5, sc, 0.16);
           burst(at, 12, 9, col, { shard: true, size: 0.26, life: 0.5, dir: j ? 0.8 : -0.8, grav: 10, k: 1.3 });
           flare(at, col, 1.4, 0.08); react(j, 'hit', 0.5, 1.2);
           if (F[j].bf) F[j].bf.hurt(pick('ofh' + j, ['jolt', 'spinout']), { k: 0.7, side: sd });
@@ -1802,12 +1810,12 @@ window.DuelScene = (() => {
       // a trail of violet sparks behind it as it comes down
       for (let k = 0; k < 6; k++) after(tf + len * 0.3 + k * 0.04, () => burst(chest(i, new V()), 4, 2, k % 2 ? sc : col, { size: 0.3, life: 0.45, grav: 0, k: 1.3 }));
       after(contact, () => {
-        odRelease(i);
+        odRelease(i, true);   // the landing has its own sound
         const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
         slashArc(at, dirV, 1.2, 2.6, col, 0.5);
         impact(j, Math.max(4, a2.tier), a2.crit, sc, null, { ...how, graze: false, heavy: true, od: 3, hurt: 'launch', ring2: col });
         odPillar(j, col);
-        xs('odSlam', 1, j);
+        after(0.05, () => xs('odSlam', 1, j));   // just after the crit's crack, so the two peaks don't stack
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 230); shake = Math.max(shake, 0.7); punch = 1; }
         onLand(a2);
       });
@@ -1915,6 +1923,7 @@ window.DuelScene = (() => {
       if (od >= 3 && a2.tier >= 3) { after(t0, () => st && st(a2)); return odFinisher(a2, t0, how, onLand, onOd); }
       const v = attackVariant(i, a2.tier), land = () => onLand(a2), big = 1 + 0.15 * od;
       if (od) after(t0 + 0.05, () => { OD[i].surge = 0.6; OD[i].pulse = 1; });
+      else after(t0, () => odRelease(i));   // a charge that never got a clean word, or a dodged strike: it just goes out
       const sideS = (f.mvSide = -(f.mvSide || 1));
       const camAt = Math.max(0, t0 - 0.3);
       after(t0, () => st && st(a2));

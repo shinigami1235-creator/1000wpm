@@ -15,9 +15,9 @@
 window.DuelSfx = (() => {
   // levels set from offline renders (DuelSfx.render): hits peak about 0.25 to 0.45, small moves about 0.1 to 0.2
   const LEVEL = { slash: 0.75, uppercut: 0.7, spin: 2.0, slam: 0.95, dive: 1.6, pass: 1.6, volley: 2.6, clang: 1.0, ricochet: 1.8, fizzleShield: 2.4,
-    clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.95, rise: 1.2,
+    clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.8, rise: 1.2,
     beamCharge: 1.3, beamFire: 0.85, beamRelease: 0.7, heart: 0.75, beamRiser: 0.6, beamCrackle: 0.3,
-    odStart: 0.9, odTick: 0.7, odTier: 0.8, odBreak: 1.2, odRelease: 0.9, odHit: 1.1, odZap: 0.5, odRise: 1.0, odSlam: 0.8 };
+    odStart: 0.9, odTick: 1.1, odTier: 0.8, odBreak: 1.2, odRelease: 0.9, odHit: 1.1, odZap: 0.9, odRise: 1.0, odSlam: 0.4 };
   const GAP = { volley: 40, dodge: 60, thump: 50, graze: 60, odZap: 90, odTick: 30, odHit: 40 };
   const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36];
 
@@ -134,9 +134,10 @@ window.DuelSfx = (() => {
           o.connect(f).connect(g).connect(d); o.start(t); o.stop(t + 1.1); }
         hiss(d, t, 0.9, 800, 1.2, 0.2 * k, 'bandpass', 0.7, 6000);
       },
-      // the overdrive finisher landing: the crit's boom, a bright crack, a violet ring of bells and a long tail
-      odSlam(d, t, k) { tone(d, t, 'sine', 75, 24, 1.2, 1.0 * k); hiss(d, t, 0.06, 4200, 0.5, 0.9 * k); hiss(d, t + 0.02, 1.3, 600, 0.6, 0.45 * k, 'lowpass', 0.01, 80);
-        ring(d, t + 0.01, 659.25, 1.3, 0.12 * k); ring(d, t + 0.03, 987.77, 1.1, 0.08 * k); tone(d, t, 'triangle', 220, 55, 0.6, 0.35 * k); },
+      // the overdrive finisher landing, on top of the crit's boom (which carries the low end): a bright crack,
+      // a violet ring of bells and a rushing tail
+      odSlam(d, t, k) { hiss(d, t, 0.05, 4200, 0.5, 0.8 * k); hiss(d, t + 0.03, 0.9, 1400, 0.7, 0.3 * k, 'bandpass', 0.02, 5000);
+        ring(d, t + 0.01, 659.25, 1.3, 0.16 * k); ring(d, t + 0.03, 987.77, 1.1, 0.1 * k); tone(d, t, 'triangle', 220, 70, 0.5, 0.25 * k); },
     };
     // the collision's crackle: a loop whose pitch follows the collision point. set(k, x): k loudness 0..1, x 0..1
     S.loop = {
