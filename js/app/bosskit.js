@@ -75,7 +75,8 @@ window.BossKit = (() => {
           .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSP = position; vSN = normal;');
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
           varying vec3 vSP; varying vec3 vSN; uniform vec3 uSeam; uniform float uSeed, uK, uPulse, uHeat, uCrack;
-          float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453); }
+          // a hash with no sine (sin is slow on software and low-end GPUs and this runs several times a pixel)
+          float h21(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031 + uSeed * 0.0173); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
           float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
             return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + 1.0), f.x), f.y); }
           vec2 projU(){ vec3 n = abs(normalize(vSN)); return n.x > n.y && n.x > n.z ? vSP.yz : n.y > n.z ? vSP.xz : vSP.xy; }
@@ -92,7 +93,8 @@ window.BossKit = (() => {
           #ifdef CRACKS
           float crack(vec2 u){
             vec2 p = u * 0.85 + uSeed; vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
-            for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 o = vec2(float(x), float(y)); vec2 q = o + vec2(h21(i + o), h21(i + o + 7.3)) - f; float d = dot(q, q); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
+            vec2 b0 = step(0.5, f) - 1.0;   // the four nearest cells, not nine
+            for (int y = 0; y <= 1; y++) for (int x = 0; x <= 1; x++) { vec2 o = b0 + vec2(float(x), float(y)); vec2 q = o + vec2(h21(i + o), h21(i + o + 7.3)) - f; float d = dot(q, q); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
             return (1.0 - smoothstep(0.0, 0.05, sqrt(d2) - sqrt(d1))) * step(0.45, h21(i + 2.2));
           }
           #endif`)
@@ -312,7 +314,7 @@ window.BossKit = (() => {
       leg('L'); leg('R', { wire: true });
       const w = S.chestW;
       piece(B.chest, own(new THREE.BoxGeometry(w * 0.48, S.chestH * 0.95, S.chestD * 1.02, 3, 6, 3)), [w * 0.26, 0, 0], [0, 0, 0], wire, 0);
-      for (let i = 0; i < 40; i++) block(B.chest, rnd(-0.2, w * 0.7), rnd(-3, 3), rnd(-1, S.chestD / 2 + 1.2), rnd(0.12, 0.3), rnd(0, 3));
+      for (let i = 0; i < (RICH ? 16 : 40); i++) block(B.chest, rnd(-0.2, w * 0.6), rnd(-3, 3), rnd(-1, S.chestD / 2 + (RICH ? 0.1 : 1.2)), rnd(0.12, 0.3), rnd(0, 3));
     } else {
       arm('L', { fist: S.fistL }); arm('R', { fist: S.fistR });
       if (L) { leg('L'); leg('R'); }
@@ -528,7 +530,6 @@ window.BossKit = (() => {
         }
         for (const sx of [-1, 0, 1]) { const e = new THREE.Mesh(own(new THREE.BoxGeometry(0.22, 0.14, 0.12)), glow('#ff3a2e')); e.position.set(sx * h * 0.28, h * 0.32, h * 0.6); B.head.add(e); meshes.push(e); }
         for (const sx of [-0.6, 0, 0.6]) tube(B.chest, [[sx * 1.2, CH * 0.2, -D / 2 - 0.3], [sx * 1.5, -CH * 0.4, -D / 2 - 0.9], [sx * 0.9, -CH * 0.9, -D / 2 - 1.1], [sx * 0.6, -CH * 1.35, -D / 2 - 0.9]], 0.22);
-        for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; block(B.chest, Math.cos(a) * W * 0.78, -CH * 0.1 + Math.sin(i * 2.1) * 0.5, Math.sin(a) * W * 0.6, 0.38 + (i % 3) * 0.1, i); blockList[blockList.length - 1].orbit = { a, r: W * 0.78, rz: W * 0.6, y: -CH * 0.1 + Math.sin(i * 2.1) * 0.5 }; }
       }
       if (id === 'king') {
         // gold trim on the throne with lit runes up its back and two pillars, a crown band with jewels under
@@ -572,14 +573,26 @@ window.BossKit = (() => {
       }
     }
 
+    // the rich build keeps its outline clean: no cubes stuck to the pauldrons or hanging over the head, only a
+    // few pieces on a tilted ring round the whole body, wide of the shoulders at the sides and above the head
+    // where the ring passes in front, so they never cross the chest, the arms or a wind-up pose
+    if (RICH) {
+      const n = { siege: 3, warden: 2, colossus: 4, king: 2, half: 3, brute: 0 }[id] ?? 2;
+      const r = (S.shoulderX + S.pauldron[0]) * 1.3 + (id === 'colossus' ? 1.2 : 0), H = S.height;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2 + 0.4;
+        block(group, 0, 0, 0, (id === 'colossus' ? 0.75 : 0.55) + (i % 2) * 0.15, i);
+        blockList[blockList.length - 1].orbit = { a, r, rz: r * 0.55, y: H * 0.72, tilt: H * 0.4 };
+      }
+    }
     // general plates and peeling blocks for everyone but the Warden's shield
-    for (let i = 0; i < S.plates; i++) {
+    for (let i = 0; i < (RICH ? 0 : S.plates); i++) {
       const sx = rnd() < 0.5 ? -1 : 1, kk = sx < 0 ? 'L' : 'R';
       if (id === 'half' && kk === 'R') continue;
       const p = S.pauldron;
       block(B['sh' + kk], sx * rnd(0, p[0] * 0.45), p[1] * rnd(0.4, 0.75), rnd(-p[2] * 0.4, p[2] * 0.4), rnd(0.35, 0.6), rnd(0, 1));
     }
-    for (let i = 0; i < S.floaters; i++) {
+    for (let i = 0; i < (RICH ? 0 : S.floaters); i++) {
       const sx = rnd() < 0.5 ? -1 : 1, kk = sx < 0 ? 'L' : 'R';
       block(B['sh' + kk], sx * rnd(1, 2.6), rnd(2, 3.6), rnd(-1, 1), rnd(0.25, 0.45), rnd(0, 3));
     }
@@ -598,18 +611,66 @@ window.BossKit = (() => {
       const out = meshes.filter(m => m.material === wire);
       for (const g of groups.values()) {
         if (g.list.length < 2) { out.push(...g.list); continue; }
-        const geos = g.list.map(m => { m.updateMatrix(); const x = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(); x.applyMatrix4(m.matrix); return x; });
-        const n = geos.reduce((a, x) => a + x.attributes.position.count, 0);
-        const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
-        let o = 0;
-        for (const x of geos) { pos.set(x.attributes.position.array, o * 3); nor.set(x.attributes.normal.array, o * 3); o += x.attributes.position.count; x.dispose(); }
-        const mg = own(new THREE.BufferGeometry());
-        mg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); mg.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+        const mg = own(joinIndexed(g.list.map(m => { m.updateMatrix(); const x = m.geometry.clone(); x.applyMatrix4(m.matrix); return [x, 0]; })));
         const mm = new THREE.Mesh(mg, g.mat);
         g.parent.add(mm); g.list.forEach(m => g.parent.remove(m));
         out.push(mm);
       }
       meshes.length = 0; meshes.push(...out);
+      skinMerge();
+    }
+    // Then every part that only ever moves with its bone goes into one skinned mesh per material (each vertex
+    // weighted fully to its bone, its position kept in the bone's own space so the panel shader reads it as
+    // before): a titan draws in about 25 calls instead of about 100. The pauldrons and the head stay separate
+    // (they fly loose when it dies) and so do the feet (the floor check measures them). Off with
+    // window.__titanNoSkin (tests, frame-time comparisons).
+    // join geometries into one, keeping each one's index so shared corners are shaded once (a third of the
+    // vertex work of unindexed triangles); skin: also a skinIndex/skinWeight per vertex, all on bone b
+    function joinIndexed(list, skin) {
+      const n = list.reduce((a, [x]) => a + x.attributes.position.count, 0);
+      const ni = list.reduce((a, [x]) => a + (x.index ? x.index.count : x.attributes.position.count), 0);
+      const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), idx = n > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+      const si = skin ? new Uint16Array(n * 4) : null, sw = skin ? new Float32Array(n * 4) : null;
+      let o = 0, k = 0;
+      for (const [x, b] of list) {
+        const c = x.attributes.position.count;
+        if (!x.attributes.normal) x.computeVertexNormals();
+        pos.set(x.attributes.position.array, o * 3); nor.set(x.attributes.normal.array, o * 3);
+        if (x.index) { const a = x.index.array; for (let i = 0; i < a.length; i++) idx[k++] = a[i] + o; }
+        else for (let i = 0; i < c; i++) idx[k++] = o + i;
+        if (skin) for (let i = 0; i < c; i++) { si[(o + i) * 4] = b; sw[(o + i) * 4] = 1; }
+        o += c; x.dispose();
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      if (skin) { g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4)); }
+      return g;
+    }
+    function skinMerge() {
+      if (window.__titanNoSkin) return;
+      const keepApart = new Set([B.shL, B.shR, B.head, B.footL, B.footR].filter(Boolean));
+      const bones = [], boneIx = new Map(), byMat = new Map(), rest = [];
+      for (const m of meshes) {
+        if (!m.isMesh || m.material === wire || keepApart.has(m.parent) || !m.parent) { rest.push(m); continue; }
+        if (!boneIx.has(m.parent)) { boneIx.set(m.parent, bones.length); bones.push(m.parent); }
+        if (!byMat.has(m.material)) byMat.set(m.material, []);
+        byMat.get(m.material).push(m);
+      }
+      if (!bones.length) return;
+      const skeleton = new THREE.Skeleton(bones, bones.map(() => new THREE.Matrix4()));
+      const I = new THREE.Matrix4();
+      for (const [mat, list] of byMat) {
+        const g = own(joinIndexed(list.map(m => { m.updateMatrix(); const x = m.geometry.clone(); x.applyMatrix4(m.matrix); return [x, boneIx.get(m.parent)]; }), true));
+        const sm = new THREE.SkinnedMesh(g, mat);
+        sm.frustumCulled = false;
+        group.add(sm);
+        sm.bind(skeleton, I);
+        for (const m of list) m.parent.remove(m);
+        rest.push(sm);
+      }
+      own(skeleton);
+      meshes.length = 0; meshes.push(...rest);
     }
 
     // ---------- the data blocks as one instanced mesh ----------
@@ -630,7 +691,7 @@ window.BossKit = (() => {
       _inv.copy(group.matrixWorld).invert();
       blockList.forEach((b, i) => {
         _o.position.copy(b.local);
-        if (b.orbit) { const a = b.orbit.a + orbitA; _o.position.set(Math.cos(a) * b.orbit.r, b.orbit.y + Math.sin(t * 1.3 + b.orbit.a * 3) * 0.25, Math.sin(a) * b.orbit.rz); }
+        if (b.orbit) { const a = b.orbit.a + orbitA, o = b.orbit; _o.position.set(Math.cos(a) * o.r, o.y + Math.sin(a) * (o.tilt || 0) + Math.sin(t * 1.3 + o.a * 3) * 0.25, Math.sin(a) * o.rz); }
         if (b.fallK != null) { _o.position.y -= ((t * 0.6 + b.fallK) % 1) * 1.2; }
         _o.rotation.set(b.rot * 0.7 + (b.spin ? t * b.spin : 0), b.rot, b.rot * 0.4);
         _o.scale.setScalar(b.size);
@@ -685,7 +746,7 @@ window.BossKit = (() => {
       const legBox = new THREE.Box3(), tmp = new THREE.Box3(), o = new V(), sc = new V();
       // lowest point of a foot's sole, in the boss's own units above its floor
       const lowest = k => {
-        group.updateMatrixWorld(true); legBox.makeEmpty();
+        B['foot' + k].updateWorldMatrix(true, true); legBox.makeEmpty();   // just this leg, not the whole body
         B['foot' + k].traverse(m => { if (m.isMesh && m.geometry) { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); legBox.union(tmp.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld)); } });
         group.getWorldPosition(o); group.getWorldScale(sc);
         return (legBox.min.y - o.y) / sc.y;

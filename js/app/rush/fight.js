@@ -408,12 +408,13 @@ window.RushFight = (() => {
     }
 
     // ---------- the clock ----------
-    function start(t = now()) {
+    // delay: ms before the count starts (a titan's entrance plays first, clear of the 3, 2, 1)
+    function start(t = now(), delay = 0) {
       phase = 'intro';
-      fightAt = t + INTRO_MS;
+      fightAt = t + delay + INTRO_MS;
       boss.attackAt = fightAt + K.interval * 0.55;
       refill();
-      emit('intro', { title: plan.slot.title, ms: INTRO_MS });
+      emit('intro', { title: plan.slot.title, ms: INTRO_MS, delay });
     }
     function tick(t = now()) {
       if (me.tick) me.tick();
@@ -652,6 +653,7 @@ window.RushFight = (() => {
         panic: t < boss.panicUntil, enraged: boss.enraged, heat: boss.heat,
         action: a && { type: a.type, start: a.start, due: a.due, total: a.total, shown: a.shown, chain: a.chain, atk: a.atk && a.atk.id, name: a.atk && a.atk.name },
         player: { ...player }, nextAttack: Math.max(0, boss.attackAt - t), nextSig: Math.max(0, sigAt - t), timed: sigs.some(x => x.due),
+        nextDue: sigs.reduce((m, x) => (x.due ? Math.min(m, Math.max(0, x.due - t)) : m), Infinity),
         stage, stageLeft: Math.max(0, stageUntil - t), sig: SG.kind, volume, pageHeat, pageHeatMax: SG.heat || 0, popCap: SG.cap || 0,
       };
     }
