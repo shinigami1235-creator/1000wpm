@@ -87,6 +87,7 @@ Router.register('duel', (() => {
             <li>When time is up, or you're both done, the bots attack: 1 to 3 words a shot, 4 to 6 a double shot, 7 to 9 a dash strike, all ${C.words} the finisher.</li>
             <li>Accuracy sets the damage. A round with no wrong key is a crit, 1.5 times the damage.</li>
             <li>Whoever finishes first strikes first. Finish all ${C.words} early and you may dodge the other attack.</li>
+            <li>About every other round one word is a spell, the same one for both of you. Type it with no wrong key and it casts after the strikes. A typo in it fizzles.</li>
             <li>Each side has ${C.hp} HP for the whole match. First to ${C.winRounds} rounds wins, or empty the other bot's HP.</li>
             <li>Showdown has its own MMR, separate from Clash.</li>
           </ul>

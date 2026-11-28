@@ -4,6 +4,9 @@
 // are up (or both are done) the two attacks play, the round's result shows and the next words appear.
 // The opponent is a simulated player near your Showdown MMR, Art's ghost, or a player from the online
 // list, typed by a NetBot (js/net/bot.js) at their wpm and accuracy, as in the Clash duel.
+// About every other round one of the 10 words is a spell word in its spell's colour, the same for both sides
+// (ShowdownRules.spellFor); typed clean it casts in the exchange, a typo fizzles it. Each spell hit's share of
+// the damage shows as it lands. The rules can also pick the exchange to play as a beam struggle (ShowdownRules.beam).
 //
 //   Showdown.start(el, { mode: 'quick' | 'art' | 'watch' | 'vs', opponent })   -> { stop() }
 //   Showdown.record()      this device's Showdown record: { rating, games, wins, losses, draws, bestStreak, vsArt, history }
