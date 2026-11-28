@@ -18,6 +18,7 @@
 //   v.release(style, power)   the word is done (power 0..1: the combo tier)
 //   v.fizzle(style)           a typo
 //   OrbAudio.render(style, ev, arg, secs)   Float32 samples through the same chain, for peak checks
+//   OrbAudio.played                         tests: a count of each sound that actually played
 window.OrbAudio = (() => {
   const STYLES = ['core', 'pulse', 'nebula', 'ember', 'frost', 'prism', 'void'];
   const KEY_GAP = 0.07, FAST = 0.16;   // seconds: no two keys closer than KEY_GAP; closer than FAST plays softer
@@ -25,6 +26,7 @@ window.OrbAudio = (() => {
   const note = (base, frac) => base * Math.pow(2, SCALE[Math.min(SCALE.length - 1, Math.floor(Math.max(0, Math.min(1, frac)) * 8))] / 12);
 
   let own = null;
+  const played = {};   // tests: how many of each sound actually played
   const buses = new WeakMap(), noiseBuf = new WeakMap();
   function bus(c) {
     let b = buses.get(c);
@@ -166,6 +168,7 @@ window.OrbAudio = (() => {
         if (o.pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, o.pan)); vol.connect(p).connect(bus(c)); }
         else vol.connect(bus(c));
         const K = kit(c, vol), t = now + 0.005;
+        played[style + ':' + ev] = (played[style + ':' + ev] || 0) + 1;
         if (ev === 'key') S.key(K, t, arg || 0, k);
         else if (ev === 'release') S.release(K, t, Math.max(0, Math.min(1, arg || 0)));
         else S.fizzle(K, t);
@@ -199,5 +202,5 @@ window.OrbAudio = (() => {
     return [b.getChannelData(0), b.getChannelData(1)];
   }
 
-  return { voice, render, STYLES };
+  return { voice, render, STYLES, played };
 })();
