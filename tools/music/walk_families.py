@@ -22,12 +22,15 @@ def loop_seg(name, secs, start=0.0, loop=None):
     t = np.where(t < a + L, t, a + (t - a) % L)
     return x[np.minimum((t * SR).astype(int), len(x) - 1)]
 
-def xfade(parts, fade=1.2):
+def xfade(parts, fade=1.2, power=False):
     out = parts[0]
     n = int(fade * SR)
     for p in parts[1:]:
-        k = np.exp(np.linspace(np.log(1e-4), 0, n))[:, None]
-        mid = out[-n:] * k[::-1] + p[:n] * k
+        if power:     # sb-audio.js since 29 Nov 2026: quarter-sine in, quarter-cosine out
+            u = np.linspace(0, 1, n)[:, None]; mid = out[-n:] * np.cos(u * np.pi / 2) + p[:n] * np.sin(u * np.pi / 2)
+        else:
+            k = np.exp(np.linspace(np.log(1e-4), 0, n))[:, None]
+            mid = out[-n:] * k[::-1] + p[:n] * k
         out = np.concatenate([out[:-n], mid, p[n:]])
     return out
 
@@ -36,12 +39,12 @@ def superboss():
     parts = []
     for b, (bars, bpm) in loops.items():
         for ph in (1, 2, 3):
-            parts.append(loop_seg(f'sb-{b}-{ph}', 19.0, 0.5, (0.5, bars * 240 / bpm)))
-    y = xfade(parts)
+            parts.append(loop_seg(f'sb-{b}-{ph}', 24.0, 0.5, (0.5, bars * 240 / bpm)))
+    y = xfade(parts, power=True)
     win = E.read_audio(os.path.join(AU, 'wb-win.mp3'))
     y[-int(0.6 * SR):] *= np.linspace(1, 0, int(0.6 * SR))[:, None]
     y = np.concatenate([y, np.zeros((int(0.7 * SR), 2)), win])
-    return y, [f'{(i // 3) * 57:.0f} s {b} phases 1-3' for i, b in enumerate(['hydra'] * 3 + ['compiler'] * 3 + ['leviathan'] * 3) if i % 3 == 0]
+    return y, [f'{k * 3 * 22.8:.0f} s {b} phases 1-3' for k, b in enumerate(loops)]
 
 def rush():
     from rush import BOSSES

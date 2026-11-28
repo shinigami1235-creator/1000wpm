@@ -93,74 +93,70 @@ LV = dict(
     C=['i', 'i', 'v', 'v', 'VI', 'VI', 'V', 'V'],
 )
 
-def hydra(p):
-    A, B, C = HY['A'], HY['B'], HY['C']
-    if p == 1: return [
-        sec(8, B, drums='trap', bass='riff', stabs=0.8, arp='8', hot=0.4),
-        sec(8, A, drums='trap', bass='pulse8', theme=('theme', 'brass5', -1, {}), choir=0.4, hot=0.45, fill='toms', riser=2),
-        sec(8, C, drums='tick', bass='sustain', choir=0.9, theme=('head', 'bell', 0, {'speed': 2.0, 'gain': 0.8}), hot=0.25, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='trap', bass='riff', theme=('theme', 'lead', 0, {'glide': True}), stabs=0.6, hot=0.55, fill='kicks', riser=1),
-    ]
-    if p == 2: return [
-        sec(8, B, drums='drive', bass='riff', stabs=1.0, arp='16', hot=0.6, growl=0.3),
-        sec(8, A, drums='drive', bass='roll16', theme=('theme', 'lead', 0, {'glide': True, 'oct': -1, 'oct_inst': 'brass'}), hot=0.65, fill='roll', riser=1),
-        sec(8, C, drums='trap', bass='sustain', choir=0.9, gate=0.5, theme=('head', 'lead', 0, {'speed': 2.0, 'gain': 0.75}), hot=0.45, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='drive', bass='riff', theme=('theme', 'lead', 0, {'harm': True, 'glide': True}), gate=0.7, choir=0.6, hot=0.75, fill='toms', riser=2),
-    ]
-    return [
-        sec(8, B, drums='blast', bass='riff', stabs=1.0, arp='16', hot=0.85, growl=0.6, glitch=[(7, 12, 4)]),
-        sec(8, A, drums='blast', bass='roll16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), choir=0.9, hot=0.9, fill='kicks', riser=1),
-        sec(8, C, drums='trap', bass='sustain', choir=1.0, gate=0.7, theme=('head', 'lead', 0, {'speed': 2.0}), drone=0.5, hot=0.6, fill='roll', riser=4, impact=False),
-        sec(8, A, drums='blast', bass='riff', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), gate=0.8, choir=1.0, stabs=0.6, hot=1.0, fill='toms', riser=2),
-    ]
+# ---------------------------------------------------------------- the suspense arc
+# Gid, 29 Nov 2026: "The music from the superboss doesn't feel suspenseful enough." Each loop now runs a
+# threat arc: a heartbeat kick under a held low drone and a clock that ticks, a low ostinato with a
+# semitone and a tritone in it that tightens (eighths, triplets, sixteenths), brass and choir stabs on the
+# downbeats, darker chords over a tonic pedal (the flat second, the flat fifth), risers and reverse swells
+# into a beat or two of silence, then the drums slam back. Phase 1 circles (the clock in quarters), phase 2
+# turns (eighths), phase 3 is the last stand (sixteenths, the heartbeat racing).
+HY['D'] = ['I', 'bII', 'I', 'bIIm', 'I', 'bII', 'bV', 'bII']        # E F E Fm E F Bb F over an E pedal
+CO['D'] = ['i', 'bII', 'i', 'bv0', 'i', 'bII', 'VI', 'bV']          # F#m G F#m Cdim F#m G D C: Locrian colour
+LV['D'] = ['i', 'bII', 'i', 'bV', 'i', 'bII', 'iv', 'V']            # Cm Db Cm Gb Cm Db Fm G
+OST = {   # the ostinato, semitones from the tonic an octave down; the second is the tightened, tritone one
+    'hydra': ([0, 1, 4, 1], [0, 1, 4, 1, 0, 1, 6, 1]),
+    'compiler': ([0, 12, 1, 12, 0, 12, 6, 12], [0, 12, 1, 13, 0, 12, 6, 18]),
+    'leviathan': ([0, 0, 1, 0, 7, 6], [0, 1, 0, 6, 0, 1, 7, 6]),
+}
+GROOVE = {'hydra': ('trap', 'drive', 'blast'), 'compiler': ('drive', 'break', 'blast'), 'leviathan': ('dnb', 'dnb', 'dnb')}
 
-def compiler(p):
-    A, B, C = CO['A'], CO['B'], CO['C']
-    if p == 1: return [
-        sec(8, B, drums='drive', bass='offbeat', arp='16', arpgain=1.2, hot=0.4),
-        sec(8, A, drums='drive', bass='offbeat', arp='16', theme=('theme', 'pluck', 0, {}), hot=0.45, fill='glitch', riser=1),
-        sec(8, C, drums='tick', bass='sustain', arp='16', arpgain=0.8, choir=0.6, theme=('head', 'bell', 0, {'speed': 2.0}), hot=0.3, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='drive', bass='riff', arp='16', theme=('theme', 'lead', 0, {}), hot=0.55, fill='toms', riser=1, glitch=[(3, 14, 2)]),
-    ]
-    if p == 2: return [
-        sec(8, B, drums='break', bass='riff', arp='16', stabs=0.9, hot=0.6, glitch=[(3, 12, 4)]),
-        sec(8, A, drums='break', bass='roll16', arp='16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'pluck'}), hot=0.65, fill='glitch', riser=1),
-        sec(8, C, drums='half', bass='sustain', arp='16', choir=0.8, theme=('head', 'lead', 0, {'speed': 2.0, 'gain': 0.75}), hot=0.45, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='drive', bass='riff', arp='16', gate=0.6, theme=('theme', 'lead', 0, {'harm': True}), hot=0.75, fill='kicks', riser=2, glitch=[(7, 12, 4)]),
-    ]
-    return [
-        sec(8, B, drums='blast', bass='roll16', arp='16', stabs=1.0, hot=0.85, growl=0.4, glitch=[(1, 12, 4), (5, 12, 4)]),
-        sec(8, A, drums='blast', bass='riff', arp='16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), choir=0.7, hot=0.9, fill='glitch', riser=1),
-        sec(8, C, drums='half', bass='sustain', arp='16', gate=0.7, choir=1.0, theme=('head', 'lead', 0, {'speed': 2.0}), hot=0.6, fill='roll', riser=4, impact=False),
-        sec(8, A, drums='blast', bass='roll16', arp='16', gate=0.8, theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), choir=0.9, hot=1.0, fill='toms', riser=2, glitch=[(7, 8, 8)]),
-    ]
+def arc(boss, p):
+    D = BOSSES[boss][0]
+    A, C, DK = D['A'], D['C'], D['D']
+    o1, o2 = OST[boss]
+    g = GROOVE[boss][p - 1]
+    tk = {1: 1, 2: 2, 3: 4}[p]                       # the clock speeds up by phase
+    hot = {1: 0.4, 2: 0.65, 3: 0.9}[p]
+    ex = {'arp': '16', 'arpgain': 0.7} if boss == 'compiler' and p > 1 else {}
+    gr = {'growl': 0.3 * p} if boss != 'compiler' else {}
+    lead_inst = 'pluck' if boss == 'compiler' and p == 1 else 'lead'
+    heart = lambda **k: sec(8, k.pop('prog', DK), drums='heart', heart_rate=k.pop('hr', p if p < 3 else 4), bass='sub', pad=False, pedal=True, drone=0.9,
+                             tick=tk, impact=False, hot=hot * 0.6, **k)
+    if p == 1:
+        S = [
+            heart(ost=(2, o1, 0.8), riser=0),
+            sec(8, A, drums=g, bass='pulse8', pedal=True, theme=('head', 'brass5', -1, {}), tick=tk, ost=((2, 3), o1, 0.7), hits=2, hot=hot, riser=2, **ex),
+            sec(8, DK, drums=g, bass='riff', stabs=0.9, hits=1, tick=tk, ost=(3, o1, 0.6), hot=hot + 0.1, drop=2, riser=1, **ex, **gr),
+            heart(prog=C, choir=0.8, theme=('head', 'bell', 0, {'speed': 2.0, 'gain': 0.8}), ost=((2, 3), o1, 0.8), riser=2),
+        ]
+        if boss == 'leviathan':
+            S[2:2] = [sec(8, A, drums=g, bass='riff', theme=('theme', 'lead', 0, {'glide': True}), hits=2, tick=tk, hot=hot + 0.1, riser=1, **gr),
+                      heart(prog=DK, hr=2, ost=((2, 3), o2, 0.8), riser=2)]
+    elif p == 2:
+        S = [
+            sec(8, DK, drums=g, bass='riff', stabs=1.0, hits=2, tick=tk, ost=(3, o1, 0.6), hot=hot, drop=1, **ex, **gr),
+            sec(8, A, drums=g, bass='roll16', theme=('theme', lead_inst, 0, {'glide': True}), hits=1, tick=tk, pedal=True, hot=hot + 0.05, riser=1, **ex),
+            heart(prog=C, choir=0.9, theme=('head', 'brass5', -1, {'speed': 2.0}), ost=((3, 4), o2, 0.8), riser=2),
+            sec(8, A, drums=g, bass='riff', theme=('theme', 'lead', 0, {'harm': True, 'glide': True}), gate=0.6, hits=1, tick=tk, hot=hot + 0.1, drop=2, fill='kicks', riser=1, **ex, **gr),
+        ]
+        if boss == 'leviathan':
+            S[2:2] = [sec(8, DK, drums=g, bass='roll16', stabs=0.9, gate=0.5, hits=2, tick=tk, ost=(4, o2, 0.6), hot=hot + 0.05, glitch=[(7, 12, 4)], riser=1),
+                      sec(8, A, drums=g, bass='riff', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), choir=0.6, hits=1, tick=tk, hot=hot + 0.1, drop=1, riser=2, **gr)]
+    else:
+        S = [
+            sec(8, DK, drums=g, bass='riff', stabs=1.0, hits=1, tick=tk, ost=(4, o2, 0.6), hot=hot, drop=1, glitch=[(7, 12, 4)], **ex, **gr),
+            sec(8, A, drums=g, bass='roll16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), choir=0.9, hits=1, tick=tk, hot=hot + 0.05, riser=1, **ex),
+            heart(prog=C, choir=1.0, theme=('head', 'lead', 0, {'speed': 2.0, 'gain': 0.8}), ost=(4, o2, 0.8), riser=2),
+            sec(8, A, drums=g, bass='riff', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), gate=0.8, choir=1.0, hits=1, tick=tk, hot=1.0, drop=2, fill='kicks', riser=1, **ex, **gr),
+        ]
+        if boss == 'leviathan':
+            S[2:2] = [sec(8, DK, drums='blast', bass='riff', stabs=1.0, gate=0.8, hits=1, tick=tk, ost=(4, o2, 0.6), hot=0.95, glitch=[(3, 8, 8)], riser=1, **gr),
+                      sec(8, A, drums=g, bass='roll16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), choir=1.0, hits=1, tick=tk, hot=1.0, drop=2, riser=1)]
+    return S
 
-def leviathan(p):
-    A, B, C = LV['A'], LV['B'], LV['C']
-    if p == 1: return [
-        sec(8, B, drums='dnb', bass='sustain', pad=True, arp='8', hot=0.35),
-        sec(8, A, drums='dnb', bass='sustain', theme=('theme', 'brass', -1, {}), choir=0.5, hot=0.4, fill='roll', riser=1),
-        sec(8, B, drums='dnb', bass='riff', stabs=0.7, arp='16', hot=0.45, growl=0.3),
-        sec(8, A, drums='dnb', bass='riff', theme=('theme', 'lead', 0, {'glide': True}), hot=0.5, fill='toms', riser=1),
-        sec(8, C, drums='tick', bass='sustain', choir=0.9, theme=('head', 'bell', 0, {'speed': 2.0}), hot=0.25, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='dnb', bass='riff', theme=('theme', 'lead', 0, {'glide': True}), choir=0.5, stabs=0.5, hot=0.55, fill='kicks', riser=2),
-    ]
-    if p == 2: return [
-        sec(8, B, drums='dnb', bass='riff', stabs=1.0, arp='16', hot=0.6, growl=0.5),
-        sec(8, A, drums='dnb', bass='riff', theme=('theme', 'lead', 0, {'glide': True, 'oct': -1, 'oct_inst': 'brass'}), hot=0.65, fill='roll', riser=1, growl=0.4),
-        sec(8, B, drums='dnb', bass='roll16', gate=0.6, stabs=0.8, hot=0.65, glitch=[(7, 12, 4)]),
-        sec(8, A, drums='dnb', bass='riff', theme=('theme', 'lead', 0, {'harm': True, 'glide': True}), choir=0.6, hot=0.7, fill='toms', riser=1),
-        sec(8, C, drums='half', bass='sustain', choir=1.0, theme=('head', 'lead', 0, {'speed': 2.0, 'gain': 0.8}), hot=0.4, fill='roll', riser=2, impact=False),
-        sec(8, A, drums='dnb', bass='roll16', gate=0.7, theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), hot=0.75, fill='kicks', riser=2),
-    ]
-    return [
-        sec(8, B, drums='dnb', bass='riff', stabs=1.0, arp='16', hot=0.85, growl=0.7, glitch=[(3, 12, 4)]),
-        sec(8, A, drums='dnb', bass='roll16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), choir=0.8, gate=0.6, hot=0.9, fill='roll', riser=1),
-        sec(8, B, drums='blast', bass='riff', stabs=1.0, gate=0.8, hot=0.9, growl=0.7, glitch=[(7, 8, 8)]),
-        sec(8, A, drums='dnb', bass='riff', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass'}), choir=1.0, hot=0.95, fill='toms', riser=1),
-        sec(8, C, drums='half', bass='sustain', choir=1.0, gate=0.6, theme=('head', 'lead', 0, {'speed': 2.0}), drone=0.5, hot=0.6, fill='roll', riser=4, impact=False),
-        sec(8, A, drums='blast', bass='roll16', theme=('theme', 'lead', 0, {'oct': -1, 'oct_inst': 'brass', 'harm': True}), gate=0.8, choir=1.0, hot=1.0, fill='kicks', riser=2),
-    ]
+def hydra(p): return arc('hydra', p)
+def compiler(p): return arc('compiler', p)
+def leviathan(p): return arc('leviathan', p)
 
 BOSSES = {'hydra': (HY, hydra), 'compiler': (CO, compiler), 'leviathan': (LV, leviathan)}
 
@@ -186,7 +182,7 @@ def main(which):
         S = build(b, p)
         name = f'sb-{b}-{p}'
         path = os.path.join(OUT, name + '.mp3')
-        res, y = E.master_to(S.mixdown(), path, lufs=LUFS + 0.4 * (p - 2))
+        res, y = E.master_to(S.mixdown(), path, lufs=LUFS + 0.4 * (p - 2), ceiling=float(os.environ.get('SB_CEIL', -1.6)))
         res.update(kb=os.path.getsize(path) // 1024, secs=round(len(y) / E.SR, 3), bars=S.bars, bpm=S.bpm)
         table[name] = res
         print(name, res, flush=True)

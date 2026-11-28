@@ -599,6 +599,7 @@ class Song:
         self.pump_extra = []
         self.edits = []
         self.events = []      # (bus, beat, beats, [midi], voice) for the harmony check
+        self.mutes = []       # (beat, beats): silence before a hit, reverb tails and all
         self.gain = {'kick': 0.75, 'drums': 0.75, 'perc': 0.6, 'bass': 0.8, 'sub': 0.7, 'lead': 1.5, 'music': 1.2, 'pad': 0.9, 'fx': 0.55}
         self.pump = {'bass': 0.9, 'sub': 1.0, 'pad': 0.6, 'music': 0.35, 'lead': 0.2, 'fx': 0.15, 'perc': 0.25, 'hall': 0.6, 'delay': 0.4}
         self.hall_ir = make_ir(2.6, 0.025, 0.35)
@@ -624,7 +625,7 @@ class Song:
         x = fn(**kw)
         if name == 'kick':
             self.kicks.append((beat, v)); bus = bus or 'kick'; room = 0.0
-        self.put(bus or ('perc' if name in ('metal', 'ride') else 'drums'), beat, x, pan, v, hall=hall, room=room)
+        self.put(bus or ('perc' if name in ('metal', 'ride', 'tick') else 'drums'), beat, x, pan, v, hall=hall, room=room)
 
     def note(self, bus, fn, beat, m, beats, pan=0.0, gain=1.0, hall=0.0, room=0.0, delay=0.0, **kw):
         self.events.append((bus, beat, beats, [m], getattr(fn, '__name__', '?')))
@@ -637,6 +638,9 @@ class Song:
     def duck_at(self, beat, depth=1.0):
         """an extra pump with no kick (for a hit carried by another drum)"""
         self.pump_extra.append((beat, depth))
+
+    def mute(self, beat, beats):
+        self.mutes.append((beat, beats))
 
     def glitch(self, beat, beats, slice_beats=0.125, pitch_up=False):
         self.edits.append((beat, beats, slice_beats, pitch_up))
@@ -700,6 +704,14 @@ class Song:
         }
         mix = sum(parts.values()) * out_gain
         mix = self._wrap(mix)
+        if self.mutes:
+            g = np.ones(len(mix)); r = int(0.006 * SR)
+            for b, bl in self.mutes:
+                s0 = self.s(b) % self.L if self.loop else self.s(b); s1 = s0 + self.s(bl) - 30
+                for a, z in ((s0, min(s1, len(g))),) if s1 <= len(g) else ((s0, len(g)), (0, s1 - len(g))):
+                    g[a:z] = np.minimum(g[a:z], 0.02)
+                    if a >= r: g[a - r:a] = np.minimum(g[a - r:a], np.linspace(1, 0.02, r))
+            mix = mix * g[:, None]
         for b, bl, sl, up in self.edits:
             s0 = self.s(b) % self.L if self.loop else self.s(b)
             mix = stutter(mix, s0, self.s(bl), max(64, self.s(sl)), pitch_up=up)
@@ -753,28 +765,42 @@ def master_to(x, path, lufs=-15.0, ceiling=-1.6, bitrate='112k', loop=True, head
     padding). Returns the measurements of the mp3 as written."""
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, 'a.wav')
-        g = 0.0
-        for it in range(6):
-            y = master_chain(x * db(g), drive_db=drive_db, glue=glue, loop=loop, ceiling=ceiling)
-            write_wav(wav, y)
-            m = measure(wav)
-            err = lufs - m['I']
-            if abs(err) < 0.15: break
-            g += err * (1.0 if it == 0 else 0.9)
-        if not loop:     # drop the silence after the last tail
-            e = np.abs(y).max(axis=1); live = np.nonzero(e > db(-66))[0]
-            if len(live): y = fadeout(y[:min(len(y), live[-1] + SR // 10)].copy(), 60)
-        for k in range(5):
+        g = 0.0; off = 0.0
+        # the encoder's low pass takes some loudness off (more on tracks with a lot of top): aim the master
+        # off by what the mp3 lost, and pull it down if the mp3's true peak comes over -1.05 dBTP
+        for rnd in range(4):
+            for it in range(6):
+                y = master_chain(x * db(g), drive_db=drive_db, glue=glue, loop=loop, ceiling=ceiling)
+                write_wav(wav, y)
+                m = measure(wav)
+                err = lufs + off - m['I']
+                if abs(err) < 0.15: break
+                g += err * (1.0 if it == 0 else 0.9)
+            if not loop:     # drop the silence after the last tail
+                e = np.abs(y).max(axis=1); live = np.nonzero(e > db(-66))[0]
+                if len(live): y = fadeout(y[:min(len(y), live[-1] + SR // 10)].copy(), 60)
             out = np.concatenate([y, y[:int(SR * head_s)]]) if loop and head_s else y
             write_wav(wav, out)
             subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-b:a', bitrate, path], check=True)
             res = measure(path)
-            # the encoder's low pass takes a little loudness off: make it up, staying under the ceiling
             err = lufs - res['I']
-            if (abs(err) < 0.2 or k) and res['TP'] <= -1.05: break
-            y = y * db(min(err if not k else 0, -1.15 - res['TP']))
+            if abs(err) < 0.2 and res['TP'] <= -1.05: break
+            if res['TP'] > -1.05:
+                y = y * db(-1.15 - res['TP']); write_wav(wav, np.concatenate([y, y[:int(SR * head_s)]]) if loop and head_s else y)
+                subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-b:a', bitrate, path], check=True)
+                res = measure(path)
+                if res['TP'] <= -1.05 and (abs(lufs - res['I']) < 0.3 or rnd == 3): break
+            off += lufs - res['I']
         res['gain_db'] = round(g, 2); res['wav_I'] = m['I']; res['wav_TP'] = m['TP']
         return res, y
 
-DRUMS = {'kick': kick, 'snare': snare, 'clap': clap, 'hat': hat, 'ohat': lambda **k: hat(**{'length': 0.22, **k}),
+def tick(tone=2400.0, length=0.012):
+    """a clock tick: a short pitched click with a breath of noise"""
+    def make():
+        n = int(SR * 0.08); t = secs(n)
+        x = np.sin(2 * np.pi * tone * t) * np.exp(-t / length) + bp(noise(n), tone * 0.8, min(tone * 3, 16000)) * np.exp(-t / (length * 0.4)) * 0.7
+        return fadeout(x * 0.6, 5)
+    return _variants(('tick', tone, length), make, 3)
+
+DRUMS = {'tick': tick, 'kick': kick, 'snare': snare, 'clap': clap, 'hat': hat, 'ohat': lambda **k: hat(**{'length': 0.22, **k}),
          'ride': ride, 'crash': crash, 'tom': tom, 'metal': metal, 'impact': impact}

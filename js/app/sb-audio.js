@@ -92,21 +92,26 @@ window.SuperAudio = (() => {
       const src = ac.createBufferSource();
       src.buffer = buf; src.loop = true; src.loopStart = a; src.loopEnd = Math.min(buf.duration, a + len);
       const g = ac.createGain();
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 1.2);
+      // a phase change is an equal-power crossfade (the two loops sum to a steady level, with no dip
+      // between them); the first loop fades in
+      if (cur) g.gain.setValueCurveAtTime(XF_IN, t, 1.2);
+      else { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 1.2); }
       src.connect(g).connect(duckG);
       src.start(t, a);
-      if (cur) fade(cur, 1.2);
+      if (cur) fade(cur, 1.2, t);
       cur = { src, g, name };
     } catch (e) {}
   }
-  function fade(x, s) {
+  // quarter-sine curves for the equal-power crossfade
+  const XF_IN = new Float32Array(64).map((_, i) => Math.sin(i / 63 * Math.PI / 2));
+  function fade(x, s, at) {
+    const now = ac.currentTime, t = Math.max(now + 0.005, at || 0), g = x.g.gain, v = Math.max(0.0001, g.value);
     try {
-      const t = ac.currentTime;
-      x.g.gain.cancelScheduledValues(t);
-      x.g.gain.setValueAtTime(Math.max(0.0001, x.g.gain.value), t);
-      x.g.gain.exponentialRampToValueAtTime(0.0001, t + s);
-      x.src.stop(t + s + 0.05);
-    } catch (e) {}
+      // hold wherever it is now (it may be mid fade-in), then fall away on the quarter-cosine
+      if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(now); else { g.cancelScheduledValues(now); g.setValueAtTime(v, now); }
+      g.setValueCurveAtTime(XF_IN.map((_, i) => v * Math.cos(i / 63 * Math.PI / 2)), t, s);
+    } catch (e) { try { g.cancelScheduledValues(now); g.setValueAtTime(v, now); g.linearRampToValueAtTime(0, t + s); } catch (e2) {} }
+    try { x.src.stop(t + s + 0.05); } catch (e) {}
   }
   function stopMusic(s = 0.5) { token++; if (cur && ac) fade(cur, s); cur = null; }
   function enrage() { track('wb-enrage'); }

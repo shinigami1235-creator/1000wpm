@@ -25,6 +25,7 @@ CHORDS = {
     'VI': (8, (0, 4, 7)), 'VII': (10, (0, 4, 7)), 'III': (3, (0, 4, 7)), 'bII': (1, (0, 4, 7)), 'IV': (5, (0, 4, 7)),
     'ii0': (2, (0, 3, 6)), 'Vsus': (7, (0, 5, 7)), 'vii0': (11, (0, 3, 6)), 'I': (0, (0, 4, 7)), 'bVII': (10, (0, 4, 7)),
     'bvi': (8, (0, 3, 7)), 'bIII': (3, (0, 4, 7)), 'bviim': (10, (0, 3, 7)), 'IIIm': (3, (0, 3, 7)),
+    'bV': (6, (0, 4, 7)), 'i0': (0, (0, 3, 6)), 'bIIm': (1, (0, 3, 7)), 'bv0': (6, (0, 3, 6)), 'iadd2': (0, (0, 1, 7)),
 }
 
 class Theme:
@@ -72,7 +73,9 @@ def drums(S, T, b0, sec):
         S.hit('hat', b * 4 + p / 4 + (sw if p % 2 else 0), hum(v), pan=0.25 if p % 4 in (1, 2) else -0.2, **kw)
     for i in range(bars):
         b = b0 + i; last = i == bars - 1 and sec.get('fill'); four = i % 4 == 3
-        if st is None: continue
+        if st is None:
+            if sec.get('tick'): st_tick(S, b, sec['tick'])
+            continue
         if st == 'tick':
             if i % 2 == 0: S.hit('kick', b * 4, 0.85, **K)
             for p in range(16): h16(b, p, 0.12 + 0.18 * (p % 4 == 0) + 0.08 * (p % 2 == 0))
@@ -108,6 +111,11 @@ def drums(S, T, b0, sec):
             for p in range(16): h16(b, p, 0.2 + 0.12 * (p % 2 == 0))
             for q in range(4): S.hit('ride', b * 4 + q, 0.32)
             for p in (2, 10): S.hit('metal', b * 4 + p / 4, 0.4, f=420, pan=0.4)
+        elif st == 'heart':         # a heartbeat under the drone: lub-dub, faster each phase
+            rate = sec.get('heart_rate', 1)
+            for k in range(rate):
+                at = b * 4 + k * 4 / rate
+                S.hit('kick', at, 0.9, **{**K, 'length': 0.5, 'click': 0.3}); S.hit('kick', at + 0.3, 0.6, **{**K, 'length': 0.4, 'click': 0.2})
         elif st == 'dnb':           # two-step: kick 1 and the and of 3, snare 2 and 4, a ghost and a shuffle
             kp = [0, 10] + ([7] if i % 2 else [3]) + ([14] if four else [])
             for p in kp: S.hit('kick', b * 4 + p / 4, 1.0 if p in (0, 10) else 0.7, **K)
@@ -126,10 +134,18 @@ def drums(S, T, b0, sec):
             else:
                 for p in range(12, 16): h16(b, p, 0.2)
             S.hit('ohat', b * 4 + 3.5, 0.28, pan=-0.3)
-        if i == 0 and sec.get('impact', True) and st != 'tick':
+        if sec.get('tick'):        # the clock: quarter notes, then eighths, then sixteenths as the fight goes on
+            rate = sec['tick']
+            for k in range(4 * rate):
+                S.hit('tick', b * 4 + k / rate, 0.55 if k % rate == 0 else 0.3, tone=2700 if (k // rate) % 2 == 0 else 2000, pan=0.3 if k % 2 else -0.3, hall=0.1)
+        if i == 0 and sec.get('impact', True) and st not in ('tick', 'heart'):
             S.hit('crash', b * 4, 0.55 + 0.2 * hot, hall=0.2)
         if i % 8 == 4 and st in ('drive', 'blast', 'dnb'): S.hit('crash', b * 4, 0.3)
         if last: fill(S, T, b, sec['fill'], K, SN, hot)
+
+def st_tick(S, b, rate):
+    for k in range(4 * rate):
+        S.hit('tick', b * 4 + k / rate, 0.55 if k % rate == 0 else 0.3, tone=2700 if (k // rate) % 2 == 0 else 2000, pan=0.3 if k % 2 else -0.3, hall=0.1)
 
 def fill(S, T, b, kind, K, SN, hot):
     if kind == 'roll':
@@ -155,9 +171,10 @@ def bassline(S, T, b0, sec):
     cut = 380 + 420 * hot; drv = 2.6 + 1.5 * hot
     BK = dict(cut=cut, env=1500 + 1500 * hot, drive=drv, growl=sec.get('growl', 0.0))
     for i, c in enumerate(ch):
-        b = b0 + i; r = T.root(c)
+        b = b0 + i; r = T.root('i' if sec.get('pedal') else c)
         # the sub holds the root under everything; the pump gives it its rhythm
         S.note('sub', E.subbass, b * 4, r, 4)
+        if st == 'sub': continue
         if st == 'pulse8':
             for e in range(8):
                 m = r + (12 if e in (3, 7) and i % 2 else 0)
@@ -218,6 +235,29 @@ def harmony(S, T, b0, sec):
                 if iv: continue
                 S.chord('music', E.brass, (b0 + i) * 4 + p / 4, v, max(0.2, ln / 4 * 0.8), cut=900 + 900 * hot, gain=0.6 * sec['stabs'],
                         hall=0.15, swell=0.02)
+    ost = sec.get('ost')
+    if ost:
+        # the suspense ostinato: a low figure around the tonic with a semitone and a tritone in it,
+        # tightening from its first rate to its second halfway through, its filter opening as it goes
+        rates, pat = ost[0], ost[1]
+        r0, r1 = (rates, rates) if not isinstance(rates, tuple) else rates
+        n_b = len(ch); k = 0
+        for i in range(n_b):
+            rate = r0 if i < n_b // 2 else r1
+            for j in range(4 * rate):
+                b = (b0 + i) * 4 + j / rate
+                u = (i * 4 + j / rate) / (n_b * 4)
+                m = T.tonic - 12 + pat[k % len(pat)]; k += 1
+                S.note('music', E.pluck, b, m, 1 / rate, wave='sq', pw=0.3, cut=350 + 900 * u + 500 * hot, env=1200 + 1800 * u, decay=0.06,
+                       gain=(0.5 + 0.35 * u) * (1.0 if j % rate == 0 else 0.7) * ost[2] if len(ost) > 2 else (0.5 + 0.35 * u), pan=0.2 if k % 2 else -0.2, delay=0.12, hall=0.1)
+    hits = sec.get('hits')
+    if hits:
+        for i, c in enumerate(ch):
+            if i % hits: continue
+            v = T.voicing(c, 52, 3, spread=True)
+            S.chord('music', E.brass, (b0 + i) * 4, v, 1.4, cut=900 + 900 * hot, gain=1.1, hall=0.45, swell=0.015)
+            S.chord('pad', E.choir, (b0 + i) * 4, T.voicing(c, 66, 3), 1.8, hall=0.6, gain=0.8, att=0.03, rel=0.8)
+            S.duck_at((b0 + i) * 4, 0.5)
     if sec.get('siren'):
         for i in range(0, len(ch), 2):
             S.note('fx', lambda m, d: E.siren(m, m + 1, d), (b0 + i) * 4, T.tonic + 12, 7.8, gain=0.5 * sec['siren'], hall=0.3, delay=0.15)
@@ -289,10 +329,13 @@ def fx(S, T, b0, sec, nxt=None):
         S.put('fx', b0 * 4, E.impact(2.6, tune=E.hz(T.tonic - 36) if T.tonic - 36 > 20 else 36), gain=0.7 + 0.3 * hot, hall=0.25)
         S.duck_at(b0 * 4, 1.0)
     r = sec.get('riser')
+    drop = (nxt or {}).get('drop', 0)
+    end = (b0 + bars) * 4 - drop
     if r:
-        x = E.riser(r * 4 * S.spb)
-        S.put('fx', (b0 + bars - r) * 4, x, gain=0.55 + 0.25 * hot, hall=0.2)
-        S.put('fx', (b0 + bars) * 4 - 2, E.reverse_crash(2, S.spb), gain=0.6)
+        x = E.riser(r * 4 * S.spb - drop * S.spb)
+        S.put('fx', end - len(x) / E.SR / S.spb, x, gain=0.55 + 0.25 * hot, hall=0.2)
+        S.put('fx', end - 2, E.reverse_crash(2, S.spb), gain=0.6)
+    if drop: S.mute(end, drop)
     for bar, p, ln in sec.get('glitch', []):
         S.glitch((b0 + bar) * 4 + p / 4, ln / 4, 0.125 if ln < 8 else 0.25, pitch_up=ln >= 4)
 

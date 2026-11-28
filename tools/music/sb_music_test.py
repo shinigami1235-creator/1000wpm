@@ -36,6 +36,15 @@ with sync_playwright() as p:
               const buf = await ac.decodeAudioData(await r.arrayBuffer()); return buf.duration; }})()""")
             want = bars * 240 / bpm + 1.0
             ok(abs(d - want) < 0.03, f'sb-{boss}-{ph} decodes to the loop plus 1 s ({d:.3f} vs {want:.3f})')
+        # quick phase changes back and forth: the equal-power crossfade must not throw (it is caught, so count the throws)
+        page.evaluate("""(() => { window.__xfErr = 0; const P = AudioParam.prototype;
+          for (const k of ['setValueCurveAtTime', 'cancelAndHoldAtTime', 'setValueAtTime']) { const f = P[k];
+            P[k] = function (...a) { try { return f.apply(this, a); } catch (e) { window.__xfErr++; throw e; } }; } })()""")
+        for k in range(6):
+            page.evaluate(f"_sb.phase({[1, 2, 1, 3, 2, 3][k]})"); time.sleep([0.3, 0.6, 1.5, 0.2, 2.0, 0.8][k])
+        time.sleep(2)
+        ok(page.evaluate('window.__xfErr') == 0, f"{boss}: crossfades never throw ({page.evaluate('window.__xfErr')})")
+        ok(page.evaluate('SuperAudio.state().track') == f'sb-{boss}-3', f'{boss}: the last phase asked for is the one playing')
         page.evaluate('_sb.enrage()'); time.sleep(3)
         t = page.evaluate('SuperAudio.state().track')
         ok(t == 'wb-enrage', f'{boss} enrage plays wb-enrage ({t})')
