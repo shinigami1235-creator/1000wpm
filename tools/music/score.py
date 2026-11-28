@@ -24,7 +24,7 @@ CHORDS = {
     'i': (0, (0, 3, 7)), 'i5': (0, (0, 7, 12)), 'iv': (5, (0, 3, 7)), 'v': (7, (0, 3, 7)), 'V': (7, (0, 4, 7)),
     'VI': (8, (0, 4, 7)), 'VII': (10, (0, 4, 7)), 'III': (3, (0, 4, 7)), 'bII': (1, (0, 4, 7)), 'IV': (5, (0, 4, 7)),
     'ii0': (2, (0, 3, 6)), 'Vsus': (7, (0, 5, 7)), 'vii0': (11, (0, 3, 6)), 'I': (0, (0, 4, 7)), 'bVII': (10, (0, 4, 7)),
-    'bvi': (8, (0, 3, 7)), 'bIII': (3, (0, 4, 7)),
+    'bvi': (8, (0, 3, 7)), 'bIII': (3, (0, 4, 7)), 'bviim': (10, (0, 3, 7)), 'IIIm': (3, (0, 3, 7)),
 }
 
 class Theme:
@@ -108,9 +108,27 @@ def drums(S, T, b0, sec):
             for p in range(16): h16(b, p, 0.2 + 0.12 * (p % 2 == 0))
             for q in range(4): S.hit('ride', b * 4 + q, 0.32)
             for p in (2, 10): S.hit('metal', b * 4 + p / 4, 0.4, f=420, pan=0.4)
+        elif st == 'dnb':           # two-step: kick 1 and the and of 3, snare 2 and 4, a ghost and a shuffle
+            kp = [0, 10] + ([7] if i % 2 else [3]) + ([14] if four else [])
+            for p in kp: S.hit('kick', b * 4 + p / 4, 1.0 if p in (0, 10) else 0.7, **K)
+            for q in (1, 3): S.hit('snare', b * 4 + q, 1.0, hall=0.12, **SN); S.hit('clap', b * 4 + q, 0.4)
+            for p in (6, 15) if i % 2 else (9, 15): S.hit('snare', b * 4 + p / 4, 0.2, **SN)
+            for p in range(16): h16(b, p, 0.1 + 0.2 * (p % 4 == 2) + 0.08 * (p % 2 == 0))
+            if hot > 0.5:
+                for q in range(4): S.hit('ride', b * 4 + q + 0.5, 0.22)
+        elif st == 'trap':          # half time with rolling hats: the snare on 3, hats that stutter into the bar
+            kp = [0, 7, 10] + ([13] if i % 2 else [])
+            for p in kp: S.hit('kick', b * 4 + p / 4, 1.0 if p == 0 else 0.8, **K)
+            S.hit('snare', b * 4 + 2, 1.0, hall=0.15, **SN); S.hit('clap', b * 4 + 2, 0.7, hall=0.2)
+            for p in range(12): h16(b, p, 0.16 + 0.18 * (p % 4 == 0))
+            if i % 2:
+                for k in range(8): S.hit('hat', b * 4 + 3 + k / 8, 0.12 + 0.04 * k, pan=0.5 - k / 8)
+            else:
+                for p in range(12, 16): h16(b, p, 0.2)
+            S.hit('ohat', b * 4 + 3.5, 0.28, pan=-0.3)
         if i == 0 and sec.get('impact', True) and st != 'tick':
             S.hit('crash', b * 4, 0.55 + 0.2 * hot, hall=0.2)
-        if i % 8 == 4 and st in ('drive', 'blast'): S.hit('crash', b * 4, 0.3)
+        if i % 8 == 4 and st in ('drive', 'blast', 'dnb'): S.hit('crash', b * 4, 0.3)
         if last: fill(S, T, b, sec['fill'], K, SN, hot)
 
 def fill(S, T, b, kind, K, SN, hot):

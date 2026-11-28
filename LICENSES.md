@@ -28,7 +28,7 @@ The time zone to country table in the same file comes from the IANA time zone da
 
 ## Boss music
 
-`audio/rush-*.mp3` is made by `tools/rush/music.py` and `audio/wb-p1..p4.mp3` and `audio/wb-enrage.mp3` by `tools/boss/music.py`, from numpy oscillators and noise, with no samples, loops or soundfonts from anyone else. It belongs to the site.
+The World Boss music (`audio/wb-*.mp3`) is made by `tools/boss/music.py`, the Superboss themes (`audio/sb-*.mp3`) by `tools/music/superboss.py` and the Boss Rush loops (`audio/rush-press-*`, `rush-correction-*`, `rush-syntax-*`, `rush-announcer-*`) by `tools/music/rush.py`, all on the synth in `tools/music/engine.py`: numpy oscillators and noise, with no samples, loops or soundfonts from anyone else. The older `audio/rush-spam-*` and `rush-sign-*` came from the previous `tools/rush/music.py` the same way. It belongs to the site.
 
 ## Combat sound effects
 

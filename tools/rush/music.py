@@ -409,7 +409,9 @@ BOSSES = {
 }
 
 if __name__ == '__main__':
-    which = sys.argv[1:] or list(BOSSES)
+    # press, correction, syntax and announcer are made by tools/music/rush.py now (Boss Rush's own hook)
+    NEW = ('press', 'correction', 'syntax', 'announcer')
+    which = [n for n in (sys.argv[1:] or list(BOSSES)) if n not in NEW or print(f'{n}: made by tools/music/rush.py')]
     for name in which:
         fn, bpms, rs = BOSSES[name]
         for p in (1, 2, 3):
