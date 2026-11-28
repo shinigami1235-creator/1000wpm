@@ -46,7 +46,7 @@ window.Lazy = (() => {
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
     'page:shop': { js: ['js/app/botkit.js', 'js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
-    'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/hangar.js'], pre: ['three'] },
+    'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/hangar.js'], pre: ['three'] },
     'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/combat/sfx.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
