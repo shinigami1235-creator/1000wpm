@@ -252,18 +252,13 @@ window.Showdown = (() => {
       const row = { round: m.round, sides: m.sides.map((s, i) => ({ words: s.words, acc: Math.round(accOf(s) * 100), dmg: res.dealt[i], doneAt: s.doneAt })), winner: res.winner };
       m.rounds.push(row);
       m.sides.forEach((s, i) => { const T = m.tot[i]; T.good += s.good; T.bad += s.bad; T.words += s.words; T.ms += s.doneAt != null ? s.doneAt : C.roundMs; });
-      let at = 700;
-      if (!res.attacks.length) later(at, () => num(0, 'No attack', 'miss'));
-      res.attacks.forEach((a, n) => {
-        later(at, () => {
-          const name = SR().TIERS[a.tier];
-          num(a.from, n === 0 && res.attacks.length > 1 ? `${name}, first` : name, a.tier >= 4 ? 'tier' : 'buff');
-          scene.strike(a.from, a.words, { crit: a.crit, dodge: a.dodged, onLand: () => land(a) });
-        });
-        at += a.tier >= 4 ? 2300 : a.tier >= 3 ? 1300 : 1100;
-      });
-      const after = at + (res.ko >= 0 ? 200 : 0);
-      later(after, () => {
+      // the attacks play as one directed scene (duel3d.js exchange), in the order the rules gave;
+      // the result shows once it's over
+      const close = (() => { const [a, b] = m.sides; if (a.doneAt != null && b.doneAt != null) return Math.abs(a.doneAt - b.doneAt) < 2000; if (a.doneAt == null && b.doneAt == null) return Math.abs((a.lastAt || 0) - (b.lastAt || 0)) < 1500; return false; })();
+      let shown = false;
+      const result = () => {
+        if (shown || !alive) return;
+        shown = true;
         if (res.ko >= 0) scene.ko(res.ko);
         if (res.winner >= 0) m.wins[res.winner]++;
         paintPips();
@@ -273,6 +268,17 @@ window.Showdown = (() => {
         const ov = SR().over({ hp: m.hp, wins: m.wins, round: m.round });
         if (ov.done) later(res.ko >= 0 ? 2400 : 1400, () => finish(ov.winner));
         else later(1900, () => { scene.phase('break', m.round + 1); countIn(m.round + 1); });
+      };
+      later(500, () => {
+        if (!res.attacks.length) num(0, 'No attack', 'miss');
+        const secs = scene.exchange(res.attacks, {
+          acc: m.sides.map(s => accOf(s)), close,
+          onStart: a => num(a.from, a === res.attacks[0] && res.attacks.length > 1 ? `${SR().TIERS[a.tier]}, first` : SR().TIERS[a.tier], a.tier >= 4 ? 'tier' : 'buff'),
+          onLand: a => land(a),
+          onDone: () => later(res.ko >= 0 ? 200 : 0, result),
+        }) || 1;
+        // slow motion stretches the scene; this only catches a tab that stopped drawing
+        later(secs * 2500 + 1500, result);
       });
     }
     function land(a) {

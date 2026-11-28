@@ -381,27 +381,33 @@ Router.register('duel', (() => {
   function event(ev) {
     const me = info.you;
     switch (ev.type) {
-      case 'shot': scene.shot(ev.side, ev.tier, null, { color: sideCols[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock() }); break;
+      case 'shot': {
+        // a word typed with a slip under 88% accuracy only grazes (the damage is the rules', the look is ours)
+        const s = lastState && lastState.sides[ev.side];
+        scene.shot(ev.side, ev.tier, null, { color: sideCols[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock(), graze: !ev.crit && !!s && s.acc != null && s.acc < 88 });
+        break;
+      }
       case 'hit': {
         num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
         if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
-        else if (ev.kind !== 'word') scene.react(ev.to, 'hit', ev.dmg >= 40 ? 1 : 0.5);
+        else if (ev.kind === 'reflect') scene.ricochet(ev.side, ev.to);   // packet storm sends it back
+        else if (ev.kind !== 'word' && ev.kind !== 'spell') scene.react(ev.to, 'hit', ev.dmg >= 40 ? 1 : 0.5);   // a spell's own effect plays its hits
         hpTo(ev.to, ev.hp);
         break;
       }
       case 'cast': {
         const now = Net.match.clock();
-        scene.cast(ev.side, ev.spell, ev.hits.map(h => ({ at: performance.now() + (h.at - now), dmg: h.dmg })), Combat.spell(ev.spell).effect);
+        scene.cast(ev.side, ev.spell, ev.hits.map(h => ({ at: performance.now() + (h.at - now), dmg: h.dmg })), Combat.spell(ev.spell).effect, { blocked: !!ev.blocked });
         banner(`${MultiUI.spellName(ev.spell)}`, ev.side === me || (me < 0 && ev.side === 0) ? 'spell mine' : 'spell theirs', 1200);
         if (ev.side === me) WPM.track('spell_cast', { spell: ev.spell, mode: 'duel' });
         if (ev.blocked) num(ev.to, 'Blocked', 'block');
         if (ev.broke) num(ev.to, 'Shield broken', 'block');
         break;
       }
-      case 'block': scene.react(ev.side, 'block'); num(ev.side, 'Blocked', 'block'); break;
+      case 'block': if (ev.kind !== 'word' || !scene.deflect(ev.side)) scene.react(ev.side, 'block'); num(ev.side, 'Blocked', 'block'); break;
       case 'typo': scene.react(ev.side, 'typo'); ringFlash(ev.side); break;
       case 'miss': num(ev.side, 'Miss', 'miss'); ringFlash(ev.side); scene.react(ev.side, 'miss'); break;
-      case 'fizzle': num(ev.side, 'Fizzled', 'miss'); break;
+      case 'fizzle': num(ev.side, 'Fizzled', 'miss'); scene.fizzle(ev.side, ev.spell); break;
       case 'locked': if (ev.side === me) flashLock(); break;
       case 'effect': effect(ev); break;
       case 'status': if (['ward', 'hyper', 'root', 'split'].includes(ev.name)) scene.aura(ev.side, ev.name, ev.on); break;

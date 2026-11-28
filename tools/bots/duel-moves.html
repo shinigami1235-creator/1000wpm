@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Duel moves</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; background: #070908; color: #dfe8e2; font: 600 13px system-ui, sans-serif; }
+  #sheet { position: relative; display: inline-block; }
+  canvas { display: block; }
+  .lab { position: absolute; text-align: center; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: #8cff58; }
+  .lab small { display: block; color: #8a978f; font-weight: 500; letter-spacing: .02em; text-transform: none; font-size: 11px; margin-top: 2px; }
+  .row { position: absolute; left: 10px; writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+</style>
+</head>
+<body>
+<!-- the duel's choreography moves (js/app/bot-fighter.js MOVES and HURTS) on every bot, at their key frame with
+     faint earlier frames behind: tools/bots/duel-moves.html?bots=raze&cols=slash,slam -->
+<div id="sheet"></div>
+<script src="../../js/app/botkit.js"></script>
+<script src="../../js/app/bot-fighter.js"></script>
+<script type="module">
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+const THREE = { ...T, RoundedBoxGeometry };
+const q = new URLSearchParams(location.search);
+const BOTS = (q.get('bots') || 'orbit,pixel,nova,kite,beep,raze').split(',');
+const COLS = {
+  slash: ['Dash slash', 'at the cut', 'move:slash', 0.42], uppercut: ['Uppercut', 'at the hit', 'move:uppercut', 0.5], spin: ['Spin strike', 'at the hit', 'move:spin', 0.5],
+  slam: ['Ground slam', 'top, then the hit', 'move:slam', 0.62], dive: ['Aerial dive', 'at the hit', 'move:dive', 0.6], pass: ['Pass', 'going by', 'move:pass', 0.4],
+  volley: ['Volley', 'third shot', 'move:volley', 0.5], parry: ['Parry', 'the swat', 'move:parry', 0.3], duck: ['Duck', 'under it', 'move:duck', 0.3], leap: ['Leap', 'over it', 'move:leap', 0.4],
+  cast: ['Cast', 'rising', 'move:cast', 0.45],
+  knock: ['Knocked back', 'hit', 'hurt:knock', 0.2], launch: ['Launched', 'top of the arc', 'hurt:launch', 0.4], crumple: ['Stunned', 'slumped', 'hurt:crumple', 0.4], pulled: ['Pulled in', 'void sphere', 'hurt:pulled', 0.6], spinout: ['Spin out', 'hit', 'hurt:spinout', 0.3],
+};
+const cols = (q.get('cols') || Object.keys(COLS).join(',')).split(',');
+const GHOST = { slash: [0.1, 0.3], uppercut: [0.25, 0.38], spin: [0.3], slam: [0.38, 0.52], dive: [0.4, 0.5], pass: [0.2], volley: [], parry: [0.15], duck: [0.1], leap: [0.15], cast: [0.15], knock: [0.05], launch: [0.15, 0.25], crumple: [0.1], pulled: [0.3], spinout: [0.1] };
+const CW = 300, CH = 280, LX = 40, TOP = 48;
+const W = LX + CW * cols.length, H = TOP + CH * BOTS.length;
+const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.autoClear = false;
+renderer.toneMapping = T.ACESFilmicToneMapping; renderer.outputColorSpace = T.SRGBColorSpace;
+const sheet = document.getElementById('sheet'); sheet.appendChild(renderer.domElement);
+cols.forEach((c, i) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = (LX + i * CW) + 'px'; d.style.width = CW + 'px'; d.style.top = '8px'; d.innerHTML = `${COLS[c][0]}<small>${COLS[c][1]}</small>`; sheet.appendChild(d); });
+
+const scene = new T.Scene();
+scene.add(new T.HemisphereLight('#cfe9ff', '#1a2420', 1.3));
+const sun = new T.DirectionalLight('#ffffff', 2.4); sun.position.set(-4, 8, 6); scene.add(sun);
+const rim = new T.DirectionalLight('#8cff58', 0.8); rim.position.set(4, 3, -6); scene.add(rim);
+const floor = new T.Mesh(new T.CircleGeometry(7, 48), new T.MeshStandardMaterial({ color: '#10161a', roughness: 0.8 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const grid = new T.PolarGridHelper(6.5, 6, 4, 48, '#1f3a2b', '#16261d'); grid.position.y = 0.01; scene.add(grid);
+// which way the other bot is
+const arrow = new T.Mesh(new T.ConeGeometry(0.25, 0.7, 3), new T.MeshBasicMaterial({ color: '#ff5c5c' })); arrow.rotation.x = Math.PI / 2; arrow.position.set(0, 0.05, 6.2); scene.add(arrow);
+const cam = new T.PerspectiveCamera(32, CW / CH, 0.1, 100);
+const Z = +(q.get('zoom') || 1); cam.position.set(-14 / Z, 2.6 + 2 / Z, 1.1 + 2.8 / Z); cam.lookAt(0, 2.6, 1.1);
+const ghostMat = new T.MeshBasicMaterial({ color: '#8cff58', transparent: true, opacity: 0.14, depthWrite: false });
+
+const COLOR = { orbit: '#5cc8ff', pixel: '#8cff58', nova: '#ff7a3d', kite: '#c77dff', beep: '#ff5cae', raze: '#ffd23d' };
+BOTS.forEach((id, r) => {
+  const d = document.createElement('div'); d.className = 'row'; d.style.top = (TOP + r * CH) + 'px'; d.style.height = CH + 'px'; d.style.color = COLOR[id]; d.style.textAlign = 'center';
+  const f = BotFighter.create(THREE, id, { color: COLOR[id], arm: q.get('arm') || 'none' }, { gap: 12 });
+  d.textContent = BotKit.BOTS[id].name + ' · ' + BotKit.BOTS[id].division; sheet.appendChild(d);
+  scene.add(f.group);
+  cols.forEach((c, i) => {
+    const [, , name, u, phase] = COLS[c];
+    const x = LX + i * CW, y = H - TOP - (r + 1) * CH;
+    renderer.setViewport(x, y, CW, CH); renderer.setScissor(x, y, CW, CH); renderer.setScissorTest(true);
+    renderer.setClearColor(i % 2 ? '#0b100e' : '#0d1311'); renderer.clear();
+    ghostMat.color.set(COLOR[id]);
+    // the scene carries a move's reach and a hurt's knockback along the line to the other bot (6.2 away)
+    const at = (n2, u2) => { f.pose(n2, u2, { phase }); const m = f.motion(); f.group.position.z = (m.reach * 3.4 - m.push); f.group.position.x = -m.lane; };
+    at(name, u); renderer.render(scene, cam);
+    // earlier frames of the move as faint ghosts behind it, so a still shows the motion
+    floor.visible = grid.visible = arrow.visible = false; scene.overrideMaterial = ghostMat;
+        for (const gu of GHOST[c] || []) { at(name, gu); renderer.render(scene, cam); }
+    f.group.position.set(0, 0, 0);
+    scene.overrideMaterial = null; floor.visible = grid.visible = arrow.visible = true;
+  });
+  scene.remove(f.group); f.dispose();
+});
+document.title = 'done';
+</script>
+</body>
+</html>

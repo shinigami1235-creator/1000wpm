@@ -21,6 +21,9 @@
 //   f.hold(frac)         Showdown: a finished word adds a spark that stays, the orb holds at frac until attack()
 //   f.clear()            drops the charge and every spark (a new round)
 //   f.pose(name, u)      a frozen frame for stills: 'ready' | 'charge' | 'attack' | 'combo' | 'dodge' | 'block' | 'typo' | 'spell' | 'ko'
+//                        | 'move:<name>' | 'hurt:<name>' (the duel's choreography, MOVES and HURTS below)
+//   f.move(name, o) / f.hurt(name, o) / f.motion()   the duel's moves and reactions; create(..., { roam: true })
+//                        leaves the stance's place in the arena to the scene (Duel moves both bots round the stage)
 //
 // The orb (28 Nov 2026, Gid: "the nice thing is we can alter them and create other effects as well"): look.orb picks
 // its style, bought in the hangar (REWARDS.shop.bot, part 'orb'). Each style draws the orb, the sparks that gather
@@ -63,6 +66,79 @@ window.BotFighter = (() => {
     beep(u, P, A, dash) { const hop = env(u, 0, 0.22, 0.7), k = snap(u, 0.22, 0.3, 0.9); P.y += 0.45 * hop; P.z -= 0.35 * k * A - (dash ? 1.3 * env(u, 0.1, 0.3, 0.95) : 0); P.rx -= 0.3 * k; P.ears += 1.2 * hop; P.glow += 1.4 * k; },
     // Raze, the hunter: rears up on its legs and pounces
     raze(u, P, A, dash) { const up = env(u, 0, 0.14, 0.35), s = snap(u, 0.14, 0.32, 1); P.y += 0.6 * up - 0.35 * s; P.z += (dash ? 2.1 : 1.2) * A * s; P.rx += -0.5 * up + 0.55 * s; P.legs += -1 * up + 0.8 * s; P.glow += 1.2 * s; },
+  };
+
+  // ---------- choreography for the duel (28 Nov 2026) ----------
+  // Gid: "different attack animations so it doesn't feel too boring. Plus they can move around the arena."
+  // Each move is a body motion written into P at u (0..1) over len seconds, the share of it at which the
+  // strike connects (hit), and how far toward the other bot it travels: reach(u) is a share of the gap,
+  // applied in world space by the scene (duel3d.js), since the bot's own frame is turned to the camera.
+  // A hurt is the same for the bot taking a hit: push(u) is how far it is driven back (world units per
+  // unit of power, also applied by the scene). Every move takes o.len to fit Clash (about 0.3 s, so a
+  // 150 wpm typist never waits on it) or Showdown (0.5 to 0.9 s), and o.side (+1 or -1) mirrors it.
+  //   f.move(name, { len, side, A })   -> ms until the strike connects
+  //   f.hurt(name, { len, k, side })    a reaction; k is its power
+  //   f.motion()                        { move, mu, reach, hurt, hu, push } for the scene, this frame
+  const back = u => sm(ramp(u, 0, 1));
+  const MOVES = {
+    // the dash slash: crouch back, drive across the gap rolling into a diagonal cut, coast back
+    slash: { len: 0.55, hit: 0.42, reach: u => (u < 0.18 ? -0.06 * sm(u / 0.18) : u < 0.42 ? -0.06 + 1.06 * Math.pow(ramp(u, 0.18, 0.42), 1.6) : 1 - back(ramp(u, 0.58, 1))),
+      body(u, P, o) { const w = env(u, 0, 0.18, 0.42), s = snap(u, 0.36, 0.46, 1); P.rz += o.side * (0.5 * w - 1.1 * s); P.ry += o.side * (0.35 * w - 0.6 * s); P.rx += 0.35 * env(u, 0.2, 0.42, 0.7); P.sx += 0.18 * env(u, 0.25, 0.4, 0.5) - 0.1 * w; P.sy -= 0.12 * env(u, 0.25, 0.4, 0.5); P.glow += 1.6 * s + 0.6 * w; P.flash += 1.2 * snap(u, 0.38, 0.44, 0.7); P.y -= 0.25 * w; } },
+    // the uppercut: drop low and in, then drive up through the other bot
+    uppercut: { len: 0.6, hit: 0.48, reach: u => (u < 0.48 ? 0.85 * sm(ramp(u, 0.08, 0.48)) : 0.85 * (1 - back(ramp(u, 0.6, 1)))),
+      body(u, P) { const d = env(u, 0, 0.32, 0.5), up = snap(u, 0.4, 0.56, 1); P.y += -0.7 * d + 1.5 * up; P.rx += 0.5 * d - 0.75 * up; P.sy += -0.18 * d + 0.25 * snap(u, 0.42, 0.5, 0.7); P.sx += 0.14 * d; P.glow += 0.8 * d + 1.8 * up; P.flash += 1.3 * snap(u, 0.44, 0.5, 0.75); P.legs += -0.8 * d + 0.9 * up; P.ears += up; } },
+    // the spin strike: whirls in like a top, the body flat with the spin
+    spin: { len: 0.6, hit: 0.5, reach: u => (u < 0.5 ? 0.9 * sm(ramp(u, 0.12, 0.5)) : 0.9 * (1 - back(ramp(u, 0.62, 1)))),
+      body(u, P) { const w = env(u, 0.05, 0.4, 0.85); P.ry += TAU * 2 * sm(ramp(u, 0.12, 0.72)); P.sy -= 0.16 * w; P.sx += 0.14 * w; P.rx += 0.25 * w; P.glow += 1.8 * w; P.halo += 1.2 * w; P.flash += 1.2 * snap(u, 0.46, 0.52, 0.8); } },
+    // the ground slam: rise high over the other bot, hang, come down on it
+    slam: { len: 0.8, hit: 0.62, reach: u => (u < 0.38 ? 0.35 * sm(ramp(u, 0, 0.38)) : u < 0.62 ? 0.35 + 0.58 * Math.pow(ramp(u, 0.4, 0.62), 2) : 0.93 * (1 - back(ramp(u, 0.75, 1)))),
+      body(u, P) { const up = sm(ramp(u, 0, 0.38)), down = Math.pow(ramp(u, 0.42, 0.62), 2.2), land = snap(u, 0.6, 0.66, 0.92);
+        P.y += 2.4 * up * (1 - down) - 0.55 * land; P.rx += -0.4 * up * (1 - down) + 0.7 * down * (1 - ramp(u, 0.62, 0.9)); P.sy -= 0.32 * land; P.sx += 0.26 * land; P.glow += 1.2 * up + 2 * land; P.flash += 1.4 * land; P.legs += -0.9 * up + 0.9 * land; P.ears += up; } },
+    // the aerial dive: climb up and back, tip nose down and dive steep onto the other bot, pull out
+    dive: { len: 0.75, hit: 0.6, reach: u => (u < 0.4 ? -0.15 * sm(ramp(u, 0, 0.4)) : u < 0.6 ? -0.15 + 1.1 * Math.pow(ramp(u, 0.4, 0.6), 1.5) : 0.95 * (1 - back(ramp(u, 0.68, 1)))),
+      body(u, P) { const up = env(u, 0, 0.4, 0.6), tip = env(u, 0.3, 0.55, 0.8), pull = snap(u, 0.6, 0.75, 1);
+        P.y += 2.8 * up - 0.3 * env(u, 0.55, 0.62, 0.8) + 0.5 * pull; P.rx += 1.0 * tip - 0.5 * pull; P.sx -= 0.1 * tip; P.sy += 0.16 * tip; P.glow += 1 * up + 2 * tip; P.flash += 1.3 * snap(u, 0.56, 0.62, 0.8); P.spinZ += TAU * sm(ramp(u, 0.2, 0.5)); } },
+    // a dash right past the other bot and a loop back to its own side: the side switch that keeps the sides
+    pass: { len: 0.9, hit: 0.4, reach: u => (u < 0.5 ? 1.35 * sm(ramp(u, 0.05, 0.5)) : 1.35 * (1 - sm(ramp(u, 0.5, 1)))),
+      lane: u => 1.6 * Math.sin(Math.PI * ramp(u, 0.1, 0.95)),
+      body(u, P, o) { const a = env(u, 0.05, 0.35, 0.6), back2 = env(u, 0.5, 0.75, 1); P.rz += o.side * (0.7 * a - 0.5 * back2); P.y += 0.9 * Math.sin(Math.PI * ramp(u, 0.45, 1)); P.glow += 1.6 * a; P.flash += 1.2 * snap(u, 0.36, 0.42, 0.7); P.sx += 0.15 * a; P.sy -= 0.1 * a; } },
+    // the rapid volley: holds its ground and kicks back off each shot (the shots are the scene's)
+    volley: { len: 0.6, hit: 0.85, reach: u => -0.05 * env(u, 0, 0.2, 1),
+      body(u, P) { let k = 0; for (const s of [0.12, 0.3, 0.48, 0.66]) k += snap(u, s, s + 0.04, s + 0.16); P.z -= 0.35 * k; P.rx -= 0.22 * k; P.y += 0.25 * env(u, 0, 0.15, 1); P.glow += 1.4 * k; P.orb += 0.6 * env(u, 0, 0.1, 0.8); P.flash += 0.8 * k; } },
+    // a hop to the side and a shot from there
+    sidestep: { len: 0.32, hit: 0.3, reach: () => 0,
+      body(u, P, o) { const s = env(u, 0, 0.3, 1); P.x += 1.1 * o.side * s; P.y += 0.35 * Math.sin(Math.PI * ramp(u, 0, 0.6)); P.rz -= 0.4 * o.side * s; P.z -= 0.3 * snap(u, 0.28, 0.34, 0.8); P.glow += 1.2 * snap(u, 0.25, 0.32, 0.8); } },
+    // a hop up and a shot lobbed down from the top of it
+    hop: { len: 0.32, hit: 0.32, reach: () => 0.04,
+      body(u, P) { const h = Math.sin(Math.PI * ramp(u, 0, 0.85)); P.y += 0.9 * h; P.rx += 0.35 * env(u, 0.2, 0.35, 0.8); P.sy += 0.12 * env(u, 0, 0.1, 0.3) - 0.1 * env(u, 0.85, 0.92, 1); P.glow += 1.4 * snap(u, 0.25, 0.32, 0.8); } },
+    // a quick jab: a short dart forward
+    jab: { len: 0.3, hit: 0.25, reach: u => 0.12 * snap(u, 0.08, 0.28, 1),
+      body(u, P) { const s = snap(u, 0.08, 0.28, 1); P.rx += 0.3 * s; P.glow += 1.4 * s; P.sx += 0.08 * s; } },
+    // backing off after a strike
+    retreat: { len: 0.45, hit: 1, reach: u => -0.16 * Math.sin(Math.PI * u),
+      body(u, P) { const s = Math.sin(Math.PI * u); P.rx -= 0.3 * s; P.y += 0.3 * s; } },
+    // casting: rise, the orb swells over the head, a push toward the other bot as it leaves
+    cast: { len: 0.95, hit: 0.62, reach: u => 0.08 * snap(u, 0.6, 0.7, 1) - 0.1 * env(u, 0, 0.4, 0.62),
+      body(u, P) { const rise = env(u, 0, 0.4, 0.95), drive = snap(u, 0.6, 0.68, 1); P.y += 1.5 * rise; P.rx += -0.5 * env(u, 0, 0.4, 0.62) + 0.45 * drive; P.orb += 2.2 * rise * (1 - drive); P.flash += 2 * snap(u, 0.58, 0.64, 0.85); P.glow += 2.4 * rise + 1.4 * drive; P.halo += 1.4 * rise; P.ears += rise; P.legs -= 0.8 * rise; P.ant += rise; P.sx += 0.12 * rise; P.sy += 0.12 * rise; } },
+    // batting a shot back: braces, the shield flares and swings across
+    parry: { len: 0.45, hit: 0.3, reach: u => 0.08 * snap(u, 0.2, 0.32, 1),
+      body(u, P, o) { const b = env(u, 0, 0.2, 0.35), s = snap(u, 0.24, 0.34, 1); P.shield += Math.max(b, s); P.rz += o.side * (0.5 * b - 0.9 * s); P.ry += o.side * (-0.4 * b + 0.7 * s); P.z -= 0.3 * b; P.glow += 1.2 * s; P.halo += 0.8 * s; P.flash += 0.6 * s; } },
+    // dodges besides the barrel roll: a duck under, a hop over
+    duck: { len: 0.42, hit: 0.3, reach: u => -0.04 * env(u, 0, 0.3, 1),
+      body(u, P) { const d = snap(u, 0, 0.28, 1); P.y -= 0.9 * d; P.rx += 0.4 * d; P.sy -= 0.15 * snap(u, 0.2, 0.3, 0.6); P.legs += 0.6 * d; } },
+    leap: { len: 0.48, hit: 0.3, reach: u => -0.04 * env(u, 0, 0.3, 1),
+      body(u, P) { const d = Math.sin(Math.PI * ramp(u, 0, 0.9)); P.y += 1.7 * d; P.rx -= 0.8 * d; P.legs -= 0.7 * d; P.ears += d; } },
+  };
+  // reactions to a hit: push is world units of knockback per unit of power
+  const HURTS = {
+    jolt: { len: 0.35, push: u => 0.5 * snap(u, 0, 0.12, 1), body(u, P, o) { const k = snap(u, 0, 0.1, 1); P.rx -= 0.35 * k; P.rz += 0.25 * o.side * k; P.y += 0.15 * k; } },
+    knock: { len: 0.7, push: u => 1.6 * snap(u, 0, 0.2, 1), body(u, P, o) { const k = snap(u, 0, 0.16, 1); P.rx -= 0.8 * k; P.rz += 0.45 * o.side * k; P.y += 0.35 * Math.sin(Math.PI * ramp(u, 0, 0.6)); P.sx += 0.12 * env(u, 0, 0.05, 0.2); P.sy -= 0.12 * env(u, 0, 0.05, 0.2); P.glow -= 0.8 * k; } },
+    spinout: { len: 0.7, push: u => 1.1 * snap(u, 0, 0.2, 1), body(u, P, o) { P.spinZ += o.side * TAU * sm(ramp(u, 0, 0.65)); P.ry += o.side * 0.8 * env(u, 0, 0.2, 1); P.y += 0.2 * env(u, 0, 0.2, 1); P.glow -= 0.6 * env(u, 0, 0.1, 1); } },
+    launch: { len: 1.0, push: u => 2.0 * snap(u, 0, 0.3, 1), body(u, P) { const a = Math.sin(Math.PI * ramp(u, 0, 0.7)); P.y += 2.0 * a; P.rx -= TAU * sm(ramp(u, 0, 0.62)); P.sy -= 0.2 * snap(u, 0.68, 0.74, 0.95); P.glow -= 1 * env(u, 0, 0.1, 1); } },
+    crumple: { len: 0.8, push: u => 0.6 * snap(u, 0, 0.2, 1), body(u, P, o) { const d = snap(u, 0, 0.25, 1); P.y -= 0.85 * d; P.rz += 0.6 * o.side * d; P.rx += 0.4 * d; P.sy -= 0.15 * d; P.glow -= 1.2 * d; } },
+    graze: { len: 0.4, push: u => 0.25 * snap(u, 0, 0.15, 1), body(u, P, o) { const k = snap(u, 0, 0.12, 1); P.ry += 0.9 * o.side * k; P.x += 0.6 * o.side * k; P.rz += 0.3 * o.side * k; } },
+    pulled: { len: 0.9, push: u => -1.3 * env(u, 0, 0.7, 1), body(u, P) { const k = env(u, 0, 0.7, 1); P.rx += 0.5 * k; P.sx -= 0.15 * k; P.sy += 0.18 * k; P.z += 0.3 * k; P.glow += 0.6 * k; } },
+    stiff: { len: 0.5, push: u => 0.3 * snap(u, 0, 0.1, 1), body(u, P) { const k = snap(u, 0, 0.08, 1); P.rx -= 0.2 * k; P.sx -= 0.06 * k; } },
   };
 
   // the core: white in the middle through the glow colour to clear
@@ -734,7 +810,8 @@ window.BotFighter = (() => {
     const rimG = own(new THREE.TorusGeometry(Math.sin(1.05), 0.03, 6, 48)); rimG.translate(0, 0, Math.cos(1.05));
     const hexIn = new THREE.Mesh(rimG, own(add(fxc, 2.6, 0.95)));
     shield.add(hexFill, hexEdge, hexIn);
-    let face = '', strafe = 0;
+    let face = '', strafe = 0, hurtNow = null;
+    const mot = { move: '', mu: 0, reach: 0, lane: 0, hurt: '', hu: 0, push: 0, side: 1 };
 
     const start = (kind, extra = {}) => { act = { kind, at: t, len: LEN[kind] || 0.3, ...extra }; };
     const api = {
@@ -754,8 +831,20 @@ window.BotFighter = (() => {
       ko() { koAt = t; act = null; react = null; },
       rise() { koAt = null; winAt = null; },
       // drops the charge and every spark at once (a new round)
-      clear() { held = 0; chargeTo = 0; charge = 0; act = null; react = null; orb.clear(); },
+      clear() { held = 0; chargeTo = 0; charge = 0; act = null; react = null; hurtNow = null; orb.clear(); },
       victory() { winAt = t; },
+      // the duel's choreography (MOVES and HURTS above): a move returns the ms until it connects
+      // o: { len, side, reach (scales the travel), strike (fires the orb like attack()), power (its sound, 0..1) }
+      move(name, o = {}) {
+        const M = MOVES[name]; if (!M) return 0;
+        const len = o.len || M.len;
+        act = { kind: 'move', name, M, at: t, len, side: o.side || 1, A: o.A || 1, reachK: o.reach == null ? 1 : o.reach };
+        if (o.strike) { chargeTo = 0; held = 0; charge *= 0.3; bot.fire(t + len * M.hit); orb.release(t); if (snd) snd.release(orb.style, o.power || 0); }
+        lastKey = t;
+        return Math.round(len * M.hit * 1000);
+      },
+      hurt(name, o = {}) { const H = HURTS[name]; if (!H || koAt != null) return; hurtNow = { name, H, at: t, len: o.len || H.len, k: o.k == null ? 1 : o.k, side: o.side || 1 }; },
+      motion() { return mot; },
       setWpm(w) { wpm = w || 0; },
       get stance() { return stance; },
       update, pose, muzzle: out => bot.body.localToWorld(out.set(0, 0, 1.15)),
@@ -771,7 +860,8 @@ window.BotFighter = (() => {
       const lo = STANCE[Math.floor(sNow)], hi = STANCE[Math.min(3, Math.ceil(sNow))], f = sNow - Math.floor(sNow);
       const adv = lo.adv + (hi.adv - lo.adv) * f, sw = lo.sw + (hi.sw - lo.sw) * f, sp = lo.sp + (hi.sp - lo.sp) * f;
       strafe += dt * sp;
-      rig.position.set(Math.sin(strafe) * sw, Math.sin(strafe * 1.7) * 0.25 * (sNow / 3), adv * gap);
+      if (o.roam) rig.position.set(0, Math.sin(strafe * 1.7) * 0.18 * (sNow / 3), 0);   // the scene moves it round the arena
+      else rig.position.set(Math.sin(strafe) * sw, Math.sin(strafe * 1.7) * 0.25 * (sNow / 3), adv * gap);
       if (idle && !act) face = 'calm';
 
       // the charge: the word being typed winds the bot up
@@ -791,6 +881,7 @@ window.BotFighter = (() => {
         else if (act.kind === 'dodge') { const s = snap(u, 0, 0.3, 1); P.x += 1.2 * act.side * s; P.y += (act.side > 0 ? 1.25 : -0.85) * s; P.z -= 0.3 * s; P.spinZ -= act.side * TAU * sm(ramp(u, 0.02, 0.7)); face = 'focus'; }
         else if (act.kind === 'block') { const b = snap(u, 0, 0.18, 1); P.rx += 0.45 * b; P.z -= 0.45 * b; P.y -= 0.15 * b; P.sy -= 0.12 * b; P.sx += 0.08 * b; P.glow += 1 * b; P.shield += b; P.halo += 0.4 * b; P.legs += 0.4 * b; face = 'focus'; }
         else if (act.kind === 'miss') { const w = env(u, 0, 0.15, 1); P.ry += Math.sin(u * TAU * 2) * 0.32 * w; P.rx -= 0.12 * w; face = 'hurt'; }
+        else if (act.kind === 'move') { act.M.body(u, P, act); face = act.name === 'duck' || act.name === 'leap' || act.name === 'parry' ? 'focus' : 'angry'; }
         else if (act.kind === 'spell') {
           const rise = env(u, 0, 0.45, 0.95), drive = snap(u, 0.62, 0.72, 1);
           P.y += 1.2 * rise; P.orb += 2.2 * rise * (1 - drive); P.flash += 2.2 * snap(u, 0.6, 0.68, 0.9); P.rx += -0.45 * env(u, 0, 0.45, 0.65) + 0.55 * drive; P.z += 1.4 * drive - 0.4 * env(u, 0, 0.4, 0.65);
@@ -807,6 +898,14 @@ window.BotFighter = (() => {
           P.x += 0.18 * j(1); P.y += 0.12 * j(2) - 0.4 * env(u, 0, 0.2, 1); P.rz += 0.16 * j(3) + 0.3 * env(u, 0, 0.15, 1); P.sx += 0.12 * j(4); P.sy -= 0.12 * j(4); P.glow -= (Math.sin(t * 173) > 0 ? 1.4 : 0) * w;
           P.orb *= Math.sin(t * 131) > 0 ? 0.1 : 1; face = 'dizzy';
         }
+      }
+      // what the scene reads this frame to move the bot through the arena
+      mot.move = ''; mot.reach = 0; mot.lane = 0; mot.hurt = ''; mot.push = 0;
+      if (act && act.kind === 'move') { const u = clamp((t - act.at) / act.len, 0, 1); mot.move = act.name; mot.mu = u; mot.reach = act.M.reach(u) * act.reachK; mot.lane = act.M.lane ? act.M.lane(u) : 0; mot.side = act.side; }
+      if (hurtNow) {
+        const u = (t - hurtNow.at) / hurtNow.len;
+        if (u >= 1 || koAt != null) hurtNow = null;
+        else { hurtNow.H.body(u, P, hurtNow); mot.hurt = hurtNow.name; mot.hu = u; mot.push = hurtNow.H.push(u) * hurtNow.k; if (u < 0.5) face = 'hurt'; }
       }
       const hu = t - hitAt;
       if (hu < 0.6) { const k = snap(hu / 0.6, 0, 0.15, 1) * hitPow; P.z -= 1.1 * k; P.y += 0.2 * k; }
@@ -847,7 +946,7 @@ window.BotFighter = (() => {
 
     // a frozen frame for the pose sheet
     function pose(name, u = 0.5, o2 = {}) {
-      act = react = null; koAt = winAt = null; hitAt = -9; charge = chargeTo = 0; kick = 0; lastKey = t;
+      act = react = null; hurtNow = null; koAt = winAt = null; hitAt = -9; charge = chargeTo = 0; kick = 0; lastKey = t;
       sNow = stance = 0; strafe = 0; wpm = 0;
       orb.clear();
       const word = o2.word || 'keyboard', typed = name === 'charge' || name === 'typo' ? Math.round(u * word.length) : name === 'attack' || name === 'combo' ? word.length : 0;
@@ -858,11 +957,13 @@ window.BotFighter = (() => {
       if (name === 'attack' || name === 'combo') orb.release(t - 0.07, true);
       if (name === 'attack' || name === 'combo') { act = { kind: name, at: t - u * LEN[name], len: LEN[name], A: name === 'combo' ? 1.7 : 1, dash: name === 'combo' }; }
       else if (['dodge', 'block', 'miss', 'spell'].includes(name)) act = { kind: name, at: t - u * LEN[name], len: LEN[name], side: o2.side || 1 };
+      if (name.startsWith('move:')) { const M = MOVES[name.slice(5)]; if (M) act = { kind: 'move', name: name.slice(5), M, at: t - u * M.len, len: M.len, side: o2.side || 1, A: 1, reachK: 1 }; }
+      if (name.startsWith('hurt:')) { const H = HURTS[name.slice(5)]; if (H) hurtNow = { name: name.slice(5), H, at: t - u * H.len, len: H.len, k: 1, side: o2.side || 1 }; }
       if (name === 'typo') react = { kind: 'typo', at: t - 0.1, len: 0.36 };
       else if (name === 'ko') koAt = t - 2;
       compute(0); rig.position.set(0, 0, 0); apply(0, true);
     }
     return api;
   }
-  return { create, STANCE, stanceOf, LEN, ORBS, orb: makeOrb, orbDemo };
+  return { create, STANCE, stanceOf, LEN, ORBS, MOVES, HURTS, orb: makeOrb, orbDemo };
 })();
