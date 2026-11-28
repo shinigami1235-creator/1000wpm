@@ -18,6 +18,8 @@
 //     top     on its head (bought): 'none' | 'bow' | 'cap' | 'flower' | 'party' | 'antenna' | 'headphones' | 'propeller' | 'crown'
 //     blush   true: pink cheeks on the screen (bought)
 //     marks   { stickers: [ids from BotKit.STICKERS], wear: 0..1 } battle marks, earned in fights
+//     orb     the charge orb in Duel and Party (js/app/bot-fighter.js draws it): 'core', and bought:
+//             'nebula' | 'frost' | 'ember' | 'void' | 'prism' | 'pulse'
 //   color 'rainbow' (bought) runs the glow through every colour
 // The bought parts and their prices are in REWARDS.shop.bot (js/app/rewards-config.js); BotKit.locked(look)
 // lists the ones in a look that this player doesn't own, and BotKit.mine() leaves them off in fights.
@@ -77,6 +79,8 @@ window.BotKit = (() => {
     armor: [['none', 'None'], ...Object.entries(ARMOR).map(([k, a]) => [k, a.name])],
     emote: [['wave', 'Wave'], ['laugh', 'Laugh'], ['spin', 'Spin'], ['heart', 'Love'], ['dance', 'Dance'], ['flip', 'Backflip']],
     victory: [['hop', 'Hop'], ['spin', 'Spin'], ['float', 'Float'], ['dance', 'Dance'], ['flip', 'Flips'], ['fireworks', 'Fireworks']],
+    // the orb a bot charges as you type in Duel and Party (js/app/bot-fighter.js)
+    orb: [['core', 'Core'], ['pulse', 'Pulse'], ['nebula', 'Nebula'], ['ember', 'Ember'], ['frost', 'Frost'], ['prism', 'Prism'], ['void', 'Void']],
     sig: {
       orbit: ['Halo', 'Single ring', 'Double ring'], pixel: ['Antennas', 'Twin spikes', 'Dish'], nova: ['Blades', 'Long', 'Swept back'],
       kite: ['Hat', 'Straw hat', 'Hood'], beep: ['Ears', 'Long', 'Floppy'], raze: ['Legs', 'Blades', 'Pistons'],
@@ -233,10 +237,21 @@ window.BotKit = (() => {
       hop: stroke('M80 168h40M88 180h24') + stroke('M60 40v14M140 40v14M100 30v14'), float: stroke('M66 166q12-8 22 0t22 0t22 0') + stroke('M74 180q10-6 18 0t18 0t18 0'),
       fireworks: [[40, 40, '#ffd23d', 12], [160, 46, '#ff6fae', 10], [30, 140, '#5cc8ff', 9], [170, 136, acc, 11], [100, 20, '#fff', 8]].map(([x, y, c, r]) => spark(x, y, c, r)).join(''),
     };
+    // an orb in front of the bot, low on its right, drawn in its style
+    const ORBS = {
+      core: `<defs><radialGradient id="oc"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="${acc}"/><stop offset="1" stop-color="${acc}" stop-opacity="0"/></radialGradient></defs><circle cx="148" cy="142" r="30" fill="url(#oc)"/><circle cx="148" cy="142" r="22" stroke="${acc}" stroke-width="3" fill="none" opacity=".8"/><circle cx="148" cy="142" r="13" stroke="#fff" stroke-width="2" fill="none" opacity=".7"/>`,
+      nebula: `<defs><filter id="ob" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs><g filter="url(#ob)"><ellipse cx="140" cy="146" rx="24" ry="15" fill="#c04dff" opacity=".8"/><ellipse cx="156" cy="136" rx="18" ry="12" fill="#2ee6d6" opacity=".7"/><circle cx="148" cy="142" r="11" fill="${acc}"/></g><circle cx="148" cy="142" r="5" fill="#fff"/>${[[134, 132], [162, 150], [142, 156], [160, 128], [128, 148]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#fff"/>`).join('')}`,
+      frost: [0, 1, 2, 3, 4, 5].map(i => { const a = i * 60 + 15, L = i % 2 ? 22 : 30; return `<g transform="rotate(${a} 148 142)"><path d="M148 142l6-5 2 ${-L + 8}-8 -8-8 8 2 ${L - 8}z" fill="#9fdcff" stroke="#e8f8ff" stroke-width="1.5"/><path d="M148 142l2 ${-L + 4}" stroke="#fff" stroke-width="1.5"/></g>`; }).join('') + '<circle cx="148" cy="142" r="6" fill="#e8f8ff"/>',
+      ember: `<defs><radialGradient id="oe"><stop offset="0" stop-color="#fffbe8"/><stop offset=".4" stop-color="#ffd25a"/><stop offset=".75" stop-color="#ff6a1f"/><stop offset="1" stop-color="#c41c1c" stop-opacity="0"/></radialGradient></defs><path d="M134 140q-4-22 8-34q-2 14 6 18q2-16 14-24q-4 16 6 24q8 8 2 18z" fill="#ff6a1f"/><path d="M140 140q0-14 8-22q0 10 6 14q4-8 10-10q-4 12 2 18z" fill="#ffc24a"/><circle cx="148" cy="146" r="22" fill="url(#oe)"/><circle cx="168" cy="122" r="2.5" fill="#ffd25a"/><circle cx="128" cy="118" r="2" fill="#ff9a3a"/>`,
+      void: `<defs><linearGradient id="ov" x1="0" x2="1"><stop offset="0" stop-color="#ff8a3d" stop-opacity=".3"/><stop offset=".5" stop-color="#fff1d6"/><stop offset="1" stop-color="#ff8a3d" stop-opacity=".9"/></linearGradient></defs><ellipse cx="148" cy="142" rx="34" ry="9" fill="none" stroke="url(#ov)" stroke-width="7"/><circle cx="148" cy="142" r="17" fill="#ffe6c0" opacity=".35"/><path d="M131 140a17 17 0 0 1 34 0" stroke="#fff1d6" stroke-width="4" fill="none"/><circle cx="148" cy="142" r="14" fill="#000"/><path d="M116 145q32 10 64 0" stroke="url(#ov)" stroke-width="5" fill="none"/>`,
+      prism: ['#ff3b3b', '#ff9a2e', '#ffe14a', '#4dff7a', '#3bc8ff', '#5a6bff', '#b45cff'].map((c2, i) => `<path d="M150 142L198 ${112 + i * 10}v8z" fill="${c2}" opacity=".85"/>`).join('') + '<path d="M148 116l12 26-12 26-12-26z" fill="#e9f3ff" stroke="#fff" stroke-width="2"/><path d="M148 116v52M136 142h24" stroke="#9fd6ff" stroke-width="1.5"/>',
+      pulse: `<circle cx="148" cy="142" r="28" stroke="${acc}" stroke-width="2.5" fill="none" opacity=".7"/><path d="M148 156l-13-13a8 8 0 0 1 13-10a8 8 0 0 1 13 10z" fill="#ff2d63"/><path d="M114 144h18l5-10 6 22 6-30 6 18h29" stroke="${acc}" stroke-width="3" fill="none" stroke-linejoin="round"/>`,
+    };
+    const orbArt = it.part === 'orb' ? ORBS[it.v] || ORBS.core : '';
     const moves = it.part === 'emote' || it.part === 'victory' ? (it.part === 'victory' && (it.v === 'spin' || it.v === 'flip' || it.v === 'dance') ? spark(40, 36, '#ffd23d') + spark(164, 34, '#ff6fae', 7) : '') + (MOVES[it.v] || '') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
       <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}${arBack}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
-      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}${arFront}</svg>`;
+      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}${arFront}${orbArt}</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
 
@@ -1267,7 +1282,7 @@ window.BotKit = (() => {
   const accent = () => (window.Theme ? Theme.hex('accent') : '#8cff58');
   const lookOf = L => ({ color: L.color || accent(), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back,
     top: L.top || 'none', blush: !!L.blush, marks: { stickers: L.stickers || [], wear: L.wear || 0 }, name: L.name || '',
-    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop', armor: L.armor || 'none' });
+    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop', armor: L.armor || 'none', orb: L.orb || 'core' });
   // the bought parts (REWARDS.shop.bot): { id, name, price, part, v }; part is a look key
   const SHOP = () => (window.REWARDS && REWARDS.shop && REWARDS.shop.bot) || [];
   const itemFor = (part, v) => SHOP().find(x => x.part === part && String(x.v) === String(v)) || null;
@@ -1275,7 +1290,7 @@ window.BotKit = (() => {
   // the parts in a look that this player hasn't bought
   function locked(L) {
     const out = [];
-    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory', 'armor']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
+    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory', 'armor', 'orb']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
     return out;
   }
   // a look with its unbought parts back to the free ones, for fights
@@ -1290,6 +1305,11 @@ window.BotKit = (() => {
     const id = (d && DIV_BOT[d.id]) || (st && BOTS[st.active] ? st.active : 'pixel');
     return { id, look: lookOf(owned((st && st.bots && st.bots[id]) || {})) };
   }
+  // about one other player in three charges a bought orb
+  function orbOf(seed) {
+    let h = 5381; for (const c of String(seed)) h = (Math.imul(h, 33) ^ c.charCodeAt(0)) >>> 0;
+    return h % 100 < 64 ? 'core' : OPTIONS.orb[1 + (h >>> 8) % (OPTIONS.orb.length - 1)][0];
+  }
   function random(seed) {
     let h = 2166136261; for (const c of String(seed)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
     const r = k => ((h >>> (k * 3)) & 1023) / 1024, ids = Object.keys(BOTS);
@@ -1299,7 +1319,7 @@ window.BotKit = (() => {
       // other players show off what they bought now and then
       top: r(5) < 0.45 ? 'none' : OPTIONS.top[1 + Math.floor(r(6) * (OPTIONS.top.length - 1))][0], blush: r(7) < 0.25,
       arm: r(8) < 0.6 ? 'none' : OPTIONS.arm[1 + Math.floor(r(9) * (OPTIONS.arm.length - 1))][0], trail: 'none',
-      victory: OPTIONS.victory[Math.floor(r(1) * OPTIONS.victory.length)][0] }) };
+      victory: OPTIONS.victory[Math.floor(r(1) * OPTIONS.victory.length)][0], orb: orbOf(seed) }) };
   }
   // one moment of a victory pose: height above the hover, turn, tilt, flip (radians) and the face
   const VP = { y: 0, turn: 0, tilt: 0, flip: 0, face: 'happy' };

@@ -7,11 +7,13 @@
 // The hangar has its own idle music and every bot has a little voice (js/app/idle-audio.js). Bought
 // parts (REWARDS.shop.bot) can be tried on here; one you don't own shows its price, a Buy button waits
 // under the options, and it stays off your bot in fights until it's bought.
+// The Orb tab (28 Nov 2026) picks the orb your bot charges as you type in Duel and Party; while it's open the
+// bot types a word into it on a loop (BotFighter.orbDemo in js/app/bot-fighter.js), so you see it charge and fire.
 Router.register('hangar', (() => {
   const KEY = 'wpm-bot', IDLE_AFTER = 3;
   const GLOWS = ['theme', '#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
   const SCREENS = ['', '#ffffff', '#9ff3ff', '#ffd27a', '#ff9be0', '#c6ffa8'];
-  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop', armor: 'none' });
+  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop', armor: 'none', orb: 'core' });
   const voice = mood => { if (window.IdleAudio && store) IdleAudio.bot(store.active, mood); };
   // a bought part's price tag, or nothing if it's free or yours
   const lockOf = (part, v) => { const it = BotKit.itemFor(part, v === true ? 'on' : v); return it && !WPM.owns(it.id) ? it : null; };
@@ -20,7 +22,7 @@ Router.register('hangar', (() => {
   // the categories, each with where the camera goes: [turn of the bot, camera height, distance, look height]
   const TABS = [
     ['Colour', [0.0, 1.4, 11.5, 0.1]], ['Face', [0.0, 0.6, 8.4, 0.1]], ['Head', [0.25, 2.6, 8.8, 0.7]], ['Back', [Math.PI, 1.6, 10, 0.2]],
-    ['Armour', [-0.55, 1.5, 12, 0.3]], ['Arm', [0.75, 0.9, 8.5, -0.1]], ['Trail', [-0.5, 2.2, 15, -0.6]], ['Moves', [0.0, 1.6, 12.5, 0.4]], ['Marks', [-0.6, 1.2, 9.5, 0.1]],
+    ['Armour', [-0.55, 1.5, 12, 0.3]], ['Arm', [0.75, 0.9, 8.5, -0.1]], ['Orb', [1.0, 1.0, 10.5, -0.3]], ['Trail', [-0.5, 2.2, 15, -0.6]], ['Moves', [0.0, 1.6, 12.5, 0.4]], ['Marks', [-0.6, 1.2, 9.5, 0.1]],
   ];
   let el = null, store = null, tab = 'Colour', hist = [], hi = 0, stage = null;
 
@@ -162,6 +164,8 @@ Router.register('hangar', (() => {
       h += `<div class="hg-group"><span class="label">Armour set</span>${cards('armor', BotKit.OPTIONS.armor, L)}<p class="hg-hint">A set brings its own shell colour. Your glow stays.</p></div>`;
     } else if (tab === 'Arm') {
       h += `<div class="hg-group"><span class="label">Arm tool</span>${cards('arm', BotKit.OPTIONS.arm, L)}<p class="hg-hint">Looks only. It fires with your spells.</p></div>`;
+    } else if (tab === 'Orb') {
+      h += `<div class="hg-group"><span class="label">Orb</span>${cards('orb', BotKit.OPTIONS.orb, L)}<p class="hg-hint">Your bot charges it as you type in Duel and Party, and it fires when you finish the word.</p></div>`;
     } else if (tab === 'Trail') {
       h += `<div class="hg-group"><span class="label">Trail</span>${cards('trail', BotKit.OPTIONS.trail, L)}<p class="hg-hint">Left behind as your bot flies in the raid.</p></div>`;
     } else if (tab === 'Moves') {
@@ -264,7 +268,16 @@ Router.register('hangar', (() => {
     let bot = null, spin = -0.5, spinV = 0, busyAt = -1e9, face = '', faceUntil = 0, drag = null, zoom = 1, auto = true, preview = null, vicUntil = 0, vicKind = 'hop';
     const cam = { turn: 0, y: 1.4, d: 11.5, ly: 0.1 }, camT = { ...cam };
     const now = () => performance.now() / 1000;
+    // the orb on the Orb tab, charging on a loop
+    let demo = null;
+    function syncOrb() {
+      if (demo) { demo.dispose(); demo = null; }
+      if (tab !== 'Orb' || !bot || !window.BotFighter || !BotFighter.orbDemo) return;
+      const L = { ...look(), ...(preview || {}) };
+      demo = BotFighter.orbDemo(THREE, bot, L.orb || 'core', BotKit.FX[L.color] ? BotKit.FX[L.color].base : glowOf(L));
+    }
     function build(over) {
+      if (demo) { demo.dispose(); demo = null; }
       if (bot) bot.dispose();
       const L = { ...look(), ...(over || {}) };
       bot = BotKit.create(THREE, store.active, { color: BotKit.FX[L.color] ? L.color : glowOf(L), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, top: L.top, blush: !!L.blush,
@@ -272,6 +285,7 @@ Router.register('hangar', (() => {
       bot.group.traverse(o => { if (o.isMesh && !(o.material && (o.material.blending === THREE.AdditiveBlending || o.material.transparent))) o.castShadow = true; });
       scene.add(bot.group);
       const c = accent(); ringMat.color.copy(c).multiplyScalar(1.15); bgMat.uniforms.uCol.value.copy(c); floorMat.uniforms.uCol.value.copy(c); rimA.color.copy(c).lerp(new THREE.Color('#ffffff'), 0.35);
+      syncOrb();
     }
     build();
     function setView(name) {
@@ -339,13 +353,14 @@ Router.register('hangar', (() => {
       if (t < vicUntil) { BotKit.victoryPose(vicKind, t, VP); bot.group.position.y += VP.y; bot.group.rotation.set(VP.flip, spin + VP.turn, VP.tilt); fc = fc || VP.face; bot.cheer(t, vicKind); }
       else bot.group.rotation.set(0, spin, 0);
       bot.update(t, dt, { face: fc, vel: tab === 'Trail' ? vel.applyAxisAngle(new V(0, 1, 0), -spin) : undefined });
+      if (demo) demo.update(t, dt);
       dust.rotation.y = t * 0.02;
       composer.render();
     });
     stage = {
       build: () => build(preview),
       tryFace: f => { face = f; faceUntil = f ? now() + 1.6 : 0; },
-      view: setView,
+      view: name => { setView(name); syncOrb(); },
       emote: k => { bot.emote(k, now()); busyAt = now(); },
       victory: k => { vicKind = k; vicUntil = now() + 3.6; busyAt = now(); },
       fire: () => bot.fire(now()),
@@ -353,7 +368,7 @@ Router.register('hangar', (() => {
       // trying a part on while the pointer is on its card
       preview: (k, v) => { if (preview && preview[k] === v) return; preview = { [k]: v }; build(preview); },
       unpreview: () => { if (!preview) return; preview = null; build(); },
-      stop() { renderer.setAnimationLoop(null); ro.disconnect(); evs.forEach(ev => el && el.removeEventListener(ev, touch)); bot && bot.dispose(); keep.forEach(x => x.dispose && x.dispose()); composer.dispose && composer.dispose(); pmrem.dispose(); renderer.dispose(); renderer.forceContextLoss(); cv.remove(); },   // free the GPU context now: Chrome keeps only 16 alive
+      stop() { if (demo) demo.dispose(); renderer.setAnimationLoop(null); ro.disconnect(); evs.forEach(ev => el && el.removeEventListener(ev, touch)); bot && bot.dispose(); keep.forEach(x => x.dispose && x.dispose()); composer.dispose && composer.dispose(); pmrem.dispose(); renderer.dispose(); renderer.forceContextLoss(); cv.remove(); },   // free the GPU context now: Chrome keeps only 16 alive
     };
     el.querySelector('[data-spin]').classList.toggle('on', auto);
   }

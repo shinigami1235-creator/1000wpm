@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bot orb styles</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; background: #070908; color: #dfe8e2; font: 600 13px system-ui, sans-serif; }
+  #sheet { position: relative; display: inline-block; }
+  canvas { display: block; }
+  .lab { position: absolute; text-align: center; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: #8cff58; }
+  .lab small { display: block; color: #8a978f; font-weight: 500; letter-spacing: .02em; text-transform: none; font-size: 11px; margin-top: 2px; }
+  .row { position: absolute; left: 8px; writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .14em; text-transform: uppercase; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<!-- Every orb style (js/app/bot-fighter.js) on one bot, with the duel's bloom (0.7, 0.45, 0.86): ?bot=orbit&color=%23ff7ad9&styles=core,nebula&cols=charge3,charge,attack,typo&cw=300 -->
+<div id="sheet"></div>
+<script src="../../js/app/botkit.js"></script>
+<script src="../../js/app/bot-fighter.js"></script>
+<script type="module">
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const THREE = { ...T, RoundedBoxGeometry };
+const q = new URLSearchParams(location.search);
+const BOT = q.get('bot') || 'orbit', COLOR = q.get('color') || '#8cff58';
+const STYLES = (q.get('styles') || BotFighter.ORBS.join(',')).split(',');
+const COLS = {
+  charge3: ['Charging', '3 letters typed', 'charge', 0.375],
+  charge: ['Charging', '7 letters typed', 'charge', 0.875],
+  attack: ['Release', 'word done, the shot leaves', 'attack', 0.3],
+  typo: ['Typo', 'one spark lost', 'typo', 0.6],
+  spell: ['Spell', 'rising', 'spell', 0.45],
+};
+const cols = (q.get('cols') || 'charge3,charge,attack,typo').split(',');
+const CW = +(q.get('cw') || 300), CH = Math.round(CW * 0.8), LX = 34, TOP = 44;
+const W = LX + CW * cols.length, H = TOP + CH * STYLES.length;
+const out = document.createElement('canvas'); out.width = W; out.height = H; const g2 = out.getContext('2d');
+g2.fillStyle = '#070908'; g2.fillRect(0, 0, W, H);
+const sheet = document.getElementById('sheet'); sheet.appendChild(out);
+cols.forEach((c, i) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = (LX + i * CW) + 'px'; d.style.width = CW + 'px'; d.style.top = '6px'; d.innerHTML = `${COLS[c][0]}<small>${COLS[c][1]}</small>`; sheet.appendChild(d); });
+
+const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(CW, CH);
+renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+const scene = new T.Scene(); scene.background = new T.Color('#0b0f0e');
+scene.add(new T.HemisphereLight('#cfe9ff', '#1a2420', 1.1));
+const sun = new T.DirectionalLight('#ffffff', 2.2); sun.position.set(-4, 8, 6); scene.add(sun);
+const rim = new T.DirectionalLight('#9fb8ff', 0.6); rim.position.set(4, 3, -6); scene.add(rim);
+const floor = new T.Mesh(new T.CircleGeometry(9, 48), new T.MeshStandardMaterial({ color: '#10161a', roughness: 0.8 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const cam = new T.PerspectiveCamera(30, CW / CH, 0.1, 100);
+const Z = +(q.get('zoom') || 1.25);
+cam.position.set(-7.2 / Z, 2.3 + 0.6 / Z, 1.5 + 3.2 / Z); cam.lookAt(0, 1.95, 1.35);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, cam));
+composer.addPass(new UnrealBloomPass(new T.Vector2(256, 256), 0.7, 0.45, 0.86)); composer.addPass(new OutputPass());
+
+STYLES.forEach((st, r) => {
+  const d = document.createElement('div'); d.className = 'row'; d.style.top = (TOP + r * CH) + 'px'; d.style.height = CH + 'px'; d.style.color = COLOR;
+  d.textContent = st; sheet.appendChild(d);
+  const f = BotFighter.create(THREE, BOT, { color: COLOR, orb: st }, { gap: 12 });
+  scene.add(f.group);
+  cols.forEach((c, i) => {
+    const [, , name, u] = COLS[c];
+    f.pose(name, u, { phase: +(q.get('phase') || 0) });
+    composer.render();
+    g2.drawImage(renderer.domElement, LX + i * CW, TOP + r * CH);
+  });
+  scene.remove(f.group); f.dispose();
+});
+document.title = 'done';
+</script>
+</body>
+</html>

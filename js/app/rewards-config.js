@@ -137,6 +137,13 @@ window.REWARDS = {
       { id: 'bot-victory-dance', name: 'Dance victory', price: 2000, part: 'victory', v: 'dance' },
       { id: 'bot-victory-flip', name: 'Flips victory', price: 2000, part: 'victory', v: 'flip' },
       { id: 'bot-victory-fireworks', name: 'Fireworks victory', price: 4000, part: 'victory', v: 'fireworks' },
+      // orbs (28 Nov 2026): the charge your bot builds as you type in Duel and Party, each its own shape and motion
+      { id: 'bot-orb-pulse', name: 'Pulse orb', price: 4500, part: 'orb', v: 'pulse' },
+      { id: 'bot-orb-nebula', name: 'Nebula orb', price: 6500, part: 'orb', v: 'nebula' },
+      { id: 'bot-orb-ember', name: 'Ember orb', price: 7500, part: 'orb', v: 'ember' },
+      { id: 'bot-orb-frost', name: 'Frost orb', price: 8000, part: 'orb', v: 'frost' },
+      { id: 'bot-orb-prism', name: 'Prism orb', price: 11000, part: 'orb', v: 'prism' },
+      { id: 'bot-orb-void', name: 'Void orb', price: 15000, part: 'orb', v: 'void' },
     ],
     // the reasons WPM.addCoins doubles while the pass runs: coins earned by playing,
     // never refunds, bought packs or the shop
