@@ -17,6 +17,16 @@
 // banner print, and the achievement case. Empty slots show the picture as it is (an empty lit shelf,
 // a blank frame), so a new player's room never looks broken.
 (() => {
+  // ------------------------------------------------------------------ TEST SWITCH (Gid, 28 Nov 2026)
+  // "Unlock all the different rooms and selectors. I want to check the different rooms even if I'm not
+  // levelled enough yet." While true: every tier opens, every tab and slot is open in every tier,
+  // every item (gift-only and streak ones too) can be previewed and placed for free without buying it,
+  // the achievement case shows every trophy, and Visit a room lists a test room at each tier.
+  // Turn it off before launch: set to false (or ?roomtest=off in the address for this browser).
+  // js/room/tier-page.js reads RoomTiers.TEST for every gate it opens.
+  const TEST_ON = true;
+  const TEST = (() => { try { const q = /[?&#]roomtest=(on|off)/.exec(location.href); if (q) localStorage.setItem('wpm-roomtest', q[1]); const v = localStorage.getItem('wpm-roomtest'); return v ? v === 'on' : TEST_ON; } catch (e) { return TEST_ON; } })();
+
   // ------------------------------------------------------------------ the five rooms
   // q: four corners clockwise from top left. spot: [x, y] is where an item's bottom centre stands;
   // ppm: picture pixels per metre there, so every item keeps its real size against the room.
@@ -280,7 +290,7 @@
   for (const it of I) for (const old of it.legacy || []) LEGACY[old] = it.id;
 
   window.RoomTiers = {
-    TIERS, LEVELS, KINDS, ITEMS: I, TROPHIES, PIN, DEFAULT, LEGACY,
+    TIERS, LEVELS, KINDS, ITEMS: I, TEST, TROPHIES, PIN, DEFAULT, LEGACY,
     get: id => byId.get(id) || null, slots, tierFor,
     // what an untouched slot shows: the first monitor your stats, the others the screensaver
     defaultFor: (slotId, kind) => (kind === 'screen' && slotId !== 'm1' ? 'scr-logo' : DEFAULT[kind] || null),

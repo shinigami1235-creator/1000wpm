@@ -28,9 +28,10 @@
     WPM.setRoom(r);
   }
   const level = () => WPM.levelInfo().level;
-  // Gid, 28 Nov: every room open while he checks them. Set to false to lock rooms by level again.
-  const ALL_OPEN = true;
-  const openTier = () => (ALL_OPEN ? 5 : RT.tierFor(level()));
+  // The test switch (RoomTiers.TEST in js/room/tier-items.js, Gid 28 Nov): every room, tab, slot and
+  // item open to look at and place without the level or the coins. Each gate it opens says TEST below.
+  const TEST = !!RT.TEST;
+  const openTier = () => (TEST ? 5 : RT.tierFor(level()));   // TEST: rooms open whatever the level
   // the room shown: the one picked in Room tiers, or the highest the player's level opens
   const activeTier = (r = load()) => Math.min(openTier(), r.tier || RT.tierFor(level()));
 
@@ -72,9 +73,12 @@
     for (const [k, [ok, bad]] of Object.entries(ks)) if (ok + bad > 20) miss[k.toLowerCase()] = bad / (ok + bad);
     const runs = WPM.sessions().filter(s => s.wpm).slice(-30).map(s => Math.round(s.wpm));
     const dmg = c.bossDmg || 0;
+    const eq = { ...(r.eq[tier] || {}) };
+    if (!TEST) for (const [k, id] of Object.entries(eq)) if (id && !RT.owns(id)) delete eq[k];   // placed while testing, not bought
     return {
-      tier, equip: { ...(r.eq[tier] || {}) },
-      earned: RT.TROPHIES.filter(t => t.has(ctx)).map(t => t.id),
+      tier, equip: eq,
+      // TEST: the case shows every trophy, so a full case can be checked
+      earned: TEST ? RT.TROPHIES.map(t => t.id) : RT.TROPHIES.filter(t => t.has(ctx)).map(t => t.id),
       data: { name, level: L.level, xp: L.next ? L.into / L.next : 0, best: st.bestWpm, avg: st.avgWpm, acc: st.accuracy || 0, runs: runs.length > 1 ? runs : [0, st.bestWpm],
         dmgS: dmg >= 1e6 ? (dmg / 1e6).toFixed(1) + 'M' : dmg >= 1e3 ? (dmg / 1e3).toFixed(1) + 'k' : String(dmg), board: board(name, st.bestWpm), ...bossHp(),
         streak, streakN: window.Progress ? Progress.streak().n : 0, miss, rush: { bosses: rush.bosses, score: rush.score, beat: [...rush.beat] }, online: 18 + new Date().getHours() % 9 },
@@ -85,9 +89,11 @@
   function rng(str) { let h = 2166136261; for (const ch of str) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; }; }
   function of(p) {
     if (!p || p.id === 'me') return mine();
-    const art = !!p.art, lv = art ? 99 : p.level || 1, tier = RT.tierFor(lv), r = rng('room:' + p.id);
+    // TEST: test_room_t<n> is a dressed room at tier n, for checking visits to every tier
+    const tst = TEST && /^test_room_t([1-5])$/.exec(p.id);
+    const art = !!p.art, lv = art ? 99 : tst ? RT.LEVELS[tst[1] - 1] + 2 : p.level || 1, tier = RT.tierFor(lv), r = rng('room:' + p.id);
     const pick = (type, f = () => true) => { const l = RT.ITEMS.filter(i => i.type === type && !i.gift && f(i)); return l[Math.floor(r() * l.length)]; };
-    const fill = Math.min(1, 0.35 + lv / 40);   // how much of the room they have dressed
+    const fill = tst ? 1 : Math.min(1, 0.35 + lv / 40);   // how much of the room they have dressed
     const eq = {};
     for (const sl of RT.slots(tier)) {
       if (r() > fill && sl.kind !== 'screen') continue;
@@ -99,7 +105,7 @@
     const best = p.stats ? p.stats.bestWpm || 0 : 0;
     const ctx = { ach: id => ({ wpm60: best >= 60, wpm100: best >= 100, wpm150: best >= 150, beatart: art, bosswin: r() < lv / 30, racewin: r() < 0.3, block50: r() < lv / 40, streak30: r() < lv / 60, combo250: r() < lv / 50 })[id] || false, level: lv,
       rush: { bosses: Math.floor(lv / 4 + r() * 4), beat: new Set(['spam', 'siege', 'sign', 'warden', 'announcer', 'colossus', 'press', 'king', 'correction', 'half', 'brute', 'syntax'].slice(0, Math.floor(lv / 4 + r() * 3))) } };
-    const name = p.name || p.id;
+    const name = tst ? `Test room ${tst[1]}` : p.name || p.id;
     return {
       tier, equip: eq, earned: RT.TROPHIES.filter(t => t.has(ctx)).map(t => t.id),
       data: { name, level: lv, xp: r(), best, avg: p.stats ? p.stats.avgWpm : 0, acc: p.stats ? p.stats.acc : 0, runs: [...Array(16)].map((_, i) => Math.round(best * (0.72 + i * 0.016 + r() * 0.06))),
@@ -209,6 +215,15 @@
     const sl = RT.slots(t);
     return RT.KINDS.map(k => ({ ...k, slots: sl.filter(s => s.kind === k.id) })).filter(k => k.slots.length || (k.from && k.from > t));
   }
+  // TEST: a tab this room lacks opens the first room that has it
+  function jump(id) {
+    const at = [1, 2, 3, 4, 5].find(n => RT.slots(n).some(s => s.kind === id));
+    if (!TEST || !at) return;
+    cancelPending();
+    const r = load(); r.tier = at; save(r);
+    const d = mine(); view.set({ tier: d.tier, equip: d.equip, earned: d.earned, data: d.data });
+    state.tab = id; state.slot = null; state.touched = true; paintMenu(); paintBar(); sfx(true);
+  }
   function paintBar() {
     const t = view.tier, ks = kindsHere(t);
     if (!ks.some(k => k.id === state.tab && k.slots.length)) { state.tab = ks[0].id; state.slot = ks[0].slots[0].id; }
@@ -218,12 +233,14 @@
     drop('rm-tab');
     const n = ui('rm-bar', `<div class="rm-tabs" role="tablist"><button type="button" class="rm-close" data-close aria-label="Close the shop">&times;</button>${ks.map(x => x.slots.length
       ? `<button type="button" role="tab" data-k="${x.id}" aria-selected="${x.id === state.tab}">${esc(x.name)}</button>`
-      : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.from].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.from].level}</button>`).join('')}</div>
+      : TEST ? `<button type="button" data-jump="${x.id}" title="Opens room ${x.from}">${esc(x.name)} <small>room ${x.from}</small></button>`
+      : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.from].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.from].level}</button>`).join('')}${TEST ? '<span class="rm-test">Test: all open</span>' : ''}</div>
       ${k.slots.length > 1 ? `<div class="rm-slots">${k.slots.map((s, i) => `<button type="button" data-s="${s.id}" aria-pressed="${s.id === state.slot}">${esc(s.name || `${k.id === 'wall' ? 'Wall' : k.name.replace(/s$/, '')} ${i + 1}`)}</button>`).join('')}</div>` : ''}
       <div class="rm-items" data-items></div><p class="rm-msg" data-msg role="status"></p>`);
     n.setAttribute('aria-label', 'Customise');
     n.querySelector('[data-close]').addEventListener('click', closeBar);
     n.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.tab = b.dataset.k; state.slot = null; cancelPending(); paintBar(); }));
+    n.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => jump(b.dataset.jump)));
     n.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.slot = b.dataset.s; cancelPending(); paintBar(); }));
     view.select(state.touched ? state.slot : null);
     paintItems();
@@ -246,7 +263,8 @@
   function equipped() { const r = load(), t = view.tier; return (r.eq[t] || {}); }
   function optionsFor(kind, slot) {
     const k = RT.kind(kind);
-    let list = RT.ITEMS.filter(i => i.type === k.type && (!i.gift || WPM.owns(i.id)) && (!i.bonus || RT.owns(i.id)));
+    // TEST: gift-only and streak items show too
+    let list = RT.ITEMS.filter(i => i.type === k.type && (TEST || ((!i.gift || WPM.owns(i.id)) && (!i.bonus || RT.owns(i.id)))));
     if (kind === 'shelf') list = list.filter(i => !i.desk);
     if (kind === 'wall') list = list.filter(i => i.id !== 'scr-logo');
     if (kind === 'screen') list = list.filter(i => i.id !== 'scr-card');
@@ -262,7 +280,7 @@
     const { list, optional } = optionsFor(state.tab, state.slot);
     const pend = state.pending;
     const card = (it) => {
-      const own = RT.owns(it.id), on = cur === it.id, can = own || WPM.coins() >= it.price || WPM.testing();
+      const own = RT.owns(it.id), on = cur === it.id, can = own || TEST || WPM.coins() >= it.price || WPM.testing();
       const status = on ? '<small class="own">Placed</small>' : own ? '<small class="own">Owned</small>' : `<small>${coin()}${fmt(it.price)}</small>`;
       return `<button type="button" class="rm-it${on ? ' on' : ''}${pend === it.id ? ' on' : ''}${can ? '' : ' cant'}" data-i="${it.id}" title="${esc(it.desc || it.name)}"><span class="th ${it.type}">${thumbHtml(it)}</span><span class="nm">${esc(it.name)}</span>${status}</button>`;
     };
@@ -294,6 +312,8 @@
   function choose(id) {
     if (id === null || RT.owns(id)) { state.pending = null; place(id); sfx(true); paintItems(); msg(''); return; }
     const it = RT.get(id);
+    // TEST: placed without buying; it comes off again when the switch is turned off
+    if (TEST) { state.pending = null; place(id); sfx(true); paintItems(); msg(`${esc(it.name)}: <b>${fmt(it.price)}</b> coins. Placed free while testing.`); return; }
     // not owned: show it in the room first, then buy
     state.pending = id;
     view.preview(state.slot, id);
@@ -350,9 +370,11 @@
       }
     };
     const art = { id: 'art', name: 'Art', art: true, level: 99, stats: { bestWpm: 204, avgWpm: 204, acc: 98.5 } };
+    // TEST: one dressed room at each tier
+    const tests = TEST ? [1, 2, 3, 4, 5].map(n => ({ id: `test_room_t${n}`, name: `Test room ${n}`, level: RT.LEVELS[n - 1] + 2, stats: { bestWpm: 80 + n * 20, avgWpm: 70 + n * 20, acc: 95 } })) : [];
     (window.Lazy ? Lazy.need('net') : Promise.reject()).then(() => Net.profiles.online()).then(on => Promise.all(on.slice(0, 11).map(p => Net.profiles.get(p.id).catch(() => p))))
-      .then(ps => show([art, ...ps.sort((a, b) => (b.level || 0) - (a.level || 0))]))
-      .catch(() => show([art]));
+      .then(ps => show([art, ...tests, ...ps.sort((a, b) => (b.level || 0) - (a.level || 0))]))
+      .catch(() => show([art, ...tests]));
   }
 
   // ---------- someone else's room
@@ -364,7 +386,7 @@
     if (me) return;
     n.setAttribute('aria-label', 'Visiting');
     const mineT = activeTier(), L = level();
-    if (d.tier > mineT) ui('rm-op', `<div class="l">Your room</div><div class="lv">Tier <b>${mineT}</b></div><div class="next">${LOCK}<span>${esc(T.name)} unlocks at <b>level ${T.level}</b>. You're level ${L}.</span></div>`);
+    if (d.tier > mineT && !TEST) ui('rm-op', `<div class="l">Your room</div><div class="lv">Tier <b>${mineT}</b></div><div class="next">${LOCK}<span>${esc(T.name)} unlocks at <b>level ${T.level}</b>. You're level ${L}.</span></div>`);
   }
 
   function unmount() {
