@@ -108,9 +108,10 @@ window.PartyScene = (() => {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    // threshold 0.38: only the lit edges, sparks and cores glow; at 0.16 every face bloomed and a hit or
-    // the open core washed the boss out to white
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 0.38);
+    // threshold 0.6: only the lit edges, sparks and cores glow; at 0.16 every face bloomed and a hit or
+    // the open core washed the boss out to white, and at 0.38 the bots' pale shells bloomed under the
+    // arena's lights (Kite's wide hat turned into a white ball, brightest as its spell lifts it)
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.4, 0.6);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -343,6 +344,19 @@ window.PartyScene = (() => {
     let envTex = null;
     if (TB && opts.RoomEnvironment) { try { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new opts.RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) { envTex = null; } }
     function shine(obj) { if (envTex) obj.traverse(o => { for (const mt of [].concat(o.material || [])) if (mt.isMeshStandardMaterial) { mt.envMap = envTex; mt.envMapIntensity = 0.25; mt.needsUpdate = true; } }); }
+    // Gid, 28 Nov 2026: under the arena's lights a pale shell (Kite's wide hat most of all) came out brighter
+    // than white and bloomed into a glowing ball. The bots' lit surfaces roll off softly toward 0.58, under
+    // the bloom threshold, so only their glowing trim, eyes and orbs bloom, as in Duel.
+    const KNEE = 'float kl = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));\nif (kl > 0.4) outgoingLight *= (0.4 + (kl - 0.4) / (1.0 + (kl - 0.4) / 0.18)) / kl;\n#include <opaque_fragment>';
+    function soften(obj) {
+      obj.traverse(o => { for (const mt of [].concat(o.material || [])) if (mt.isMeshStandardMaterial && !mt.userData.knee) {
+        mt.userData.knee = true;
+        const ob = mt.onBeforeCompile, ck = mt.customProgramCacheKey;
+        mt.onBeforeCompile = (sh, r) => { if (ob) ob.call(mt, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', KNEE); };
+        mt.customProgramCacheKey = () => ck.call(mt) + '|knee';
+        mt.needsUpdate = true;
+      } });
+    }
     const lookFor = p => (p.id === 'me' ? BotKit.mine() : p.botLook && p.botLook.id ? p.botLook : BotKit.random(p.name || p.id));
     const tsnd = (k, arg) => { if (opts.audio) opts.audio.combat('op-' + k, arg); };
     function teamSync(players) {
@@ -359,7 +373,7 @@ window.PartyScene = (() => {
         // gap: how far a fast typist's bot presses in toward the boss, kept short so it stays over its card
         const f = BotFighter.create(TB, L.id, L.look, { gap: 6, lite: p.id !== 'me' });
         f.group.rotation.order = 'YXZ'; f.group.rotation.y = Math.PI;
-        shine(f.group); scene.add(f.group);
+        shine(f.group); soften(f.group); scene.add(f.group);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; scene.add(ring);
         const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: glowTex, color: colorOf(p.id).multiplyScalar(0.6), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
@@ -1442,7 +1456,7 @@ window.PartyScene = (() => {
     function typo(id) { const m = team.get(id); if (m && !m.down) m.f.typo(); }
     return { setFight, sync, shot, key, typo, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
       renderInfo: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures }),
-      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }) } };
+      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }), dbg: () => ({ THREE, scene, camera, team, bloom }) } };
   }
 
   return { mount };

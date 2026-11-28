@@ -5,7 +5,7 @@
 // and the catalogue of things that go in the slots. js/room/tier-view.js draws a room from it and
 // js/room/tier-page.js is the #/room page.
 //
-//   RoomTiers.TIERS[n]        { name, level, w, h, glass, posters, screens, lights, banner, shelf, desk, case, pins, pet, holo }
+//   RoomTiers.TIERS[n]        { name, level, w, h, glass, posters, front, screens, lights, banner, shelf, desk, case, pins, pet, holo }
 //   RoomTiers.KINDS           the shop tabs: what a slot takes and what it's called
 //   RoomTiers.ITEMS / get(id) the catalogue; RoomItems (below) is the same list for #/shop and gifts
 //   RoomTiers.TROPHIES        the achievement case: earned only, never sold
@@ -48,6 +48,9 @@
     3: { name: 'Ops den', level: 25, w: 1376, h: 768, size: [5, 4.5], focus: 0.45, dim: 0.85,
       glass: [506, 132, 222.5, 309.5],
       posters: [[[54, 121], [234, 148], [236, 402], [54, 404]], [[1192, 240], [1299, 231], [1300, 388], [1192, 389]]],
+      // the plant hanging in front of the left frame, cut out of the picture (tools/room-front.py) and
+      // laid back over the poster so the poster sits behind its leaves
+      front: [['t3-plant', 48, 114, 112, 146]],
       screens: [
         { q: [[273, 367], [384, 368], [384, 454], [274, 469]] },
         { q: [[390, 368], [519, 369], [519, 446], [390, 455]], glow: [460, 430, 520, 220] },

@@ -2262,9 +2262,17 @@
     root.style.width = rw + 'px'; root.style.height = rh + 'px';
     if (!fs) host.style.height = rh + 'px';
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    hud.width = Math.round(rw * dpr); hud.height = Math.round(rh * dpr);
-    if (use3D) R3.resize(rw, rh);
+    // A canvas is wiped whenever its size is set, even to the size it already has, and a resize from the
+    // ResizeObserver or the 3D view coming up lands after this frame was drawn: the page then showed an
+    // empty, black game for a frame (on the first load, for as long as the first 3D frame took). So the
+    // canvases are only resized when their size really changes, and then drawn again at once.
+    const hw = Math.round(rw * dpr), hh2 = Math.round(rh * dpr);
+    let changed = false;
+    if (hud.width !== hw || hud.height !== hh2) { hud.width = hw; hud.height = hh2; changed = true; }
+    if (use3D && glSize !== rw + 'x' + rh) { glSize = rw + 'x' + rh; R3.resize(rw, rh); changed = true; }
+    if (changed && raf) { cancelAnimationFrame(raf); frame(performance.now()); }
   }
+  let glSize = '';
   // Scrolls the page so the whole game shows below the header.
   function reveal() {
     if (!host || document.fullscreenElement) return;
@@ -2321,17 +2329,20 @@
     });
     io.observe(root);
     mode = 'title'; t = 0; paused = false; menuLevel = null; ch = null;
-    use3D = false; R3 = window.Breach3D || null;
+    use3D = false; R3 = window.Breach3D || null; glSize = '';
+    visible = true;   // a new game draws from its first frame; the IntersectionObserver corrects this if it's off screen
     goTitle();
     fit();
     const mine = root;
     if (R3) R3.init(glCanvas).then(ok => {
       if (root !== mine) return;
       use3D = ok;
-      if (ok) { fit(); R3.setLevel(menuLevel); R3.setFloor(p => level ? floorAt(p.x, p.z, p.y - 1.2) : null); }
+      // the level first, so the first 3D frame (drawn at once by fit) has the scene in it
+      if (ok) { R3.setLevel(menuLevel); R3.setFloor(p => level ? floorAt(p.x, p.z, p.y - 1.2) : null); fit(); }
     });
+    // the first frame now, so the new canvas never shows empty before the next animation frame
     last = performance.now();
-    raf = requestAnimationFrame(frame);
+    frame(last);
     setTimeout(() => input && input.focus(), 0);
   }
   function unmount() {

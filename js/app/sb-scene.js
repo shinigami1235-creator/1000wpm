@@ -50,6 +50,7 @@ window.SuperScene = (() => {
       cam: (p, l, f) => impl && impl.cam(p, l, f),
       step: (s2, f) => impl && impl.step(s2, f),
       model: () => impl && impl.model(),
+      artBot: () => impl && impl.artBot(),
       dispose: () => { gone = true; if (impl) impl.dispose(); },
       cameraAt: () => impl && impl.cameraAt(),
     };
@@ -361,6 +362,29 @@ window.SuperScene = (() => {
     const artPos = new V(0, 0.9, 15);
     const fx = window.Combat && Combat.FX ? Combat.FX.create(THREE, scene, camera, { glowTex, calm: false, reduce: motionOff, pixelHeight: () => renderer.domElement.height, juice }) : null;
     const caster = { pos: out => out.copy(artPos).setY(artPos.y + 0.6) };
+    // Art fights through his bot (Gid, 27 Nov 2026), the one he brings to a Duel (Showdown.botFor): the
+    // bot seeded from 'art', in his cyan. It stood here as a spinning cube before. It moves on his typing
+    // like the bots in Duel and Party: a spark per right key, a strike per word, a spell lifts it.
+    let artBot = null, artKeys = 0;
+    if (window.BotFighter && window.BotKit) {
+      try {
+        const b = BotKit.random('art');
+        artBot = BotFighter.create({ ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15, lite: true });   // lite: no clear coat, so the extra bot costs next to nothing
+        artBot.group.position.set(artPos.x, 0, artPos.z); artBot.group.rotation.y = Math.PI;
+        scene.add(artBot.group);
+      } catch (e) { artBot = null; }
+    }
+    // where Art's shots leave: his bot's muzzle, or just above his spot
+    const artFrom = out => (artBot ? artBot.muzzle(out) : out.copy(artPos).setY(artPos.y + 0.8));
+    function artReact(n, d) {
+      if (n === 'key') { if (d.good) { artKeys++; artBot.key(d.finish ? 1 : artKeys / (artKeys + 4)); } else artBot.typo(); }
+      if (n === 'hit' && d.src !== 'spell' && d.src !== 'sever') { artBot.attack(Math.max(0, Math.min(3, (d.tier || 1) - 1))); artKeys = 0; }
+      if (n === 'cast') { artBot.spell(); artKeys = 0; }
+      if (n === 'hurt') artBot.hit(v4.set(0, 0, -1), d.amount >= 12 ? 1.2 : 0.6);
+      if (n === 'block') artBot.block();
+      if (n === 'win') artBot.victory();
+      if (n === 'lose') artBot.ko();
+    }
 
     // ---------- the bosses ----------
     const clock = { t: 0 };
@@ -608,6 +632,7 @@ window.SuperScene = (() => {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (model) model.event(n, d, t);
       sup.event(n, d);
+      if (artBot) artReact(n, d);
       if (n === 'key' && d.finish && d.good && model) { model.anchor('core', v1); K.fx.beam(v2.copy(artPos).setY(2), v1, '#ffffff', 0.18, 0.12, { grow: 0.06 }); K.fx.burst(v1, 8, '#ffffff', { speed: 6, g: 2, life: 0.35, size: 0.3 }); }
       if (n === 'countdown') cam.want('intro');
       if (n === 'phase') cam.want('phase', model && model.face ? model.face : 'core');
@@ -632,7 +657,7 @@ window.SuperScene = (() => {
           if (opts.onPop) { const p = proj(v1, {}); opts.onPop(d.amount, p.x, p.y, { crit, src: d.src, big }); }
         };
         if (d.src === 'spell' || d.src === 'sever' || !fx) land();
-        else { const tier = Math.max(1, Math.min(4, d.tier || 1)); fx.shot(tier, v2.copy(artPos).setY(artPos.y + 0.8), out => worldOf(d.at, out), land, { color: d.src === 'weak' ? '#ffffff' : d.src === 'packet' ? '#3ee6ff' : null }); }
+        else { const tier = Math.max(1, Math.min(4, d.tier || 1)); fx.shot(tier, artFrom(v2), out => worldOf(d.at, out), land, { color: d.src === 'weak' ? '#ffffff' : d.src === 'packet' ? '#3ee6ff' : null }); }
       }
       if (n === 'cast' && fx) {
         const tg = { ...target };
@@ -660,7 +685,7 @@ window.SuperScene = (() => {
       // a missed block: the attack flies from the boss and lands on Art
       if (n === 'blockFail' && fx && !model) {
         attackerPos(d.attack, d.owner, v4);
-        fx.shot(4, new V().copy(v4), out => out.copy(artPos).setY(artPos.y + 0.8), () => {}, { color: '#ff4d5e', dur: 0.16 });
+        fx.shot(4, new V().copy(v4), out => artFrom(out), () => {}, { color: '#ff4d5e', dur: 0.16 });
       }
       // a block is a parry: a beat of slow motion, a cyan burst on Art and a counter shot that throws the boss back
       if (n === 'block') {
@@ -672,7 +697,7 @@ window.SuperScene = (() => {
         shed(v1.copy(artPos).setY(1.4), 16, C('#3ee6ff'), 1.4, 0.45);
         attackerPos(d.attack, d.owner, v4);
         const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
-        if (fx) fx.shot(model ? 2 : 4, new V().copy(artPos).setY(artPos.y + 0.8), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
+        if (fx) fx.shot(model ? 2 : 4, artFrom(new V()), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
       }
       // an interrupt: the charge shatters in the boss's face and it reels
       if (n === 'cancel') {
@@ -740,8 +765,9 @@ window.SuperScene = (() => {
       if (model) { model.update(t, adt * sup.timeScale(), { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
-      // Art's marker
-      put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
+      // Art's bot, or the old marker cube when the bot kit isn't there; his spot on the floor
+      if (artBot) artBot.update(adt);
+      else put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
       put(v1.copy(artPos).setY(0.08), 3.2, 0.06, 0.18, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       put(v1.copy(artPos).setY(0.08), 0.18, 0.06, 3.2, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       sup.update(t, adt, snap);
@@ -819,6 +845,7 @@ window.SuperScene = (() => {
     function dispose() {
       renderer.setAnimationLoop(null); if (aq) aq.dispose();
       if (fx) fx.dispose();
+      if (artBot) { scene.remove(artBot.group); artBot.dispose(); artBot = null; }
       if (release) release();
       sup.dispose();
       K.dispose();
@@ -829,7 +856,7 @@ window.SuperScene = (() => {
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     function info() { return { kit: K.info(), acts: model && model.info ? model.info() : null, aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
-    return { cameraAt: () => ({ p: camera.position.toArray(), fov: camera.fov, model: !!model, boss: bossId, shot: cam.shot(), log: cam.log() }), apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
+    return { cameraAt: () => ({ p: camera.position.toArray(), fov: camera.fov, model: !!model, boss: bossId, shot: cam.shot(), log: cam.log() }), apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, artBot: () => artBot, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
   return { mount };

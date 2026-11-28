@@ -854,6 +854,8 @@ window.BossScene = (() => {
     spGeo.setAttribute('position', new THREE.BufferAttribute(spPos, 3));
     spGeo.setAttribute('color', new THREE.BufferAttribute(spCol, 3));
     const spMat = keep(new THREE.PointsMaterial({ size: 0.24, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    // a spark that drifts next to the lens in a close shot stays a small point instead of a big square
+    spMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <fog_vertex>', 'gl_PointSize = min(gl_PointSize, 20.0);\n#include <fog_vertex>'); };
     const sparks = new THREE.Points(spGeo, spMat);
     sparks.frustumCulled = false;
     scene.add(sparks);
@@ -945,6 +947,24 @@ window.BossScene = (() => {
       g.visible = false; scene.add(g);
       return { g, on: false, id: '', launch: 0, arrive: 0, from: new V(), to: new V(), ret: -1, retFrom: new V(), lane: 0, pos: new V() };
     });
+
+    // Gid, 28 Nov 2026: in the shots beside your bot (the dodge pass) the word packets flying at it went
+    // right past the lens and filled a corner with big white diamonds. Once the camera is placed for the
+    // frame, a packet shrinks away as it nears the lens and is never drawn taller than about a tenth of
+    // the screen, so nothing bright crosses the view or the words.
+    const LENS_R = 0.2;   // a packet's largest radius on screen, as a share of half the screen's height (about 0.15-0.18 in the game shot)
+    function nearLens() {
+      if (window.__lensOff) return;   // tests: the frame as it was before
+      const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / (camera.zoom || 1);
+      for (const s of shots) {
+        if (!s.on) continue;
+        const d = s.g.position.distanceTo(camera.position), sc0 = s.g.scale.x;
+        // its radius is about 1.0 x its scale (the wire box's corners), so this keeps it under LENS_R
+        const k = Math.min(1, LENS_R * d * tanH / Math.max(1e-3, sc0)) * smooth(clamp((d - 1.5) / 3, 0, 1));
+        if (k < 1) s.g.scale.setScalar(sc0 * k);
+        s.g.visible = k > 0.03;
+      }
+    }
 
     // adds: small block drones that feed the boss through a tether
     const ADDS = 6, ADD_CUBES = 7;
@@ -3100,6 +3120,7 @@ window.BossScene = (() => {
       camera.position.x += Math.sin(t * 41) * sh * 0.5; camera.position.y += Math.sin(t * 37 + 1) * sh * 0.4;
       // banking into a swing, and a slow hand-held roll, on the game shot
       if (!reduce && shotNow === 'game') camera.rotateZ(clamp(-orbit.w * 0.13, -0.15, 0.15) + Math.sin(t * 0.53) * 0.006 + Math.sin(t * 1.7) * 0.003);
+      nearLens();
       // the barrier in front of the raid while your block waits for the blow, cracking when it lands
       {
         const bx = blocked.size ? evs.find(z => z.type === 'slam' && !z.side && z.blocked && t < z.h + 0.35 && !z.cut) : null;
