@@ -302,3 +302,42 @@ Measured headless (SwiftShader) with `_rush.sceneCtl().bench()`, which times who
 - Cutaways: a thrown word counts as a threat from when it lands, not when it is thrown. Each titan has a signature shot (`SIG_SHOT` in scene.js), asked for as it throws and in quiet moments, at most one every 12 s, never within camdir's lock before a hit. Arena tags hide during a cutaway; the words stay lit in the line.
 - Frame cost: everything that moves only with its bone is one skinned mesh per material, indexed (`skinMerge`, `joinIndexed` in bosskit.js; `window.__titanNoSkin` turns it off). Draw calls: Siege 140 to 66, King 147 to 85, Brute 155 to 100. The armour's hash has no sine and the Brute's cracks check four cells, not nine. Measured as CPU time of the GPU and page processes per frame (tools: /tmp scripts, `bench(16)`), rich against plain titans in the same page: draw 1.21 to 1.17 times, the whole frame 1.15 to 1.16 times (2 cores shared with other jobs, samples moved by 10 to 20%).
 - Adaptive quality (`js/room/aq.js`, key `wpm-rush`): resolution down to 0.6 first, then the dust, half the particles and debris, then the bloom. Low starts without bloom and reflections. `window.__rushFull` keeps everything for tests.
+
+## Your bot in the fight (28 Nov 2026)
+
+Gid: "Superboss and Boss Rush need the bots around as well. The bots do battle with the boss." Your own bot from the hangar (`BotKit.mine()`, the look World Boss and Duel use) fights every rush boss. `js/app/rush/bot.js` (`RushBot`) flies it through `js/app/bot-fighter.js` with the lite build (no clear coat):
+
+| You do | Your bot |
+|---|---|
+| Type a right key | its orb charges with the share of the word typed (`scene.key(frac, wpm)`) |
+| Type a wrong key | glitches (`scene.typo()`) |
+| Finish a word | strikes; the shot leaves its muzzle as the strike releases it (75 ms in), and the damage number and the boss's flinch come as the shot lands. A combo tier of 2 or more makes a short run at the boss |
+| Weak point | the shot is held 0.26 s for the weak-point cutaway, then flies |
+| Wind-up at you | it stops roaming and squares up to the boss |
+| Counter word | its shield flickers up (`scene.guard()`) |
+| Block | its shield braces full, the blow bounces off (a cyan flare in front of it for the Breach bosses) |
+| A blow lands | thrown back and to its left with red sparks and a ring under it; a titan's blow hits it at contact |
+| Rubble, pistons, packets, bites | a lighter knock |
+| Spell | rises and casts; spells and fizzles leave from it |
+| Win / lose | its victory pose / knocked out of the air |
+
+It flies round the boss's front on your side of the arena, left of the line from the boss to the camera, darting to a new post every 2.5 to 4.5 s while nothing is coming at you, closer in as your live wpm climbs. `YOU` in scene.js is the bot's body, so every telegraph, throw, beam and hit aims at it. Rules and damage are unchanged: `node tools/rush/sim.js` prints the same as before.
+
+The Breach bosses get a key, fill and rim light for the bot (their arenas are unlit lines); the titans bring their own.
+
+### The camera with the bot
+
+The game shot is a two-shot from behind and to the right of the bot: the bot on the left third (`GAME.fx`), the top of the boss just under the top edge (`GAME.top`), built from where the bot has been over the last second so a dart doesn't swing it, and never closer than 4.5 to the bot. Cutaways built round the bot, all on the game shot's side of the line and framed on the bot with camdir's frame target: `block` (low behind its shield in slow motion, then wide and side on), `hit` (side on as it's thrown back), `weak` (behind it as it fires, then close on the core), the spell's cast shot (behind it), `down` (over it as it falls). Measured over a scripted 45 s Siege Titan fight: both in frame 88%, wind-up in a cutaway 0%, camera turn p95 17°/s, no screen-side flips.
+
+Tests: `_rush.top()` is the word to type, `_rush.sceneCtl().moment('block' | 'hit' | 'weak' | 'shot' | 'cast' | 'down' | 'typo')` plays a moment with the fight frozen, `gameCam(params, pin)` sets the game shot and pins the bot's post, `botInfo()` has the bot, the shot and the director's log. `window.__rushNoBot` leaves the bot out.
+
+## The Siege Titan moves smoother (28 Nov 2026)
+
+A live layer in titans.js on top of the pose blend, for the Siege Titan only (`window.__titanStiff` turns it off):
+
+- Every upper-body bone follows its pose on its own spring (`SPR`), so the head lags the chest, the forearms trail the upper arms and a blow overshoots and settles. The arms snap in 2.4 times faster for the strike itself, so blows still land crisp.
+- The idle breathes, looks round, shifts its weight and leans into the arena sway.
+- Its feet keep their spots on the floor while the sway, recoil and lunges move the body, and step (lift, thud, dust, `footstep` sound) when left 0.42 behind. A foot the pose lifts (the stomp) is left to the pose.
+- Wind-ups dip toward the strike first, then commit fast and coil slowly to the end; the tremble in the last fifth now shows (it was written before the blend and lost). A landed blow goes straight back to stance instead of lifting the fists half way up again. The throw and the roar have their own anticipation and release.
+
+Foot slide in a double-fist slam went from 0.54 to 0.16 units a second, in the hook from 0.47 to 0.10, in the roar from 0.63 to 0.21; the biggest single-frame jolt of the fists in a slam halved. Joint ranges on 698 traced frames: none out of range.
