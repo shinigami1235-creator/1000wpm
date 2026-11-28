@@ -350,6 +350,19 @@ window.PartyScene = (() => {
     let envTex = null;
     if (TB && opts.RoomEnvironment) { try { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new opts.RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) { envTex = null; } }
     function shine(obj) { if (envTex) obj.traverse(o => { for (const mt of [].concat(o.material || [])) if (mt.isMeshStandardMaterial) { mt.envMap = envTex; mt.envMapIntensity = 0.25; mt.needsUpdate = true; } }); }
+    // Gid, 28 Nov 2026: under the arena's lights a pale shell (Kite's wide hat most of all) came out brighter
+    // than white and bloomed into a glowing ball. The bots' lit surfaces roll off softly toward 0.58, under
+    // the bloom threshold, so only their glowing trim, eyes and orbs bloom, as in Duel.
+    const KNEE = 'float kl = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));\nif (kl > 0.4) outgoingLight *= (0.4 + (kl - 0.4) / (1.0 + (kl - 0.4) / 0.18)) / kl;\n#include <opaque_fragment>';
+    function soften(obj) {
+      obj.traverse(o => { for (const mt of [].concat(o.material || [])) if (mt.isMeshStandardMaterial && !mt.userData.knee) {
+        mt.userData.knee = true;
+        const ob = mt.onBeforeCompile, ck = mt.customProgramCacheKey;
+        mt.onBeforeCompile = (sh, r) => { if (ob) ob.call(mt, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', KNEE); };
+        mt.customProgramCacheKey = () => ck.call(mt) + '|knee';
+        mt.needsUpdate = true;
+      } });
+    }
     const lookFor = p => (p.id === 'me' ? BotKit.mine() : p.botLook && p.botLook.id ? p.botLook : BotKit.random(p.name || p.id));
     const tsnd = (k, arg) => { if (opts.audio) opts.audio.combat('op-' + k, arg); };
     function teamSync(players) {
@@ -366,7 +379,7 @@ window.PartyScene = (() => {
         // gap: how far a fast typist's bot presses in toward the boss, kept short so it stays over its card
         const f = BotFighter.create(TB, L.id, L.look, { gap: 6, lite: p.id !== 'me' });
         f.group.rotation.order = 'YXZ'; f.group.rotation.y = Math.PI;
-        shine(f.group); scene.add(f.group);
+        shine(f.group); soften(f.group); scene.add(f.group);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; scene.add(ring);
         const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: glowTex, color: colorOf(p.id).multiplyScalar(0.6), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));

@@ -369,7 +369,7 @@ window.SuperScene = (() => {
     if (window.BotFighter && window.BotKit) {
       try {
         const b = BotKit.random('art');
-        artBot = BotFighter.create({ ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15 });
+        artBot = BotFighter.create({ ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15, lite: true });   // lite: no clear coat, so the extra bot costs next to nothing
         artBot.group.position.set(artPos.x, 0, artPos.z); artBot.group.rotation.y = Math.PI;
         scene.add(artBot.group);
       } catch (e) { artBot = null; }
