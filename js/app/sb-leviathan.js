@@ -204,6 +204,15 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   }));
   const ripples = new THREE.InstancedMesh(ripGeo, ripMat, NR); ripples.frustumCulled = false; ripples.renderOrder = 3; ripples.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(ripples);
   const ripLife = new Float32Array(NR).fill(1), ripSize = new Float32Array(NR), ripPos = Array.from({ length: NR }, () => new V());
+  // foam collars: a churning ring that stays round the body wherever it pierces the surface
+  const NC = 10;
+  const colGeo = G.own(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2));
+  const cAge = new Float32Array(NC).fill(0.12), cK = new Float32Array(NC), cSeed = new Float32Array(NC);
+  colGeo.setAttribute('aAge', new THREE.InstancedBufferAttribute(cAge, 1));
+  colGeo.setAttribute('aK', new THREE.InstancedBufferAttribute(cK, 1).setUsage(THREE.DynamicDrawUsage));
+  colGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(cSeed, 1).setUsage(THREE.DynamicDrawUsage));
+  const collars = new THREE.InstancedMesh(colGeo, ripMat, NC); collars.frustumCulled = false; collars.renderOrder = 3; collars.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(collars);
+  let nCol = 0;
   let ripNext = 0;
   function ripple(at, size, k = 1, life = 1.4) {
     const i = ripNext; ripNext = (ripNext + 1) % NR;
@@ -629,7 +638,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     }
 
     // ----- draw the segments -----
-    let best = -1e9;
+    let best = -1e9; nCol = 0;
     for (let i = 1; i < SEG; i++) {
       const p = q[i], f = v1.copy(q[i - 1]).sub(p), len = f.length() || 1;
       // the back is carried from the segment in front, pulled gently toward the sky so it never rolls over
@@ -669,11 +678,14 @@ SuperModels.leviathan = function (THREE, K, ctx) {
         const y0 = q[i - 1].y, y1 = p.y;
         if ((y0 > 0) !== (y1 > 0)) {
           const k = y0 / (y0 - y1); v4.copy(q[i - 1]).lerp(p, k);
-          if (Math.random() < dt * (phaseN >= 2 ? 1.7 : 1.3)) ripple(v4, r * 1.8 + rnd(0, 1.2), 0.9, 1.3);
+          if (nCol < NC) { const w = r * 2.4 * (1 + Math.sin(t * 5 + i) * 0.06); m4.makeScale(w, 1, w).setPosition(v4.x, 0.08, v4.z); collars.setMatrixAt(nCol, m4); cK[nCol] = 1.3; cSeed[nCol] = i * 1.7 + t * 1.5; nCol++; }
+          if (Math.random() < dt * (phaseN >= 2 ? 1.7 : 1.3)) ripple(v4, r * 2 + rnd(0, 1.5), 1.2, 1.3);
           if (Math.random() < dt * 14) K.fx.spark(v4.setY(0.25).add(v5.set(rnd(-r, r), 0, rnd(-r, r))), v5.set(rnd(-2, 2), rnd(3, 6.5), rnd(-2, 2)), C('#cfefff', 0.75), { size: 0.3, life: 0.6, g: 14, floor: 0.05 });
         }
       }
     }
+    for (let k = nCol; k < NC; k++) { collars.setMatrixAt(k, m4.makeScale(0, 0, 0)); cK[k] = 0; }
+    collars.instanceMatrix.needsUpdate = true; colGeo.attributes.aK.needsUpdate = true; colGeo.attributes.aSeed.needsUpdate = true;
     for (const m of [segs, bellies, glows, spines]) m.setMatrixAt(0, m4.makeScale(0, 0, 0));
     fins.setMatrixAt(0, m4); fins.setMatrixAt(1, m4);
     for (const m of [segs, bellies, glows, spines, fins]) m.instanceMatrix.needsUpdate = true;
@@ -696,7 +708,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
       m4.makeScale(s2, 1, s2).setPosition(ripPos[i]); ripples.setMatrixAt(i, m4);
     }
     ripples.instanceMatrix.needsUpdate = true; ripGeo.attributes.aAge.needsUpdate = true; ripGeo.attributes.aK.needsUpdate = true; ripGeo.attributes.aSeed.needsUpdate = true;
-    ripMat.uniforms.uC.value.copy(ctx.pal.a).lerp(tmpC.set('#e8f8ff'), 0.6);
+    ripMat.uniforms.uC.value.copy(ctx.pal.a).lerp(tmpC.set('#e8f8ff'), 0.6).multiplyScalar(1.5);
     if (spout) {
       const u = (t - spout.t0) / (spout.big ? 1.2 : 0.8);
       if (u >= 1) { spout = null; column.visible = crown.visible = false; }
