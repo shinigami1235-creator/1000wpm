@@ -325,7 +325,8 @@ window.BotKit = (() => {
     const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
     const fx = FX[opts.color] || null, rainbow = !!fx;
     const GLOW = new THREE.Color(fx ? fx.base : opts.color || '#8cff58');
-    const _hc = new THREE.Color(), hdr = k => _hc.copy(GLOW).multiplyScalar(k);   // a shared colour: copy it, don't keep it
+    const _hc = new THREE.Color(), hdr = k => _hc.copy(GLOW).multiplyScalar(k);
+    const _hw = new THREE.Color(2.2, 2.2, 2.2);   // a shared colour: copy it, don't keep it
     const group = new THREE.Group(); group.name = 'bot-' + id;
     const body = new THREE.Group(); group.add(body);   // tilts and spins inside the group
     body.scale.setScalar(sc);
@@ -1212,7 +1213,8 @@ window.BotKit = (() => {
         body.rotation.z += -hitDir.x * k * k * 6.5; body.rotation.x += hitDir.z * k * k * 4;
         body.position.y += Math.sin(since * 14) * 0.08 * k;
         face(since < 0.9 ? 'hurt' : rest);
-        glow.color.copy(since < 0.12 ? new THREE.Color(4, 4, 4) : hdr(1.6));
+        // the hit: a short flash toward white (polish 28 Nov: the old 4x white bloomed over the keyboard's own landing)
+        glow.color.copy(hdr(1.6)); if (since < 0.07) glow.color.lerp(_hw, 0.35 * (1 - since / 0.07));
       } else {
         glow.color.copy(hdr(1.6));
         face(o.face || ((t + seed) % 4.2 < 0.12 ? 'blink' : rest));

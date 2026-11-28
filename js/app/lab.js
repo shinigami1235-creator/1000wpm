@@ -41,9 +41,7 @@ Router.register('lab', (() => {
           </div>
           <div class="lab-group">
             <span class="label">Weapon: keyboard</span>
-            <div class="seg" role="group" aria-label="Keyboard shape" data-kb>
-              ${Operator.KB_STYLES.map(([id, n]) => `<button type="button" data-v="${id}">${esc(n)}</button>`).join('')}
-            </div>
+            <div class="lab-kbs" role="group" aria-label="Your keyboards" data-kb></div>
             <p class="lab-sig" data-kbsig></p>
             <div class="lab-colors" data-kbc></div>
             <div data-kblock></div>
@@ -93,7 +91,9 @@ Router.register('lab', (() => {
     const showKb = () => { if (op) { op.play('type'); markAnim('type'); } };
     el.querySelector('[data-kb]').addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b) return;
-      P.kb.style = b.dataset.v; apply(); paintForm(); showKb();
+      // a board you own is in use at once, as the shop's Use button does; Save keeps the rest of the operator
+      P.kb.style = b.dataset.v; if (window.KbShots && KbShots.owned(P.kb.style)) KbShots.use(P.kb.style);
+      apply(); paintForm(); showKb();
       // a short run of keys so the board's sound can be heard
       TT.useWeaponSound(P.kb.style);
       [0, 90, 170, 260, 330].forEach((ms, i) => setTimeout(() => TT.click(i === 4), ms));
@@ -126,7 +126,8 @@ Router.register('lab', (() => {
     el.querySelector('[data-reset]').addEventListener('click', () => { P = Operator.defaults(P.base); apply(); paintForm(); note(''); });
     markAnim('idle');
     const offInv = WPM.on('inventory', () => el && paintForm());
-    offTheme = () => { removeEventListener('wpm-theme', onTheme); offInv(); };
+    const onKb = () => el && paintKbs(); addEventListener('wpm-keyboard', onKb);
+    offTheme = () => { removeEventListener('wpm-theme', onTheme); removeEventListener('wpm-keyboard', onKb); offInv(); };
     addEventListener('wpm-theme', onTheme);
     start();
   }
@@ -146,6 +147,22 @@ Router.register('lab', (() => {
   function markAnim(id) { el.querySelectorAll('[data-anim] [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === id))); }
   function apply() { if (op) op.set(P); }
 
+  // every keyboard you own (the shape boards and Art's boards from the shop, js/app/kb-shots.js), the one
+  // you fight with marked; one you're trying on from an old preset stays listed with its price
+  function paintKbs() {
+    const box = el.querySelector('[data-kb]');
+    const K = window.KbShots, inUse = K ? K.mine() : 'slab';
+    const ids = K ? K.ids().filter(id => K.owned(id) || id === P.kb.style) : Operator.KB_STYLES.map(([id]) => id);
+    const name = id => (K ? K.nameOf(id) : ((Operator.KB_STYLES.find(x => x[0] === id) || [])[1] || id));
+    const more = K ? K.ids().filter(id => !K.owned(id)).length : 0;
+    box.innerHTML = ids.map(id => {
+      const g = lockedItem('kb', id), ic = K && K.icon(id);
+      return `<button type="button" class="lab-kb${g ? ' locked' : ''}" data-v="${id}" aria-pressed="${id === P.kb.style}" title="${esc(g ? `${g.name}: ${UI.fmt(g.price)} coins in the shop` : (K ? K.sig(id) : ''))}">
+        ${ic ? `<img src="${ic}" alt="" width="44" height="44">` : '<span class="lab-kb-ic"></span>'}
+        <span class="lab-kb-n">${esc(name(id))}</span>${id === inUse ? '<span class="lab-kb-use">In use</span>' : ''}${g ? `<span class="lab-lock">${UI.coin()}${UI.fmt(g.price)}</span>` : ''}</button>`;
+    }).join('') + (more ? `<a class="lab-kb lab-kb-more" href="#/shop">${more} more in the shop</a>` : '');
+  }
+
   function paintForm() {
     el.querySelectorAll('[data-base] [data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === P.base)));
     // the generated body takes an outfit tint and the glow colour; the code-built body takes every zone
@@ -162,13 +179,8 @@ Router.register('lab', (() => {
         <input type="color" value="${hex}" data-zone="${z}" ${theme ? 'disabled' : ''} aria-label="${esc(name)} colour">
         ${z === 'glow' ? `<span class="lab-theme"><input type="checkbox" data-zone="glow" ${theme ? 'checked' : ''}> Theme</span>` : `<code>${hex}</code>`}</label>`;
     }).join('');
-    el.querySelectorAll('[data-kb] [data-v]').forEach(b => {
-      b.setAttribute('aria-pressed', String(b.dataset.v === P.kb.style));
-      const g = lockedItem('kb', b.dataset.v);
-      b.classList.toggle('locked', !!g);
-      b.title = g ? `${g.name}: ${UI.fmt(g.price)} coins in the shop` : '';
-    });
-    el.querySelector('[data-kbsig]').textContent = (Operator.KB_SIGS || {})[P.kb.style] || '';
+    paintKbs();
+    el.querySelector('[data-kbsig]').textContent = (window.KbShots && KbShots.sig(P.kb.style)) || (Operator.KB_SIGS || {})[P.kb.style] || '';
     const kl = lockedItem('kb', P.kb.style);
     el.querySelector('[data-kblock]').innerHTML = kl ? `<p class="lab-try">Trying on the ${esc(kl.name.toLowerCase())}. ${tag(kl)}</p>` : '';
     const kt = P.kb.color === 'theme', kh = kt ? Theme.hex('accent') : P.kb.color;

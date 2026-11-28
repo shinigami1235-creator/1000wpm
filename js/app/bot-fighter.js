@@ -33,7 +33,9 @@
 //   prism   a turning glass shard that splits light into a rainbow fan pointed at the other bot
 //   pulse   a heart that beats faster as the word fills, an ECG trace round it; sparks are hearts, a typo flatlines
 //   BotFighter.orb(THREE, parent, style, colour)   the orb alone (the hangar's try-on uses it)
-//   BotFighter.orbDemo(THREE, bot, style, colour)  types a word into it on a loop: { update(t, dt), dispose }
+//   BotFighter.orbDemo(THREE, bot, style, colour, { sound })  types a word into it on a loop: { update(t, dt), dispose }
+// Sounds: create(..., { sound: { ctx, vol, pan, on } }) gives the orb its own charge, release and typo sounds
+// (js/app/orb-audio.js); without o.sound the fighter is silent (Superboss, stills).
 window.BotFighter = (() => {
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const sm = u => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
@@ -677,8 +679,8 @@ window.BotFighter = (() => {
   }
 
   // the hangar's try-on: types a word into the orb on a loop (8 keys, a short hold, the strike, a rest); every third word has a typo
-  function orbDemo(THREE, bot, style, colour) {
-    const orb = makeOrb(THREE, bot.group, style, colour);
+  function orbDemo(THREE, bot, style, colour, o = {}) {
+    const orb = makeOrb(THREE, bot.group, style, colour), snd = o.sound && window.OrbAudio ? OrbAudio.voice(o.sound) : null;
     let n = -1, at = -9, keys = 0, charge = 0, chargeTo = 0, relAt = -9, typoAt = -9, start = null;
     const KEY = 0.12, HOLD = 0.35, REST = 0.75, CYCLE = 8 * KEY + HOLD + REST;
     return {
@@ -689,10 +691,12 @@ window.BotFighter = (() => {
         if (loop !== n) { n = loop; keys = 0; at = start + loop * CYCLE; }
         while (keys < 8 && u >= keys * KEY) {
           const when = at + keys * KEY;
-          if (n % 3 === 2 && keys === 5 && typoAt < at) { orb.fizzle(when); typoAt = when; chargeTo *= 0.6; }
-          else { keys++; chargeTo = keys / 8; orb.launch(when); }
+          // sounds only for keys due this frame, so a tab coming back from the background doesn't play a burst
+          const late = t - when > 0.1;
+          if (n % 3 === 2 && keys === 5 && typoAt < at) { orb.fizzle(when); typoAt = when; chargeTo *= 0.6; if (snd && !late) snd.fizzle(orb.style); }
+          else { keys++; chargeTo = keys / 8; orb.launch(when); if (snd && !late) snd.key(orb.style, keys / 8); }
         }
-        if (u >= 8 * KEY + HOLD && relAt < at) { relAt = at + 8 * KEY + HOLD; orb.release(relAt); chargeTo = 0; charge *= 0.3; }
+        if (u >= 8 * KEY + HOLD && relAt < at) { relAt = at + 8 * KEY + HOLD; orb.release(relAt); chargeTo = 0; charge *= 0.3; if (snd && t - relAt < 0.1) snd.release(orb.style, 0.3); }
         charge += (chargeTo - charge) * Math.min(1, dt * 18);
         const ra = (t - relAt) / LEN.attack;
         const fl = ra >= 0 && ra < 1 ? snap(ra, 0.12, RELEASE, 0.55) : 0, extra = ra >= 0 && ra < 1 ? 0.6 * (1 - ramp(ra, 0, RELEASE)) : 0;
@@ -721,6 +725,8 @@ window.BotFighter = (() => {
     const keep = [];
     const own = x => (keep.push(x), x);
     const orb = makeOrb(THREE, bot.group, look.orb || o.orb || 'core', o.sparkColor || fxc, { spark: o.spark });
+    // the orb's own sounds (js/app/orb-audio.js): o.sound { ctx, vol, pan, on } turns them on
+    const snd = o.sound && window.OrbAudio ? OrbAudio.voice(o.sound) : null;
     const shield = new THREE.Group(); bot.group.add(shield);
     const cap = (seg, ring) => { const g = own(new THREE.SphereGeometry(1, seg, ring, 0, TAU, 0, 1.05)); g.rotateX(Math.PI / 2); return g; };
     const hexFill = new THREE.Mesh(cap(24, 10), own(add(fxc, 0.8, 0.22))); hexFill.material.side = THREE.DoubleSide;
@@ -734,16 +740,16 @@ window.BotFighter = (() => {
     const api = {
       group, bot, id, orb,
       // a correct key: frac is how much of the word is typed
-      key(frac = 0) { chargeTo = clamp(frac, 0, 1); kick = 1; lastKey = t; orb.launch(t); },
+      key(frac = 0) { chargeTo = clamp(frac, 0, 1); kick = 1; lastKey = t; orb.launch(t); if (snd) snd.key(orb.style, frac); },
       // Showdown: a finished word adds a spark that stays, and the orb holds at frac (0..1) until attack()
-      hold(frac = 0, spark = true) { held = clamp(frac, 0, 1); kick = 1; lastKey = t; if (spark) orb.launch(t); },
+      hold(frac = 0, spark = true) { held = clamp(frac, 0, 1); kick = 1; lastKey = t; if (spark) { orb.launch(t); if (snd) snd.key(orb.style, frac); } },
       // the word is done: strike now. Returns the ms until the shot leaves
-      attack(tier = 0) { const combo = tier >= 2; start(combo ? 'combo' : 'attack', { A: [1, 1.2, 1.45, 1.7][clamp(tier, 0, 3)], dash: combo }); chargeTo = 0; held = 0; charge *= 0.3; lastKey = t; bot.fire(t + LEN.attack * RELEASE); orb.release(t); return Math.round(LEN.attack * RELEASE * 1000); },
+      attack(tier = 0) { const combo = tier >= 2; start(combo ? 'combo' : 'attack', { A: [1, 1.2, 1.45, 1.7][clamp(tier, 0, 3)], dash: combo }); chargeTo = 0; held = 0; charge *= 0.3; lastKey = t; bot.fire(t + LEN.attack * RELEASE); orb.release(t); if (snd) snd.release(orb.style, tier / 3); return Math.round(LEN.attack * RELEASE * 1000); },
       dodge(side = Math.random() < 0.5 ? -1 : 1) { start('dodge', { side }); },
       block() { start('block'); },
       miss() { start('miss'); },
-      spell() { start('spell'); chargeTo = 0; held = 0; charge = 0; orb.release(t); },
-      typo() { react = { kind: 'typo', at: t, len: 0.36 }; chargeTo *= 0.6; orb.fizzle(t); },
+      spell() { start('spell'); chargeTo = 0; held = 0; charge = 0; orb.release(t); if (snd) snd.release(orb.style, 1); },
+      typo() { react = { kind: 'typo', at: t, len: 0.36 }; chargeTo *= 0.6; orb.fizzle(t); if (snd) snd.fizzle(orb.style); },
       hit(dir, power = 0.5) { bot.hit(dir || new V(0, 0, -1), t); hitAt = t; hitPow = clamp(power, 0.2, 1.5); },
       ko() { koAt = t; act = null; react = null; },
       rise() { koAt = null; winAt = null; },
