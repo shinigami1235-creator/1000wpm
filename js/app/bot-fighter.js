@@ -896,7 +896,7 @@ window.BotFighter = (() => {
       // overdrive: past a full charge, hotter and straining harder the more it holds
       if (boostK > 0 && koAt == null) {
         const b = boostK;
-        P.glow += 1.6 * b; P.orb += 0.7 * b; P.halo += 0.6 * b; P.ant += 0.5 * b; P.ears += 0.4 * b; P.y += 0.12 * b;
+        P.glow += 1.4 * b; P.orb += 0.3 * b; P.halo += 0.6 * b; P.ant += 0.5 * b; P.ears += 0.4 * b; P.y += 0.12 * b;
         if (b > 0.5) { P.x += Math.sin(t * 71) * 0.025 * b; P.y += Math.sin(t * 59) * 0.025 * b; }
         face = 'angry';
       }

@@ -770,7 +770,7 @@ window.DuelScene = (() => {
       // a short, small white flash for feel; a bought keyboard's own landing carries the rest (polish 28 Nov)
       burst(at, board ? 2 : 3 + p, 2.5 + p * 0.6, WHITE, { size: board ? 0.16 : 0.2, life: 0.1, grav: 0, k: 0.5 });
       if (p >= 2) smoke(at, 3 + p, 1.4, { size: 1.3, life: 0.9, op: 0.35 });
-      ringAt(to, col, 2.6 + p * 0.6, 0.45 + p * 0.05);
+      ringAt(to, col, Math.min(how.od ? 3.6 : 99, 2.6 + p * 0.6), 0.45 + p * 0.05);
       flare(at, col, (board ? 0.6 : 0.9) + p * 0.2, 0.08 + p * 0.015);
       flashLight(at, col, 2 + p * 2.5);
       if (!reduce) {
@@ -784,7 +784,7 @@ window.DuelScene = (() => {
         burst(at, 22, 11, col, { shard: true, size: 0.4, life: 0.9, dir: away * 1.2, up: 0.6, grav: 10, k: 1.5 });
         smoke(at, 8, 2.2, { size: 1.8, life: 1.2, op: 0.4 });
         flare(at, WHITE, 3.2, 0.16);
-        after(0.09, () => { ringAt(to, WHITE, 6.5, 0.6); flare(centre(to, new V()), col, 2.4, 0.14); });
+        after(0.09, () => { if (how.ring2) ringAt(to, how.ring2, 3.4, 0.6); else ringAt(to, WHITE, 6.5, 0.6); flare(centre(to, new V()), col, 2.4, 0.14); });
         xs('crit', 1, to);
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 170); shake = Math.max(shake, 0.55); punch = 1; }
       }
@@ -793,7 +793,7 @@ window.DuelScene = (() => {
         const oc = odColOf(1 - to, Math.max(1, how.od));
         burst(at, 6 + how.od * 6, 8 + how.od * 2, oc, { shard: true, size: 0.3, life: 0.7, dir: away, up: 0.5, grav: 8, k: 1.5 });
         flare(at, oc, 1.2 + how.od * 0.4, 0.1);
-        after(0.05, () => ringAt(to, oc, 3.5 + how.od * 1.3, 0.55));
+        if (!how.ring2) after(0.05, () => ringAt(to, oc, 2.8 + how.od * 0.6, 0.5));
       }
       snd(p >= 3 ? 'heavy' : 'jab'); if (tier >= 1) csnd('shot' + Math.min(4, tier));
       if (p >= 3 || how.heavy) { snd('ooh'); if (opts.audio) opts.audio.swell(0.6); if (arena) arena.hype(1 - to, 0.8); }
@@ -1481,25 +1481,51 @@ window.DuelScene = (() => {
     // that climbs; a typo dims it. In the exchange the charge goes into the strike (attackBeat, odExtra,
     // odFinisher). One set of meshes per side, made once; nothing is created while it plays.
     const OD_COL = new THREE.Color('#b77bff'), OD_HOT = new THREE.Color('#efe2ff');
-    const odCv = document.createElement('canvas'); odCv.width = 64; odCv.height = 256;
+    const odCv = document.createElement('canvas'); odCv.width = 128; odCv.height = 512;
     {
-      // streaks of rising energy, soft at both sides and fading out at the top and bottom
+      // wisps of rising energy: soft tapered strokes that wrap top to bottom, blurred so they never show pixels,
+      // with a faint haze between them so the shell reads as one body of light
       const c = odCv.getContext('2d');
-      for (let k = 0; k < 70; k++) {
-        const x = 32 + (Math.random() + Math.random() + Math.random() - 1.5) * 26, y = Math.random() * 256, h = 18 + Math.random() * 70, w = 1 + Math.random() * 3.5;
-        const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, `rgba(255,255,255,${0.25 + Math.random() * 0.6})`); g.addColorStop(1, 'rgba(255,255,255,0)');
-        c.fillStyle = g; c.fillRect(x - w / 2, y, w, h); if (y + h > 256) c.fillRect(x - w / 2, y - 256, w, h);
+      c.fillStyle = 'rgba(255,255,255,0.035)'; c.fillRect(0, 0, 128, 512);
+      c.filter = 'blur(2px)';
+      for (let k = 0; k < 120; k++) {
+        const x = 64 + (Math.random() + Math.random() + Math.random() - 1.5) * 56, y = Math.random() * 512, h = 40 + Math.random() * 150, w = 2 + Math.random() * 6;
+        const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.55, `rgba(255,255,255,${0.3 + Math.random() * 0.6})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g;
+        for (const dy of [0, -512]) { c.beginPath(); c.moveTo(x, y + dy); c.quadraticCurveTo(x + w, y + dy + h * 0.6, x + (Math.random() - 0.5) * 6, y + dy + h); c.quadraticCurveTo(x - w, y + dy + h * 0.6, x, y + dy); c.fill(); }
       }
-      const img = c.getImageData(0, 0, 64, 256), d = img.data;
-      for (let x = 0; x < 64; x++) { const u = (x - 31.5) / 32, k = Math.exp(-u * u * 4.5); for (let y = 0; y < 256; y++) d[(y * 64 + x) * 4 + 3] *= k; }
-      c.putImageData(img, 0, 0);
+      c.filter = 'none';
     }
     const odTexA = own(new THREE.CanvasTexture(odCv)); odTexA.wrapT = THREE.RepeatWrapping;
-    const odTexB = own(odTexA.clone()); odTexB.wrapT = THREE.RepeatWrapping; odTexB.repeat.set(1, 0.7);
+    const odTexB = own(odTexA.clone()); odTexB.wrapT = THREE.RepeatWrapping; odTexB.repeat.set(1.3, 0.7);
     // the column's soft top and bottom: a vertical alpha mask, so the strips never show an edge
-    const odMaskCv = document.createElement('canvas'); odMaskCv.width = 4; odMaskCv.height = 128;
-    { const c = odMaskCv.getContext('2d'), g = c.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.45, 'rgba(255,255,255,0.9)'); g.addColorStop(0.85, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 4, 128); }
+    const odMaskCv = document.createElement('canvas'); odMaskCv.width = 64; odMaskCv.height = 128;
+    {
+      const c = odMaskCv.getContext('2d'), img = c.createImageData(64, 128), d = img.data;
+      for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+        const u = (x - 31.5) / 32, v = y / 127, a = Math.exp(-u * u * 5) * Math.min(1, v / 0.5) * Math.min(1, (1 - v) / 0.12);
+        const q = (y * 64 + x) * 4; d[q] = d[q + 1] = d[q + 2] = Math.round(255 * Math.max(0, a)); d[q + 3] = 255;   // alphaMap reads green
+      }
+      c.putImageData(img, 0, 0);
+    }
     const odMask = own(new THREE.CanvasTexture(odMaskCv));
+    // the aura's shape: a flame round the bot, widest at its body, licking up to a point over its head and
+    // brighter at the rim than inside, so it reads as a shell of energy and not a lamp behind it
+    const odFlameCv = document.createElement('canvas'); odFlameCv.width = 128; odFlameCv.height = 256;
+    {
+      const FW = 128, FH = 256, c = odFlameCv.getContext('2d'), img = c.createImageData(FW, FH), d = img.data;
+      const ss = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+      for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+        const v = y / (FH - 1), u = Math.abs((x - (FW - 1) / 2) / (FW / 2));
+        const w = 0.9 * Math.pow(ss(0, 0.62, v), 0.75) * (1 - 0.3 * ss(0.62, 1, v)) + 0.03;
+        let a = 1 - ss(w * 0.45, w, u);
+        a *= 0.35 + 0.65 * ss(0, 1, u / Math.max(0.05, w));
+        a *= 1 - ss(0.78, 1, v);
+        const q = (y * FW + x) * 4; d[q] = d[q + 1] = d[q + 2] = Math.round(255 * a); d[q + 3] = 255;   // alphaMap reads green
+      }
+      c.putImageData(img, 0, 0);
+    }
+    const odFlame = own(new THREE.CanvasTexture(odFlameCv));
     // the gauge ring at the feet: three arcs, one per tier, with ticks between
     const odRingCv = document.createElement('canvas'); odRingCv.width = odRingCv.height = 256;
     const odRingTex = [0, 1, 2, 3].map(tier => {
@@ -1515,7 +1541,14 @@ window.DuelScene = (() => {
       for (let k = 0; k < 36; k++) { const a = k / 36 * Math.PI * 2, r0 = k % 3 ? 88 : 80; c.beginPath(); c.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); c.lineTo(Math.cos(a) * 94, Math.sin(a) * 94); c.stroke(); }
       return own(new THREE.CanvasTexture(cv));
     });
-    const odMat = (map, order) => { const m = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map, alphaMap: odMask, color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false }))); m.visible = false; m.renderOrder = order; m.frustumCulled = false; scene.add(m); return m; };
+    const odMat = (map, order, mask = odFlame) => { const m = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map, alphaMap: mask, color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false }))); m.visible = false; m.renderOrder = order; m.frustumCulled = false; scene.add(m); return m; };
+    // flame tongues: soft upright wisps that rise off the bot and fade, so the aura's edge moves like fire
+    const tongueCv = document.createElement('canvas'); tongueCv.width = 32; tongueCv.height = 128;
+    { const c = tongueCv.getContext('2d'), g = c.createRadialGradient(16, 84, 0, 16, 84, 64); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.3, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.save(); c.scale(1, 1); c.fillStyle = g; c.beginPath(); c.moveTo(16, 0); c.bezierCurveTo(30, 50, 32, 110, 16, 128); c.bezierCurveTo(0, 110, 2, 50, 16, 0); c.fill(); c.restore(); }
+    const tongueTex = own(new THREE.CanvasTexture(tongueCv));
+    const TN = 26;
+    const tongues = [0, 1].map(() => Array.from({ length: TN }, () => ({ s: sprite(tongueTex, 0, 7), life: 0, max: 1, v: new V(), off: new V(), w: 0.4, h: 1 })));
     const OD_ARCS = 5, OD_SEG = 7;
     const OD = [0, 1].map(i => {
       const ring = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: odRingTex[0], color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false })));
@@ -1523,11 +1556,14 @@ window.DuelScene = (() => {
       const ag = own(new THREE.BufferGeometry()); ag.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(OD_ARCS * OD_SEG * 6), 3));
       const arcs = new THREE.LineSegments(ag, own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
       arcs.visible = false; arcs.frustumCulled = false; arcs.renderOrder = 8; scene.add(arcs);
-      return { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0, ringTier: 0, sparkT: 0, arcT: 0, spin: 0,
-        outer: odMat(odTexA, 6), inner: odMat(odTexB, 6), halo: sprite(glowTex, 0, 6), ring, arcs, col: new THREE.Color(), mix: new THREE.Color() };
+      return { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0, ringTier: 0, sparkT: 0, arcT: 0, spin: 0, tongueT: 0, tI: 0, tongues: tongues[i],
+        outer: odMat(odTexA, 6), inner: odMat(odTexB, 6), halo: sprite(glowTex, 0, 6), ring, arcs, col: new THREE.Color(), mix: new THREE.Color(),
+        // the overdrive finisher's pillar where it lands on this side: the same streaks, straight up
+        pil: [odMat(odTexA, 7, odMask), odMat(odTexB, 7, odMask)], pilT: 9 };
     });
-    // the side's overdrive colour: its own colour pushed toward violet as the tiers climb, white-hot at OD3
-    const odColOf = (i, tier = OD[i].tier, out = new THREE.Color()) => out.copy(sideCol(i)).lerp(OD_COL, 0.35 + 0.12 * tier).lerp(WHITE, tier >= 3 ? 0.18 : 0);
+    // overdrive is two-tone: the side's own colour at the core, violet round it. Mixing the two goes grey
+    // (green and violet sit opposite each other), so the violet only leans a touch toward the side
+    const odColOf = (i, tier = OD[i].tier, out = new THREE.Color()) => out.copy(OD_COL).lerp(sideCol(i), 0.12).lerp(OD_HOT, tier >= 3 ? 0.12 : 0);
     const odHex = i => '#' + odColOf(i, Math.max(2, OD[i].tier)).getHexString();
     function overdrive(i, o = {}) {
       const S = OD[i], f = F[i];
@@ -1535,8 +1571,8 @@ window.DuelScene = (() => {
       const at = chest(i, new V()), col = odColOf(i, o.tier ?? S.tier);
       if (o.start) {
         Object.assign(S, { on: true, n: 0, tier: 0, tgt: 0.28, pulse: 1, dim: 0, surge: 0, rel: 0 });
-        flare(at, col, 2.2, 0.2); ringAt(i, col, 4.5, 0.6);
-        burst(at, 22, 6, col, { size: 0.26, life: 0.7, grav: -3, up: 1.4 });
+        flare(at, col, 1.6, 0.18); ringAt(i, col, 3.2, 0.55);
+        burst(at, 18, 5, col, { size: 0.22, life: 0.7, grav: -3, up: 1.4, k: 1.3 });
         xs('odStart', 1, i);
         if (arena && !warming) arena.hype(i, 0.35);
         return;
@@ -1557,9 +1593,10 @@ window.DuelScene = (() => {
       xs('odTick', Math.min(1.4, 0.1 + S.n * 0.09), i);
       if (o.up) {
         // a tier up: the gauge lights another third, a shockwave and a stab that climbs with the tier
-        ringAt(i, col, 4 + S.tier * 1.4, 0.65); flare(at, WHITE, 2 + S.tier * 0.6, 0.18);
-        burst(at, 14 + S.tier * 8, 7 + S.tier * 2, col, { shard: true, size: 0.3, life: 0.8, grav: 2, up: 0.8 });
-        flashLight(at, col, 3 + S.tier);
+        ringAt(i, col, 2.6 + S.tier * 0.5, 0.55); flare(at, sideCol(i), 1.4 + S.tier * 0.35, 0.16);
+        burst(at, 12 + S.tier * 6, 5 + S.tier * 1.5, col, { size: 0.2, life: 0.6, grav: -2, up: 0.6, k: 1.3 });
+        burst(at, 8 + S.tier * 4, 4 + S.tier, sideCol(i), { size: 0.16, life: 0.5, grav: -2, up: 0.6, k: 1.3 });
+        flashLight(at, col, 2 + S.tier);
         xs('odTier', S.tier / 3, i);
         if (!reduce) shake = Math.max(shake, 0.06 + S.tier * 0.03);
         if (arena && !warming) arena.hype(i, 0.3 + S.tier * 0.15);
@@ -1571,14 +1608,14 @@ window.DuelScene = (() => {
       if (!S.on) return;
       S.on = false; S.rel = 1;
       const at = chest(i, new V()), col = odColOf(i);
-      flare(at, WHITE, 2.4 + S.tier * 0.4, 0.2);
-      burst(at, 16 + S.tier * 8, 8 + S.tier * 2, col, { shard: true, size: 0.3, life: 0.6, grav: 1 });
+      flare(at, col, 1.8 + S.tier * 0.3, 0.18);
+      burst(at, 14 + S.tier * 6, 7 + S.tier * 2, col, { size: 0.22, life: 0.5, grav: 1, k: 1.3 });
       xs('odRelease', 0.6 + S.tier * 0.15, i);
     }
     function odClear() {
       OD.forEach((S, i) => {
         Object.assign(S, { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0 });
-        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = S.arcs.visible = false;
+        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = S.arcs.visible = false; S.pilT = 9; S.tongues.forEach(q => { q.s.visible = false; q.life = 0; }); S.pil.forEach(m => { m.visible = false; });
         if (F[i].bf) F[i].bf.boost(0);
       });
     }
@@ -1587,11 +1624,36 @@ window.DuelScene = (() => {
       OD.forEach((S, i) => {
         const f = F[i];
         if (!f.bf) return;
+        // the pillar: shoots up fast, holds a moment, thins out and fades
+        S.pilT += dt;
+        const pu = S.pilT / 0.85, pv = pu < 1;
+        S.pil.forEach((m, q) => {
+          m.visible = pv;
+          if (!pv) return;
+          const grow = Math.min(1, pu / 0.12), fade = 1 - smoothU(Math.max(0, (pu - 0.3) / 0.7));
+          feetOf(i, tmp);
+          const h = 9 * grow, w = (q ? 1.1 : 2.6) * (0.6 + 0.4 * fade) * BS;
+          m.position.set(tmp.x, (arena ? arena.PAD_TOP : 0.22) + h * 0.45, tmp.z);
+          m.rotation.set(0, Math.atan2(camera.position.x - tmp.x, camera.position.z - tmp.z), 0); m.scale.set(w, Math.max(0.01, h), 1);
+          m.material.opacity = (q ? 0.95 : 0.8) * fade; m.material.color.copy(q ? sideCol(1 - i) : OD_COL).multiplyScalar(q ? 1.1 : 1.3);
+        });
         // the level eases up toward the charge, falls fast once released
         const goal = S.on && !f.ko ? S.tgt + 0.35 * S.surge : 0;
         S.lvl += (goal - S.lvl) * Math.min(1, dt * (goal > S.lvl ? 4 : 7));
         S.pulse = Math.max(0, S.pulse - dt * 3.2); S.dim = Math.max(0, S.dim - dt * 2.5); S.rel = Math.max(0, S.rel - dt * 3);
         const k = S.lvl * (1 - 0.6 * S.dim) + 0.25 * S.pulse, show = k > 0.02;
+        chest(i, _oc);
+        // the tongues ride with the bot (offsets from its chest), so a dash never leaves them hanging in the air
+        for (const q of S.tongues) {
+          if (!q.s.visible) continue;
+          q.life -= dt;
+          if (q.life <= 0) { q.s.visible = false; continue; }
+          const u = 1 - q.life / q.max;
+          q.off.addScaledVector(q.v, dt); q.v.multiplyScalar(1 - dt * 1.2);
+          q.s.position.copy(_oc).add(q.off);
+          q.s.scale.set(q.w * (1 - 0.5 * u), q.h * (0.6 + 0.8 * u), 1);
+          q.s.material.opacity = Math.min(1, u * 5) * (1 - u) * 1.4;
+        }
         f.bf.boost(S.on ? Math.min(1, S.lvl * 1.1 + 0.3 * S.pulse) * (1 - 0.7 * S.dim) : 0);
         S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = show;
         S.arcs.visible = show && S.tier >= 3 && !reduce;
@@ -1600,31 +1662,45 @@ window.DuelScene = (() => {
         chest(i, _oc); feetOf(i, _of);
         const floor = (arena ? arena.PAD_TOP : 0.22);
         const flick = reduce ? 1 : 0.9 + 0.1 * Math.sin(t * 23 + i) + 0.06 * Math.sin(t * 61);
-        // the column: faces the camera round its own upright axis, from the floor to well over the bot
-        const H = 3.2 + 2.6 * k + 0.8 * S.surge, Wd = 2.0 + 1.3 * k;
+        // the aura: a flame round the bot that faces the camera round its upright axis, the body at its widest
+        // part and its tip well over the head; violet outside, the side's own colour inside
+        const H = (2.9 + 2.4 * k + 0.9 * S.surge) * BS, Wd = (1.9 + 1.2 * k + 0.4 * S.surge) * BS;
         const yaw = Math.atan2(camera.position.x - _oc.x, camera.position.z - _oc.z);
-        for (const [m, w, op, colK, hot] of [[S.outer, Wd * 1.25, 0.55, 1.1, 0], [S.inner, Wd * 0.7, 0.8, 1.6, 0.35]]) {
-          m.position.set(_oc.x, floor + H / 2 - 0.15, _oc.z); m.rotation.set(0, yaw, 0); m.scale.set(w, H, 1);
-          m.material.opacity = Math.min(1, op * k * flick);
-          m.material.color.copy(m === S.outer ? S.mix.copy(S.col).lerp(OD_COL, 0.3) : S.col).lerp(WHITE, hot * Math.min(1, k)).multiplyScalar(colK);
+        const sc = sideCol(i);
+        for (const [m, w, h, op, colK] of [[S.outer, Wd, H, 0.6, 1.3], [S.inner, Wd * 0.72, H * 0.86, 0.55, 1.0]]) {
+          m.position.set(_oc.x, _oc.y + h * 0.12, _oc.z); m.rotation.set(0, yaw, 0); m.scale.set(w * (1 + 0.04 * Math.sin(t * 9 + i)), h, 1);
+          m.material.opacity = Math.min(1, op * Math.pow(k, 1.3) * flick);
+          m.material.color.copy(m === S.outer ? S.col : sc).multiplyScalar(colK * (0.75 + 0.5 * S.pulse));
         }
         odTexA.offset.y = (odTexA.offset.y - dt * (0.55 + 0.9 * k)) % 1;
         odTexB.offset.y = (odTexB.offset.y - dt * (0.95 + 1.3 * k)) % 1;
         // a soft halo on the body
-        S.halo.position.copy(_oc); S.halo.scale.setScalar((2.6 + 2.2 * k) * (1 + 0.15 * S.pulse)); S.halo.material.color.copy(S.col).multiplyScalar(0.55 + 0.4 * k); S.halo.material.opacity = Math.min(0.9, 0.55 * k + 0.3 * S.pulse);
+        S.halo.position.copy(_oc); S.halo.scale.setScalar((2.2 + 1.3 * k) * (1 + 0.12 * S.pulse)); S.halo.material.color.copy(S.col).multiplyScalar(0.35 + 0.25 * k); S.halo.material.opacity = Math.min(0.7, 0.4 * k + 0.25 * S.pulse);
         // the gauge ring at the feet: lights a third per tier and turns faster as it fills
         if (S.ringTier !== S.tier) { S.ringTier = S.tier; S.ring.material.map = odRingTex[Math.min(3, S.tier)]; }
         S.spin += dt * (0.4 + 0.8 * k) * (i ? -1 : 1);
         S.ring.position.set(_of.x, floor + 0.03, _of.z); S.ring.rotation.z = S.spin;
         S.ring.scale.setScalar(3.4 + 0.9 * k + 0.6 * S.pulse);
-        S.ring.material.color.copy(S.col).multiplyScalar(1.4 + S.pulse); S.ring.material.opacity = Math.min(1, 0.35 + 0.65 * k);
+        S.ring.material.color.copy(S.col).multiplyScalar(1.1 + 0.6 * S.pulse); S.ring.material.opacity = Math.min(0.9, 0.3 + 0.6 * k);
+        // tongues of flame lick up round the body, more and taller the higher the charge
+        S.tongueT -= dt * (reduce ? 0.35 : 1);
+        while (S.tongueT <= 0 && S.on) {
+          S.tongueT += 1 / (10 + 46 * k);
+          const q = S.tongues[S.tI = (S.tI + 1) % TN], a = Math.random() * Math.PI * 2, r = (0.55 + 0.35 * Math.random()) * BS * (0.9 + 0.3 * k);
+          q.off.set(Math.cos(a) * r, -0.7 * BS + Math.random() * 1.1 * BS, Math.sin(a) * r * 0.7); q.s.position.copy(_oc).add(q.off);
+          q.v.set(-Math.cos(a) * 0.4, (2.2 + 2.4 * k) * BS * rnd(0.7, 1.1), -Math.sin(a) * 0.3);
+          const kk = Math.min(1.1, k);
+          q.w = (0.32 + 0.3 * kk) * BS * rnd(0.7, 1.2); q.h = (0.9 + 1.1 * kk) * BS * rnd(0.7, 1.3);
+          q.max = q.life = rnd(0.35, 0.6); q.s.visible = true;
+          q.s.material.color.copy(Math.random() < 0.55 ? S.col : sc).multiplyScalar(0.9 + 0.4 * k);
+        }
         // sparks stream up off the ring, more of them the higher the charge
         S.sparkT -= dt * (reduce ? 0.3 : 1);
         while (S.sparkT <= 0 && S.on) {
           S.sparkT += 1 / (8 + 34 * k);
           const a = Math.random() * Math.PI * 2, r = (1.2 + 0.5 * k) * rnd(0.7, 1.05);
           tmp.set(_of.x + Math.cos(a) * r, floor + 0.15, _of.z + Math.sin(a) * r);
-          burst(tmp, 1, 1.2, Math.random() < 0.25 ? OD_HOT : S.col, { size: rnd(0.1, 0.2) * (1 + k * 0.6), life: rnd(0.6, 1.1), grav: -(5 + 6 * k), up: 4, k: 1.6 });
+          burst(tmp, 1, 1.2, Math.random() < 0.45 ? sc : S.col, { size: rnd(0.1, 0.2) * (1 + k * 0.6), life: rnd(0.6, 1.1), grav: -(5 + 6 * k), up: 4, k: 1.3 });
         }
         // OD3: lightning crawls over the bot
         if (S.arcs.visible) {
@@ -1648,7 +1724,7 @@ window.DuelScene = (() => {
             S.arcs.geometry.attributes.position.needsUpdate = true;
             if (Math.random() < 0.35) xs('odZap', 0.5, i);
           }
-          S.arcs.material.color.copy(OD_HOT).lerp(S.col, 0.3).multiplyScalar(2.2);
+          S.arcs.material.color.copy(OD_HOT).lerp(S.col, 0.5).multiplyScalar(1.8);
           S.arcs.material.opacity = Math.random() < 0.2 ? 0.25 : 0.95;
         }
       });
@@ -1682,10 +1758,10 @@ window.DuelScene = (() => {
     // an overdrive hit landing: violet shards, a flare and a small knock; the last one rings
     function odHit(j, i, last, od) {
       const at = centre(j, new V()).add(tmp.set(rnd(-0.3, 0.3), rnd(-0.2, 0.5), 0.3)), col = odColOf(i, Math.max(2, od));
-      burst(at, 6 + (last ? 10 : 0), 6, col, { shard: true, size: 0.24, life: 0.5, dir: j ? 0.6 : -0.6, grav: 7, k: 1.5 });
-      flare(at, last ? WHITE : col, last ? 1.6 : 0.9, last ? 0.12 : 0.07);
+      burst(at, 6 + (last ? 8 : 0), 6, col, { shard: true, size: 0.22, life: 0.45, dir: j ? 0.6 : -0.6, grav: 9, k: 1.25 });
+      flare(at, col, last ? 1.4 : 0.8, last ? 0.12 : 0.07);
       react(j, 'hit', last ? 0.6 : 0.3, last ? 1 : 0);
-      if (last) { ringAt(j, col, 3.5 + od, 0.5); flashLight(at, col, 3); if (F[j].bf) F[j].bf.hurt(od >= 3 ? 'knock' : 'jolt', { k: 0.8, side: (F[j].hurtSide = -(F[j].hurtSide || 1)) }); }
+      if (last) { ringAt(j, col, 2.4 + od * 0.5, 0.45); flashLight(at, col, 3); if (F[j].bf) F[j].bf.hurt(od >= 3 ? 'knock' : 'jolt', { k: 0.8, side: (F[j].hurtSide = -(F[j].hurtSide || 1)) }); }
       if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + (last ? 60 : 25)); shake = Math.max(shake, last ? 0.22 : 0.1); }
     }
     // OD3 on a dash strike or a finisher: the overdrive finisher. The bot rises inside its column and blazes,
@@ -1694,25 +1770,26 @@ window.DuelScene = (() => {
     // slow motion, the wide on the cuts, a hard cut low past the target as it lands.
     // Returns { contact, odEnd } in seconds from now
     function odFinisher(a2, t0, how, onLand, onOd) {
-      const i = a2.from, j = a2.to, f = F[i], col = odColOf(i, 3), sc = C(opts.sides[i].color || '#8cff58');
+      const i = a2.from, j = a2.to, f = F[i], col = odColOf(i, 3), sc = sideCol(i);
       const side1 = (f.mvSide = -(f.mvSide || 1));
+      shots.odfin.parts[0].frame = [i ? 'b' : 'a', i ? 0.3 : -0.3, 0.12];
       after(Math.max(0, t0 - 0.3), () => want('odfin', { x: i, pri: 3.6 }));
       // the rise: the column surges, power is drawn in, the bot lifts and flares
       after(t0, () => {
         OD[i].on = true; OD[i].surge = 1; OD[i].tier = 3; OD[i].tgt = 1; OD[i].pulse = 1;
-        f.bf.move('cast', { len: 0.8 }); STG.lift[i] = 1.1;
+        f.bf.move('retreat', { len: 0.75 }); STG.lift[i] = 1.1;
         xs('odRise', 1, i); csnd('ultimate');
         if (arena) arena.hype(i, 1);
       });
-      for (let k = 0; k < 4; k++) after(t0 + 0.05 + k * 0.16, () => { gather(muzzleOf(i, new V()), k % 2 ? OD_HOT : col, 10, 3.2); });
+      for (let k = 0; k < 4; k++) after(t0 + 0.05 + k * 0.16, () => { gather(muzzleOf(i, new V()), k % 2 ? sc : col, 10, 3.2); });
       // two cuts: a dash slash and a spin, each a quick light hit
       const cut = (tt, mv, len, sd, roll) => {
         const hit = BotFighter.MOVES[mv].hit;
         after(tt, () => { STG.lift[i] = 0.35; f.bf.move(mv, { len, strike: true, power: 1, side: sd }); xs(mv === 'spin' ? 'spin' : 'slash', 0.9, i); });
         after(tt + len * hit, () => {
           const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
-          slashArc(at, dirV, roll, 1.9, col, 0.36); slashArc(at, dirV, roll + 0.5, 1.5, WHITE, 0.16);
-          burst(at, 14, 9, col, { shard: true, size: 0.3, life: 0.55, dir: j ? 0.8 : -0.8, grav: 8, k: 1.5 });
+          slashArc(at, dirV, roll, 1.9, col, 0.34); slashArc(at, dirV, roll + 0.5, 1.5, sc, 0.16);
+          burst(at, 12, 9, col, { shard: true, size: 0.26, life: 0.5, dir: j ? 0.8 : -0.8, grav: 10, k: 1.3 });
           flare(at, col, 1.4, 0.08); react(j, 'hit', 0.5, 1.2);
           if (F[j].bf) F[j].bf.hurt(pick('ofh' + j, ['jolt', 'spinout']), { k: 0.7, side: sd });
           xs('odHit', 1, j);
@@ -1724,16 +1801,13 @@ window.DuelScene = (() => {
       // the drop
       const tf = t0 + 1.46, mv = pick('ofm' + i, ['slam', 'dive']), len = mv === 'slam' ? 0.78 : 0.72, contact = tf + len * BotFighter.MOVES[mv].hit;
       after(tf, () => { STG.lift[i] = 0; OD[i].surge = 1.4; f.bf.move(mv, { len, strike: true, power: 1, side: side1 }); xs(mv, 1, i); snd('release'); });
-      after(contact - 0.14, () => {
-        const a3 = handOf(i, new V()), b3 = centre(j, new V());
-        beam(a3, b3, col, a2.crit ? 0.8 : 0.66, 0.1, 0.42, tmp2.set(0, 0, 0), true);
-        beam(a3, b3, WHITE, 0.22, 0.1, 0.42, tmp2.set(0, 0, 0), true);
-      });
+      // a trail of violet sparks behind it as it comes down
+      for (let k = 0; k < 6; k++) after(tf + len * 0.3 + k * 0.04, () => burst(chest(i, new V()), 4, 2, k % 2 ? sc : col, { size: 0.3, life: 0.45, grav: 0, k: 1.3 }));
       after(contact, () => {
         odRelease(i);
         const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
         slashArc(at, dirV, 1.2, 2.6, col, 0.5);
-        impact(j, Math.max(4, a2.tier), a2.crit, sc, null, { ...how, graze: false, heavy: true, od: 3, hurt: 'launch' });
+        impact(j, Math.max(4, a2.tier), a2.crit, sc, null, { ...how, graze: false, heavy: true, od: 3, hurt: 'launch', ring2: col });
         odPillar(j, col);
         xs('odSlam', 1, j);
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 230); shake = Math.max(shake, 0.7); punch = 1; }
@@ -1744,13 +1818,11 @@ window.DuelScene = (() => {
     }
     // a pillar of light where the overdrive finisher lands, with a second shockwave after the first
     function odPillar(j, col) {
-      const at = feetOf(j, new V()).setY(arena ? arena.PAD_TOP : 0.22), top = at.clone().setY(at.y + 9);
-      beam(at, top, col, 1.4, 0.06, 0.25, tmp2.set(0, 0, 0), true);
-      beam(at, top, WHITE, 0.45, 0.05, 0.22, tmp2.set(0, 0, 0), false);
-      ringAt(j, col, 8.5, 0.8); after(0.12, () => ringAt(j, WHITE, 6, 0.6));
+      const at = feetOf(j, new V()).setY(arena ? arena.PAD_TOP : 0.22);
+      OD[j].pilT = 0;
       smoke(at.clone().setY(at.y + 0.3), 14, 3, { size: 1.9, life: 1.4, op: 0.5 });
-      burst(at.clone().setY(at.y + 1), 30, 12, col, { shard: true, size: 0.4, life: 1, up: 1.5, grav: 9, k: 1.6 });
-      flashLight(at, col, 6);
+      burst(at.clone().setY(at.y + 1), 22, 11, col, { shard: true, size: 0.32, life: 0.8, up: 1.5, grav: 11, k: 1.3 });
+      flashLight(at, col, 5);
     }
 
     // ---------- Showdown: the beam struggle ----------
@@ -2192,7 +2264,7 @@ window.DuelScene = (() => {
       // the overdrive finisher (Showdown OD3): low in front of the bot as it rises inside its column, in slow
       // motion; the wide from the side on the two cuts; then a hard cut low past the target as the drop lands
       odfin: { pri: 3.6, parts: [
-        { len: 1.15, cut: 1, slow: 0.6, fov: 34, pose(c, out) { const i = c.x, hi = Math.max(0, fc[i].y - 3.4); fr(out.pos, fp[i], i, 3.0 + c.u * 0.4, 1.0 + hi * 0.3, 8.2 - c.u * 0.6); fr(out.look, fc[i], i, 0.2, fc[i].y + 0.9 + c.u * 0.4, 0); } },
+        { len: 1.15, cut: 1, slow: 0.6, fov: 40, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, 3.6 + c.u * 0.4, 1.6, 12.5 - c.u * 0.8); fr(out.look, fp[i], i, 0.6, 3.9 + c.u * 0.5, 0); } },
         { len: 0.95, cut: 1, slow: 0.85, fov: 38, omega: 5, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, MID, i, -0.6 + c.u * 0.8, 1.9, 12.2); out.look.lerpVectors(MID, fc[j], 0.35).setY(2.6 + Math.max(0, Math.max(fc[0].y, fc[1].y) - 3.6) * 0.5); } },
         { len: 1.35, cut: 1, slow: 0.5, fov: 40, omega: 3, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, fp[j], j, -3.4 - c.u * 0.6, 1.15 + c.u * 0.5, 8.6 + c.u * 1.2); out.look.lerpVectors(fc[j], fc[i], 0.3).setY(2.4); } },
       ] },
@@ -2490,7 +2562,7 @@ window.DuelScene = (() => {
       fontOk = true;
       const set = new Set(('abcdefghijklmnopqrstuvwxyz0123456789-\'.,>' + chars).replace(/\s/g, ''));
       for (const ch of set) renderer.initTexture(glyph(ch));
-      for (const x of [blank, glowTex, shardTex, beamTex, frostTex, flareTex, runeTex, hexTex, shadowTex, odTexA, odTexB, odMask, ...odRingTex]) renderer.initTexture(x);
+      for (const x of [blank, glowTex, shardTex, beamTex, frostTex, flareTex, runeTex, hexTex, shadowTex, odTexA, odTexB, odMask, odFlame, tongueTex, ...odRingTex]) renderer.initTexture(x);
       await Promise.race([Promise.all(F.map(f => f.looked)), new Promise(r => setTimeout(r, 8000))]);
       if (!alive) return false;
       F.forEach(f => { if (f.tex) renderer.initTexture(f.tex); });

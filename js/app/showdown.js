@@ -78,9 +78,10 @@ window.Showdown = (() => {
   // ---------- the match ----------
   function start(el, o = {}) {
     const C = SR().CONFIG, N = C.words;
-    let alive = true, scene = null, snd = null, keys = null, onDoc = null, raf = 0, paused = false;
+    let alive = true, scene = null, snd = null, keys = null, onDoc = null, raf = 0, paused = false, held = false;
     const timers = new Set();
-    const later = (ms, f) => { const id = setTimeout(() => { timers.delete(id); if (alive) f(); }, ms); timers.add(id); return id; };
+    // held: tests step the arena's clock by hand (window._sd.hold), so the match waits too
+    const later = (ms, f) => { const id = setTimeout(() => { timers.delete(id); if (!alive) return; if (held) later(50, f); else f(); }, ms); timers.add(id); return id; };
     const ctl = { stop };
     el.innerHTML = `<div class="du-wait panel"><div class="loading-state">${o.mode === 'art' ? 'Loading Art\'s ghost' : o.mode === 'watch' ? 'Finding two bots' : 'Finding a typist at your level'}</div><a class="btn out" href="#/duel/showdown">Cancel</a></div>`;
     const meP = () => ({ id: 'me', name: (WPM.profile && WPM.profile().name) || 'You', bot: false, rating: record().rating });
@@ -147,7 +148,8 @@ window.Showdown = (() => {
       snd = window.ArenaAudio ? ArenaAudio.create() : null;
       const stage = el.querySelector('[data-stage]');
       scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ color: cols[k], bot: bot[k], kb: k === me ? kbStyle() : kbOf(P[k].id), name: P[k].name })) });
-      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], spell: () => spells[m.round], cur: i => cur(i), odSpell: () => odSpells[m.round], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; }, ctl };   // tests
+      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], spell: () => spells[m.round], cur: i => cur(i), odSpell: () => odSpells[m.round], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; },
+        hold: on => { held = !!on; scene._impl() && scene._impl()._hold(held); }, ctl };   // tests
       const chars = [...new Set(words.flat().join(''))].join('');
       Promise.race([scene.warm(chars), new Promise(r => setTimeout(r, 12000))]).then(() => { if (alive) countIn(1); });
       el.querySelector('[data-leave]').addEventListener('click', () => { if (me < 0) { location.hash = '#/duel/showdown'; return; } GameGuard.confirm(); });
@@ -176,7 +178,7 @@ window.Showdown = (() => {
       const tick = () => {
         raf = requestAnimationFrame(tick);
         const now = performance.now(), dt = Math.min(100, now - last); last = now;
-        if (!paused) { m.clock += dt; step(); }
+        if (!paused && !held) { m.clock += dt; step(); }
         paint();
       };
       raf = requestAnimationFrame(tick);
@@ -307,6 +309,7 @@ window.Showdown = (() => {
       m.phase = 'clash'; m.at = m.clock;
       if (snd) snd.play('bell');
       banner('Time', 'round', 800);
+      paintWords();
       const sides = m.sides.map((s, i) => ({ words: s.words, acc: accOf(s), clean: s.clean && s.words > 0, doneAt: s.doneAt, lastAt: s.lastAt, hp: m.hp[i], spell: s.spell, od: s.idx >= N && s.od.words ? s.od : null }));
       const res = SR().resolve(sides, rng);
       // the beam struggle: chosen from the result, at most one exchange in four (it never changes damage)
@@ -524,7 +527,7 @@ window.Showdown = (() => {
         const w = cur(k), ol = odWords[m.round], sp = s.sw ? Combat.spell(odSpells[m.round]) : null;
         const next = [1, 2].map(d => ol[(s.oi + d - (s.sw ? 1 : 0)) % ol.length]);
         const n = s.od.clean + (s.od.special && s.od.special.ok ? 1 : 0);
-        const html = `<span class="sd-odtag" data-t="${SR().odTier(s.od)}">Overdrive <b class="num">${n}</b></span>`
+        const html = `<span class="sd-odtag${sp ? ' sp' : ''}" data-t="${SR().odTier(s.od)}"${sp ? ` style="--sc:${sp.color}"` : ''}>${sp ? 'Special' : 'Overdrive'} <b class="num">${n}</b></span>`
           + `<span class="sd-w cur od${sp ? ' spell' : ''}"${sp ? ` style="--sc:${sp.color}"` : ''}>${letters(w, s.typed)}</span>`
           + next.map((x, d) => `<span class="sd-w od next n${d + 1}">${e(x)}</span>`).join('');
         if (html !== lineHtml) { lineHtml = html; line.innerHTML = html; }
