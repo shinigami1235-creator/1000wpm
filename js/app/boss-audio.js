@@ -27,6 +27,8 @@ window.BossAudio = (() => {
     // the new attacks and actions (28 Nov 2026), set against the same loudness check
     quakeWind: 0.5, quakeHit: 0.6, scanWind: 0.55, scanHit: 0.75, rainWind: 0.75, rainHit: 0.9, grabWind: 1.0, grabHit: 0.55,
     kneel: 0.6, transform: 0.8, glitchRoar: 1.8, deathBuild: 1.0, implode: 0.9, plates: 1.0,
+    // the arm cannon (28 Nov 2026): the charge rises under the music, the shot is a short hard crack
+    cannonWind: 0.55, cannonFire: 0.9,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
@@ -229,6 +231,25 @@ window.BossAudio = (() => {
         hiss(t, 0.6, 5000, 0.6, 0.5, 'highpass', 0.002);
         [2200, 1700, 1300, 900, 600].forEach((f, i) => tone(t + i * 0.04, 'triangle', f, f / 2, 0.16, 0.18));
         tone(t, 'sine', 90, 40, 0.5, 0.5);
+      },
+      // the arm cannon drawing light in: a low saw climbing an octave and a half, a thin whine riding on
+      // top and air rushing in, all swelling to the shot; a fast flutter in the last half second
+      cannonWind(t, len = 2) {
+        const a = Math.max(0.3, len - 0.08);
+        tone(t, 'sawtooth', 55, 150, a, 0.16, a * 0.95);
+        tone(t, 'sawtooth', 56.5, 154, a, 0.12, a * 0.95);
+        tone(t, 'sine', 420, 2100, a, 0.05, a * 0.97);
+        hiss(t, a, 500, 1.4, 0.16, 'bandpass', a * 0.9, 3200);
+        for (let k = 0; k < 6; k++) tone(t + a - 0.5 + k * 0.08, 'square', 880 + k * 90, 900 + k * 90, 0.04, 0.035);
+      },
+      // the shot: a crack, a falling zap and a sub thump; a flank squad's is half as loud
+      cannonFire(t, far) {
+        const v = far ? 0.5 : 1;
+        hiss(t, 0.09, 3500, 0.7, 0.5 * v, 'highpass', 0.001);
+        tone(t, 'sawtooth', 1400, 90, 0.42, 0.28 * v, 0.002);
+        tone(t, 'square', 700, 60, 0.3, 0.1 * v, 0.002);
+        tone(t, 'sine', 95, 28, 0.6, 0.6 * v, 0.003);
+        hiss(t + 0.02, 0.7, 900, 0.6, 0.32 * v, 'lowpass', 0.004, 180);
       },
       windup(t, len = 2) {
         tone(t, 'sawtooth', 70, 140, len, 0.12, Math.min(1, len * 0.8));

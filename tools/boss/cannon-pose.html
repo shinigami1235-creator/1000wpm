@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"../../lib/three/build/three.module.min.js","three/addons/":"../../lib/three/examples/jsm/"}}</script>
+<script type="module">
+// Bakes the arm cannon's Charge, Fire and Pull back scenes from the attack editor (tools/pose-editor)
+// into bone angles for boss3d.js. Prints JSON into the page.
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as JC from '../pose-editor/joint-check.js';
+import { bossSpec } from '../pose-editor/bossrig.js';
+const THREE = { ...T, RoundedBoxGeometry };
+window.Theme = { hex: () => '#39ff88' };
+await new Promise(ok => { const s = document.createElement('script'); s.src = '../../js/app/bosskit.js'; s.onload = ok; document.head.appendChild(s); });
+const kit = BossKit.create(THREE, 'syntax', {}), S = BossKit.BOSSES.syntax, B = kit.bones;
+for (const k in B) B[k].rotation.set(0, 0, 0);
+B.hips.position.y = S.hover; kit.group.updateMatrixWorld(true);
+const rig = JC.describe(THREE, kit.group, bossSpec(kit, S), { height: S.height, ground: 0 });
+JC.captureRest(rig);
+const D2R = Math.PI / 180;
+function toPose(s) {
+  const P = {};
+  for (const k of ['R', 'L']) {
+    P['arm' + k] = JC.bend(rig, 'shoulder' + k, { flex: s[`shoulder${k}.flex`], abd: s[`shoulder${k}.abd`], twist: s[`shoulder${k}.twist`] });
+    P['fore' + k] = JC.bend(rig, 'elbow' + k, { flex: s[`elbow${k}.flex`], side: s[`elbow${k}.side`] || 0, twist: s[`elbow${k}.twist`] });
+    P['hand' + k] = JC.bend(rig, 'wrist' + k, { flex: s[`wrist${k}.flex`] || 0, abd: s[`wrist${k}.abd`] || 0, twist: s[`wrist${k}.twist`] || 0 });
+    P['claw' + k] = [-0.3 + 1.8 * s['claw' + k] / 100, 0, 0];
+  }
+  for (const b of ['spine', 'chest', 'head']) P[b] = [0, 1, 2].map(i => (s[`${b}.${i}`] || 0) * D2R);
+  P._hips = s.hips;
+  for (const k in P) if (Array.isArray(P[k])) P[k] = P[k].map(v => +(+v).toFixed(3));
+  return P;
+}
+const charge = { 'shoulderR.flex': 62.8, 'shoulderR.abd': -32, 'shoulderR.twist': -10, 'elbowR.flex': 20.3, 'elbowR.side': 0, 'elbowR.twist': 7, 'wristR.twist': 22.9, 'clawR': 0, 'shoulderL.flex': 50.8, 'shoulderL.abd': -12.5, 'shoulderL.twist': -51, 'elbowL.flex': 30.2, 'elbowL.twist': 9.1, 'wristL.twist': -23.4, 'clawL': 50, 'hips': -0.6, 'spine.1': 8.6, 'spine.0': 11.5, 'chest.1': 17.2, 'chest.0': 17.2, 'head.0': -22.9, 'head.1': -17.2 };
+const fire = { 'shoulderR.flex': 67.9, 'shoulderR.abd': -26.4, 'shoulderR.twist': 1, 'elbowR.flex': 4.1, 'elbowR.twist': -0.4, 'wristR.twist': 23.4, 'clawR': 0, 'shoulderL.flex': -5.3, 'shoulderL.abd': -25.2, 'shoulderL.twist': -28, 'elbowL.flex': 84.1, 'wristL.twist': -22.9, 'clawL': 50, 'hips': -0.3, 'spine.1': -2.8, 'spine.0': 4.3, 'spine.2': 0.9, 'chest.1': 14.3, 'chest.0': 5.7, 'head.0': -22.9, 'head.1': -14.3 };
+const pull = { 'shoulderR.flex': 85, 'shoulderR.abd': -18, 'elbowR.flex': 45, 'wristR.twist': 22.9, 'clawR': 0, 'shoulderL.flex': 15, 'shoulderL.abd': 10, 'elbowL.flex': 45, 'wristL.twist': -22.9, 'clawL': 50, 'hips': -0.3, 'chest.0': -3, 'chest.1': 8, 'spine.0': 3, 'spine.1': 3, 'head.0': -15, 'head.1': -8 };
+document.body.textContent = JSON.stringify({ cannon: toPose(charge), cannonFire: toPose(fire), cannonPull: toPose(pull) });
+document.body.dataset.done = 1;
+</script>

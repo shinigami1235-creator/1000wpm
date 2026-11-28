@@ -434,8 +434,14 @@ window.BossScene = (() => {
           kneel: { armR: [-1.047, 0, 0.436], foreR: [-0.349, 0, 0], armL: [-0.175, 0, -0.262], foreL: [-0.524, 0, 0], chest: [0.6, 0, 0], spine: [0.45, 0, 0], head: [0.35, 0, 0], clawR: [-0.2, 0, 0], clawL: [0.8, 0, 0], _hips: -2.6 },
           brace: { armR: [-1.222, 0, -0.349], foreR: [-1.92, 0, 0], armL: [-1.222, 0, 0.349], foreL: [-1.92, 0, 0], chest: [0.35, 0, 0], spine: [0.2, 0, 0], head: [0.3, 0, 0], clawL: [1.5, 0, 0], clawR: [1.5, 0, 0], _hips: -0.8 },
           slump: { armR: [-0.087, 0, 0.14], foreR: [-0.349, 0, 0], armL: [-0.087, 0, -0.14], foreL: [-0.436, 0, 0], chest: [0.6, 0, 0.1], spine: [0.5, 0, 0], neck: [0.3, 0, 0], head: [0.5, 0.2, 0], clawL: [0.5, 0, 0], clawR: [0.3, 0, 0], _hips: -3.4 },
+          // the arm cannon: Gid's Charge, Fire and Pull back scenes from the attack editor (tools/pose-editor,
+          // 27 Nov 2026), baked to bone angles by tools/boss/cannon-pose.html. The cannon arm is raised and
+          // aimed with the left hand braced under it, then the shot straightens it and the recoil kicks it up
+          cannon: { armR: [-1.003, 0.148, -0.565], foreR: [-0.354, -0.122, 0], handR: [0, -0.4, 0], clawR: [-0.3, 0, 0], armL: [-1.148, 0.861, 0.339], foreL: [-0.527, -0.159, 0], handL: [0, 0.408, 0], clawL: [0.6, 0, 0], spine: [0.201, 0.15, 0], chest: [0.3, 0.3, 0], head: [-0.4, -0.3, 0], _hips: -0.6 },
+          cannonFire: { armR: [-1.193, -0.016, -0.461], foreR: [-0.072, 0.007, 0], handR: [0, -0.408, 0], clawR: [-0.3, 0, 0], armL: [-0.13, 0.439, 0.49], foreL: [-1.468, 0, 0], handL: [0, 0.4, 0], clawL: [0.6, 0, 0], spine: [0.075, -0.049, 0.016], chest: [0.099, 0.25, 0], head: [-0.4, -0.25, 0], _hips: -0.3 },
+          cannonPull: { armR: [-1.484, 0, -0.314], foreR: [-0.785, 0, 0], handR: [0, -0.4, 0], clawR: [-0.3, 0, 0], armL: [-0.262, 0, -0.175], foreL: [-0.785, 0, 0], handL: [0, 0.4, 0], clawL: [0.6, 0, 0], spine: [0.052, 0.052, 0], chest: [-0.052, 0.14, 0], head: [-0.262, -0.14, 0], _hips: -0.3 },
         });
-        for (const n of ['hunch', 'pound', 'scanwind', 'scan', 'summon', 'cast', 'grabwind', 'grab']) {
+        for (const n of ['hunch', 'pound', 'scanwind', 'scan', 'summon', 'cast', 'grabwind', 'grab', 'cannon', 'cannonFire']) {
           const P = kit.POSES[n], T = { _only: true };
           for (const k of ['spine', 'chest', 'neck', 'head']) if (P[k]) T[k] = P[k];
           kit.POSES[n + '_body'] = T;
@@ -1287,8 +1293,12 @@ window.BossScene = (() => {
       for (const l of locks) if (l.slot === RAID && !l.fired && l.h > t) h = Math.min(h, l.h, t + 1);
       return h;
     }
+    // a cannon shot holds the cutaways back for a moment so its landing is seen (cannonTick sets it)
+    let cutHold = 0;
     function play(kind, x = null, pri) {
       if (!director) return false;
+      const hold = cutHold - nowS();
+      if (hold > 0 && kind !== 'kill' && kind !== 'dodge') { setTimeout(() => play(kind, x, pri), hold * 1000); return true; }
       return director.want(kind, pri === undefined ? { x } : { x, pri });
     }
     const cutaway = (kind, len, x) => play(kind, x);
@@ -1567,9 +1577,10 @@ window.BossScene = (() => {
         shake = Math.max(shake, 0.35);
         if (flight) setTimeout(() => { if (!dead && flight) flight.sortie(x.side, nowS()); }, 250);   // and they hit back
       } else if (x.outcome === 'dodge') {
-        // it hits the floor where they were
-        burst(v1.copy(at).setY(0.6), 50, 12, RED, 1.5, 12); burst(v1, 24, 8, WHITE, 1.2, 10);
-        wave(v1.copy(at).setY(0.2), 0.5, 15, 0.9, RED, 0.9);
+        // it hits the floor where they were (the cannon's shot carries on past them)
+        if (x.kind === 'laser' && cfx) v1.copy(at).sub(root.position).setY(0).normalize().multiplyScalar(7).add(at); else v1.copy(at);
+        burst(v1.setY(0.6), 50, 12, RED, 1.5, 12); burst(v1, 24, 8, WHITE, 1.2, 10);
+        wave(v1.setY(0.2), 0.5, 15, 0.9, RED, 0.9);
         shake = Math.max(shake, 0.45);
       } else {
         // it lands: the squad is thrown and the hard ones flip; some go down for a repair
@@ -1750,6 +1761,69 @@ window.BossScene = (() => {
     //                       squad; then it lunges in and the claw closes on them, crushing, crackling red
     const MOVE_KINDS = new Set(['quake', 'scan', 'rain', 'grab']);
     const snd = (n, a) => { if (opts.onSfx) opts.onSfx(n, a); };
+    // ---------- the arm cannon (js/app/cannonfx.js) ----------
+    // Gid, 28 Nov 2026: "it seems to lose the special glow it had when charging the arm cannon, like the light
+    // being gathered is not showing, or the beam isn't even registering". The cannon's charge and shot (light
+    // drawn in, the orb, rings, arcs, the target and the beam) were built for the attack editor on 27 Nov and
+    // never wired into the raid, which kept drawing the old thin beam from the core: no gathering light, and a
+    // shot that filled the lens on your squad and couldn't be seen at all on a flank squad. The kernel laser is
+    // the arm cannon now: the right arm comes up and aims, the orb charges at the hand, and the shot lands where
+    // the outcome says, on the squad it hits, into the barrier that blocks it, or past the bots that dodge it.
+    // The overload (kind 'beam') charges the same orb at its chest core.
+    const cfx = kit && window.CannonFX && opts.bossId === 'syntax' ? CannonFX.create(THREE, { color: '#ff2e4d', scale: 0.8 }) : null;
+    if (cfx) scene.add(cfx.group);
+    const cMuz = new V(), cDir = new V(), cEnd = new V(), cMark = new V(), cTmp = new V();
+    let cannonK = 0;   // 0..1 how charged the cannon is, for the boss's own glow and the sound
+    // where the shot ends for attack x: on the bot it hits, on the barrier, or on the floor past the ones who dodged
+    function cannonEnd(x, t, out, mark) {
+      const HV = BOT ? BotKit.HOVER : 1.6;
+      if (x.side) {
+        const at = x.at; cTmp.copy(at).sub(root.position).setY(0).normalize();   // away from the boss
+        mark.copy(at).setY(0);
+        if (x.outcome === 'block') return out.copy(at).addScaledVector(cTmp, -3).setY(3.2);
+        if (x.outcome === 'dodge') return out.copy(at).addScaledVector(cTmp, 7).setY(0);
+        return out.copy(at).setY(HV);
+      }
+      mark.copy(aim).setY(0);
+      if (blocked.has(x.id) || frozen.has(x.id)) return out.copy(aim).setY(3.2).add(cTmp.set(0, 0, -3));
+      return out.copy(raidPos[RAID]);
+    }
+    function cannonTick(t) {
+      cannonK = 0;
+      if (!cfx) return;
+      let x = null;
+      for (const z of evs) if (z.type === 'slam' && (z.kind === 'laser' || z.kind === 'beam') && t >= z.s && t < z.h + 0.6 && !z.cut && (!x || (x.side && !z.side))) x = z;
+      if (!x || dead) { cfx.update(null); return; }
+      const wind = x.h - x.s, aimLen = Math.min(0.9, wind * 0.25), FIRE = 0.12;
+      let phase, u;
+      if (t < x.s + aimLen) { phase = 'spark'; u = (t - x.s) / aimLen; }
+      else if (t < x.h - FIRE) { phase = 'grow'; u = (t - x.s - aimLen) / Math.max(0.1, wind - aimLen - FIRE); }
+      else if (t < x.h) { phase = 'fire'; u = (t - x.h + FIRE) / FIRE; }
+      else { phase = 'beam'; u = (t - x.h) / 0.6; }
+      kit.group.updateMatrixWorld(true);
+      if (x.kind === 'laser') {
+        // the muzzle, just past the knuckles along the forearm
+        kit.bones.handR.localToWorld(cMuz.set(0, -BossKit.BOSSES.syntax.fist * 1.25, 0));
+        kit.bones.foreR.getWorldPosition(cTmp); cDir.copy(cMuz).sub(cTmp).normalize();
+      } else {
+        // the overload: the orb swells out in front of the core
+        bossFrame(); cMuz.copy(anchorCore).addScaledVector(bF, 2.2); cDir.copy(bF);
+      }
+      // the shot leaves from where the cannon was when it fired, so the recoil kicks the arm up off the beam
+      // instead of swinging the beam up with it
+      if (phase === 'fire' || phase === 'beam') { if (!x.cFrom) x.cFrom = cMuz.clone(); else cMuz.copy(x.cFrom); }
+      cannonEnd(x, t, cEnd, cMark);
+      cannonK = phase === 'spark' ? 0.15 * u : phase === 'grow' ? 0.15 + 0.85 * u : phase === 'fire' ? 1 : Math.max(0, 1 - u * 2);
+      cfx.update({ phase, u, t, at: cMuz, dir: cDir, target: cEnd, mark: cMark, reduce: calm });
+      if (!x.cSnd && t >= x.s) { x.cSnd = true; snd('cannonWind', Math.max(0.6, x.h - t)); }
+      if (!x.cFire && t >= x.h - 0.05) {
+        x.cFire = true; snd('cannonFire', !!x.side); cutHold = t + 0.75;
+        // the recoil runs through the whole body, and the floor under the shot is scorched
+        if (x.kind === 'laser') { recoilV -= 0.8; headJerk = 0.6; }
+        shake = Math.max(shake, x.side ? 0.35 : 0.8);
+        if (!(x.side ? x.outcome === 'block' : blocked.has(x.id))) decal(v2.copy(cEnd).setY(0), 3.2, rnd(0, 6.28), 1, 8);
+      }
+    }
     // floor scorch and cracks: one instanced mesh, glowing red when fresh and cooling to a dark mark
     const decalCv = document.createElement('canvas'); decalCv.width = decalCv.height = 256;
     {
@@ -2407,7 +2481,7 @@ window.BossScene = (() => {
     // of the kit's idle. The attack clock decides the blend: the wind-up eases in over the whole
     // telegraph, the strike snaps in within about a tenth of a second, holds, then settles back.
     const KIND = { slam: ['raise', 'slam', 0.1], sweep: ['pull', 'sweep', 0.2], lunge: ['coil', 'punch', 0.12], beam: ['beam', 'beam', 0.15],
-      charge: ['coil', 'punch', 0.16], laser: ['beam', 'beam', 0.15],
+      charge: ['coil', 'punch', 0.16], laser: ['beam', 'beam', 0.15], cannon: ['cannon', 'cannonFire', 0.12],
       quake: ['hunch', 'pound', 0.1], scan: ['scanwind', 'scan', 0.2], rain: ['summon', 'cast', 0.16], grab: ['grabwind', 'grab', 0.14] };
     function titanPose(t) {
       const L = [];
@@ -2415,7 +2489,7 @@ window.BossScene = (() => {
       chargeK = 0;
       const sl = current(t, 'slam');
       if (sl) {
-        const K = sl.kind === 'lunge' && kit.POSES.reach ? ['coil', 'reach', 0.12] : KIND[sl.kind] || KIND.slam;
+        const K = sl.kind === 'lunge' && kit.POSES.reach ? ['coil', 'reach', 0.12] : sl.kind === 'laser' && cfx ? KIND.cannon : KIND[sl.kind] || KIND.slam;
         // Wind-up, hold, strike, follow-through (Gid, 26 Nov 2026: "barely any wind up, hit and
         // follow through"). It winds up into the pose and a little past it, holds there cocked for
         // HOLD s, throws the strike in the last K[2] s so it lands on the hit, overshoots 15%,
@@ -2503,6 +2577,8 @@ window.BossScene = (() => {
         tremble = 0.6 + Math.min(1.4, deadT * 0.7);
         kneelW = smooth(clamp((deadT - 0.45) / 0.5, 0, 1));
       } else if (dead) { L.push(['reel', clamp(deadT / 0.4, 0, 1)]); L.push(['fall', ease((deadT - 0.25) / 0.9)]); tremble = 1; }
+      // the arm cannon's recoil: the shot kicks the cannon up and the elbow folds before the arm drops
+      if (sl && sl.kind === 'laser' && cfx && !sl.cut) { const a = t - sl.h; if (a > 0.04 && a < 1.3) L.push(['cannonPull', Math.sin(clamp((a - 0.04) / 1.26, 0, 1) * Math.PI) * 0.85]); }
       kit.mix(L);
       return { busy, tremble, gl, gr, trail };
     }
@@ -2832,6 +2908,7 @@ window.BossScene = (() => {
         kit.bones.head.getWorldPosition(anchorHead).y += 2.2;
         kit.core.getWorldPosition(anchorCore);
         core.position.copy(anchorCore); hip.worldToLocal(core.position);
+        cannonTick(t);
       } else {
         anchorHead.set(0, 4.6, 0).applyMatrix4(headG.matrixWorld);
         anchorCore.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
@@ -2957,18 +3034,18 @@ window.BossScene = (() => {
         const blk = sl.side ? !!(sl.blocked && t >= sl.blocked) : blocked.has(sl.id);
         tele.material.color.copy(blk ? CYAN : RED);
         teleFill.material.color.copy(blk ? CYAN : RED).multiplyScalar(0.4);
-        if (sl.kind === 'beam' || sl.kind === 'laser') {
+        if ((sl.kind === 'beam' || sl.kind === 'laser') && !cfx) {
           beam.visible = true;
           setBeam(anchorCore, v3.copy(ta).setY(sl.side ? 1.6 : ta.y), sl.kind === 'laser' ? 0.05 + 0.25 * w * w : 0.06 + 0.05 * w);
           beamMat.opacity = 0.25 + 0.35 * w;
         }
       } else { tele.visible = teleFill.visible = false; }
-      if (t < beamUntil) {
+      if (t < beamUntil && !cfx) {
         beam.visible = true;
         const u = (beamUntil - t) / beamLen;
         setBeam(anchorCore, beamTo, beamW * u + 0.2);
         beamMat.opacity = 0.9 * u;
-      } else if (!(sl && !sl.cut && (sl.kind === 'beam' || sl.kind === 'laser') && t < sl.h)) beam.visible = false;
+      } else if (cfx || !(sl && !sl.cut && (sl.kind === 'beam' || sl.kind === 'laser') && t < sl.h)) beam.visible = false;
       const su = t - sweepT0;
       if (su < 0.45) {
         sweepBar.visible = true;
@@ -3268,6 +3345,7 @@ window.BossScene = (() => {
       if (flight) flight.dispose();
       if (crowd) crowd.dispose();
       if (fx) fx.dispose();
+      if (cfx) cfx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
       disposables.forEach(d => d.dispose && d.dispose());

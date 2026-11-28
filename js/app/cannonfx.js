@@ -12,6 +12,7 @@
 //     at      THREE.Vector3, the muzzle in world space
 //     dir     THREE.Vector3, the way the cannon points (unit)
 //     target  THREE.Vector3 on the floor where the shot lands (optional: else where dir meets y = 0)
+//     mark    THREE.Vector3 for the target ring on the floor while it charges (optional: else the target)
 //     reduce  true for Reduce flashing (smaller, dimmer flashes)
 //   fx.dispose()
 // Colours are pushed past 1 so a bloom pass picks them up (the game's bloom threshold is 0.78).
@@ -224,7 +225,7 @@ window.CannonFX = (() => {
       if (s.phase === 'grow' || s.phase === 'spark' || (s.phase === 'fire' && u < 0.6)) {
         const k = s.phase === 'spark' ? u * 0.4 : s.phase === 'grow' ? 0.4 + 0.6 * u : 1;
         mark.visible = true; mark.children.forEach(m => { m.visible = true; });
-        mark.position.set(end.x, 0.06, end.z);
+        const mk = s.mark || end; mark.position.set(mk.x, 0.06, mk.z);
         const r = (4.2 - 1.8 * sm(k)) * sc; mark.scale.setScalar(r); mark.rotation.y = t * (0.8 + 2 * k);
         markOuter.material.opacity = 0.4 + 0.6 * k * (0.75 + 0.25 * Math.sin(t * 12));
         markInner.material.opacity = 0.6 * k; markFill.material.opacity = 0.18 * k * (0.6 + 0.4 * Math.sin(t * 8));
