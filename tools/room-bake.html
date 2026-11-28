@@ -150,12 +150,12 @@ for (const id of BossKit.IDS) NEW['fig-' + id] = () => bossFigure(id);
 // ---------------------------------------------------------------- My Room, more (28 Nov 2026, js/room/tier-items.js)
 // the CTRL wing mark (and the lockup) drawn into a canvas, for prints, plaques and light boxes
 function markCanvas(fg = '#ffffff', bg = null, lockup = false, W = 512) {
-  const A = CtrlArt, vb = lockup ? [0, 0, 2540, 3532] : A.MARK.vb;
+  const A = CtrlArt, P = lockup ? A.LOCKUP : A.MARK, vb = P.vb;
   const H = Math.round(W * (lockup ? 1.25 : 1)), c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d'); if (bg) { x.fillStyle = bg; x.fillRect(0, 0, W, H); }
   const k = Math.min(W * 0.8 / vb[2], H * 0.8 / vb[3]);
   x.translate(W / 2 - (vb[0] + vb[2] / 2) * k, H / 2 - (vb[1] + vb[3] / 2) * k); x.scale(k, k); x.fillStyle = fg;
-  x.fill(new Path2D(A.MARK.d), 'evenodd'); if (lockup) x.fill(new Path2D(A.WORD.d), 'evenodd');
+  x.fill(new Path2D(P.d), 'evenodd');
   return c;
 }
 const ctex = c => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
@@ -294,7 +294,7 @@ function mug() {
   const g = new THREE.Group(), m = M({ color: '#141517', roughness: 0.35 });
   const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const x = c.getContext('2d'); x.fillStyle = '#141517'; x.fillRect(0, 0, 1024, 256);
   x.drawImage(markCanvas('#f2f4f4', null, false, 256), 384 - 128 + 80, 0, 256, 256);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.038, 0.1, 48, 1, true), new THREE.MeshStandardMaterial({ map: ctex(c), roughness: 0.35, side: THREE.DoubleSide })); body.position.y = 0.05; body.rotation.y = -1.9; g.add(body);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.038, 0.1, 48, 1, true), new THREE.MeshStandardMaterial({ map: ctex(c), roughness: 0.35, side: THREE.DoubleSide })); body.position.y = 0.05; body.rotation.y = -2.5; g.add(body);
   const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.038, 32), m); bottom.rotation.x = -Math.PI / 2; bottom.position.y = 0.001; g.add(bottom);
   const coffee = new THREE.Mesh(new THREE.CircleGeometry(0.037, 32), M({ color: '#2a170c', roughness: 0.15 })); coffee.rotation.x = -Math.PI / 2; coffee.position.y = 0.088; g.add(coffee);
   const h = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.006, 12, 32, Math.PI), m); h.position.set(0.04, 0.05, 0); h.rotation.z = -Math.PI / 2; g.add(h);
@@ -307,7 +307,7 @@ function can() {
   x.fillStyle = '#3ee6ff'; x.fillRect(0, 60, 1024, 10); x.fillRect(0, 440, 1024, 6);
   x.drawImage(markCanvas('#ffffff', null, true, 300), 330, 70, 300, 375);
   x.fillStyle = '#3ee6ff'; x.font = 'bold 34px monospace'; x.fillText('// OVERCLOCK', 650, 300);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.125, 48, 1, true), new THREE.MeshStandardMaterial({ map: ctex(c), metalness: 0.6, roughness: 0.3 })); body.position.y = 0.068; body.rotation.y = -1.55; g.add(body);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.125, 48, 1, true), new THREE.MeshStandardMaterial({ map: ctex(c), metalness: 0.6, roughness: 0.3 })); body.position.y = 0.068; body.rotation.y = -2.15; g.add(body);
   const top = lathe([[0, 0], [0.033, 0], [0.026, 0.012], [0.026, 0.014], [0, 0.012]], al); top.position.y = 0.13; g.add(top);
   const bot = lathe([[0, 0.005], [0.024, 0], [0.033, 0.006], [0, 0.006]], al); g.add(bot);
   return g;

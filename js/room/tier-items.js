@@ -404,7 +404,7 @@
     ['scr-bot', 'Your bot', 800, { desc: 'Your division\'s bot and its stats.', glow: '#3ee6ff' }],
   ]);
   add('holo', [
-    ['holo-wing', 'CTRL wing mark', 8000],
+    ['holo-wing', 'CTRL lockup', 8000, { desc: 'The wing and the CTRL wordmark, turning.' }],
     ['holo-kb', 'Keyboard', 10000, { desc: 'Art\'s AULA F99, turning slowly.' }],
     ['holo-bots', 'The six bots', 14000, { desc: 'The six CTRL bots, one after another.' }],
   ]);

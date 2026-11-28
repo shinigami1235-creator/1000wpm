@@ -17,9 +17,9 @@ window.RoomArt = (() => {
   // the wing mark (or the stacked lockup) fitted into a box: x, y, w, h; anchor 0..1 across
   function mark(x, y, w, h, attrs, lockup = false, ax = 0.5) {
     const a = A(); if (!a) return '';
-    const vb = lockup ? [0, 0, 2540, 3532] : a.MARK.vb, k = Math.min(w / vb[2], h / vb[3]);
+    const P = lockup ? a.LOCKUP : a.MARK, vb = P.vb, k = Math.min(w / vb[2], h / vb[3]);
     const tx = x + (w - vb[2] * k) * ax - vb[0] * k, ty = y + (h - vb[3] * k) / 2 - vb[1] * k;
-    return `<g transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${k.toFixed(5)})" ${attrs}><path fill-rule="evenodd" d="${a.MARK.d}"/>${lockup ? `<path fill-rule="evenodd" d="${a.WORD.d}"/>` : ''}</g>`;
+    return `<g transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${k.toFixed(5)})" ${attrs}><path fill-rule="evenodd" d="${P.d}"/></g>`;
   }
   // the wordmark alone, fitted the same way
   function word(x, y, w, h, attrs, ax = 0.5) {
@@ -106,7 +106,7 @@ window.RoomArt = (() => {
     const pathIn = (d, vb, x, y, W, H) => { const k = Math.min(W / vb[2], H / vb[3]), tx = x + (W - vb[2] * k) / 2 - vb[0] * k, ty = y + (H - vb[3] * k) / 2 - vb[1] * k; return `<path d="${d}" transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${k.toFixed(5)})" vector-effect="non-scaling-stroke"/>`; };
     if (it.id === 'sign-ctrl' || it.id === 'sign-ctrl-white') {
       if (!a) return '';
-      body = vert ? pathIn(a.MARK.d, a.MARK.vb, w * 0.1, h * 0.06, w * 0.8, h * 0.62) + pathIn(a.WORD.d, a.WORD.vb, w * 0.08, h * 0.72, w * 0.84, h * 0.2)
+      body = vert ? pathIn(a.LOCKUP.d, a.LOCKUP.vb, w * 0.08, h * 0.06, w * 0.84, h * 0.88)
         : pathIn(a.MARK.d, a.MARK.vb, w * 0.04, h * 0.08, h * 0.84 * 0.85, h * 0.84) + pathIn(a.WORD.d, a.WORD.vb, w * 0.04 + h * 0.8, h * 0.22, w * 0.92 - h * 0.8, h * 0.56);
       sw = Math.max(w, h) / 170;
     } else if (it.id === 'sign-wing') { if (!a) return ''; body = pathIn(a.MARK.d, a.MARK.vb, w * 0.1, h * 0.08, w * 0.8, h * 0.84); sw = Math.max(w, h) / 150; }

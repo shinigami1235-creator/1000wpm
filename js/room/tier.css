@@ -123,7 +123,8 @@
 
 /* banner print on the fabric */
 .rv-print { pointer-events: none; opacity: .45; filter: blur(.35px); }
-.rv-print.ink { opacity: .26; }
+.rv-print.ink { opacity: .38; }
+.rv-cloth { display: block; pointer-events: none; }
 .rv-print.full { opacity: .4; }
 .rv-print.full.tech { opacity: .6; }
 

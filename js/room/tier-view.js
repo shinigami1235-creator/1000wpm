@@ -38,7 +38,8 @@ window.RoomView = (() => {
   const bbox = q => { const xs = q.map(p => p[0]), ys = q.map(p => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]; };
 
   // ------------------------------------------------------------------ art in SVG
-  const EMBLEM = (c = 'currentColor', tick = G) => `<path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round"/><path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="${c}" stroke-width="5"/><path d="M28 36l6-8 6 8" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="square"/><path d="M32 0v7M32 57v7M3 32h7M54 32h7" stroke="${tick}" stroke-width="2.6"/>`;
+  // the CTRL emblem is the official wing mark now (Gid, 28 Nov: main 6a61c78), drawn in a 64 x 64 box
+  const EMBLEM = (c = 'currentColor') => (window.RoomArt ? RoomArt.mark(8, 3, 48, 58, `fill="${c}"`) : '');
   const LAUREL = c => { let s = ''; for (const side of [-1, 1]) for (let i = 0; i < 9; i++) { const a = (90 + side * (22 + i * 16)) * Math.PI / 180, x = 32 + Math.cos(a) * 24, y = 32 + Math.sin(a) * 24; s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="3" ry="6.6" transform="rotate(${(a * 180 / Math.PI + side * 18).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${c}"/>`; } return s + `<text x="32" y="40" text-anchor="middle" font-family="${HEAD}" font-weight="700" font-size="22" fill="${c}">A</text>`; };
   const svg = (w, h, body, extra = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" ${extra}>${body}</svg>`;
   const img = (href, x, y, w, h, more = '') => `<image href="${href}" x="${x}" y="${y}" width="${w}" height="${h}" ${more}/>`;
@@ -366,8 +367,37 @@ window.RoomView = (() => {
       const svgEl = w.firstChild; if (svgEl) { svgEl.setAttribute('width', 300); svgEl.setAttribute('height', 450); }
       quad(w, 300, 450, q);
     }
+    // the pictures' banners carry the old hexagon logo: the cloth there is filled in, row by row, from
+    // the cloth either side of it, so any print (and the default wing) sits on plain cloth
+    function cloth(b) {
+      const q = sub(b.q, [b.u[0] - 0.05, b.u[1] - 0.04, b.u[2] + 0.05, b.u[3] + 0.04]);
+      const [x0, y0, w0, h0] = bbox(q), c = document.createElement('canvas');
+      c.className = 'rv-cloth'; c.style.cssText = `left:${x0}px;top:${y0}px;width:${w0}px;height:${h0}px`; room.append(c);
+      pixels().then(P => {
+        if (!P || !c.isConnected) return;
+        const f = (P.naturalWidth || P.width) / T.w, W = Math.round(w0 * f), H = Math.round(h0 * f), m = Math.max(3, Math.round(6 * f));
+        const t = document.createElement('canvas'); t.width = W + 4 * m; t.height = H; const g = t.getContext('2d', { willReadFrequently: true });
+        g.drawImage(P, x0 * f - 2 * m, y0 * f, W + 4 * m, H, 0, 0, W + 4 * m, H);
+        const src = g.getImageData(0, 0, W + 4 * m, H).data;
+        c.width = W; c.height = H; const x = c.getContext('2d'), out = x.createImageData(W, H), D = out.data;
+        const med = (y, a0, a1) => { const r = [], gg = [], bb = []; for (let xx = a0; xx < a1; xx++) { const k = (y * (W + 4 * m) + xx) * 4; r.push(src[k]); gg.push(src[k + 1]); bb.push(src[k + 2]); } const md = v => v.sort((p, q2) => p - q2)[v.length >> 1]; return [md(r), md(gg), md(bb)]; };
+        let seed = 7;
+        for (let y = 0; y < H; y++) {
+          const L = med(y, 0, m * 2), R = med(y, W + 2 * m, W + 4 * m);
+          for (let xx = 0; xx < W; xx++) { const k = (y * W + xx) * 4, t2 = xx / (W - 1); seed = (seed * 16807) % 2147483647; const n = (seed / 2147483647 - 0.5) * 5;
+            D[k] = L[0] + (R[0] - L[0]) * t2 + n; D[k + 1] = L[1] + (R[1] - L[1]) * t2 + n; D[k + 2] = L[2] + (R[2] - L[2]) * t2 + n; D[k + 3] = 255; }
+        }
+        x.putImageData(out, 0, 0);
+        // only inside the print's area, with soft edges
+        const mk = document.createElement('canvas'); mk.width = W; mk.height = H; const mg = mk.getContext('2d');
+        const inner = sub(b.q, [b.u[0] - 0.02, b.u[1] - 0.015, b.u[2] + 0.02, b.u[3] + 0.015]).map(([px, py]) => [(px - x0) * f, (py - y0) * f]);
+        mg.filter = `blur(${(2.5 * f).toFixed(1)}px)`; mg.fillStyle = '#000'; mg.beginPath(); inner.forEach(([px, py], i) => (i ? mg.lineTo(px, py) : mg.moveTo(px, py))); mg.closePath(); mg.fill();
+        x.globalCompositeOperation = 'destination-in'; x.drawImage(mk, 0, 0);
+      });
+    }
     function banner(b, it) {
       const B = BANNERS[it.id] || BANNERS['ban-ctrl'];
+      cloth(b);
       const w = el('rv-q rv-print' + (B.full ? ' full' : '') + (B.tech ? ' tech' : '') + (it.id === 'ban-ctrl' ? ' ink' : ''), B.svg());
       const s0 = w.firstChild; s0.setAttribute('width', 200); s0.setAttribute('height', 200);
       quad(w, 200, 200, B.full ? sub(b.q, [0.04, 0.03, 0.96, 0.97]) : sub(b.q, b.u));
@@ -515,7 +545,7 @@ window.RoomView = (() => {
         const c = document.createElement('canvas'); c.width = c.height = 300; c.className = 'earth'; w.append(c);
         const cx = c.getContext('2d'); let el0 = -1; drawEarth(cx, 300, 300, 1); ticks.push(t => { if (t - el0 > 0.05) { el0 = t; drawEarth(cx, 300, 300, t); } });
       }
-      if (it.id === 'holo-wing') add(`<div class="emb wing">${svg(100, 100, RA.mark(4, 4, 92, 92, 'fill="#bff8ff"'))}</div>`);
+      if (it.id === 'holo-wing') add(`<div class="emb wing">${svg(100, 100, RA.mark(4, 4, 92, 92, 'fill="#bff8ff"', true))}</div>`);
       if (it.id === 'holo-kb') add('<img class="fig kb" src="assets/room/items/top-kb-aula-f99.webp" alt="">');
       if (it.id === 'holo-bots') add(['orbit', 'pixel', 'nova', 'kite', 'beep', 'raze'].map((f, i) => `<img class="fig rush" style="animation-delay:${i * 3}s" src="assets/room/items/pet-${f}.webp" alt="">`).join(''));
       add('<div class="lines"></div>');
