@@ -35,7 +35,13 @@
 /* Themes. Matrix is the default above. Each keeps the terminal look: one accent colour on a
    near-black tinted toward it. Red stays out since red means danger and damage everywhere. */
 :root[data-theme="ctrl"] {
-  /* CTRL's official look (28 Nov 2026, from the merch): matte black, white, one cyan accent */
+  --bg-0: #030404; --bg-0-rgb: 3,4,4; --bg: #060707; --bg-rgb: 6,7,7; --bg-1: #090b0b;
+  --bg-2: #0b0d0e; --bg-2-rgb: 11,13,14; --bg-3: #13171a; --bg-3-rgb: 19,23,26; --bg-hi: #141a12;
+  --accent: #8cff58; --accent-rgb: 140,255,88; --accent-dim: #4f9a2e; --accent-dim-rgb: 79,154,46; --accent-hi: #b8ff96;
+  --ink-hi: #f2f4f5; --ink-hi-rgb: 242,244,245; --ink: #e4e8ea; --ink-rgb: 228,232,234; --ink-2: #8e979c; --ink-3: #5f686d;
+}
+:root[data-theme="ctrl-cyan"] {
+  /* the cyan of the CTRL merch (28 Nov 2026) on matte black */
   --bg-0: #050506; --bg-0-rgb: 5,5,6; --bg: #0a0b0d; --bg-rgb: 10,11,13; --bg-1: #0e0f12;
   --bg-2: #101215; --bg-2-rgb: 16,18,21; --bg-3: #171a1e; --bg-3-rgb: 23,26,30; --bg-hi: #10191b;
   --accent: #1ee0f0; --accent-rgb: 30,224,240; --accent-dim: #12808a; --accent-dim-rgb: 18,128,138; --accent-hi: #8ef3fa;

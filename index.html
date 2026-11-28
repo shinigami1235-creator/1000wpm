@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-dtUZqOUfNO8jdYazo9ivzkfycy7LnAoz0wcLNv008uE=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-RwBFSLAeXLcqN3Mu4TVBxmRltlkPQ1mhcJ+meFLbFiU=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-xUuE6BraF9UeR9b/b0GXYf2bdqaZW8F3Q9I6T/p2bBU=' 'sha256-a+1hC6/dDCD3iXbSz8Dec200virnHMeN/8ZTPaLIv0U=' 'sha256-duZqA7lag1v+p2OSnFdu47i/fSVMdDWS8z49uoHatP0=' 'sha256-RwBFSLAeXLcqN3Mu4TVBxmRltlkPQ1mhcJ+meFLbFiU=' 'sha256-uIiiecySUcleeDDNgNML0NJP38FYWoNtrGzQNWrC80c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stormtyper by 10000wpm</title>
@@ -28,9 +28,9 @@
 <link rel="stylesheet" href="css/avatar.css">
 <link rel="stylesheet" href="css/progress.css">
 <link rel="stylesheet" href="css/typing-extras.css">
-<script>/* the fall into Keyspace plays once per device, the first time the player opens #/play; js/app/intro.js runs it */(function(){var d=document.documentElement;try{if(/^#\/play(\/|$)/.test(location.hash)&&!localStorage.getItem('wpm-fell-in')){d.classList.add('intro','intro-cover');window.__introFS=setTimeout(function(){d.classList.remove('intro','intro-cover')},2500)}}catch(e){}})()</script>
+<script>/* the way in (js/app/entry.js): the full CTRL window on a device's first visit to #/home, the short "node reconnected" once a session after that. Decided here before the first paint so the page stays covered. */(function(){var d=document.documentElement;try{if(/^(#\/?(home)?)?$/.test(location.hash)&&!localStorage.getItem('wpm-skip-intro')){var full=!localStorage.getItem('wpm-entry')&&!localStorage.getItem('wpm-player-v1');if(full||!sessionStorage.getItem('wpm-entry-s')){window.__entry=full?'full':'short';d.classList.add('intro','intro-cover');window.__introFS=setTimeout(function(){d.classList.remove('intro','intro-cover')},2500)}}}catch(e){}})()</script>
 <script>/* the site address shown in reel mode (js/app/reel.js). The domain isn't bought yet, so change it here when it is. */window.SITE_URL='10000wpm.com';</script>
-<script src="js/app/intro.js" async></script>
+<script src="js/app/entry.js" async></script>
 <script type="importmap">
 { "imports": {
   "three": "./lib/three/build/three.module.min.js",
