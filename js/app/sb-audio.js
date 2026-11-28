@@ -23,7 +23,7 @@ window.SuperAudio = (() => {
     count: 9, support: 1.8, chaos: 2.2, hype: 0.8, phase: 0.75, enrage: 1.1, finish: 0.7, win: 0.8, lose: 0.75,
     snap: 2.2, roar: 1.0, slam: 1.0, splash: 1.1, boom: 0.9, assemble: 1.6, launch: 1.4, thunder: 0.9, dive: 1.2, plates: 1.6, spit: 1.6, pop: 1.6,
     windupSlam: 1.0, windupLaser: 1.2, windupBreach: 1.2, counter: 1.4, key: 8,
-    boot: 1.2, stackPush: 2.2, stackThrow: 1.3, stackCrash: 1.4, servo: 2.4, relay: 2.6, zap: 1.3, panic: 1.4, shatter: 1.4, collapse: 1.0,
+    boot: 1.2, stackPush: 3.4, stackThrow: 1.5, stackCrash: 2.8, servo: 2.4, relay: 2.6, zap: 1.3, panic: 1.4, shatter: 1.4, collapse: 1.0,
   };
   const STINGERS = new Set(['support', 'chaos', 'hype', 'phase', 'enrage', 'finish', 'win', 'lose', 'count']);
   let ac = null, master, limiter, outG, musicBus, duckG, sfxBus, stingBus;

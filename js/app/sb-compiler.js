@@ -14,8 +14,9 @@
 // runs down the cables, code scrolls on every small screen and the satellites orbit.
 // Each phase changes the look: phase 2 opens the vents on the head and spins everything faster,
 // phase 3 runs the heatsink and pipes hot, steam leaks from the vents and the rack hatches stay open.
-// A phase break is a kernel panic and a reboot. The kill: it glitches, the eye bursts, the arms and
-// satellites drop, panels blow off, the screen shatters, the core blows and the tower sinks.
+// A phase break is a kernel panic and a reboot. The kill, in the 2 seconds before the result card: it
+// glitches, the glass cracks, the eye bursts, the arms and satellites drop, panels blow off, the screen
+// shatters, the core under the heatsink blows and the tower sinks.
 // It brings its own broadcast shots (boot, crash, teardown) in place of the stock intro, phase and kill.
 // Arms are solved with two-bone IK and a pole behind the elbow, so the elbows always bend forward.
 window.SuperModels = window.SuperModels || {};
@@ -342,8 +343,11 @@ SuperModels.compiler = function (THREE, K, ctx) {
   const fate = new Map();   // packet id -> 'back' (typed) or 'hit' (landed), from the events
 
   // ---------- aim lines for the laser: thin red lines eye -> pointer -> pointer -> floor ----------
-  const aimMat = K.own(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 1.6), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
+  const aimMat = K.own(new THREE.MeshBasicMaterial({ color: C('#ff6b78', 1.3), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
   const aims = Array.from({ length: 3 }, () => { const m = new THREE.Mesh(rodGeo, aimMat); m.visible = false; m.renderOrder = 5; group.add(m); return m; });
+  // a spinning red ring round each pointer screen while it is locked on
+  const lockMat = K.own(new THREE.MeshBasicMaterial({ color: C('#ff4d5e', 1.8), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
+  const locks = Array.from({ length: 2 }, () => { const m = new THREE.Mesh(G.merge([[K.own(new THREE.TorusGeometry(1.55, 0.07, 4, 36))], [bx(0.5, 0.1, 0.05), [1.95, 0, 0]], [bx(0.5, 0.1, 0.05), [-1.95, 0, 0]], [bx(0.1, 0.5, 0.05), [0, 1.95, 0]], [bx(0.1, 0.5, 0.05), [0, -1.95, 0]]]), lockMat); m.visible = false; m.renderOrder = 5; group.add(m); return m; });
   function aimLine(i, a, b, w) { const m = aims[i]; m.visible = w > 0; if (!m.visible) return; m.position.copy(a); m.lookAt(b); m.scale.set(w, w, a.distanceTo(b)); }
 
   // ---------- state ----------
@@ -362,7 +366,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
     if (n === 'windup' && d.kind === 'laser') {
       endLaser();
       const s = Math.random() < 0.5 ? -1 : 1;
-      laser = { t0: t, len: d.ms / 1000, s, fired: false, R1: new V(T.x + s * 15, 21.8, T.z + 2.5), R2: new V(T.x + s * 17, 5.2, T.z + 8), sat: [s < 0 ? 0 : 7, s < 0 ? 1 : 8], sweep: new V(), pinged: 0 };
+      laser = { t0: t, len: d.ms / 1000, s, fired: false, R1: new V(T.x + s * 15, 21.8, T.z + 2.5), R2: new V(T.x + s * 16, 6.8, T.z + 8), sat: [s < 0 ? 0 : 7, s < 0 ? 1 : 8], sweep: new V(), pinged: 0 };
       laser.orb = K.fx.orb('#ff4d5e', out => eye.getWorldPosition(out).add(v4.set(0, 0, 0.8)));
       laser.mark = K.fx.mark(v1.copy(art).setY(0.06), 3, '#ff4d5e', 1);
     }
@@ -460,7 +464,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
     L.fired = true; L.firedT = t;
     if (L.orb) { L.orb.pop(); L.orb = null; } if (L.mark) { L.mark.off(); L.mark = null; }
   }
-  function endLaser() { if (laser) { if (laser.orb) laser.orb.pop(); if (laser.mark) laser.mark.off(); } laser = null; aims.forEach(m => { m.visible = false; }); }
+  function endLaser() { if (laser) { if (laser.orb) laser.orb.pop(); if (laser.mark) laser.mark.off(); } laser = null; aims.forEach(m => { m.visible = false; }); locks.forEach(m => { m.visible = false; }); }
 
   // ---------- packets: the fork bomb's drones ----------
   function packets(list, t) {
@@ -519,9 +523,9 @@ SuperModels.compiler = function (THREE, K, ctx) {
     const boot = t - bootT;
     const sag = finishing ? 1 : 0;
     // the tower: a slow hum, recoil, a sag on the finish, a collapse when it dies
-    const fall = dead ? easeIn(clamp((deadT - 2.6) / 2.4, 0, 1)) : 0;
+    const fall = dead ? easeIn(clamp((deadT - 1.25) / 2.4, 0, 1)) : 0;
     const hum = Math.sin(t * 1.1) * 0.06;
-    const shiver = (bigFlash * 0.12 + roar * 0.12 + panic * 0.1 + (dead && deadT < 2.6 ? 0.1 : 0));
+    const shiver = (bigFlash * 0.12 + roar * 0.12 + panic * 0.1 + (dead && deadT < 1.25 ? 0.14 : 0));
     tower.position.set(Math.sin(t * 37) * shiver, hum - sag * 0.8 - fall * 14, -rec);
     tower.rotation.set(-sag * 0.06 + fall * 0.32 - towerKb * 0.012, 0, (finishing ? Math.sin(t * 1.6) * 0.02 : 0) + fall * 0.12 + Math.sin(t * 31) * shiver * 0.01);
     // colours: the phase palette, hotter with each phase
@@ -530,12 +534,12 @@ SuperModels.compiler = function (THREE, K, ctx) {
       m.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(m === darkMat ? 0.5 : 0.9);
       m.userData.u.uRim.value.copy(ctx.pal.a).multiplyScalar(0.3);
       m.userData.u.uFlash.value = bigFlash * 0.5 + (S.hit || 0) * 0.22;
-      m.userData.u.uHeat.value = dead ? smooth((deadT - 0.3) / 1.8) : finishing ? 0.2 + Math.sin(t * 7) * 0.08 : 0;
+      m.userData.u.uHeat.value = dead ? smooth((deadT - 0.1) / 1.1) : finishing ? 0.2 + Math.sin(t * 7) * 0.08 : 0;
     }
     sinkMat.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(0.6 + hot * 1.4 + Math.sin(t * 3) * 0.2 * hot);
     sinkMat.userData.u.uHeat.value = Math.max(sinkMat.userData.u.uHeat.value, hot * (0.35 + Math.sin(t * 2.3) * 0.08));
     pipeMat.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(0.3 + hot);
-    pipeMat.userData.u.uHeat.value = dead ? smooth((deadT - 0.3) / 1.8) : hot * 0.25;
+    pipeMat.userData.u.uHeat.value = dead ? smooth((deadT - 0.1) / 1.1) : hot * 0.25;
     const flick = finishing ? Math.sin(t * 23) * 0.8 : 0;
     ledMat.color.copy(ctx.pal.a).multiplyScalar(1.4 + Math.sin(t * 5) * 0.3 + flick);
     keyMat.color.copy(ctx.pal.a).multiplyScalar(0.9);
@@ -546,8 +550,8 @@ SuperModels.compiler = function (THREE, K, ctx) {
     const U = screenMat.uniforms;
     U.uT.value = t; U.uC.value.copy(ctx.pal.a); U.uPulse.value = (screenPulse + roar) * 0.4;
     U.uRed.value = (screenRed + (finishing ? 0.4 + Math.sin(t * 9) * 0.2 : 0) + (lost ? 0.5 + Math.sin(t * 4) * 0.2 : 0)) * 0.6;
-    U.uBreak.value = dead ? clamp(deadT / 1.4, 0, 0.5) + (deathFx.glass ? clamp((deadT - 2.3) * 3, 0, 0.5) : 0) : 0;
-    U.uPanic.value = Math.max(panic, dead ? 0.5 * (1 - pulse(deadT, 0.6, 1.2)) : 0);
+    U.uBreak.value = dead ? clamp(deadT / 0.7, 0, 0.5) + (deathFx.glass ? clamp((deadT - 1.05) * 3, 0, 0.5) : 0) : 0;
+    U.uPanic.value = Math.max(panic, dead ? 0.5 * (1 - pulse(deadT, 0.3, 0.7)) : 0);
     U.uOn.value = boot < 3 ? pulse(boot, 0.35, 1.2) : pr >= 1.0 && pr < 1.9 ? pulse(pr, 1.0, 1.75) : 1;
     U.uHit.value = screenHit; U.uGlitch.value = glitch + panic * 0.6 + (dead ? 0.6 : 0);
     tower.updateMatrixWorld();
@@ -595,17 +599,17 @@ SuperModels.compiler = function (THREE, K, ctx) {
         if (u > 0.35 && L.pinged < 1) { L.pinged = 1; sfx('relay'); K.fx.shock(L.R1, RED, 0.4, 3.2, 0.4, { flat: false, face: ctx.camPos }); }
         if (u > 0.5 && L.pinged < 2) { L.pinged = 2; sfx('relay'); K.fx.shock(L.R2, RED, 0.4, 3.2, 0.4, { flat: false, face: ctx.camPos }); }
         const fl = 0.75 + 0.25 * Math.sin(t * 40);
-        aimLine(0, v1, L.R1, a1 > 0.99 ? 0.11 * fl : 0); aimLine(1, L.R1, L.R2, a2 > 0.99 ? 0.11 * fl : 0);
+        aimLine(0, v1, L.R1, a1 > 0.99 ? 0.2 * fl : 0); aimLine(1, L.R1, L.R2, a2 > 0.99 ? 0.2 * fl : 0);
         // the last line sweeps over the floor toward Art over the second half
         const s = pulse(u, 0.5, 0.95);
         L.sweep.set(art.x + (1 - s) * 13 * L.s, 0.1, art.z - 1 - (1 - s) * 7);
-        aimLine(2, L.R2, L.sweep, a3 > 0.99 ? 0.13 * fl : 0);
+        aimLine(2, L.R2, L.sweep, a3 > 0.99 ? 0.24 * fl : 0);
         aimMat.opacity = 0.9;
         if (a3 > 0.99 && Math.random() < dt * 30) K.fx.spark(L.sweep, v4.set(rnd(-2, 2), rnd(2, 5), rnd(-1, 1)), C('#ff6b78'), { size: 0.3, life: 0.4, g: 10 });
         if (Math.random() < dt * 40) K.fx.suck(v1, 3, 1, '#ff6b78', 0.4, 0.25);
         if (t - L.t0 > L.len + 0.8) endLaser();
       } else {
-        aims.forEach(m => { m.visible = false; });
+        aims.forEach(m => { m.visible = false; }); locks.forEach(m => { m.visible = false; });
         if (t - L.firedT > 1.2) laser = null;
       }
       // the head rears back as it charges
@@ -671,7 +675,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
       shW.copy(a.sh).add(tower.position);
       a.pole.copy(shW).add(v4.set(sd * 6, 2, -8));
       solveArm({ sh: shW, elbow: a.elbow, wrist: a.wrist }, a.cur, a.pole);
-      if (dead && deadT > 1.2) {
+      if (dead && deadT > 0.6) {
         // the arms come off at the shoulder and drop, bouncing once
         if (!a.fallen) {
           a.fallen = true; a.fallV.set(sd * 4, 4, 3); a.fallP = a.wrist.clone(); a.fallE = a.elbow.clone(); a.fallS = shW.clone(); a.fallVy = [0, 0, 0];
@@ -695,7 +699,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
       const grip = st ? 0.9 : tu < 0.5 ? -0.3 : 0;
       a.hand.updateMatrixWorld();
       a.fingers.forEach((f, i) => { f.rotation.x = 0.4 + grip + (st || tu < 0.5 ? 0 : Math.max(0, Math.sin(t * 9 + i * 1.3 + sd)) * 0.5 * burst) + (finishing ? 0.7 : 0); f.updateMatrix(); fingerIM.setMatrixAt((sd < 0 ? 0 : 5) + i, fm4.multiplyMatrices(a.hand.matrixWorld, f.matrix)); });
-      a.kb.visible = !dead || deadT < 1.2;
+      a.kb.visible = !dead || deadT < 0.6;
       a.kb.position.y = 4.2 + Math.sin(t * 1.3 + sd) * 0.15 - sag * 1.5 - (boot < 3 ? (1 - pulse(boot, 0.5, 1.5)) * 3 : 0);
     }
 
@@ -781,9 +785,10 @@ SuperModels.compiler = function (THREE, K, ctx) {
         v1.lerp(i === L.sat[0] ? L.R1 : L.R2, relay);
       }
       s.relay = relay;
+      if (laser && (i === laser.sat[0] || i === laser.sat[1])) { const lk = locks[i === laser.sat[0] ? 0 : 1]; lk.visible = relay > 0.6 && !laser.fired; if (lk.visible) { lk.position.copy(v1); lk.lookAt(ctx.camPos); lk.rotateZ(t * 2.5 * (i % 2 ? 1 : -1)); lk.scale.setScalar(0.8 + (1 - relay) * 2 + Math.sin(t * 14) * 0.05); } }
       if (dead) {
         // they drop out of the sky one after another and shatter on the floor
-        if (!s.fall && deadT > 0.4 + i * 0.06) s.fall = { p: s.p.clone(), vy: 0, done: false };
+        if (!s.fall && deadT > 0.2 + i * 0.04) s.fall = { p: s.p.clone(), vy: 0, done: false };
         if (s.fall) {
           s.fall.vy -= 24 * dt; s.fall.p.y += s.fall.vy * dt;
           if (s.fall.p.y < 0.4 && !s.fall.done) { s.fall.done = true; K.fx.burst(v3.copy(s.fall.p).setY(0.4), 16, ctx.pal.a, { speed: 7, up: 2, g: 12, life: 0.6, size: 0.3, floor: 0.05 }); if (i % 4 === 0) sfx('shatter'); }
@@ -847,8 +852,8 @@ SuperModels.compiler = function (THREE, K, ctx) {
 
     // ---------- death ----------
     if (dead) {
-      if (deadT < 2.6 && Math.random() < dt * 25) K.fx.burst(v1.set(T.x + rnd(-11, 11), T.y + rnd(-6, 6) - fall * 14, T.z + 1.2), 4, Math.random() < 0.5 ? '#ffffff' : ctx.pal.a, { speed: 6, g: 12, life: 0.8, size: 0.28 });
-      if (deadT > 1.0 && !deathFx.eye) {
+      if (deadT < 1.25 && Math.random() < dt * 30) K.fx.burst(v1.set(T.x + rnd(-11, 11), T.y + rnd(-6, 6) - fall * 14, T.z + 1.2), 4, Math.random() < 0.5 ? '#ffffff' : ctx.pal.a, { speed: 6, g: 12, life: 0.8, size: 0.28 });
+      if (deadT > 0.45 && !deathFx.eye) {
         deathFx.eye = true; eye.getWorldPosition(v1);
         K.fx.burst(v1, 160, '#ffffff', { speed: 22, g: 6, life: 1.2, size: 0.5 });
         K.fx.burst(v1, 80, ctx.pal.a, { speed: 14, g: 6, life: 1.5, size: 0.55 });
@@ -856,7 +861,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
         K.fx.light(v1, '#ffffff', 70, 2.2, 50);
         ctx.juice.shake(0.6); ctx.juice.stop(90); ctx.juice.flash(0.4); sfx('zap');
       }
-      if (deadT > 1.7 && !deathFx.panels) {
+      if (deadT > 0.85 && !deathFx.panels) {
         // the corner blocks and side panels blow off the frame
         deathFx.panels = true; sfx('shatter');
         for (let i = 0; i < 14; i++) {
@@ -865,13 +870,13 @@ SuperModels.compiler = function (THREE, K, ctx) {
         }
         K.fx.burst(v1.set(T.x, T.y, T.z + 1).add(tower.position), 80, '#ffd9a0', { speed: 14, g: 10, life: 0.9, size: 0.35 });
       }
-      if (deadT > 2.3 && !deathFx.glass) {
+      if (deadT > 1.05 && !deathFx.glass) {
         // the screen shatters out toward the floor
         deathFx.glass = true; sfx('shatter');
         for (let i = 0; i < 16; i++) addBlock({ mode: 'fall', p: new V(T.x + rnd(-10, 10), T.y + rnd(-5, 5), T.z + 1.4).add(tower.position), v: new V(rnd(-4, 4), rnd(0, 5), rnd(4, 10)), w: new V(rnd(-10, 10), rnd(-10, 10), rnd(-10, 10)), s: rnd(0.5, 1.1), c: WHITE.clone(), life: 2, k: 0.7 });
         K.fx.burst(v1.set(T.x, T.y, T.z + 1.5).add(tower.position), 120, '#e8fbff', { speed: 12, g: 12, life: 1, size: 0.3, dir: v2.set(0, 0, 1), dirK: 0.8 });
       }
-      if (deadT > 2.6 && !deathFx.core) {
+      if (deadT > 1.25 && !deathFx.core) {
         // the core under the heatsink blows and the tower goes down
         deathFx.core = true;
         v1.set(T.x, T.y + T.h / 2 + 4.5, T.z - 0.6).add(tower.position);
@@ -883,7 +888,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
         ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(0.6); sfx('boom'); sfx('collapse');
         ctx.shed(v1, 30, C('#ffffff'), 2, 1);
       }
-      if (deadT > 2.6 && deadT < 5.5 && Math.random() < dt * 16) K.fx.burst(v1.set(T.x + rnd(-14, 14), 0.4, T.z + rnd(-2, 5)), 6, '#cfefff', { speed: 6, up: 2, g: 12, life: 0.8, size: 0.4, floor: 0.05 });
+      if (deadT > 1.25 && deadT < 4.2 && Math.random() < dt * 16) K.fx.burst(v1.set(T.x + rnd(-14, 14), 0.4, T.z + rnd(-2, 5)), 6, '#cfefff', { speed: 6, up: 2, g: 12, life: 0.8, size: 0.4, floor: 0.05 });
     }
   }
 
@@ -927,9 +932,9 @@ SuperModels.compiler = function (THREE, K, ctx) {
     ] },
     // teardown: the eye glitching, the arms dropping from the side, then a crane back as the tower goes down
     kill: { pri: 5, free: true, parts: [
-      { len: 1.5, cut: 1, slow: 0.45, fov: 34, hand: 0.04, pose: (c, out) => { const e = E(); out.look.copy(e).y -= 3; out.pos.set(e.x + 7 - c.u * 1.5, e.y - 4.5, e.z + 21 - c.u * 2); } },
-      { len: 1.4, cut: 1, slow: 0.6, fov: 42, pose: (c, out) => { out.look.set(T.x - 4, 11, T.z); out.pos.set(T.x - 22 + c.u * 2, 7, T.z + 20); } },
-      { len: 3.4, cut: 1, slow: 0.85, fov: 52, omega: 3, pose: (c, out) => { const a = 0.45 - c.u * 0.8, r = 46; out.look.set(T.x, 10 - c.u * 4, T.z); out.pos.set(T.x + Math.sin(a) * r, 9 + c.u * 7, T.z + Math.cos(a) * r); } },
+      { len: 1.1, cut: 1, slow: 0.5, fov: 34, hand: 0.04, pose: (c, out) => { const e = E(); out.look.copy(e).y -= 3; out.pos.set(e.x + 7 - c.u * 1.5, e.y - 4.5, e.z + 21 - c.u * 2); } },
+      { len: 1.1, cut: 1, slow: 0.7, fov: 44, pose: (c, out) => { out.look.set(T.x - 3, 11, T.z); out.pos.set(T.x - 24 + c.u * 2, 7, T.z + 24); } },
+      { len: 3.2, cut: 1, slow: 0.9, fov: 52, omega: 3, pose: (c, out) => { const a = 0.45 - c.u * 0.8, r = 46; out.look.set(T.x, 10 - c.u * 4, T.z); out.pos.set(T.x + Math.sin(a) * r, 9 + c.u * 7, T.z + Math.cos(a) * r); } },
     ] },
   };
 
