@@ -209,7 +209,7 @@ window.RushTitans = (() => {
         const fallT = 0.55, land = 0.35;
         if (e < land) { mover.position.y = 40 / scaleOf(); }
         else if (e < land + fallT) { const k = (e - land) / fallT; mover.position.y = 40 * (1 - k * k) / scaleOf(); L.push(['fistsUp', 0.6]); }
-        else { if (!flags.landed) { flags.landed = true; front(5, v1); quake(v1, 1.4); sfx('quake'); tfx.debris(v1, 8, { col, speed: 9, up: 5 }); } const k = (e - land - fallT); L.push(['fistsDown', 1 - smooth(k / 1.2)]); if (k > 0.8) L.push(['roar', Math.sin(clamp((k - 0.8) / 0.7, 0, 1) * Math.PI) * 0.8]); }
+        else { if (!flags.landed) { flags.landed = true; front(5, v1); quake(v1, 1.1); sfx('quake'); } const k = (e - land - fallT); L.push(['fistsDown', 1 - smooth(k / 1.2)]); if (k > 0.8) L.push(['roar', Math.sin(clamp((k - 0.8) / 0.7, 0, 1) * Math.PI) * 0.8]); }
       } else if (id === 'warden') {
         // a firewall of light sweeps down and leaves the knight standing behind it, blade raised
         const k = clamp(e / 1.5, 0, 1), y = H() * 1.05 * (1 - smooth(k));

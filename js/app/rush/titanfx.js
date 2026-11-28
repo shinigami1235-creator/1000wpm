@@ -122,7 +122,7 @@ window.RushTitanFX = (() => {
       fragmentShader: `varying vec2 vUv; varying vec3 vC; varying float vN;
         void main(){ vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y);
           float edge = smoothstep(0.12, 0.02, d);
-          gl_FragColor = vec4(vec3(0.05, 0.055, 0.06) * (0.6 + 0.8 * vN) + vC * edge * 1.6, 1.0); }`,
+          gl_FragColor = vec4(vec3(0.07, 0.072, 0.078) * (0.6 + 0.9 * vN) + vC * edge * 0.75, 1.0); }`,   // rock with a hot rim, not glowing confetti
     }));
     const debrisMesh = new THREE.InstancedMesh(dGeo, dMat, ND);
     debrisMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ND * 3), 3);
