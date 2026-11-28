@@ -8,6 +8,7 @@
 //   weak     a Leviathan weak point hit: a quick side angle on the segment
 //   kill     the finish phrase typed: a close-up on the core in slow motion, then an orbit as it dies
 // Every shot fits the boss by its height (fitD), so a tall Compiler and a wide Hydra both stay framed.
+// A boss model can replace any of these with its own (model.shots[name], the same shape as below).
 //   const cam = SuperCam.create(THREE, camera, { reduce, model: () => model, art, setSlow(k) })
 //   cam.want(name, x)   cam.update(tReal, dt, threatAt, finishing, enraged)   cam.shot()   cam.log()
 window.SuperCam = (() => {
@@ -74,7 +75,8 @@ window.SuperCam = (() => {
       return 'game';
     }
     return {
-      want: (name, x) => dir && dir.want(name, x != null ? { x } : {}),
+      // a boss model may bring its own version of a shot (model.shots.intro, .phase, .kill): it plays in place of the stock one
+      want: (name, x) => { if (!dir) return false; const m = M(), own = m && m.shots && m.shots[name]; if (own) { shots['own:' + name] = own; name = 'own:' + name; } return dir.want(name, x != null ? { x } : {}); },
       update, shot: () => (dir ? dir.shot() : 'game'), log: () => (dir ? dir.log() : []), reset: () => dir && dir.reset(),
     };
   }

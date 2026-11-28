@@ -23,6 +23,7 @@ window.SuperAudio = (() => {
     count: 9, support: 1.8, chaos: 2.2, hype: 0.8, phase: 0.75, enrage: 1.1, finish: 0.7, win: 0.8, lose: 0.75,
     snap: 2.2, roar: 1.0, slam: 1.0, splash: 1.1, boom: 0.9, assemble: 1.6, launch: 1.4, thunder: 0.9, dive: 1.2, plates: 1.6, spit: 1.6, pop: 1.6,
     windupSlam: 1.0, windupLaser: 1.2, windupBreach: 1.2, counter: 1.4, key: 8,
+    boot: 1.2, stackPush: 2.2, stackThrow: 1.3, stackCrash: 1.4, servo: 2.4, relay: 2.6, zap: 1.3, panic: 1.4, shatter: 1.4, collapse: 1.0,
   };
   const STINGERS = new Set(['support', 'chaos', 'hype', 'phase', 'enrage', 'finish', 'win', 'lose', 'count']);
   let ac = null, master, limiter, outG, musicBus, duckG, sfxBus, stingBus;
@@ -233,6 +234,18 @@ window.SuperAudio = (() => {
       windupLaser(t, ms = 2000) { const len = Math.min(2.6, ms / 1000); const o = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(300, t); o.frequency.exponentialRampToValueAtTime(1900, t + len); lfo.frequency.setValueAtTime(6, t); lfo.frequency.linearRampToValueAtTime(30, t + len); lg.gain.value = 0.4; lfo.connect(lg).connect(g.gain); env(g, t, len * 0.8, 0.12, len * 0.25); o.connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + len * 1.1); lfo.stop(t + len * 1.1); tone(t, 'square', 1100, 1100, 0.06, 0.08); },
       windupBreach(t, ms = 2400) { const len = Math.min(3, ms / 1000); hiss(t, len, 300, 0.6, 0.25, 'lowpass', len * 0.8, 900); for (let i = 0; i < 16; i++) { const w = len * 0.3 + Math.random() * len * 0.7; tone(t + w, 'sine', 200 + Math.random() * 400, 600 + Math.random() * 500, 0.05, 0.06); } },
       counter(t) { tone(t, 'triangle', 600, 1800, 0.12, 0.25); tone(t + 0.08, 'sine', 90, 40, 0.4, 0.5); hiss(t, 0.3, 4000, 0.8, 0.25, 'bandpass', 0.002, 1200); },
+      // the Compiler's moves (sb-compiler.js): power on, a block pushed onto a column, the throw and its crash,
+      // arm servos, the pointer screens locking on, the laser, a kernel panic, shattering parts and the collapse
+      boot(t) { tone(t, 'sine', 50, 140, 1.0, 0.35, 0.3); hiss(t, 1.2, 300, 0.6, 0.18, 'bandpass', 0.6, 2400); chord(t + 1.05, [523, 784, 1046], 'triangle', 0.5, 0.07, 0.05); tone(t + 0.35, 'square', 1200, 1200, 0.04, 0.05); },
+      stackPush(t, i = 0) { const f = 330 * Math.pow(1.06, i); tone(t, 'square', f, f * 1.02, 0.05, 0.06); tone(t, 'sine', 90, 60, 0.08, 0.18); },
+      stackThrow(t) { hiss(t, 0.35, 700, 0.9, 0.35, 'bandpass', 0.02, 3800); tone(t, 'sawtooth', 160, 420, 0.18, 0.1, 0.02); tone(t, 'sine', 80, 40, 0.3, 0.35); },
+      stackCrash(t, hit = 1) { hiss(t, 0.25, hit ? 900 : 3200, 0.7, 0.4, hit ? 'lowpass' : 'bandpass'); tone(t, 'square', hit ? 180 : 900, hit ? 70 : 600, 0.08, 0.12); for (let i = 0; i < 3; i++) tone(t + 0.03 + i * 0.04, 'triangle', 1400 + Math.random() * 1600, 900, 0.04, 0.05); },
+      servo(t, len = 0.4) { tone(t, 'sawtooth', 140, 260, len, 0.05, len * 0.4); tone(t, 'sawtooth', 143, 265, len, 0.04, len * 0.4); hiss(t, len, 900, 2, 0.05, 'bandpass', len * 0.3); },
+      relay(t) { tone(t, 'sine', 1760, 1760, 0.12, 0.12); tone(t + 0.04, 'sine', 2640, 2640, 0.16, 0.08); tone(t, 'square', 3520, 3400, 0.03, 0.04); },
+      zap(t) { tone(t, 'sawtooth', 2600, 180, 0.35, 0.2); hiss(t, 0.4, 6000, 0.6, 0.3, 'highpass', 0.002); tone(t, 'sine', 110, 40, 0.35, 0.5); tone(t + 0.02, 'square', 880, 220, 0.2, 0.08); },
+      panic(t) { for (let i = 0; i < 9; i++) tone(t + i * 0.07, 'square', 900 - i * 80 + Math.random() * 120, 300, 0.05, 0.07); hiss(t, 0.7, 2000, 3, 0.18, 'bandpass', 0.01, 300); tone(t + 0.6, 'sine', 160, 50, 0.4, 0.3); },
+      shatter(t) { hiss(t, 0.3, 7000, 0.5, 0.35, 'highpass', 0.001); for (let i = 0; i < 6; i++) tone(t + Math.random() * 0.15, 'sine', 2500 + Math.random() * 3500, 2000, 0.06, 0.05); tone(t, 'sine', 140, 60, 0.15, 0.25); },
+      collapse(t) { const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(32, t + 2.2); f.type = 'lowpass'; f.frequency.value = 500; env(g, t, 0.3, 0.22, 2); o.connect(f).connect(g).connect(out); o.start(t); o.stop(t + 2.4); hiss(t + 0.2, 2.2, 600, 0.5, 0.4, 'lowpass', 0.3, 80); for (let i = 0; i < 5; i++) tone(t + 0.3 + i * 0.35 + Math.random() * 0.1, 'triangle', 500 + Math.random() * 400, 200, 0.12, 0.1); },
       key(t, k = 0) { const f = 520 * Math.pow(2, Math.min(24, k) / 12); tone(t, 'triangle', f, f, 0.05, 0.08); },
       count(t, go) { tone(t, 'square', go ? 1320 : 880, go ? 1320 : 880, go ? 0.35 : 0.12, 0.14); if (go) tone(t, 'sine', 110, 55, 0.4, 0.4); },
       // stingers and alerts, on their own bus so they cut through the music
@@ -247,7 +260,7 @@ window.SuperAudio = (() => {
     };
     return { set: (node, name) => { const g = c.createGain(); g.gain.value = LEVEL[name] || 1; g.connect(node); out = g; }, voices };
   }
-  const GAP = { hit: 28, typo: 40, packetHit: 60, block: 60 };
+  const GAP = { hit: 28, typo: 40, packetHit: 60, block: 60, stackPush: 40, stackCrash: 70, shatter: 80 };
   const lastAt = {};
   function play(name, arg) {
     if (!on) return;
