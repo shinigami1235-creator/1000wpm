@@ -1166,6 +1166,7 @@ window.RushScene = (() => {
       return out;
     }
     function dispose() {
+      if (aq) aq.dispose();
       renderer.setAnimationLoop(null);
       if (fx) fx.dispose();
       if (tfx) tfx.dispose();

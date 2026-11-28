@@ -3170,6 +3170,7 @@ window.BossScene = (() => {
     }
 
     function dispose() {
+      if (aq) aq.dispose();
       renderer.setAnimationLoop(null);
       crew.forEach(c => c.op.dispose()); crew.length = 0;
       if (flight) flight.dispose();

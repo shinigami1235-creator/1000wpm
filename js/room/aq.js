@@ -56,7 +56,9 @@
     let last = 0, win = [], slow = 0, fast = 0, settleUntil = 0, warmOn = false, ms = 0, longRun = 0;
     const doc = o.document || root.document;
     // a hidden tab stops frames; the first frame back is not a slow frame
-    if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', () => { last = 0; win = []; });
+    // dispose() removes it: left on the document it keeps the whole scene alive after the page closes (28 Nov 2026 lag check)
+    const onVis = () => { last = 0; win = []; };
+    if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', onVis);
     function frame(now) {
       let dt = last ? now - last : 0; last = now;
       if (!dt || now < settleUntil) return;                  // first frame, or just changed
@@ -106,6 +108,7 @@
       setLevel(i) { li = next = clamp(i, 0, levels.length - 1); scale = 1; detail = 1; save(); },
       state: () => ({ level: levels[li], next: levels[next], scale, detail, ms: +ms.toFixed(1), budget: +budget.toFixed(1) }),
       apply() { o.onScale && o.onScale(scale); o.onDetail && o.onDetail(detail); },
+      dispose() { if (doc && doc.removeEventListener) doc.removeEventListener('visibilitychange', onVis); },
     };
     return aq;
   }

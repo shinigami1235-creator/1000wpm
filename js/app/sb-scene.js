@@ -817,7 +817,7 @@ window.SuperScene = (() => {
     palFrom = { bg: pal.bg.clone(), a: pal.a.clone(), b: pal.b.clone(), c: pal.c.clone(), bloom: pal.bloom };
 
     function dispose() {
-      renderer.setAnimationLoop(null);
+      renderer.setAnimationLoop(null); if (aq) aq.dispose();
       if (fx) fx.dispose();
       if (release) release();
       sup.dispose();

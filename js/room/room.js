@@ -606,6 +606,7 @@ window.Room = (() => {
     S = null;
     s.alive = false;
     clearTimeout(s.envT);
+    if (s.aq && s.aq.dispose) s.aq.dispose();
     if (s.cubeRT) s.cubeRT.dispose();
     if (s.envMap) s.envMap.dispose();
     s.off.forEach(f => { try { f(); } catch (e) {} });
