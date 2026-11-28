@@ -20,6 +20,8 @@
 //   f.muzzle(out)        where a shot leaves from (world)
 //   f.hold(frac)         Showdown: a finished word adds a spark that stays, the orb holds at frac until attack()
 //   f.clear()            drops the charge and every spark (a new round)
+//   f.boost(k)           Showdown overdrive: the bot powers up past a full charge (k 0..1: hotter glow, bigger orb,
+//                        the signature parts flared, a strain at the top); boost(0) lets it go
 //   f.pose(name, u)      a frozen frame for stills: 'ready' | 'charge' | 'attack' | 'combo' | 'dodge' | 'block' | 'typo' | 'spell' | 'ko'
 //                        | 'move:<name>' | 'hurt:<name>' (the duel's choreography, MOVES and HURTS below)
 //   f.move(name, o) / f.hurt(name, o) / f.motion()   the duel's moves and reactions; create(..., { roam: true })
@@ -806,7 +808,7 @@ window.BotFighter = (() => {
     const HOVER = BotKit.HOVER, gap = o.gap || 12, V = THREE.Vector3, parts = bot.parts || {};
     const strike = STRIKE[id] || STRIKE.orbit;
     let t = Math.random() * 10, lastKey = -9, charge = 0, chargeTo = 0, kick = 0;
-    let act = null, react = null, hitAt = -9, hitPow = 0, koAt = null, winAt = null, wpm = 0, stance = 0, sNow = 0, held = 0;
+    let act = null, react = null, hitAt = -9, hitPow = 0, koAt = null, winAt = null, wpm = 0, stance = 0, sNow = 0, held = 0, boostK = 0;
     const P = {}, S = {}, KEYS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'sx', 'sy', 'glow', 'halo', 'ant', 'hat', 'ears', 'legs', 'spinZ', 'orb', 'flash', 'shield'];
     const zero = () => KEYS.forEach(k => { P[k] = 0; });
     zero(); KEYS.forEach(k => { S[k] = 0; });
@@ -849,6 +851,7 @@ window.BotFighter = (() => {
       rise() { koAt = null; winAt = null; },
       // drops the charge and every spark at once (a new round)
       clear() { held = 0; chargeTo = 0; charge = 0; act = null; react = null; hurtNow = null; orb.clear(); },
+      boost(k = 0) { boostK = clamp(k, 0, 1); },
       victory() { winAt = t; },
       // the duel's choreography (MOVES and HURTS above): a move returns the ms until it connects
       // o: { len, side, reach (scales the travel), strike (fires the orb like attack()), power (its sound, 0..1) }
@@ -890,6 +893,13 @@ window.BotFighter = (() => {
       P.orb += c; P.halo += 0.35 * c; P.ant += 0.6 * c; P.hat += 0.15 * c; P.ears += 0.7 * c; P.legs += -0.55 * c;
       if (c > 0.65) { P.x += Math.sin(t * 61) * 0.02 * c; P.y += Math.sin(t * 53) * 0.02 * c; }   // straining
       if (c > 0.05) face = 'focus';
+      // overdrive: past a full charge, hotter and straining harder the more it holds
+      if (boostK > 0 && koAt == null) {
+        const b = boostK;
+        P.glow += 1.4 * b; P.orb += 0.3 * b; P.halo += 0.6 * b; P.ant += 0.5 * b; P.ears += 0.4 * b; P.y += 0.12 * b;
+        if (b > 0.5) { P.x += Math.sin(t * 71) * 0.025 * b; P.y += Math.sin(t * 59) * 0.025 * b; }
+        face = 'angry';
+      }
 
       if (act) {
         const u = (t - act.at) / act.len;

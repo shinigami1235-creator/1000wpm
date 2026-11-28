@@ -40,6 +40,14 @@
   --accent: #8cff58; --accent-rgb: 140,255,88; --accent-dim: #4f9a2e; --accent-dim-rgb: 79,154,46; --accent-hi: #b8ff96;
   --ink-hi: #f2f4f5; --ink-hi-rgb: 242,244,245; --ink: #e4e8ea; --ink-rgb: 228,232,234; --ink-2: #8e979c; --ink-3: #5f686d;
 }
+:root[data-theme="ctrl-cyan"] {
+  /* the cyan of the CTRL merch (28 Nov 2026) on matte black */
+  --bg-0: #050506; --bg-0-rgb: 5,5,6; --bg: #0a0b0d; --bg-rgb: 10,11,13; --bg-1: #0e0f12;
+  --bg-2: #101215; --bg-2-rgb: 16,18,21; --bg-3: #171a1e; --bg-3-rgb: 23,26,30; --bg-hi: #10191b;
+  --accent: #1ee0f0; --accent-rgb: 30,224,240; --accent-dim: #12808a; --accent-dim-rgb: 18,128,138; --accent-hi: #8ef3fa;
+  --ink-hi: #ffffff; --ink-hi-rgb: 255,255,255; --ink: #e9edf0; --ink-rgb: 233,237,240; --ink-2: #8d969d; --ink-3: #5c646b;
+  --glow: 0 0 10px rgba(var(--accent-rgb),.35);
+}
 :root[data-theme="ice"] {
   --bg-0: #010407; --bg-0-rgb: 1,4,7; --bg: #03070b; --bg-rgb: 3,7,11; --bg-1: #040c14;
   --bg-2: #060e15; --bg-2-rgb: 6,14,21; --bg-3: #0b1722; --bg-3-rgb: 11,23,34; --bg-hi: #0a1d2b;

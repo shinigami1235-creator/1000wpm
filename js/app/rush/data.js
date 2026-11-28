@@ -89,7 +89,6 @@ window.RushData = (() => {
   // What each mark adds. A boss carries every twist up to its mark.
   const TWISTS = [
     { id: 'shield', mark: 2, text: 'A firewall goes up at half HP.' },
-    { id: 'glitch', mark: 3, text: 'Some words carry digits in place of letters.' },
     { id: 'twice', mark: 4, text: 'Its own move comes twice as often.' },
     { id: 'enrage', mark: 5, text: 'It attacks faster below 30% HP.' },
     { id: 'extra', mark: 6, text: 'Every attack needs one more counter word.' },
@@ -185,7 +184,8 @@ window.RushData = (() => {
     ['restaurant', 'resturant', 'restaraunt'], ['occasion', 'ocassion', 'occassion'], ['millennium', 'millenium', 'milennium'],
     ['conscience', 'concience', 'conscence'], ['privilege', 'priviledge', 'privelege'], ['guarantee', 'garantee', 'guarentee'],
   ];
-  // Glitched stack words swap a letter for one of these. From js/breach/data.js.
+  // Glitched words (digits in place of letters) were dropped on 28 Nov 2026 (Gid: they read as typos). Kept
+  // only so old saves and tools that read D.GLITCH don't break.
   const GLITCH = { o: ['0'], e: ['3'], a: ['4', '@'], i: ['1'], s: ['5', '$'], t: ['7'], l: ['1'] };
   // The near-miss boost word Art sends. Tech words that never read like a typo.
   const BOOST_WORDS = ['overclock', 'hotfix', 'failsafe', 'uplink', 'reboot', 'backdoor', 'override', 'patch'];

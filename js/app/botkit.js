@@ -18,6 +18,8 @@
 //     top     on its head (bought): 'none' | 'bow' | 'cap' | 'flower' | 'party' | 'antenna' | 'headphones' | 'propeller' | 'crown'
 //     blush   true: pink cheeks on the screen (bought)
 //     marks   { stickers: [ids from BotKit.STICKERS], wear: 0..1 } battle marks, earned in fights
+//     livery  'none' | 'ctrl' (bought): CTRL's colours from the merch (28 Nov 2026), a matte black shell, the
+//             white wing mark on its flank, cyan glow and three cyan slashes; it sets the shell and the glow
 //     orb     the charge orb in Duel and Party (js/app/bot-fighter.js draws it): 'core', and bought:
 //             'nebula' | 'frost' | 'ember' | 'void' | 'prism' | 'pulse'
 //   color 'rainbow' (bought) runs the glow through every colour
@@ -80,6 +82,7 @@ window.BotKit = (() => {
     emote: [['wave', 'Wave'], ['laugh', 'Laugh'], ['spin', 'Spin'], ['heart', 'Love'], ['dance', 'Dance'], ['flip', 'Backflip']],
     victory: [['hop', 'Hop'], ['spin', 'Spin'], ['float', 'Float'], ['dance', 'Dance'], ['flip', 'Flips'], ['fireworks', 'Fireworks']],
     // the orb a bot charges as you type in Duel and Party (js/app/bot-fighter.js)
+    livery: [['none', 'None'], ['ctrl', 'CTRL']],
     orb: [['core', 'Core'], ['pulse', 'Pulse'], ['nebula', 'Nebula'], ['ember', 'Ember'], ['frost', 'Frost'], ['prism', 'Prism'], ['void', 'Void']],
     sig: {
       orbit: ['Halo', 'Single ring', 'Double ring'], pixel: ['Antennas', 'Twin spikes', 'Dish'], nova: ['Blades', 'Long', 'Swept back'],
@@ -122,19 +125,37 @@ window.BotKit = (() => {
     sunset: [['#ff9a6a', 0.3, 0.2], ['#d9577a', 0.35, 0.25]],
     carbon: [['#2b2e33', 0.28, 0.55], ['#16181b', 0.4, 0.6]],
     obsidian: [['#141318', 0.12, 0.6, '#7a5cff'], ['#0c0b10', 0.25, 0.6]],
+    ctrl: [['#121315', 0.58, 0.2], ['#1c1e22', 0.5, 0.35]],   // the CTRL livery's matte black
   };
   // battle marks: one sticker per kind of boss repaired, drawn as a small badge
-  const STICKERS = { syntax: 'Syntax Error', titan: 'Siege Titan', warden: 'Firewall Warden', king: 'Kernel King', streak: '10-win streak', founder: 'Season 1' };
+  const STICKERS = { syntax: 'Syntax Error', titan: 'Siege Titan', warden: 'Firewall Warden', king: 'Kernel King', streak: '10-win streak', founder: 'Season 1', ctrl: 'CTRL tag' };
+
+  // ---------- CTRL livery and tag (28 Nov 2026): the logo from js/app/brand.js ----------
+  const CTRL_CYAN = '#1ee0f0';
+  // the shop picture's extras: a white wing mark on the flank, cyan slashes and a cyan seam
+  function liveryIcon() {
+    const B = window.CtrlBrand && CtrlBrand.P.mark;
+    const mark = B ? `<path transform="translate(106 112) scale(${(34 / B.h).toFixed(5)})" fill="#fff" fill-rule="evenodd" d="${B.d}"/>` : '';
+    return `<circle cx="100" cy="104" r="44" fill="none" stroke="#3a3f46" stroke-width="2"/>${mark}<path d="M72 136l5-10h4l-5 10zM80 136l5-10h4l-5 10zM88 136l5-10h4l-5 10z" fill="${CTRL_CYAN}"/><path d="M60 112a40 40 0 0 0 80 0" stroke="${CTRL_CYAN}" stroke-width="2.5" fill="none" opacity=".85"/>`;
+  }
+  // decal textures for the livery: the wing mark, and three slashes
+  function liveryTex(THREE, kind) {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    if (kind === 'wing' && window.CtrlBrand) { const sz = CtrlBrand.size('mark', 112); CtrlBrand.draw(g, 'mark', (128 - sz.w) / 2, 8, 112, '#ffffff'); }
+    if (kind === 'bars') { g.fillStyle = '#ffffff'; for (let i = 0; i < 3; i++) { const x = 18 + i * 34; g.beginPath(); g.moveTo(x, 104); g.lineTo(x + 16, 104); g.lineTo(x + 40, 24); g.lineTo(x + 24, 24); g.closePath(); g.fill(); } }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+  }
 
   // a shop picture for a bought part: a little bot wearing it (an SVG data URL)
   function icon(it) {
     const acc = (window.Theme && Theme.hex('accent')) || '#8cff58';
     const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a', cherry: '#d8343f', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: '#22306a', holo: '#e8f0ff', gunmetal: '#4d535c', black: '#1f2226', chrome: '#b8bec7', ivory: '#efe6d2', jade: '#3fae86', ocean: '#1f6f9a', sunset: '#ff9a6a', carbon: '#2b2e33', obsidian: '#141318' };
     const AR = it.part === 'armor' && ARMOR[it.v];
-    const body = it.part === 'shell' ? shellC[it.v] || '#d8dce2' : AR ? shellC[AR.shell] || '#d8dce2' : '#d8dce2';
+    const LV = it.part === 'livery' && it.v === 'ctrl';
+    const body = LV ? '#121315' : it.part === 'shell' ? shellC[it.v] || '#d8dce2' : AR ? shellC[AR.shell] || '#d8dce2' : '#d8dce2';
     const FXG = { rainbow: ['#ff5c8a', '#ffd23d', '#3effc8', '#8c7bff'], ember: ['#c41c1c', '#ff6a1f', '#ffe066', '#ff6a1f'], frost: ['#3b7dff', '#7fe8ff', '#ffffff', '#7fe8ff'], galaxy: ['#3b2bff', '#9b6bff', '#ff5cd6', '#5cc8ff'], toxic: ['#2f8a12', '#9dff2e', '#f4ff9a', '#9dff2e'], ocean: ['#2266ff', '#2ee6d6', '#9ffcff', '#2ee6d6'], sunset: ['#ffd166', '#ff7a59', '#d94f9a', '#ff7a59'], neon: ['#ff2bd6', '#ff2bd6', '#20e7ff', '#20e7ff'] };
     const fxg = FXG[it.part === 'color' && it.v] || FXG.rainbow;
-    const glowC = it.part === 'color' ? 'url(#rb)' : acc;
+    const glowC = it.part === 'color' ? 'url(#rb)' : LV ? CTRL_CYAN : acc;
     let eyes = `<rect x="78" y="96" width="12" height="12" rx="3" fill="${acc}"/><rect x="110" y="96" width="12" height="12" rx="3" fill="${acc}"/>`;
     if (it.part === 'eyes') {
       const E = {
@@ -251,7 +272,7 @@ window.BotKit = (() => {
     const moves = it.part === 'emote' || it.part === 'victory' ? (it.part === 'victory' && (it.v === 'spin' || it.v === 'flip' || it.v === 'dance') ? spark(40, 36, '#ffd23d') + spark(164, 34, '#ff6fae', 7) : '') + (MOVES[it.v] || '') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
       <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}${arBack}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
-      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}${arFront}${orbArt}</svg>`;
+      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}${arFront}${orbArt}${LV ? liveryIcon() : ''}</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
 
@@ -298,6 +319,15 @@ window.BotKit = (() => {
 
   function stickerTex(THREE, kind, glowCol) {
     const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    if (kind === 'ctrl') {
+      // the small CTRL tag patch from the hoodie: a black square, the wing mark and the wordmark in white
+      c.width = c.height = 128;
+      g.fillStyle = '#0d0e10'; g.fillRect(6, 6, 116, 116);
+      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 3; g.strokeRect(8, 8, 112, 112);
+      if (window.CtrlBrand) { const m = CtrlBrand.size('mark', 60); CtrlBrand.draw(g, 'mark', (128 - m.w) / 2, 18, 60, '#fff'); const w2 = CtrlBrand.size('word', 17); CtrlBrand.draw(g, 'word', (128 - w2.w) / 2, 90, 17, '#fff'); }
+      g.fillStyle = CTRL_CYAN; g.fillRect(14, 112, 22, 3);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+    }
     const col = '#' + glowCol.getHexString();
     g.fillStyle = '#f2f4f6'; g.beginPath();
     for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(32 + Math.cos(a) * 30, 32 + Math.sin(a) * 30); } g.closePath(); g.fill();
@@ -320,6 +350,9 @@ window.BotKit = (() => {
   }
 
   function create(THREE, id, opts = {}) {
+    // the CTRL livery sets the shell (under an armour set, the set's shell stays) and the glow
+    const livery = opts.livery === 'ctrl';
+    if (livery) opts = { ...opts, shell: 'ctrl', color: CTRL_CYAN };
     const def = BOTS[id] || BOTS.orbit, sc = opts.scale || 1;
     const V = THREE.Vector3, keep = [], own = x => (keep.push(x), x);
     const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -338,7 +371,7 @@ window.BotKit = (() => {
     const PM = THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial;
     const shell = own(SH[0][3]
       ? new PM({ color: SH[0][0], roughness: SH[0][1], metalness: SH[0][2], iridescence: 1, iridescenceIOR: 1.6, sheen: 1, sheenColor: new THREE.Color(SH[0][3]), clearcoat: 0.8, clearcoatRoughness: 0.12 })
-      : new PM({ color: SH[0][0], roughness: SH[0][1], metalness: SH[0][2], clearcoat: opts.lite ? 0 : 0.7, clearcoatRoughness: 0.18 }));
+      : new PM({ color: SH[0][0], roughness: SH[0][1], metalness: SH[0][2], clearcoat: opts.lite ? 0 : SH === SHELLS.ctrl ? 0.18 : 0.7, clearcoatRoughness: SH === SHELLS.ctrl ? 0.5 : 0.18 }));
     const shell2 = own(new THREE.MeshStandardMaterial({ color: SH[1][0], roughness: SH[1][1], metalness: SH[1][2] }));
     const dark = own(new THREE.MeshStandardMaterial({ color: '#16191e', roughness: 0.5, metalness: 0.5 }));
     const metal = own(new THREE.MeshStandardMaterial({ color: '#8a919b', roughness: 0.28, metalness: 0.95 }));   // bolts, rims, barrels
@@ -1014,7 +1047,7 @@ window.BotKit = (() => {
 
     // ---------- battle marks: stickers and wear, put on the shell by aiming at it from outside ----------
     const marks = opts.marks || {};
-    if ((marks.stickers && marks.stickers.length) || marks.wear > 0) {
+    if ((marks.stickers && marks.stickers.length) || marks.wear > 0 || livery) {
       group.updateMatrixWorld(true);
       const solids = []; body.traverse(o => { if (o.isMesh && (o.material === shell || o.material === shell2)) solids.push(o); });
       const ray = new THREE.Raycaster(), inv = new THREE.Matrix4().copy(body.matrixWorld).invert(), W2 = body.matrixWorld;
@@ -1078,8 +1111,16 @@ window.BotKit = (() => {
       const pref = q => Math.abs(q[0]) * 0.8 + q[2] * 0.5 - Math.abs(q[1]) * 0.6;
       CAND.sort((p, q) => pref(q) - pref(p));
       let ci = 0;
+      // the livery's decals go on first: the wing mark on the right flank, the slashes on the left
+      if (livery) {
+        const wing = own(new THREE.MeshStandardMaterial({ map: own(liveryTex(THREE, 'wing')), color: '#f4f6f8', transparent: true, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }));
+        const bars = own(new THREE.MeshBasicMaterial({ map: own(liveryTex(THREE, 'bars')), color: new THREE.Color(CTRL_CYAN).multiplyScalar(1.6), toneMapped: false, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }));
+        const tryAt = (dirs, size, mat) => { for (const d of dirs) if (place(d, size, mat)) return true; for (const d of CAND) if ((d[0] > 0) === (dirs[0][0] > 0) && place(d, size * 0.85, mat)) return true; return false; };
+        tryAt([[0.5, 0.62, 0.5], [0.62, 0.5, 0.35], [0.85, 0.15, 0.5], [0.4, 0.75, 0.2], [0.95, 0.05, 0.25], [1, 0, 0]], 0.7, wing);
+        tryAt([[-0.85, -0.1, 0.5], [-0.95, 0.1, 0.25], [-0.7, -0.3, 0.6], [-1, 0, 0]], 0.38, bars);
+      }
       (marks.stickers || []).slice(0, 6).forEach((k, i) => {
-        const mat = own(new THREE.MeshStandardMaterial({ map: own(stickerTex(THREE, k, GLOW)), color: '#9aa0a8', transparent: true, roughness: 0.8, metalness: 0, envMapIntensity: 0.2, polygonOffset: true, polygonOffsetFactor: -2 }));
+        const mat = own(new THREE.MeshStandardMaterial({ map: own(stickerTex(THREE, k, GLOW)), color: k === 'ctrl' ? '#e6e8ea' : '#9aa0a8', transparent: true, roughness: 0.8, metalness: 0, envMapIntensity: 0.2, polygonOffset: true, polygonOffsetFactor: -2 }));
         while (ci < CAND.length && !place(CAND[ci++], 0.34, mat, i % 2 ? 0.25 : -0.2));
       });
       const scratch = own(new THREE.MeshBasicMaterial({ map: own(scratchTex(THREE)), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -1284,7 +1325,7 @@ window.BotKit = (() => {
   const accent = () => (window.Theme ? Theme.hex('accent') : '#8cff58');
   const lookOf = L => ({ color: L.color || accent(), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back,
     top: L.top || 'none', blush: !!L.blush, marks: { stickers: L.stickers || [], wear: L.wear || 0 }, name: L.name || '',
-    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop', armor: L.armor || 'none', orb: L.orb || 'core' });
+    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop', armor: L.armor || 'none', orb: L.orb || 'core', livery: L.livery || 'none' });
   // the bought parts (REWARDS.shop.bot): { id, name, price, part, v }; part is a look key
   const SHOP = () => (window.REWARDS && REWARDS.shop && REWARDS.shop.bot) || [];
   const itemFor = (part, v) => SHOP().find(x => x.part === part && String(x.v) === String(v)) || null;
@@ -1292,13 +1333,13 @@ window.BotKit = (() => {
   // the parts in a look that this player hasn't bought
   function locked(L) {
     const out = [];
-    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory', 'armor', 'orb']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
+    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory', 'armor', 'orb', 'livery']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
     return out;
   }
   // a look with its unbought parts back to the free ones, for fights
   function owned(L) {
     const o = { ...L };
-    for (const it of locked(L)) o[it.part] = it.part === 'blush' ? false : it.part === 'color' ? '' : it.part === 'top' || it.part === 'armor' ? 'none' : OPTIONS[it.part][0][0];
+    for (const it of locked(L)) o[it.part] = it.part === 'blush' ? false : it.part === 'color' ? '' : it.part === 'top' || it.part === 'armor' || it.part === 'livery' ? 'none' : OPTIONS[it.part][0][0];
     return o;
   }
   function mine() {

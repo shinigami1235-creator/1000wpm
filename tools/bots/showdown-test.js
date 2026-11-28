@@ -1,4 +1,4 @@
-// Unit tests for the Showdown rules (js/app/showdown-rules.js): strikes, spells and the beam struggle.
+// Unit tests for the Showdown rules (js/app/showdown-rules.js): strikes, spells, the beam struggle and overdrive.
 //   node tools/bots/showdown-test.js
 const load = require('../net/load');
 const G = load(['js/app/showdown-rules.js']);
@@ -101,6 +101,62 @@ const fixed = v => () => v;
   ok(rk.ko === 1 && bk && bk.loser === 1, 'a KO round can be a struggle when the loser is the one knocked out');
 }
 
+// ---------- overdrive ----------
+{
+  const OD = SR.OD, cap = C.OVERDRIVE_CAP;
+  const st = SR.odState();
+  const a1 = SR.odWord(st, true, 800), a2 = SR.odWord(st, true, 800), a3 = SR.odWord(st, true, 800);
+  ok(a1 === OD.steps[0] && a2 < a1 && a3 < a2, 'each clean word in a row adds less (diminishing steps)');
+  const before = st.frac;
+  ok(SR.odWord(st, false, 800) === 0 && st.frac === before && st.chain === 0, 'a typo adds nothing, takes nothing and breaks the chain');
+  ok(SR.odWord(st, true, 800) === OD.steps[0], 'after a typo the chain restarts from the first step');
+  const long = SR.odState();
+  for (let k = 0; k < 200; k++) SR.odWord(long, true, 500);
+  const base = SR.damage(10, 1, true);
+  const big = SR.odDamage({ words: 10, od: { ...long, good: 999, bad: 0 } }, base);
+  ok(big.word <= Math.round(base * cap) && big.word > 0, `200 clean words stay inside OVERDRIVE_CAP (${big.word} of ${base})`);
+  const sp = SR.odState(); sp.good = 100;
+  for (let k = 0; k < 30; k++) { SR.odWord(sp, true, 500); if (sp.due) SR.odSpecial(sp, true, 'void-sphere'); }
+  const both = SR.odDamage({ words: 10, od: sp }, base);
+  ok(both.word + both.spell <= Math.round(base * cap) && both.spell > 0, 'the special counts inside the same cap');
+  ok(sp.words === 31 && sp.special && sp.special.ok, 'one special a round');
+  const slow = SR.odState();
+  for (let k = 0; k < 8; k++) SR.odWord(slow, true, OD.specialMs + 100);
+  ok(!slow.due, 'slow overdrive words never bring up the special');
+  const fast = SR.odState();
+  for (let k = 0; k < OD.specialAfter - 1; k++) SR.odWord(fast, true, 600);
+  ok(!fast.due, 'not before enough clean words in a row');
+  SR.odWord(fast, true, 600);
+  ok(fast.due, `the special comes up after ${OD.specialAfter} fast clean words in a row`);
+  const sloppy = { ...long, good: 80, bad: 20 };
+  ok(SR.odDamage({ words: 10, od: sloppy }, base).word === 0 && SR.odTier(sloppy) === 0, 'overdrive under 90% accuracy adds nothing and shows no tier');
+  const t = n => { const s = SR.odState(); s.good = 50; for (let k = 0; k < n; k++) SR.odWord(s, true, 900); return SR.odTier(s); };
+  ok(t(1) === 0 && t(2) === 1 && t(4) === 2 && t(6) === 3 && t(12) === 3, 'OD1 at 2 clean words, OD2 at 4, OD3 at 6');
+  // in the exchange
+  const odS = SR.odState(); odS.good = 60;
+  for (let k = 0; k < 6; k++) SR.odWord(odS, true, 700);
+  SR.odSpecial(odS, true, 'neon-nova');
+  const A = side({ doneAt: 8000, od: odS }), B = side({ doneAt: 15000 });
+  const r = SR.resolve([A, B], fixed(0.99));
+  const s0 = r.attacks.find(x => x.kind === 'strike' && x.from === 0), odSpell = r.attacks.find(x => x.od === true);
+  ok(s0.od === 3 && s0.odDmg > 0 && s0.dmg === SR.damage(10, 0.95, false) + s0.odDmg, 'overdrive rides on the strike as extra damage');
+  ok(odSpell && odSpell.kind === 'spell' && odSpell.dmg > 0 && !odSpell.fizzled && odSpell.from === 0, 'a clean special casts as an extra spell');
+  ok(r.attacks.indexOf(odSpell) === r.attacks.length - 1 || r.attacks.slice(r.attacks.indexOf(odSpell)).every(x => x.kind === 'spell'), 'the special casts after the strikes');
+  const odF = { ...odS, special: { id: 'neon-nova', ok: false } };
+  const rf = SR.resolve([side({ doneAt: 8000, od: odF }), side({ doneAt: 15000 })], fixed(0.99));
+  const fz = rf.attacks.find(x => x.od === true);
+  ok(fz && fz.fizzled && fz.dmg === 0, 'a typo in the special fizzles it');
+  ok(rf.attacks.find(x => x.kind === 'strike' && x.from === 0).dmg === s0.dmg, 'a fizzled special never cuts the strike');
+  const rd = SR.resolve([side({ doneAt: 8000, od: odS }), side({ doneAt: 1000 })], fixed(0));   // every dodge roll succeeds
+  const sd = rd.attacks.find(x => x.kind === 'strike' && x.from === 0);
+  ok(sd.dodged && sd.dmg === 0 && sd.odDmg === 0, 'a dodged strike loses its overdrive too');
+  const plain = SR.resolve([side({ doneAt: 9000 }), side({ doneAt: 12000 })], fixed(0.99));
+  ok(plain.attacks.every(x => !x.od && !x.odDmg) && plain.attacks[0].dmg === SR.damage(10, 0.95, false), 'no overdrive, no change');
+  const seeds = Array.from({ length: 200 }, (_, i) => 'SD:' + (1700000000000 + i * 7919));
+  ok(seeds.every(s => [1, 2, 3, 4, 5].every(r2 => { const id = SR.odSpellFor(s, r2), m = SR.spellFor(s, r2); return SR.SPELLS[id] && id === SR.odSpellFor(s, r2) && (!m || m.id !== id); })),
+    'the special spell is the same for both sides and never the round\'s own spell word');
+}
+
 // ---------- the simulated matches stay in shape ----------
 {
   const sim = require('./showdown-sim');
@@ -111,6 +167,13 @@ const fixed = v => () => v;
   }
   ok(Math.abs(r1 - r0) / r0 < 0.06, `spells keep match length within 6% (${(r0 / 120).toFixed(2)} -> ${(r1 / 120).toFixed(2)} rounds)`);
   ok(beams / ex <= 0.25 && beams > 0, `beam struggles in at most a quarter of exchanges (${(100 * beams / ex).toFixed(0)}%)`);
+  // Gid's rule: overdrive may help the faster typist a little, never a lot
+  for (const row of sim.odTable(800, [[60, 100], [80, 120]])) {
+    const d = row.on.winB - row.off.winB;
+    ok(d <= 6, `overdrive moves ${row.a} vs ${row.b} by ${d.toFixed(1)} points (at most about 5)`);
+    ok(Math.abs(row.on.rounds - row.off.rounds) / row.off.rounds < 0.06, `overdrive keeps ${row.a} vs ${row.b} match length within 6% (${row.off.rounds.toFixed(2)} -> ${row.on.rounds.toFixed(2)})`);
+    ok(row.on.odWordsB > 1, `the faster side types overdrive words (${row.on.odWordsB.toFixed(1)} a round)`);
+  }
 }
 
 console.log(`${pass} passed, ${fail} failed`);
