@@ -96,7 +96,7 @@
 .entry.on { opacity: 1; }
 .en-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .en-win {
-  position: relative; width: min(1080px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow: hidden;
+  position: relative; width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow: hidden;
   display: flex; flex-direction: column;
   background: rgba(9,10,12,.92); border: 1px solid rgba(255,255,255,.13);
   transform: scale(.985); opacity: 0; transition: transform .35s cubic-bezier(.2,.7,.2,1), opacity .25s;
@@ -223,3 +223,8 @@
 
 /* the result window's label carries the wing mark */
 .gg-mark { width: auto; height: 14px; margin-right: 8px; vertical-align: -2px; color: var(--ink-hi); }
+
+/* the ops map's top line and the Operator ID card carry the logo */
+.hm-brand .hm-word { width: auto; height: 10px; vertical-align: -1px; color: var(--ink-hi); }
+.op-brand { display: inline-flex; align-items: center; gap: 8px; }
+.op-brand .ctrl-tag { width: 20px; height: 20px; }
