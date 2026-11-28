@@ -412,6 +412,8 @@ window.SuperScene = (() => {
       // where an attack that lands should hit: the middle of Art's bot (it hovers about 2.6 up), or chest height
       // on the old marker. Gid, 28 Nov 2026: the hydra's beam was hitting the floor under the bot
       artAim: out => { if (artBot) { artBot.bot.body.getWorldPosition(out); return out; } return out.copy(artPos).setY(1.4); },
+      // a boss can ask the broadcast camera for its own shots (sb-cam.js); the director still turns down any that would hide an attack
+      want: (n, x) => cam.want(n, x),
     };
     const sup = SuperSupport.create(THREE, scene, K, { artPos, glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
     function mountModel(id) {

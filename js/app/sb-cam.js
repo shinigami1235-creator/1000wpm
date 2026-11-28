@@ -7,6 +7,7 @@
 //   neck     the Hydra's neck opens: a slow push toward the exposed core
 //   weak     a Leviathan weak point hit: a quick side angle on the segment
 //   kill     the finish phrase typed: a close-up on the core in slow motion, then an orbit as it dies
+//   lev*     the Leviathan's own: levRise (intro), levRoar (phase), levBreach, levKill
 // Every shot fits the boss by its height (fitD), so a tall Compiler and a wide Hydra both stay framed.
 //   const cam = SuperCam.create(THREE, camera, { reduce, model: () => model, art, setSlow(k) })
 //   cam.want(name, x)   cam.update(tReal, dt, threatAt, finishing, enraged)   cam.shot()   cam.log()
@@ -48,6 +49,26 @@ window.SuperCam = (() => {
       neck: { pri: 2, len: 2.6, fov: 36, omega: 2.5, pose: (c, out) => { const p = sub('core') || M().focus; out.look.copy(p).y += 2; out.pos.set(p.x + 3, p.y + 4, p.z + 22 - c.u * 6); } },
       weak: { pri: 2, parts: [
         { len: 0.9, cut: 1, slow: 0.45, fov: 38, pose: (c, out) => { const p = sub('core') || M().focus; out.look.copy(p); out.pos.set(p.x + (p.x < 0 ? -10 : 10), p.y + 3, p.z + 14); } },
+      ] },
+      // the Leviathan's own shots (sb-leviathan.js asks for them; a higher priority wins the beat over the generic ones)
+      // levRise: the countdown, low on the water looking up at the head, then a crane down over the coils
+      levRise: { pri: 4.5, free: true, parts: [
+        { len: 1.7, cut: 1, fov: 36, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1.5 - c.u, p.z); out.pos.set(p.x + 11 - c.u * 4, 0.9 + c.u * 0.5, p.z + 13 - c.u * 1.5); } },
+        { len: 1.3, cut: 1, fov: 50, pose: (c, out) => { const f = M().focus; out.look.set(f.x, f.y - 1, f.z); out.pos.set(f.x - 10 + c.u * 6, f.y + 16 - c.u * 7, f.z + 30 - c.u * 2); } },
+      ] },
+      // levRoar: a phase break, from the water under its jaw in slow motion, then a high wide of the whole coil
+      levRoar: { pri: 3.5, parts: [
+        { len: 1.4, cut: 1, slow: 0.5, fov: 32, hand: 0.05, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1, p.z); out.pos.set(p.x * 0.35, 1.4 + c.u * 0.5, 25 - c.u * 2); } },
+        { len: 1.3, cut: 1, fov: 50, pose: (c, out) => { const f = M().focus; out.look.set(f.x, f.y - 1.5, f.z); out.pos.set(f.x + 20 - c.u * 4, f.y + 13, f.z + 27); } },
+      ] },
+      // levBreach: the breach bursting out of the sea, side on at the waterline, in slow motion
+      levBreach: { pri: 2, parts: [
+        { len: 1.0, cut: 1, slow: 0.5, fov: 44, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, Math.max(4, p.y), p.z); out.pos.set(p.x - 20 + c.u * 2, 1.6, p.z + 10); } },
+      ] },
+      // levKill: its last roar up close in slow motion, then wide and low on the water as it bursts and falls
+      levKill: { pri: 5.5, free: true, parts: [
+        { len: 1.2, cut: 1, slow: 0.35, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1, p.z); out.pos.set(p.x * 0.4 + (p.x < 0 ? -6 : 6), Math.max(2, p.y - 1), Math.max(p.z + 16, 12) - c.u * 2); } },
+        { len: 4.4, cut: 1, slow: 0.8, fov: 46, omega: 3, pose: (c, out) => { const f = M().focus, a = -0.35 + c.u * 0.5, r = 38; out.look.set(f.x, 4, f.z); out.pos.set(f.x + Math.sin(a) * r, 2.2 + c.u * 2, f.z + Math.cos(a) * r); } },
       ] },
       kill: { pri: 5, free: true, parts: [
         { len: 1.4, cut: 1, slow: 0.25, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('core') || M().focus, h = H(); out.look.copy(p); out.pos.set(p.x + h * 0.4, p.y + h * 0.12 + 1.5, p.z + h * 0.9 + 4 - c.u * 2); } },

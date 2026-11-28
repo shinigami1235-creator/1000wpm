@@ -23,6 +23,7 @@ window.SuperAudio = (() => {
     count: 9, support: 1.8, chaos: 2.2, hype: 0.8, phase: 0.75, enrage: 1.1, finish: 0.7, win: 0.8, lose: 0.75,
     snap: 2.2, roar: 1.0, slam: 1.0, splash: 1.1, boom: 0.9, assemble: 1.6, launch: 1.4, thunder: 0.9, dive: 1.2, plates: 1.6, spit: 1.6, pop: 1.6,
     windupSlam: 1.0, windupLaser: 1.2, windupBreach: 1.2, counter: 1.4, key: 8,
+    levCharge: 0.9, levStrike: 1.2, levCrunch: 1.3, levClang: 1.2, levBurst: 1.0, levSweep: 1.1, levRoar: 0.9, levDie: 0.9, levSurface: 1.0,
   };
   const STINGERS = new Set(['support', 'chaos', 'hype', 'phase', 'enrage', 'finish', 'win', 'lose', 'count']);
   let ac = null, master, limiter, outG, musicBus, duckG, sfxBus, stingBus;
@@ -233,6 +234,27 @@ window.SuperAudio = (() => {
       windupLaser(t, ms = 2000) { const len = Math.min(2.6, ms / 1000); const o = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(300, t); o.frequency.exponentialRampToValueAtTime(1900, t + len); lfo.frequency.setValueAtTime(6, t); lfo.frequency.linearRampToValueAtTime(30, t + len); lg.gain.value = 0.4; lfo.connect(lg).connect(g.gain); env(g, t, len * 0.8, 0.12, len * 0.25); o.connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + len * 1.1); lfo.stop(t + len * 1.1); tone(t, 'square', 1100, 1100, 0.06, 0.08); },
       windupBreach(t, ms = 2400) { const len = Math.min(3, ms / 1000); hiss(t, len, 300, 0.6, 0.25, 'lowpass', len * 0.8, 900); for (let i = 0; i < 16; i++) { const w = len * 0.3 + Math.random() * len * 0.7; tone(t + w, 'sine', 200 + Math.random() * 400, 600 + Math.random() * 500, 0.05, 0.06); } },
       counter(t) { tone(t, 'triangle', 600, 1800, 0.12, 0.25); tone(t + 0.08, 'sine', 90, 40, 0.4, 0.5); hiss(t, 0.3, 4000, 0.8, 0.25, 'bandpass', 0.002, 1200); },
+      // the Leviathan (sb-leviathan.js): a throat growl winding up the lunge, the strike, the bite, the
+      // barrier ringing, the breach erupting, the tail sweep, its roar, its death and breaking the surface
+      levCharge(t, ms = 1800) { const len = Math.min(2.6, ms / 1000); const o = c.createOscillator(), o2 = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+        o.type = o2.type = 'sawtooth'; o.frequency.setValueAtTime(52, t); o.frequency.exponentialRampToValueAtTime(96, t + len); o2.frequency.setValueAtTime(53.5, t); o2.frequency.exponentialRampToValueAtTime(99, t + len);
+        f.type = 'lowpass'; f.Q.value = 4; f.frequency.setValueAtTime(260, t); f.frequency.exponentialRampToValueAtTime(1100, t + len);
+        lfo.frequency.setValueAtTime(7, t); lfo.frequency.linearRampToValueAtTime(15, t + len); lg.gain.value = 0.4; lfo.connect(lg).connect(g.gain);
+        env(g, t, len * 0.85, 0.22, len * 0.2); o.connect(f); o2.connect(f); f.connect(g).connect(out); [o, o2, lfo].forEach(x => { x.start(t); x.stop(t + len * 1.1); });
+        tone(t, 'sine', 220, 520, len, 0.05, len * 0.9); },
+      levStrike(t) { hiss(t, 0.2, 500, 0.9, 0.45, 'bandpass', 0.06, 3200); tone(t + 0.12, 'sine', 110, 40, 0.25, 0.5); tone(t + 0.13, 'square', 700, 200, 0.05, 0.1); },
+      levCrunch(t) { for (let i = 0; i < 4; i++) hiss(t + i * 0.035, 0.05, 2500 + i * 700, 1.5, 0.35, 'bandpass', 0.001); tone(t, 'square', 210, 55, 0.18, 0.22); tone(t, 'sine', 95, 35, 0.35, 0.6); hiss(t, 0.4, 700, 0.6, 0.3, 'lowpass', 0.002, 200); },
+      levClang(t) { const k = vary(); tone(t, 'triangle', 330 * k, 320 * k, 0.55, 0.16); tone(t, 'triangle', 497 * k, 480 * k, 0.45, 0.1); tone(t, 'sine', 1240 * k, 1200 * k, 0.3, 0.06); hiss(t, 0.15, 4200, 0.8, 0.3, 'bandpass', 0.001, 1500); tone(t, 'sine', 85, 38, 0.35, 0.55); },
+      levBurst(t) { tone(t, 'sine', 62, 24, 1.2, 0.85); hiss(t, 1.6, 1600, 0.5, 0.6, 'lowpass', 0.01, 150); hiss(t + 0.02, 0.9, 2600, 0.7, 0.35, 'bandpass', 0.02, 700); for (let i = 0; i < 10; i++) tone(t + 0.3 + Math.random() * 1.1, 'sine', 380 + Math.random() * 700, 900 + Math.random() * 400, 0.05, 0.045); },
+      levSweep(t) { hiss(t, 0.55, 300, 0.8, 0.45, 'bandpass', 0.18, 2600); hiss(t + 0.25, 0.4, 2600, 0.8, 0.25, 'bandpass', 0.01, 400); tone(t + 0.18, 'sine', 140, 45, 0.35, 0.4); },
+      levRoar(t) { const f = c.createBiquadFilter(), g = c.createGain(); f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(380, t); f.frequency.exponentialRampToValueAtTime(950, t + 0.7); f.frequency.exponentialRampToValueAtTime(300, t + 2.1);
+        env(g, t, 0.25, 0.4, 1.9); f.connect(g).connect(out);
+        for (const [a2, b2] of [[74, 50], [75.5, 51], [111, 76]]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(a2, t); o.frequency.exponentialRampToValueAtTime(b2, t + 2.1); o.connect(f); o.start(t); o.stop(t + 2.3); }
+        tone(t, 'sine', 48, 30, 2.0, 0.45, 0.2); hiss(t, 1.8, 900, 0.6, 0.22, 'lowpass', 0.3, 200); },
+      levDie(t) { const f = c.createBiquadFilter(), g = c.createGain(); f.type = 'lowpass'; f.frequency.setValueAtTime(1100, t); f.frequency.exponentialRampToValueAtTime(160, t + 2.6); env(g, t, 0.2, 0.35, 2.6); f.connect(g).connect(out);
+        for (const [a2, b2] of [[96, 28], [98, 29]]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(a2, t); o.frequency.exponentialRampToValueAtTime(b2, t + 2.8); o.connect(f); o.start(t); o.stop(t + 3); }
+        for (let i = 0; i < 14; i++) tone(t + 1.4 + Math.random() * 2, 'sine', 200 + Math.random() * 500, 500 + Math.random() * 500, 0.06, 0.04); },
+      levSurface(t) { hiss(t, 0.7, 250, 0.7, 0.3, 'lowpass', 0.25, 1400); tone(t, 'sine', 90, 60, 0.6, 0.15, 0.2); },
       key(t, k = 0) { const f = 520 * Math.pow(2, Math.min(24, k) / 12); tone(t, 'triangle', f, f, 0.05, 0.08); },
       count(t, go) { tone(t, 'square', go ? 1320 : 880, go ? 1320 : 880, go ? 0.35 : 0.12, 0.14); if (go) tone(t, 'sine', 110, 55, 0.4, 0.4); },
       // stingers and alerts, on their own bus so they cut through the music
