@@ -95,7 +95,7 @@ window.SuperBots = (() => {
     const dropGeo = own(new THREE.CylinderGeometry(0.62, 0.62, 1.1, 6));
     const capGeo = own(new THREE.CylinderGeometry(0.72, 0.72, 0.16, 6));
     const beaconGeo = own(new THREE.CylinderGeometry(0.22, 0.9, 16, 12, 1, true).translate(0, 8, 0));
-    const beaconMat = () => own(new THREE.ShaderMaterial({
+    const beaconMat = () => (new THREE.ShaderMaterial({
       uniforms: { uC: { value: new THREE.Color() }, uA: { value: 0 }, uT: { value: 0 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: 'uniform vec3 uC; uniform float uA; uniform float uT; varying vec2 vUv; void main(){ float a = pow(1.0 - vUv.y, 2.2) * (0.6 + 0.4 * sin(vUv.y * 40.0 - uT * 9.0)); gl_FragColor = vec4(uC * a * uA, 1.0); }',
@@ -105,15 +105,16 @@ window.SuperBots = (() => {
     function makeDrop(d) {
       const col = ITEM[d.id] || '#f2c230';
       const g = new THREE.Group();
-      const core = new THREE.Mesh(dropGeo, own(new THREE.MeshStandardMaterial({ color: '#141a1f', emissive: C(col), emissiveIntensity: 1.4, metalness: 0.6, roughness: 0.3 })));
-      const capM = own(new THREE.MeshBasicMaterial({ color: C(col, 2.2), toneMapped: false }));
+      // per-drop materials are disposed with the drop (removeDrop), not kept to the end of the fight
+      const core = new THREE.Mesh(dropGeo, new THREE.MeshStandardMaterial({ color: '#141a1f', emissive: C(col), emissiveIntensity: 1.4, metalness: 0.6, roughness: 0.3 }));
+      const capM = new THREE.MeshBasicMaterial({ color: C(col, 2.2), toneMapped: false });
       const c1 = new THREE.Mesh(capGeo, capM), c2 = new THREE.Mesh(capGeo, capM); c1.position.y = 0.62; c2.position.y = -0.62;
-      const halo = new THREE.Mesh(ringGeo, own(new THREE.MeshBasicMaterial({ color: C(col, 2), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })));
+      const halo = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: C(col, 2), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
       halo.rotation.x = Math.PI / 2; halo.scale.setScalar(0.75);
       const beacon = new THREE.Mesh(beaconGeo, beaconMat()); beacon.material.uniforms.uC.value.copy(C(col));
       g.add(core, c1, c2, halo);
       scene.add(g, beacon);
-      return { g, core, halo, beacon };
+      return { g, core, halo, beacon, mats: [core.material, capM, halo.material, beacon.material] };
     }
     function spotFor(i) {
       for (let k = 0; k < SPOTS.length; k++) {
@@ -123,7 +124,7 @@ window.SuperBots = (() => {
       }
       return new V(SPOTS[i % SPOTS.length][0], 0, SPOTS[i % SPOTS.length][1]);
     }
-    function removeDrop(dp) { scene.remove(dp.g, dp.beacon); dp.beacon.material.dispose(); dp.core.material.dispose(); if (dp.label) dp.label.remove(); const i = drops.indexOf(dp); if (i >= 0) drops.splice(i, 1); }
+    function removeDrop(dp) { scene.remove(dp.g, dp.beacon); dp.mats.forEach(m => m.dispose()); if (dp.label) dp.label.remove(); const i = drops.indexOf(dp); if (i >= 0) drops.splice(i, 1); }
 
     // ---------- allies: the viewers' bots ----------
     const allies = [];   // { f, name, item, col, slot, state, at, p, v, lift, shotAt, keyAt, keyN, leaveAt, label }
@@ -131,6 +132,8 @@ window.SuperBots = (() => {
       if (!window.BotFighter || !window.BotKit) return null;
       const live = allies.filter(a => a.state !== 'out');
       if (live.length >= CAP) leave(live[0]);
+      // never more than 6 bots in all: the oldest on its way out goes at once (items can come faster than bots fly off)
+      while (allies.length >= CAP + 2) { const a = allies.find(x => x.state === 'out') || allies[0]; drop1(a); }
       const used = new Set(allies.filter(a => a.state !== 'out').map(a => a.slot));
       let slot = 0; while (used.has(slot) && slot < POSTS.length - 1) slot++;
       let f;
@@ -145,6 +148,7 @@ window.SuperBots = (() => {
       allies.push(a);
       return a;
     }
+    function drop1(a) { scene.remove(a.f.group); a.f.dispose(); if (a.label) a.label.remove(); allies.splice(allies.indexOf(a), 1); }
     function leave(a) { if (a.state === 'out') return; a.state = 'out'; a.at = t; }
     const postOf = (a, out) => {
       const P = POSTS[a.slot]; faceVecs(M.yaw);
@@ -417,7 +421,7 @@ window.SuperBots = (() => {
           faceVecs(M.yaw);
           a.v.addScaledVector(right, (POSTS[a.slot][0] < 0 ? -1 : 1) * 22 * dt).add(v3.set(0, 30 * dt, 0)).addScaledVector(fwd, 6 * dt);
           a.p.addScaledVector(a.v, dt); f.group.position.copy(a.p);
-          if (u >= 1) { scene.remove(f.group); f.dispose(); if (a.label) a.label.remove(); allies.splice(allies.indexOf(a), 1); continue; }
+          if (u >= 1) { drop1(a); continue; }
         }
         // allies face the boss when fighting, their way of travel otherwise
         const ay = a.state === 'fight' ? Math.atan2(foc.x - a.p.x, foc.z - a.p.z) : Math.atan2(a.v.x, a.v.z) || M.yaw;

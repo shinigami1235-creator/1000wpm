@@ -918,7 +918,7 @@ window.SuperScene = (() => {
       bloom.dispose(); if (composer.dispose) composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
-    function info() { return { bots: bots ? bots.info() : null, kit: K.info(), acts: model && model.info ? model.info() : null, aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
+    function info() { return { mem: { ...renderer.info.memory, programs: renderer.info.programs ? renderer.info.programs.length : 0, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null }, bots: bots ? bots.info() : null, kit: K.info(), acts: model && model.info ? model.info() : null, aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
     return { cameraAt: () => ({ p: camera.position.toArray(), fov: camera.fov, model: !!model, boss: bossId, shot: cam.shot(), log: cam.log() }), apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, artBot: () => artBot, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 
