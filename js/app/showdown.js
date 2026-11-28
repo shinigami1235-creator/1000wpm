@@ -4,6 +4,9 @@
 // are up (or both are done) the two attacks play, the round's result shows and the next words appear.
 // The opponent is a simulated player near your Showdown MMR, Art's ghost, or a player from the online
 // list, typed by a NetBot (js/net/bot.js) at their wpm and accuracy, as in the Clash duel.
+// About every other round one of the 10 words is a spell word in its spell's colour, the same for both sides
+// (ShowdownRules.spellFor); typed clean it casts in the exchange, a typo fizzles it. Each spell hit's share of
+// the damage shows as it lands. The rules can also pick the exchange to play as a beam struggle (ShowdownRules.beam).
 //
 //   Showdown.start(el, { mode: 'quick' | 'art' | 'watch' | 'vs', opponent })   -> { stop() }
 //   Showdown.record()      this device's Showdown record: { rating, games, wins, losses, draws, bestStreak, vsArt, history }
@@ -82,7 +85,7 @@ window.Showdown = (() => {
     Promise.all([pick, new Promise(r => setTimeout(r, 500))]).then(([P]) => { if (alive) fight(P); })
       .catch(err => { if (alive) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message)}</p><a class="btn out" href="#/duel/showdown">Back to duels</a></div>`; });
 
-    let P = null, me = 0, words = [], seed = '', rng = null, bots = [null, null], m = null;
+    let P = null, me = 0, words = [], spells = [], seed = '', rng = null, bots = [null, null], m = null;
     function fight(players) {
       P = players; me = o.mode === 'watch' ? -1 : 0;
       seed = 'SD:' + Date.now();
@@ -90,10 +93,13 @@ window.Showdown = (() => {
       const slow = Math.min(...P.map(p => (p.typing ? p.typing.wpm : level().wpm)));
       const difficulty = slow > 110 ? [3, 7] : slow > 70 ? [2, 6] : [1, 5];
       words = Array.from({ length: C.rounds + 1 }, (_, r) => (r ? pickWords(`${seed}:${r}`, difficulty) : []));
+      // about every other round one word is a spell, the same one in the same place for both (showdown-rules.js)
+      spells = words.map((_, r) => { const sp = SR().spellFor(seed, r); return sp && window.Combat && Combat.spell(sp.id) ? sp : null; });
+      spells.forEach((sp, r) => { if (sp) words[r][sp.slot] = Combat.spell(sp.id).word; });
       bots = P.map((p, i) => (i === me ? null : NetBot.create(p.art ? { ...NetBot.ART, seed: seed + ':b' + i } : { wpm: p.typing.wpm, acc: p.typing.acc, seed: seed + ':b' + i, pause: 0.03 })));
-      const blankSide = () => ({ idx: 0, typed: '', good: 0, bad: 0, words: 0, wrong: 0, doneAt: null, lastAt: 0, clean: true });
-      m = { phase: 'load', round: 0, hp: [C.hp, C.hp], wins: [0, 0], at: 0, clock: 0, sides: [blankSide(), blankSide()], blankSide, rounds: [],
-        tot: [0, 1].map(() => ({ good: 0, bad: 0, words: 0, dmg: 0, taken: 0, crits: 0, dodges: 0, fin: 0, ms: 0 })), ended: false };
+      const blankSide = () => ({ idx: 0, typed: '', good: 0, bad: 0, words: 0, wrong: 0, doneAt: null, lastAt: 0, clean: true, wclean: true, spell: null });
+      m = { phase: 'load', round: 0, hp: [C.hp, C.hp], wins: [0, 0], at: 0, clock: 0, sides: [blankSide(), blankSide()], blankSide, rounds: [], beams: [],
+        tot: [0, 1].map(() => ({ good: 0, bad: 0, words: 0, dmg: 0, taken: 0, crits: 0, dodges: 0, fin: 0, ms: 0, spells: 0 })), ended: false };
       const bot = P.map((p, i) => botFor(p, i === me, p.art ? ART_COL : i ? '#f29d30' : Theme.hex('accent')));
       const cols = P.map((p, i) => sideColor(p, i, bot[i]));
       const side = (k, cls) => `<div class="du-side ${cls}">
@@ -132,7 +138,7 @@ window.Showdown = (() => {
       snd = window.ArenaAudio ? ArenaAudio.create() : null;
       const stage = el.querySelector('[data-stage]');
       scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ color: cols[k], bot: bot[k], kb: k === me ? kbStyle() : kbOf(P[k].id), name: P[k].name })) });
-      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; }, ctl };   // tests
+      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], spell: () => spells[m.round], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; }, ctl };   // tests
       const chars = [...new Set(words.flat().join(''))].join('');
       Promise.race([scene.warm(chars), new Promise(r => setTimeout(r, 12000))]).then(() => { if (alive) countIn(1); });
       el.querySelector('[data-leave]').addEventListener('click', () => { if (me < 0) { location.hash = '#/duel/showdown'; return; } GameGuard.confirm(); });
@@ -222,18 +228,24 @@ window.Showdown = (() => {
       if (w == null) return null;
       if (k === 'Backspace') { s.typed = s.typed.slice(0, -1); return null; }
       if (k === 'CtrlBackspace') { s.typed = ''; return null; }
-      if (k === ' ') return s.typed ? submit(i, t) : null;
+      // a space inside a two-word spell is one of its letters
+      if (k === ' ' && !(w.includes(' ') && s.typed.length < w.length && w[s.typed.length] === ' ')) return s.typed ? submit(i, t) : null;
       s.typed += k;
       const good = s.typed.length <= w.length && k === w[s.typed.length - 1];
       if (good) s.good++;
-      else { s.bad++; s.clean = false; scene.react(i, 'typo'); }
+      else { s.bad++; s.clean = false; s.wclean = false; scene.react(i, 'typo'); }
       if (s.typed === w && s.idx === N - 1) return submit(i, t);   // the last word needs no space
       return good ? 'good' : 'bad';
     }
     function submit(i, t) {
-      const s = m.sides[i], w = words[m.round][s.idx];
+      const s = m.sides[i], w = words[m.round][s.idx], sp = spells[m.round];
       const ok = s.typed === w;
-      s.idx++; s.typed = '';
+      // the spell word: clean casts in the exchange, a wrong key in it (even fixed) fizzles
+      if (sp && s.idx === sp.slot) {
+        s.spell = { id: sp.id, ok: ok && s.wclean };
+        if (s.spell.ok) { scene.spellReady(i, sp.id); num(i, MultiUI.spellName(sp.id), 'spell'); } else num(i, 'Fizzled', 'miss');
+      }
+      s.idx++; s.typed = ''; s.wclean = true;
       if (ok) { s.words++; s.lastAt = t; scene.hold(i, s.words / N); }
       else { (s.miss ||= []).push(s.idx - 1); s.wrong++; s.clean = false; scene.react(i, 'miss'); num(i, 'Miss', 'miss'); }
       if (s.idx >= N) { s.doneAt = t; num(i, `Done, ${(t / 1000).toFixed(1)} s`, 'buff'); if (snd) snd.combat('tierUp', 2); }
@@ -247,8 +259,11 @@ window.Showdown = (() => {
       m.phase = 'clash'; m.at = m.clock;
       if (snd) snd.play('bell');
       banner('Time', 'round', 800);
-      const sides = m.sides.map((s, i) => ({ words: s.words, acc: accOf(s), clean: s.clean && s.words > 0, doneAt: s.doneAt, lastAt: s.lastAt, hp: m.hp[i] }));
+      const sides = m.sides.map((s, i) => ({ words: s.words, acc: accOf(s), clean: s.clean && s.words > 0, doneAt: s.doneAt, lastAt: s.lastAt, hp: m.hp[i], spell: s.spell }));
       const res = SR().resolve(sides, rng);
+      // the beam struggle: chosen from the result, at most one exchange in four (it never changes damage)
+      const beam = SR().beam(res, sides, rng, m.beams);
+      m.beams.push(!!beam);
       const row = { round: m.round, sides: m.sides.map((s, i) => ({ words: s.words, acc: Math.round(accOf(s) * 100), dmg: res.dealt[i], doneAt: s.doneAt })), winner: res.winner };
       m.rounds.push(row);
       m.sides.forEach((s, i) => { const T = m.tot[i]; T.good += s.good; T.bad += s.bad; T.words += s.words; T.ms += s.doneAt != null ? s.doneAt : C.roundMs; });
@@ -272,17 +287,26 @@ window.Showdown = (() => {
       later(500, () => {
         if (!res.attacks.length) num(0, 'No attack', 'miss');
         const secs = scene.exchange(res.attacks, {
-          acc: m.sides.map(s => accOf(s)), close,
-          onStart: a => num(a.from, a === res.attacks[0] && res.attacks.length > 1 ? `${SR().TIERS[a.tier]}, first` : SR().TIERS[a.tier], a.tier >= 4 ? 'tier' : 'buff'),
-          onLand: a => land(a),
+          acc: m.sides.map(s => accOf(s)), close, beam, ko: res.ko,
+          onStart: a => (a.kind === 'spell' ? num(a.from, a.fizzled ? 'Fizzled' : MultiUI.spellName(a.spell), a.fizzled ? 'miss' : 'spell')
+            : num(a.from, a === res.attacks[0] && res.attacks.length > 1 && !beam ? `${SR().TIERS[a.tier]}, first` : SR().TIERS[a.tier], a.tier >= 4 ? 'tier' : 'buff')),
+          onLand: (a, hit) => land(a, hit),
           onDone: () => later(res.ko >= 0 ? 200 : 0, result),
         }) || 1;
         // slow motion stretches the scene; this only catches a tab that stopped drawing
         later(secs * 2500 + 1500, result);
       });
     }
-    function land(a) {
+    // a spell lands in parts, one per visible hit (hit: { part, last }); a strike lands whole
+    function land(a, hit) {
       const T = m.tot[a.from];
+      if (a.kind === 'spell') {
+        if (a.fizzled) { if (!hit || hit.last) num(a.to, 'Fizzled', 'block'); return; }
+        const part = hit ? hit.part : a.dmg;
+        if (part > 0) { m.hp[a.to] = Math.max(0, m.hp[a.to] - part); num(a.to, String(part), `${a.to === me ? 'in' : 'out'} spell`); hpTo(a.to, m.hp[a.to]); }
+        if (!hit || hit.last) { T.dmg += a.dmg; m.tot[a.to].taken += a.dmg; T.spells++; }
+        return;
+      }
       if (a.dodged) { num(a.to, 'Dodged', 'block'); m.tot[a.to].dodges++; return; }
       m.hp[a.to] = Math.max(0, m.hp[a.to] - a.dmg);
       T.dmg += a.dmg; m.tot[a.to].taken += a.dmg; if (a.crit) T.crits++; if (a.tier >= 4) T.fin++;
@@ -347,7 +371,7 @@ window.Showdown = (() => {
         ${reward ? `<p class="dim">You earned ${reward.coins} coins and ${reward.xp} XP.</p>` : ''}
         <div class="du-tw"><table class="du-sum"><thead><tr><th></th>${[0, 1].map(k => `<th scope="col">${MultiUI.name(P[k])}</th>`).join('')}</tr></thead><tbody>
           ${row('Words', k => T[k].words)}${row('Accuracy', k => accT(k) + '%')}${row('Damage', k => T[k].dmg)}${row('HP left', k => m.hp[k])}
-          ${row('Crits', k => T[k].crits)}${row('Finishers', k => T[k].fin)}${row('Dodges', k => T[k].dodges)}
+          ${row('Crits', k => T[k].crits)}${row('Finishers', k => T[k].fin)}${row('Spells', k => T[k].spells)}${row('Dodges', k => T[k].dodges)}
         </tbody></table></div>
         ${m.rounds.length ? `<div class="du-tw"><table class="du-rounds"><thead><tr><th scope="col">Round</th><th scope="col">Winner</th>${[0, 1].map(k => `<th scope="col" class="r">${e(P[k].name)}</th>`).join('')}</tr></thead>
           <tbody>${m.rounds.map(x => `<tr><td class="num">${x.round}</td><td>${x.winner >= 0 ? e(x.winner === me ? 'You' : P[x.winner].name) : 'Draw'}</td>${[0, 1].map(k => `<td class="num r">${x.sides[k].words} words, ${x.sides[k].acc}%, ${x.sides[k].dmg} dmg</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
@@ -423,10 +447,12 @@ window.Showdown = (() => {
       if (!line || !m) return;
       const k = me >= 0 ? me : 0, s = m.sides[k], list = words[m.round] || [];
       const live = m.phase === 'type';
+      const sp = spells[m.round], spc = sp && window.Combat ? Combat.spell(sp.id).color : '';
       const html = list.map((w, n) => {
-        if (n < s.idx) return `<span class="sd-w done${s.miss && s.miss.includes(n) ? ' wrong' : ''}">${e(w)}</span>`;
-        if (n === s.idx && live) return `<span class="sd-w cur">${letters(w, s.typed)}</span>`;
-        return `<span class="sd-w${live ? '' : ' wait'}">${e(w)}</span>`;
+        const isSp = sp && n === sp.slot, cls = isSp ? ` spell${n < s.idx && s.spell && !s.spell.ok ? ' fizzled' : ''}` : '', st = isSp ? ` style="--sc:${spc}"` : '';
+        if (n < s.idx) return `<span class="sd-w done${cls}${s.miss && s.miss.includes(n) ? ' wrong' : ''}"${st}>${e(w)}</span>`;
+        if (n === s.idx && live) return `<span class="sd-w cur${cls}"${st}>${letters(w, s.typed)}</span>`;
+        return `<span class="sd-w${cls}${live ? '' : ' wait'}"${st}>${e(w)}</span>`;
       }).join('');
       if (html !== lineHtml) { lineHtml = html; line.innerHTML = html; }
       line.classList.toggle('locked', !live);

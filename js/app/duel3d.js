@@ -10,7 +10,8 @@
 // when no spell is on its way to you: the face-off before a round, big strikes, casts, the KO and
 // the winner. Without operators each side is a portrait card (the older 2.5D look).
 //
-//   const sc = DuelScene.mount(host, { sides: [{ look, color, bot: { id, look }, kb, name }, ...], me, audio });
+//   const sc = DuelScene.mount(host, { sides: [{ look, color, bot: { id, look }, kb, name }, ...], me, audio, onSpellHit });
+//     onSpellHit(side): a spell's hit visibly landed on side (Clash shows the rules' damage number then)
 //     bot: a BotKit bot (BotKit.mine() or BotKit.random(seed)); kb: the shooter's keyboard style
 //     ('slab' | 'compact' | 'split' | 'arc'), which only changes how its shots fly
 //     me: the side you play (-1 when watching), audio: an ArenaAudio for the sounds
@@ -36,6 +37,7 @@
 //   sc.deflect(side)                  Clash: the next shot at side is batted back (safe mode blocked it)
 //   sc.ricochet(side, to)             Clash: packet storm sends a hit from side back to to
 //   sc.fizzle(side, spellId)          Clash: a spell word with a typo flies broken and is dodged or blocked
+//   sc.spellReady(side, spellId)      Showdown: a spell word typed clean, its circle lights under the bot
 //   sc.cast(..., { blocked })         a spell stopped by safe mode flies and is batted back
 //   sc.dispose()
 window.DuelScene = (() => {
@@ -77,6 +79,7 @@ window.DuelScene = (() => {
       deflect: side => !!(impl && impl.deflect(side)),
       ricochet: (side, to) => impl && impl.ricochet(side, to),
       fizzle: (side, id) => impl && impl.fizzle(side, id),
+      spellReady: (side, id) => impl && impl.spellReady(side, id),
       react: (side, kind, p) => impl && impl.react(side, kind, p),
       aura: (side, name, on) => impl && impl.aura(side, name, on),
       setLook: (side, look) => { pend.looks[side] = look; if (impl) impl.setLook(side, look); },
@@ -745,9 +748,16 @@ window.DuelScene = (() => {
       }
       react(to, 'hit', 0.35 + Math.max(0, p) * 0.18, Math.max(0, p));
       f.recoil = Math.min(1.4, 0.5 + p * 0.22);
+      if (how.clipped) {
+        // caught mid-slip: the hit spins it the way it was slipping, and a spray of sparks tears off that side
+        const off = tmp2.copy(STG.n).multiplyScalar(-(how.side || 1) * 0.55);
+        burst(at.clone().add(off), 12, 8, col, { shard: true, size: 0.28, life: 0.5, dir: away * 0.4, up: 0.2, grav: 8, k: 1.4 });
+        flare(at.clone().add(off), WHITE, 1.2, 0.07);
+        xs('graze', 0.7, to);
+      }
       if (f.bf) {
-        const H = how.hurt || (how.heavy ? pick('hh' + to, ['launch', 'knock', 'spinout']) : p >= 2.2 ? pick('hb' + to, ['knock', 'spinout', 'launch', 'knock']) : p >= 1 ? pick('hm' + to, ['knock', 'jolt', 'spinout']) : pick('hl' + to, ['jolt', 'stiff']));
-        f.bf.hurt(H, { k: Math.min(1.6, 0.55 + Math.max(0, p) * 0.18) * (how.heavy ? 1.25 : 1), side: (f.hurtSide = -(f.hurtSide || 1)) });
+        const H = how.hurt || (how.clipped ? 'spinout' : null) || (how.heavy ? pick('hh' + to, ['launch', 'knock', 'spinout']) : p >= 2.2 ? pick('hb' + to, ['knock', 'spinout', 'launch', 'knock']) : p >= 1 ? pick('hm' + to, ['knock', 'jolt', 'spinout']) : pick('hl' + to, ['jolt', 'stiff']));
+        f.bf.hurt(H, { k: Math.min(1.6, 0.55 + Math.max(0, p) * 0.18) * (how.heavy ? 1.25 : 1), side: how.clipped ? (how.side || 1) : (f.hurtSide = -(f.hurtSide || 1)) });
         if (H === 'launch') xs('launch', 0.9, to); else if (H !== 'jolt' && H !== 'stiff') xs('thump', 0.7, to);
       }
       const board = F[1 - to].kb && F[1 - to].kb !== 'slab';
@@ -826,6 +836,235 @@ window.DuelScene = (() => {
       if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 90); shake = Math.max(shake, 0.4); punch = Math.max(punch, 0.7); }
       if (arena) arena.hype(-1, 0.6);
     }
+    // Clash: two shots meeting in the middle, where the rules let both land in full. They grind past each
+    // other: each side's sparks are thrown on the way its shot is going, the bigger shot shoves the smaller
+    // one off its line, and both fly on to hit for real (28 Nov 2026: the picture matches the damage)
+    function clashCross(at, colA, colB, from, tA, tB) {
+      const d = from ? -1 : 1;   // the way `from`'s shot is going along the line
+      // where the two words actually cross: between the lead letters of each
+      const lead = [null, null];
+      for (const g of glyphs) if (g.on && !g.hide && g.how && g.how.clash && g.t > g.delay && (!lead[g.from] || g.t - g.delay > lead[g.from].t - lead[g.from].delay)) lead[g.from] = g;
+      if (lead[0] && lead[1]) at = new V().addVectors(lead[0].s.position, lead[1].s.position).multiplyScalar(0.5);
+      burst(at, 16, 10, colA, { shard: true, size: 0.34, life: 0.55, dir: d * 1.6, up: 0.3, grav: 5, k: 1.6 });
+      burst(at, 16, 10, colB, { shard: true, size: 0.34, life: 0.55, dir: -d * 1.6, up: 0.3, grav: 5, k: 1.6 });
+      burst(at, 8, 6, WHITE, { size: 0.42, life: 0.14, grav: 0, k: 0.85 });
+      flare(at, colA.clone().lerp(colB, 0.5), 2.6, 0.14);
+      // a crackle of both colours where they scrape, and a thin shock ring across the line
+      stRing(at, STG.a, colA.clone().lerp(colB, 0.5).lerp(WHITE, 0.3), 1.6, 0.3);
+      flashLight(at, WHITE, 3.5);
+      // the smaller shot is knocked off its line: its letters jink sideways and keep going
+      const weak = tA === tB ? -1 : tA > tB ? 1 - from : from;
+      for (const g of glyphs) if (g.on && g.how && g.how.clash && (weak < 0 || g.from === weak)) { g.c.addScaledVector(STG.n, rnd(0.4, 0.9) * (weak < 0 ? (g.from ? 1 : -1) : 1)); g.c.y += rnd(0.3, 0.8); }
+      xs('clash', 0.6); xs('graze', 0.6);
+      if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 35); shake = Math.max(shake, 0.22); }
+    }
+
+    // ---------- the beam struggle (Gid, 28 Nov 2026) ----------
+    // "Both charge up, a close-up on your bot. The beam is launched. It collides with the opponent's beam and
+    // when the hits connect, there's like a power struggle and the loser gets pushed back and takes damage."
+    // One renderer for both modes: Showdown's cinematic struggle (struggleScene) and Clash's 1-second beam
+    // lock (beamLock). Each side's beam runs from its bot's muzzle to the collision point, which the script
+    // shoves back and forth; sparks pour off it, shockwave rings roll out along the beams, and when one side
+    // breaks through, its beam drives the collision point onto the other bot.
+    const ST = { on: false, mode: '', t: 0, x: 0.5, xv: 0, xT: 0.5, k: 0, fire: [0, 0], fireT: [0, 0], core: [0, 0], coreT: [0, 0], cols: [new THREE.Color(), new THREE.Color()], sc: [new THREE.Color(), new THREE.Color()],
+      w: [0.5, 0.5], cut: [false, false], ringT: 0, sparkT: 0, gatherT: 0, through: -1, loop: null, A: new V(), B: new V(), J: new V(), Jv: new V(), heat: 0 };
+    const struggle = ST;
+    const stBeams = [0, 1].map(() => ({ core: beamMesh(), glow: beamMesh(), haze: beamMesh(), hot: beamMesh() }));
+    const stCore = [0, 1].map(() => ({ a: sprite(glowTex, 1, 9), b: sprite(flareTex, 1, 9) }));
+    const stJ = { a: sprite(flareTex, 1, 10), b: sprite(glowTex, 1, 10), c: sprite(glowTex, 1, 9) };
+    // electric arcs crackling off the collision: three short zigzags of four segments, redrawn every few frames
+    const stArc = Array.from({ length: 12 }, () => beamMesh()), stArcP = Array.from({ length: 15 }, () => new V());
+    let stArcT = 0;
+    const stPulse = Array.from({ length: 18 }, (_, k) => ({ s: sprite(glowTex, 1, 8), side: k % 2, u: Math.random() }));
+    const stRings = Array.from({ length: 5 }, () => {
+      const m = new THREE.Mesh(own(new THREE.RingGeometry(0.86, 1, 48)), own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
+      m.visible = false; m.renderOrder = 9; scene.add(m); return { m, t: 9, life: 0.5, r: 2, dir: 1 };
+    });
+    let srI = 0, lockAt = -99;
+    const LOCK_GAP = 7;   // Clash: at most one beam lock every 7 s
+    // the colour a side's beam takes: its orb's own glow, else the side's colour
+    const orbCol = i => C((F[i].bf && F[i].bf.colour) || opts.sides[i].color || (i ? '#f29d30' : '#8cff58'));
+    // where a beam leaves a bot: in front of its chest toward the other one, so a bot that tumbles or spins
+    // doesn't swing its beam round the arena
+    function muzzleOf(i, out) {
+      if (!F[i].bf) return handOf(i, out);
+      chest(i, out); chest(1 - i, _mz).sub(out); _mz.y = 0;
+      return out.addScaledVector(_mz.normalize(), 1.25 * BS).add(_mz.set(0, 0.1, 0));
+    }
+    const _mz = new V();
+    // sparks drawn in from round the muzzle toward it, the orb gathering power
+    function gather(at, col, n, r = 2.2) {
+      if (reduce) n = Math.ceil(n / 3);
+      for (let k = 0; k < n; k++) {
+        const p = parts[pI = (pI + 1) % PN];
+        p.s.material.map = glowTex; p.s.material.color.copy(col).multiplyScalar(1.8);
+        tmp2.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+        const life = rnd(0.25, 0.45);
+        p.s.position.copy(at).addScaledVector(tmp2, r * rnd(0.6, 1));
+        p.v.copy(tmp2).multiplyScalar(-r / life * 1.25);
+        p.size = rnd(0.12, 0.24); p.max = p.life = life; p.spin = 0; p.grav = 0; p.s.visible = true;
+      }
+    }
+    function stRing(at, axis, col, r, life) {
+      const R = stRings[srI = (srI + 1) % stRings.length];
+      R.m.position.copy(at); R.m.lookAt(tmp.copy(at).add(axis)); R.m.material.color.copy(col).multiplyScalar(1.6);
+      R.t = 0; R.life = life; R.r = r; R.m.visible = true;
+    }
+    // cols: each beam's core (the orb's own colour); its glow, haze and sparks take the side's colour, so two
+    // bots with the same orb colour still read apart
+    function stBegin(mode, cols, sides) {
+      Object.assign(ST, { on: true, mode, t: 0, x: 0.5, xv: 0, xT: 0.5, k: 0, fire: [0, 0], fireT: [0, 0], core: [0, 0], coreT: [0, 0], cut: [false, false], through: -1, ringT: 0, sparkT: 0, heat: 0 });
+      ST.cols[0].copy(cols[0]); ST.cols[1].copy(cols[1]);
+      for (let i = 0; i < 2; i++) ST.sc[i].copy(sides ? sides[i] : cols[i]);
+      ST.w = mode === 'lock' ? [0.34, 0.34] : [0.5, 0.5];
+      for (const P of stPulse) P.s.material.color.copy(ST.cols[P.side]).lerp(WHITE, 0.3).multiplyScalar(1.1);
+    }
+    function stEnd() {
+      ST.on = false;
+      if (ST.loop) { ST.loop.stop(); ST.loop = null; }
+      stBeams.forEach(b => { b.core.visible = b.glow.visible = b.haze.visible = b.hot.visible = false; });
+      stCore.forEach(c => { c.a.visible = c.b.visible = false; });
+      stJ.a.visible = stJ.b.visible = stJ.c.visible = false;
+      stPulse.forEach(P => { P.s.visible = false; });
+      stArc.forEach(m => { m.visible = false; });
+    }
+    function drawStruggle(dt) {
+      if (!ST.on) return;
+      ST.t += dt;
+      muzzleOf(0, ST.A); muzzleOf(1, ST.B);
+      // the collision point: a stiff spring toward where the script wants it, plus a tremble that grows with the heat
+      const kx = ST.through >= 0 ? 420 : 60, dx = 2 * Math.sqrt(kx) * 0.75;   // a break drives through fast
+      ST.xv += ((ST.xT - ST.x) * kx - ST.xv * dx) * dt; ST.x += ST.xv * dt;
+      const x = clamp(ST.x + (reduce ? 0 : Math.sin(t * 47) * 0.006 * (1 + ST.heat * 3)), 0.02, 0.98);
+      ST.J.lerpVectors(ST.A, ST.B, x);
+      if (!reduce) ST.J.y += Math.sin(t * 31) * 0.05 * ST.heat;
+      const axis = _bx.subVectors(ST.B, ST.A).normalize();
+      const both = ST.fire[0] >= 1 && ST.fire[1] >= 1 && ST.through < 0;
+      for (let i = 0; i < 2; i++) {
+        ST.core[i] += (ST.coreT[i] - ST.core[i]) * Math.min(1, dt * 7);
+        ST.fire[i] = ST.fireT[i] > ST.fire[i] ? Math.min(ST.fireT[i], ST.fire[i] + dt / 0.16) : ST.fireT[i];
+        const M = i ? ST.B : ST.A, col = ST.cols[i], b = stBeams[i], c = stCore[i];
+        // the beam core swelling at the muzzle while it charges, a hot point while it fires
+        const flick = reduce ? 1 : 0.88 + Math.random() * 0.24;
+        const cs = ST.core[i] * flick;
+        c.a.visible = c.b.visible = cs > 0.02;
+        if (c.a.visible) {
+          c.a.position.copy(M); c.a.scale.setScalar(0.3 + 0.95 * cs); c.a.material.color.copy(col).lerp(WHITE, 0.3).multiplyScalar(1.1 + cs * 0.3);
+          c.b.position.copy(M); c.b.scale.setScalar(0.4 + 1.2 * cs); c.b.material.color.copy(col).lerp(WHITE, 0.2).multiplyScalar(0.55); c.b.material.rotation = t * 0.7 * (i ? -1 : 1);
+        }
+        if (ST.coreT[i] > 0.2 && ST.fire[i] <= 0 && (ST.gatherT -= dt / 2) <= 0) { ST.gatherT = 0.03; gather(ST.A, ST.sc[0], 2, 2.4); gather(ST.B, ST.sc[1], 2, 2.4); }
+        // the beam itself, from the muzzle to the collision point (or on past it once it breaks through)
+        let end;
+        if (ST.cut[i] || ST.fire[i] <= 0) { b.core.visible = b.glow.visible = b.haze.visible = b.hot.visible = false; continue; }
+        if (ST.through === i) end = tmp.copy(ST.J);
+        else end = tmp.copy(M).lerp(ST.J, Math.min(1, ST.fire[i]));
+        const w = ST.w[i] * (1 + ST.heat * 0.25) * (reduce ? 1 : 0.92 + Math.sin(t * 53 + i * 2) * 0.06 + Math.random() * 0.06);
+        // a thin white-hot thread inside a core in the side's colour, a glow and a faint wide haze: the colour
+        // has to read, so only the thread goes near white
+        strip(b.hot, M, end, w * 0.09, 0.85);
+        strip(b.core, M, end, w * 0.36, 0.9);
+        strip(b.glow, M, end, w * 1.0, 0.42);
+        strip(b.haze, M, end, w * 1.7, 0.045 + ST.heat * 0.03);
+        b.hot.material.color.copy(col).lerp(WHITE, 0.6).multiplyScalar(1.1);
+        b.core.material.color.copy(col).lerp(WHITE, 0.12).multiplyScalar(1.25);
+        b.glow.material.color.copy(ST.sc[i]).lerp(col, 0.25).multiplyScalar(0.75);
+        b.haze.material.color.copy(ST.sc[i]).multiplyScalar(0.55);
+      }
+      // energy pulses running down each beam to the collision point
+      for (const P of stPulse) {
+        const i = P.side, live = ST.fire[i] >= 1 && !ST.cut[i];
+        P.s.visible = live && !reduce;
+        if (!P.s.visible) continue;
+        P.u += dt * (2.2 + ST.heat * 1.5);
+        if (P.u > 1) P.u -= 1;
+        const M = i ? ST.B : ST.A, lim = ST.through === i ? 1 : 1;
+        P.s.position.copy(M).lerp(ST.J, P.u * lim);
+        P.s.scale.setScalar(ST.w[i] * (0.7 + Math.sin(P.u * Math.PI) * 0.6));
+        P.s.material.opacity = Math.sin(P.u * Math.PI) * 0.45;
+      }
+      // the collision: a white-hot knot in both colours, sparks pouring off it, rings rolling out along the beams
+      stJ.a.visible = stJ.b.visible = stJ.c.visible = both;
+      if (!both) stArc.forEach(m => { m.visible = false; });
+      if (both) {
+        const pulse = reduce ? 1 : 1 + Math.sin(t * 38) * 0.12 + Math.random() * 0.12;
+        const S0 = (1.0 + ST.heat * 0.7) * pulse * (ST.mode === 'lock' ? 0.75 : 1);
+        stJ.a.position.copy(ST.J); stJ.a.scale.setScalar(S0 * 1.7); stJ.a.material.color.copy(WHITE).multiplyScalar(0.75); stJ.a.material.rotation = t * 2.3;
+        stJ.b.position.copy(ST.J); stJ.b.scale.setScalar(S0 * 0.95); stJ.b.material.color.copy(ST.cols[0]).lerp(ST.cols[1], 0.5).lerp(WHITE, 0.4).multiplyScalar(1.1);
+        // the halo leans toward whoever is losing ground: their colour is being pushed back
+        stJ.c.position.copy(ST.J).addScaledVector(axis, (ST.xT - 0.5) * 0.8); stJ.c.scale.setScalar(S0 * 2.2); stJ.c.material.color.copy(ST.xT > 0.5 ? ST.sc[0] : ST.sc[1]).multiplyScalar(0.45);
+        ST.sparkT -= dt;
+        if (ST.sparkT <= 0) {
+          ST.sparkT = reduce ? 0.06 : 0.016;
+          // each side's sparks blow back along the other's beam, the fan wider as it heats up
+          for (let i = 0; i < 2; i++) burst(ST.J, 2, 6 + ST.heat * 6, ST.sc[i], { shard: Math.random() < 0.5, size: 0.2, life: 0.45, dir: (i ? 1 : -1) * -0.6, up: 0.5, grav: 7, k: 1.6 });
+          if (Math.random() < 0.3) burst(ST.J, 1, 3, WHITE, { size: 0.5, life: 0.1, grav: 0, k: 0.7 });
+        }
+        // arcs: new zigzags every few frames, longer and more of them as it heats up
+        stArcT -= dt;
+        if (stArcT <= 0 && !reduce) {
+          stArcT = 0.05;
+          const nb = 1 + Math.round(ST.heat * 2), L = 0.5 + ST.heat * 1.1;
+          for (let a = 0; a < 3; a++) {
+            const live = a < nb, dir = tmp2.set(rnd(-0.4, 0.4), rnd(-1, 1), rnd(-1, 1)).normalize();
+            let p = stArcP[a * 5].copy(ST.J);
+            for (let k = 1; k < 5; k++) {
+              const q = stArcP[a * 5 + k].copy(p).addScaledVector(dir, L / 4).add(tmp.set(rnd(-0.2, 0.2), rnd(-0.2, 0.2), rnd(-0.2, 0.2)));
+              const m = stArc[a * 4 + k - 1];
+              if (live) { strip(m, p, q, 0.05 * (1.2 - k * 0.2), 0.9); m.material.color.copy(ST.cols[a % 2]).lerp(WHITE, 0.6).multiplyScalar(1.6); } else m.visible = false;
+              p = q;
+            }
+          }
+        }
+        // the floor under the collision: dust blown out from under it, more as it heats up
+        ST.dustT = (ST.dustT || 0) - dt;
+        if (ST.dustT <= 0 && ST.mode !== 'lock') { ST.dustT = reduce ? 0.3 : 0.09 - ST.heat * 0.04; smoke(tmp.set(ST.J.x, arena ? 0.45 : 0.1, ST.J.z), 1, 2.2 + ST.heat * 2, { size: 1.1 + ST.heat * 0.6, life: 0.9, op: 0.28 + ST.heat * 0.12 }); }
+        ST.ringT -= dt;
+        if (ST.ringT <= 0) { ST.ringT = Math.max(0.16, 0.42 - ST.heat * 0.25); stRing(ST.J, axis, ST.sc[ST.xT > 0.5 ? 0 : 1].clone().lerp(WHITE, 0.2), 1.3 + ST.heat * 1.0, 0.42); }
+        if (!reduce) shake = Math.max(shake, 0.04 + ST.heat * 0.22 * (ST.mode === 'lock' ? 0.5 : 1));
+        if (ST.loop) ST.loop.set(0.5 + ST.heat * 0.5, ST.x);
+      }
+      for (const R of stRings) {
+        if (!R.m.visible) continue;
+        R.t += dt; const u = R.t / R.life;
+        if (u >= 1) { R.m.visible = false; continue; }
+        R.m.scale.setScalar(0.3 + R.r * ease(u)); R.m.material.opacity = 0.75 * (1 - u) * (1 - u);
+      }
+    }
+    // Clash: two big shots (tier 3 and up) that leave within a split second lock into a beam for about a
+    // second, then the stronger breaks through. Both still hit for exactly what the rules gave (their landings
+    // wait for the lock to end), and nothing waits on it: both sides keep typing and firing through it.
+    function beamLock(lock, ca, cb) {
+      if (!alive || struggle.on) { lock.done = true; lock.lands.splice(0).forEach(L => L.fn()); return; }
+      const [f0, f1] = lock.from;
+      const win = lock.pow[0] === lock.pow[1] ? f0 : lock.pow[0] > lock.pow[1] ? f0 : f1, lose = 1 - win;
+      for (const g of glyphs) if (g.on && g.how && g.how.lock === lock) g.hide = true;
+      for (const x of [lock]) for (const g of glyphs) if (g.on && g.how && g.how.lock === x && g.how.beams) g.how.beams.forEach(B => { B.on = false; B.core.visible = B.glow.visible = false; });
+      const cols = [0, 1].map(i => (i === f0 ? ca : cb));
+      stBegin('lock', [orbCol(0), orbCol(1)], cols);
+      struggle.fire = [1, 1]; struggle.fireT = [1, 1]; struggle.coreT = [0.35, 0.35]; struggle.core = [0.35, 0.35]; struggle.heat = 0.3;
+      struggle.x = struggle.xT = 0.5;
+      clashCross(struggle.J.copy(fc[0]).lerp(fc[1], 0.5), cols[0], cols[1], f0, 1, 1);
+      struggle.loop = dsfx ? dsfx.loop('beamCrackle', 0.75) : null;
+      want('xclashq', { pri: 1 });
+      const sway = [0.42, 0.6, 0.47, win ? 0.36 : 0.64];
+      sway.forEach((x, k) => after(0.12 + k * 0.15, () => { struggle.xT = x; struggle.heat = 0.35 + k * 0.15; }));
+      after(0.72, () => {
+        // the stronger breaks through: its beam drives the collision point onto the other bot
+        struggle.through = win; struggle.xT = win ? 0.02 : 0.98; struggle.cut[lose] = true; struggle.heat = 1;
+        xs('beamRelease', 0.6);
+        if (struggle.loop) { struggle.loop.stop(); struggle.loop = null; }
+      if (dsfx) dsfx.dispose();
+      });
+      after(0.9, () => {
+        lock.done = true;
+        const L = lock.lands.splice(0), first = L.filter(x => x.from === win), rest = L.filter(x => x.from !== win);
+        first.forEach(x => x.fn());
+        stEnd();
+        // the other side's shot, which was locked in the struggle, lands its real hit a beat later
+        after(0.2, () => { rest.forEach(x => x.fn()); lock.lateDone = true; });
+      });
+    }
+
     const TIER_COL = [null, null, '#3ee6ff', '#f2c230', '#ff5ce1'];
     const tails = Array.from({ length: 8 }, () => ({ core: beamMesh(), glow: beamMesh() }));
     let tI = 0;
@@ -860,18 +1099,30 @@ window.DuelScene = (() => {
           // their shot just left too: the two meet in the middle and burst
           const meet = flying[from].find(x => x.at > t && t - x.launched < 0.16 && !x.how.clash);
           if (meet) {
-            meet.how.clash = how.clash = true; meet.how.frag = how.frag = true;
+            // their shot just left too. Both hit for their full damage (the rules never cancel them), so the
+            // picture shows them grinding past each other in the middle and both pushing through (28 Nov 2026).
+            // Two big ones (tier 3 and up) can lock into a short beam struggle instead, once in a while
+            meet.how.clash = how.clash = true;
             const when = Math.max(0.1, (Math.min(meet.at, t + rel + T) - t) * 0.5);
             const ca = new THREE.Color(o.color || '#ffffff'), cb = (meet.col || WHITE).clone();
-            after(when, () => { const m = new V().addVectors(fc[0], fc[1]).multiplyScalar(0.5); clashBurst(m, ca, cb); });
-            if (!warming) want('xclashq', { pri: 1 });
+            const tA = tier + (o.crit ? 1 : 0), tB = meet.tier || 0;
+            if (BOTS && tier >= 3 && (meet.tier0 || 0) >= 3 && t - lockAt > LOCK_GAP && !struggle.on) {
+              lockAt = t;
+              how.lock = meet.how.lock = { lands: [], from: [from, 1 - from], pow: [tA, tB], at: t + when };
+              after(when, () => beamLock(how.lock, ca, cb));
+            } else {
+              after(when, () => { const m = new V().addVectors(fc[0], fc[1]).multiplyScalar(0.5); clashCross(m, ca, cb, from, tA, tB); });
+              if (!warming) want('xclashq', { pri: 1 });
+            }
           } else if (flying[from].some(x => x.at > t + 0.09) && t - f.dodgeAt > 0.9) {
-            // their shot is on its way and this word landed first: dodge it (it only grazes) and counter
+            // their shot is on its way and this word landed first: a late dodge. Gid ruled out cutting the damage
+            // on a Clash dodge, so the bot slips aside too late and the shot still clips it hard (a real hit),
+            // and this word goes back as the counter
             f.dodgeAt = t;
-            const dv = pick('d' + from, ['roll', 'duck', 'leap']);
-            if (dv === 'roll') f.bf.dodge((f.mvSide = -(f.mvSide || 1))); else f.bf.move(dv, { len: 0.4 });
-            for (const x of flying[from]) if (x.at > t) { x.how.graze = true; x.how.side = f.mvSide || 1; }
-            csnd('op-dodge'); xs('dodge', 0.7, from); xs('counter', 0.5, from);
+            const sd = (f.mvSide = -(f.mvSide || 1));
+            f.bf.hurt('slip', { side: sd });
+            for (const x of flying[from]) if (x.at > t) { x.how.clipped = true; x.how.side = sd; }
+            xs('dodge', 0.45, from); xs('counter', 0.5, from);
           }
         }
         csnd('op-attack');
@@ -882,7 +1133,7 @@ window.DuelScene = (() => {
       inbound[to] = inbound[to].filter(x => x > t); inbound[to].push(t + rel + T);
       const base = new THREE.Color(o.color || (from ? '#f29d30' : Theme.hex('accent')));
       const col = TIER_COL[tier] && !o.orb ? new THREE.Color(TIER_COL[tier]) : base.clone().lerp(WHITE, tier ? 0.25 : 0);
-      if (!o.plain) { flying[to] = flying[to].filter(x => x.at > t); flying[to].push({ at: t + rel + T, launched: t, how, from, col }); }
+      if (!o.plain) { flying[to] = flying[to].filter(x => x.at > t); flying[to].push({ at: t + rel + T, launched: t, how, from, col, tier: tier + (o.crit ? 1 : 0), tier0: tier }); }
       if (o.graze) how.graze = true;
       if (o.heavy) how.heavy = true;
       // the attacker winds up and lunges; the letters leave on the lunge
@@ -921,7 +1172,8 @@ window.DuelScene = (() => {
         g.size = o.orb ? size * (1.1 + tier * 0.25) : size; g.spin = 0; g.t = 0; g.on = true; g.flick = !!o.flick;
         if (g.tail) { g.tail.core.visible = g.tail.glow.visible = false; g.tail = null; }
         if (o.orb && k === 0) { const T2 = tails[tI = (tI + 1) % tails.length]; for (const x of glyphs) if (x.tail === T2) x.tail = null; g.tail = T2; T2.core.material.color.copy(col).lerp(WHITE, 0.5).multiplyScalar(1.4); T2.glow.material.color.copy(col).multiplyScalar(0.8); }
-        g.cb = order === n - 1 ? () => { if (how.deflect) deflectAt(to, col, onLand, { how, ward: how.ward }); else landFn(); } : () => { if (!how.deflect && !o.land) tick(to, col); };
+        g.cb = order === n - 1 ? () => { if (how.lock && !how.lock.done) { how.lock.lands.push({ from, fn: () => (how.deflect ? deflectAt(to, col, onLand, { how, ward: how.ward }) : landFn()) }); return; } if (how.deflect) deflectAt(to, col, onLand, { how, ward: how.ward }); else landFn(); } : () => { if (!how.deflect && !o.land && !how.lock) tick(to, col); };
+        g.from = from; g.hide = false;
       }
       if (o.dodge && F[to].bf) {
         // the target gets out of the way just before it arrives: a barrel roll, a duck under it or a hop over it
@@ -992,12 +1244,12 @@ window.DuelScene = (() => {
       const now = performance.now();
       const self = id === 'binary-rain' || !hits.length;
       // hits on you from the other side are the threat the camera must not cut away from
-      if (!self && 1 - from === opts.me) for (const h of hits) threats.push(h.at / 1000);
+      if (!self && 1 - from === opts.me && !o.sd) for (const h of hits) threats.push(h.at / 1000);
       // the target raises its guard behind the hex plate just before the first hit arrives
       const tgt = F[1 - from];
       if (!self && tgt.op && hits.length && !warming) setTimeout(() => { if (alive && !tgt.ko && !tgt.mv.down()) tgt.mv.play('cover'); }, Math.max(0, hits[0].at - now - 650));
       if (BOTS) { stageWord(from, 0.6); STG.lift[from] = 0.6; after(1.6, () => { STG.lift[from] = 0; }); }
-      if (!warming) {
+      if (!warming && !o.noCut) {
         if (self) want('spell', { x: from, pri: 2 });
         else {
           // the shot follows the spell: on the caster while it rises (when there's time), along its way, then on the target
@@ -1023,6 +1275,10 @@ window.DuelScene = (() => {
     // what a spell's hit does to the bot it lands on (Combat.FX calls the target adapter's react)
     function spellHit(i, kind, power) {
       const f = F[i];
+      if (kind !== 'block' && kind !== 'dodge') {
+        if (sdQ[i].length) sdHit(i);   // Showdown: this hit's share of the damage shows now
+        else if (opts.onSpellHit && !warming) opts.onSpellHit(i);   // Clash: the page shows the rules' number now
+      }
       if (!f.bf || f.ko) { react(i, kind === 'stun' ? 'stun' : kind === 'freeze' ? 'freeze' : 'hit', power); return; }
       const side = (f.hurtSide = -(f.hurtSide || 1));
       if (kind === 'stun') { react(i, 'stun', power); f.bf.hurt('crumple', { side }); xs('thump', 0.8, i); }
@@ -1034,7 +1290,8 @@ window.DuelScene = (() => {
     }
     // a spell word with a typo (the rules' fizzle): it still leaves, broken and sputtering, and the target
     // gets out of its way: a dodge when the target was moving (typing), a block when it stood still
-    function fizzle(from, id) {
+    // o (Showdown): { mode: 'dodge' | 'reflect', onLand } picks the way out and reports where it ends
+    function fizzle(from, id, o = {}) {
       const f = F[from], to = 1 - from, sp = window.Combat && Combat.spell ? Combat.spell(id) : null;
       if (!f.bf || f.ko || F[to].ko) return;
       const col = new THREE.Color(sp && sp.color ? sp.color : '#9ff5ff').lerp(C('#8a8f92'), 0.45);
@@ -1042,7 +1299,9 @@ window.DuelScene = (() => {
       after(0.2, () => { if (alive && !f.ko) { f.bf.typo(); f.glitch = 0.35; } });
       xs('sputter', 0.9, from);
       burst(casterOf(from).pos(new V()), 10, 3, RED, { shard: true, size: 0.2, life: 0.5, grav: 6 });
-      const dodge = t - F[to].typeAt < 1.2;
+      const dodge = o.mode ? o.mode === 'dodge' : t - F[to].typeAt < 1.2;
+      if (o.mode === 'dodge') after(0.62, () => { if (alive && !F[to].ko) { const dv = pick('d' + to, ['roll', 'duck', 'leap']); if (dv === 'roll') F[to].bf.dodge(to ? 1 : -1); else F[to].bf.move(dv, { len: 0.45 }); xs('dodge', 0.7, to); } });
+      if (o.onLand) after(1.05, o.onLand);
       after(0.42, () => {
         if (!alive) return;
         const hx = '#' + col.getHexString();
@@ -1100,21 +1359,27 @@ window.DuelScene = (() => {
     let lastScene = '';
     function exchange(attacks, o = {}) {
       const onLand = o.onLand || (() => {}), st = o.onStart || (() => {}), done = () => { STG.xCloseT = 0; if (o.onDone) o.onDone(); };
+      const strikes = attacks.filter(a2 => a2.kind !== 'spell'), spells = attacks.filter(a2 => a2.kind === 'spell');
       if (!BOTS || !attacks.length || F.some(f => !f.bf)) {
-        attacks.forEach((a2, k) => after(k * 1.1, () => { st(a2); strike(a2.from, a2.words, { crit: a2.crit, dodge: a2.dodged, onLand: () => onLand(a2) }); }));
+        attacks.forEach((a2, k) => after(k * 1.1, () => { st(a2); if (a2.kind === 'spell') { onLand(a2, { part: a2.dmg, last: true }); return; } strike(a2.from, a2.words, { crit: a2.crit, dodge: a2.dodged, onLand: () => onLand(a2) }); }));
         const d = attacks.length ? 1.2 * attacks.length : 0.3; after(d, done); return d;
       }
-      const [A, B] = attacks;
+      const [A, B] = strikes;
       let kind = 'trade';
-      if (A.dodged && B) kind = (A.tier >= 3 || lastScene === 'dodge') && lastScene !== 'reflect' ? 'reflect' : 'dodge';
-      else if (A.dodged) kind = lastScene === 'dodge' ? 'reflect' : 'dodge';
+      if (o.beam && A && B) kind = 'beam';
+      else if (A && A.dodged && B) kind = (A.tier >= 3 || lastScene === 'dodge') && lastScene !== 'reflect' ? 'reflect' : 'dodge';
+      else if (A && A.dodged) kind = lastScene === 'dodge' ? 'reflect' : 'dodge';
       else if (B && o.close && !B.dodged && A.tier <= 2 && B.tier <= 2 && lastScene !== 'clash') kind = 'clash';
-      lastScene = kind;
+      if (A) lastScene = kind;
       STG.xCloseT = 1.2;   // they close in for the exchange
       const acc = o.acc || [1, 1];
       const howOf = a2 => ({ graze: !a2.crit && acc[a2.from] < 0.9, heavy: !!a2.crit && a2.tier >= 2 });
-      let end;
-      if (kind === 'clash') {
+      let end = 0;
+      if (!A) end = 0;
+      else if (kind === 'beam') {
+        const w = o.beam.winner, l = 1 - w, Wa = strikes.find(a2 => a2.from === w), La = strikes.find(a2 => a2.from === l);
+        end = struggleScene(Wa, La, w, onLand, st, howOf, o.ko === l);
+      } else if (kind === 'clash') {
         // both at once: the two shots meet in the middle, burst, and the leftovers land in the rules' order
         want('xclash', { pri: 3 }); st(A); st(B);
         const ta = attackVariant(A.from, A.tier, 'proj'), tb = attackVariant(B.from, B.tier, 'proj');
@@ -1125,8 +1390,9 @@ window.DuelScene = (() => {
           f.bf.move(v === 'lob' ? 'hop' : v === 'volley' ? 'volley' : 'jab', { len: 0.42, strike: true, power: a2.tier / 4 });
           after(0.32, () => shot(a2.from, a2.tier, null, { orb: true, noMove: true, plain: true, noCut: true, ms: 450, color: opts.sides[a2.from].color, to: m, arc: v === 'lob' ? 1.6 : 0.6, size: 1.1, land: () => {} }));
         }
+        // the two meet and burst, and neither is cancelled: both push on through and land their full hit
         after(meet, () => clashBurst(m, C(opts.sides[0].color || '#8cff58'), C(opts.sides[1].color || '#f29d30')));
-        [A, B].forEach((a2, k) => after(meet + 0.05 + k * 0.12, () => shot(a2.from, a2.tier, () => onLand(a2), { orb: true, noMove: true, plain: true, noCut: true, ms: 200, start: m, color: opts.sides[a2.from].color, size: 0.7, how: { ...howOf(a2), frag: true } })));
+        [A, B].forEach((a2, k) => after(meet + 0.05 + k * 0.12, () => shot(a2.from, a2.tier, () => onLand(a2), { orb: true, noMove: true, plain: true, noCut: true, ms: 220, start: m, color: opts.sides[a2.from].color, size: 1.0, crit: a2.crit, how: howOf(a2) })));
         end = meet + 0.5 + 0.9;
       } else {
         // the first attack
@@ -1140,7 +1406,127 @@ window.DuelScene = (() => {
           end = r2.contact + (B.tier >= 4 ? 1.2 : 0.9);
         }
       }
+      // the round's spells, after both strikes, in the rules' order
+      if (spells.length) end = spellBeat(spells, Math.max(0, end - 0.35), onLand, st);
       after(end, done);
+      return end;
+    }
+
+    // ---------- Showdown: spells (28 Nov 2026) ----------
+    // A spell word typed clean casts with the spell's own Combat.FX choreography; its damage (the rules')
+    // is shared over the spell's hits and each part shows as that hit visibly lands (spellHit below). Two
+    // spells in one round go up together. A fizzled one still flies and the target dodges it or bats it back.
+    const sdQ = [[], []];   // spell hit parts waiting for their visible hit, per target: { a, part, last, cb }
+    function sdHit(i) { const q = sdQ[i].shift(); if (q) q.cb(q.a, { part: q.part, last: q.last }); }
+    function sdFlush(i, a2) { for (let k = 0; k < sdQ[i].length; k++) if (sdQ[i][k].a === a2) { const q = sdQ[i].splice(k--, 1)[0]; q.cb(q.a, { part: q.part, last: q.last }); } }
+    function spellBeat(list, t0, onLand, st) {
+      const both = list.length > 1;
+      let end = t0 + 1.2;
+      if (both) after(t0, () => want('xspell2', { pri: 3 }));
+      list.forEach((a2, k) => {
+        const at = t0 + (both ? 0 : 0) + k * (both ? 0.05 : 0);
+        const P = window.DuelRules && DuelRules.PVP[a2.spell], hits = (P && P.hits.length ? P.hits : [[450, 1]]).map(h => h[0] / 1000);
+        const last = hits[hits.length - 1];
+        end = Math.max(end, at + (a2.fizzled ? 1.6 : 0.55 + last + 1.0));
+        after(at, () => {
+          st(a2);
+          if (a2.fizzled) { fizzle(a2.from, a2.spell, { mode: pick('fz' + a2.from, ['dodge', 'reflect']), onLand: () => onLand(a2, { part: 0, last: true }) }); return; }
+          // the damage shared over the hits, whole numbers, the remainder on the last
+          const n = hits.length, per = Math.floor(a2.dmg / n);
+          const parts = hits.map((h, k2) => (k2 === n - 1 ? a2.dmg - per * (n - 1) : per));
+          parts.forEach((part, k2) => sdQ[a2.to].push({ a: a2, part, last: k2 === n - 1, cb: onLand }));
+          const sp = window.Combat && Combat.spell ? Combat.spell(a2.spell) : null;
+          const now = performance.now();
+          cast(a2.from, a2.spell, hits.map((h, k2) => ({ at: now + 550 + h * 1000, dmg: parts[k2] })), (sp && sp.effect) || {}, { sd: true, noCut: both });
+          // anything the effect didn't show lands here, so the HP always ends where the rules put it
+          after(0.55 + last + 1.4, () => sdFlush(a2.to, a2));
+        });
+      });
+      return end;
+    }
+    // a spell word just typed clean in Showdown: its circle lights under the bot in the spell's colour
+    function spellReady(i, id) {
+      const sp = window.Combat && Combat.spell ? Combat.spell(id) : null;
+      if (!sp || !F[i] || F[i].ko) return;
+      const R = runes[i]; R.t = 0; R.col.set(sp.color); R.m.visible = true;
+      burst(muzzleOf(i, new V()), 14, 3, C(sp.color), { size: 0.24, life: 0.6, grav: -2, up: 1 });
+      if (!warming) csnd('tierUp', 1);
+    }
+
+    // ---------- Showdown: the beam struggle ----------
+    // win's strike (Wa) breaks through and lands; the loser's (La) comes back as a late counter, or as the
+    // backlash off the collision when the loser is knocked out (the rules' damage either way).
+    const BEAM_T = { charge: 1.35, fire: 0.2, fight: 2.3, through: 0.3 };
+    function struggleScene(Wa, La, win, onLand, st, howOf, loserKo) {
+      const lose = 1 - win, hero = opts.me >= 0 ? opts.me : 0, T = BEAM_T;
+      const cols = [0, 1].map(i => C(opts.sides[i].color || (i ? '#f29d30' : '#8cff58')));
+      stBegin('sd', [orbCol(0), orbCol(1)], cols);
+      st(Wa); st(La);
+      // the camera: a close-up on your bot charging, side-on as the beams launch, a slow push in on the
+      // collision, then the break from behind the winner (in slow motion) and the wide as the loser lands
+      const P = shots.beam.parts;
+      P[0].len = T.charge - 0.25; P[0].frame = [hero ? 'b' : 'a', hero ? 0.34 : -0.34, -0.05];
+      P[1].len = 0.55; P[2].len = T.fire + T.fight + 1;
+      want('beam', { x: { hero, win, lose }, pri: 3.5 });
+      F.forEach((f, i) => { f.bf.move('charge', { len: T.charge }); STG.lift[i] = 0.55; xs('beamCharge', 1, i); });
+      struggle.coreT = [1, 1];
+      after(T.charge, () => {
+        F.forEach(f => f.bf.move('beam', { len: T.fire + T.fight + T.through + 0.25 }));
+        struggle.fireT = [1, 1]; struggle.coreT = [0.5, 0.5];
+        xs('beamFire', 1);
+        if (!reduce) { punch = Math.max(punch, 0.5); shake = Math.max(shake, 0.2); }
+      });
+      // the hit: both beams meet in the middle
+      after(T.charge + T.fire, () => {
+        const J = struggle.J.copy(muzzleOf(0, new V())).lerp(muzzleOf(1, tmp), 0.5);
+        flare(J, WHITE, 2.4, 0.16); burst(J, 26, 10, cols[0], { shard: true, size: 0.34, life: 0.6, grav: 5, k: 1.5 }); burst(J, 26, 10, cols[1], { shard: true, size: 0.34, life: 0.6, grav: 5, k: 1.5 });
+        stRing(J, tmp.subVectors(muzzleOf(1, new V()), muzzleOf(0, tmp2)).normalize(), WHITE, 4.5, 0.55);
+        flashLight(J, WHITE, 6); xs('clash', 0.8);
+        if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 80); shake = Math.max(shake, 0.35); }
+        struggle.loop = dsfx ? dsfx.loop('beamCrackle', 1) : null;
+        xs('beamRiser', 1);
+        if (arena) arena.hype(-1, 0.7);
+      });
+      // the struggle: even at first, then the loser gains and drives the winner's beam back toward its own bot,
+      // the winner holds and shoves it back past the middle, and grinds it on toward the loser
+      const t1 = T.charge + T.fire, dl = lose ? 1 : -1, F2 = T.fight;
+      const beats = [[0.0, 0, 0.05], [0.12, 0.04, 0.12], [0.24, -0.04, 0.2], [0.33, -0.2, 0.35], [0.45, -0.24, 0.45], [0.55, -0.22, 0.55],
+        [0.64, 0.06, 0.65], [0.74, 0.14, 0.75], [0.84, 0.2, 0.85], [0.92, 0.27, 0.95]];
+      beats.forEach(([u, x, heat], k) => after(t1 + u * F2, () => { struggle.xT = 0.5 + dl * x; struggle.heat = heat; if (k === 3 || k === 6) { xs('clash', 0.5); if (!reduce) shake = Math.max(shake, 0.25); } }));
+      // a heartbeat under it, quickening
+      for (let tt = t1 + 0.2, gap = 0.62; tt < t1 + T.fight - 0.1; tt += gap, gap = Math.max(0.36, gap * 0.9)) after(tt, () => xs('heart', 0.8 + struggle.heat * 0.4));
+      // the break
+      const tb = t1 + T.fight;
+      shots.bbreak.parts[0].frame = [win ? 'b' : 'a', win ? 0.5 : -0.5, -0.05];
+      after(tb - 0.25, () => want('bbreak', { x: { hero, win, lose }, pri: 4 }));
+      after(tb, () => {
+        struggle.through = win; struggle.xT = lose ? 0.985 : 0.015; struggle.cut[lose] = true; struggle.heat = 1;
+        if (struggle.loop) { struggle.loop.stop(); struggle.loop = null; }
+        xs('beamRelease', 1);
+        flare(struggle.J, WHITE, 4, 0.2); burst(struggle.J, 30, 12, cols[win], { shard: true, size: 0.4, life: 0.7, grav: 6, k: 1.6 });
+        if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 110); shake = Math.max(shake, 0.5); punch = 1; }
+        if (loserKo) {
+          // the loser's strike is real too: the collision lashes back onto the winner as it breaks
+          shot(lose, La.tier, () => onLand(La), { orb: true, noMove: true, plain: true, noCut: true, ms: 220, start: struggle.J.clone(), color: '#' + cols[lose].getHexString(), size: 0.9, crit: La.crit, how: howOf(La) });
+        }
+      });
+      after(tb + T.through, () => {
+        impact(lose, Math.max(3, Wa.tier), Wa.crit, cols[win], null, { ...howOf(Wa), graze: false, hurt: 'stiff' });
+        if (F[lose].bf) F[lose].bf.hurt('shove', { k: 1, side: lose ? -1 : 1 });
+        ringAt(lose, cols[win], 7.5, 0.75); smoke(feetOf(lose, new V()).setY(0.4), 12, 2.6, { size: 1.7, life: 1.3, op: 0.5 });
+        xs('launch', 1, lose);
+        onLand(Wa);
+        after(0.3, () => { struggle.fireT[win] = 0; struggle.coreT = [0, 0]; });
+        after(0.55, stEnd);
+      });
+      let end = tb + T.through + 1.3;
+      if (!loserKo) {
+        // the loser catches itself and answers: its real hit lands late
+        const tc = tb + T.through + 1.0;
+        after(tc, () => { if (F[lose].ko) return; F[lose].bf.move('jab', { len: 0.4, strike: true, power: La.tier / 4 }); xs('counter', 0.9, lose); });
+        after(tc + 0.1, () => shot(lose, La.tier, () => onLand(La), { orb: true, noMove: true, plain: true, noCut: true, ms: 320, color: opts.sides[lose].color, crit: La.crit, size: 1.1, how: { ...howOf(La), heavy: false } }));
+        end = tc + 0.1 + 0.32 + 0.9;
+      }
       return end;
     }
     function attackVariant(i, tier, only) {
@@ -1504,6 +1890,22 @@ window.DuelScene = (() => {
         { len: 0.75, cut: 1, slow: 0.4, fov: 34, pose(c, out) { const j = c.x; fr(out.pos, fp[j], j, -0.3 * 11, 2.3 + Math.max(0, fc[j].y - 3.4) * 0.6, 0.95 * 11); fr(out.look, fc[j], j, 2.2, fc[j].y + 0.1, 0); } },
         { len: 0.8, cut: 1, slow: 0.8, fov: 38, pose(c, out) { const j = c.x; fr(out.pos, MID, j, -2.4, 1.8, 12); fr(out.look, MID, j, 0.8, 2.5, 0); } },
       ] },
+      // the beam struggle (Showdown): c.x = { hero, win, lose }. A close-up on your bot charging, side-on as the
+      // beams launch, a slow push in on the collision, the break from behind the winner, the wide as the loser lands
+      beam: { pri: 3.5, parts: [
+        { len: 1.35, cut: 1, fov: 30, omega: 5, pose(c, out) { const i = c.x.hero, j = 1 - i, gap = Math.abs(along(fp[j]) - along(fp[i])), k = 1 - 0.1 * c.u;
+          const d = Math.max(7.6, fitD(0, 5, 30) * 0.9); fr(out.pos, fp[i], i, Math.min(gap * 0.4, 4.4) * k, fc[i].y + 0.2, d * k); fr(out.look, fc[i], i, 0.7, fc[i].y + 0.2, 0); } },
+        { len: 0.55, cut: 1, fov: 34, omega: 6, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = fitD(span, 6.5, 34) + 0.5; fr(out.pos, MID, 0, 0, 2.6, D); out.look.copy(MID).setY(2.9); } },
+        { len: 4, cut: 0, fov: 34, omega: 2.2, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = (fitD(span, 6.5, 34) + 0.5) * (1 - 0.2 * c.u); const J = struggle.on ? struggle.J : MID; fr(out.pos, MID, 0, 0, 2.3 - 0.4 * c.u, D); out.look.copy(MID).lerp(J, 0.6).setY(Math.max(2.5, J.y + 0.1)); } },
+      ] },
+      // the break: from behind the winner in slow motion as its beam drives through, then beside the loser as it
+      // is shoved back across the stage (asked for at the break itself, so it lands on the moment)
+      bbreak: { pri: 4, parts: [
+        { len: 0.6, cut: 1, slow: 0.5, fov: 36, pose(c, out) { const w = c.x.win, l = c.x.lose; fr(out.pos, fp[w], w, -5.2, fc[w].y + 1.5, 7.8); out.look.lerpVectors(fc[w], fc[l], 0.68); } },
+        { len: 1.3, cut: 1, fov: 34, omega: 4, pose(c, out) { const l = c.x.lose; fr(out.pos, fp[l], l, 1.6, 2.5, 11.5); fr(out.look, fc[l], l, 1.2, Math.max(2.3, fc[l].y), 0); } },
+      ] },
+      // two spells going up together in Showdown: wide, low and centred
+      xspell2: { pri: 3, len: 2.6, fov: 38, omega: 3, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 6, D = fitD(span, 7.5, 38); fr(out.pos, MID, 0, 0, 1.9 + c.u * 0.6, D - c.u * 1.2); out.look.copy(MID).setY(2.9); } },
       // two shots meeting in the middle: low and centred, slow as they burst
       xclash: { pri: 3, len: 1.3, slow: 0.45, fov: 38, omega: 5, pose(c, out) { fr(out.pos, MID, 0, 0, 1.4 + c.u * 0.5, 10.5 - c.u * 1.2); out.look.copy(MID).setY(2.7); } },
       // Clash's clash: the same look, short and in real time, so the typing never waits on it
@@ -1654,14 +2056,14 @@ window.DuelScene = (() => {
         if (u0 < 0) continue;
         const u = Math.min(1, u0), e = Math.pow(u, 1.35);
         if (g.to >= 0) { centre(g.to, tmp).add(tmp2.set(0, 0.1, 0.2)); g.b.lerp(tmp, Math.min(1, dt * 14)); }
-        bez(g.s.position, g, e); g.s.visible = true;
+        bez(g.s.position, g, e); g.s.visible = !g.hide;
         const sc = g.size * (0.5 + 0.5 * Math.min(1, u * 5));
         g.s.scale.setScalar(g.flick ? sc * (0.7 + Math.random() * 0.5) : sc); g.s.material.rotation = g.spin * (g.t - g.delay) * 0.3;
         g.s.material.opacity = g.flick && Math.random() < 0.35 ? 0.25 : 1;   // a fizzled spell sputters on its way
         if (g.flick && u < 1 && Math.random() < dt * 40) { burst(g.s.position, 1, 2.5, Math.random() < 0.5 ? RED : SMOKE, { shard: true, size: 0.16, life: 0.4, grav: 6, k: 1.2 }); if (Math.random() < 0.3) smoke(g.s.position, 1, 0.4, { size: 0.7, life: 0.6, op: 0.3 }); }
-        g.tr.forEach((x, k) => { bez(x.position, g, Math.max(0, e - 0.05 * (k + 1))); x.scale.setScalar(sc * (0.55 - k * 0.15)); x.visible = u > 0.05; });
+        g.tr.forEach((x, k) => { bez(x.position, g, Math.max(0, e - 0.05 * (k + 1))); x.scale.setScalar(sc * (0.55 - k * 0.15)); x.visible = u > 0.05 && !g.hide; });
         // an orb's comet tail: a bright streak back along its path
-        if (g.tail) { bez(_p1, g, Math.max(0, e - 0.26)); const fl = g.flick ? (Math.random() < 0.4 ? 0.3 : 1) : 1; strip(g.tail.core, _p1, g.s.position, sc * 0.2, fl * Math.min(1, u * 6)); strip(g.tail.glow, _p1, g.s.position, sc * 0.62, 0.45 * fl * Math.min(1, u * 6)); }
+        if (g.tail && g.hide) { g.tail.core.visible = g.tail.glow.visible = false; } else if (g.tail) { bez(_p1, g, Math.max(0, e - 0.26)); const fl = g.flick ? (Math.random() < 0.4 ? 0.3 : 1) : 1; strip(g.tail.core, _p1, g.s.position, sc * 0.2, fl * Math.min(1, u * 6)); strip(g.tail.glow, _p1, g.s.position, sc * 0.62, 0.45 * fl * Math.min(1, u * 6)); }
         if (u >= 1) { g.on = false; g.s.visible = false; g.tr.forEach(x => { x.visible = false; }); if (g.tail) { g.tail.core.visible = g.tail.glow.visible = false; g.tail = null; } if (g.cb) { const cb = g.cb; g.cb = null; cb(); } }
       }
       for (const p of parts) {
@@ -1719,6 +2121,7 @@ window.DuelScene = (() => {
         S.m.material.opacity = (u < 0.12 ? u / 0.12 : 1 - (u - 0.12) / 0.88) * 0.95;
       });
       drawBeams(dt);
+      drawStruggle(dt);
       drawArcs(dt);
       drawStatus(dt);
       hitLightK = Math.max(0, hitLightK - creal * 14);
@@ -1783,6 +2186,9 @@ window.DuelScene = (() => {
       const word = [...set].join('').slice(0, 16);
       for (let tier = 0; tier <= 4; tier++) for (const side of [0, 1]) shot(side, tier, null, { word, crit: tier === 4, ms: 300 });
       for (const side of [0, 1]) { shot(side, 2, null, { orb: true, ms: 300, noMove: true }); key(side, 0.5); hold(side, 0.5); slashArc(centre(side, new V()), STG.a, 0.6, 1.5, WHITE); }
+      // the beam struggle's meshes, once
+      stBegin('sd', [orbCol(0), orbCol(1)]); struggle.fire = struggle.fireT = [1, 1]; struggle.core = struggle.coreT = [1, 1];
+      stRing(centre(0, new V()), STG.a, WHITE, 2, 0.4);
       F.forEach((f, i) => { ['typo', 'block', 'poison', 'poisonTick', 'flash'].forEach(k => react(i, k)); react(i, i ? 'freeze' : 'stun', 1); react(1 - i, 'fog', 1); });
       if (fx) {
         for (const name of ['ward', 'hyper', 'root', 'split']) aura(0, name, true);
@@ -1800,6 +2206,7 @@ window.DuelScene = (() => {
       for (const f of flares) f.s.visible = false;
       for (const w of rings) w.m.visible = false;
       for (const B of beams) { B.on = false; B.core.visible = B.glow.visible = false; }
+      stEnd(); stRings.forEach(R => { R.m.visible = false; }); lockAt = -99; sdQ[0].length = sdQ[1].length = 0;
       revive();
       F.forEach(f => { f.drop = 0; f.kick = f.recoil = f.flash = f.glitch = f.lt = 0; f.lt = 9; f.ice = 0; f.frost.visible = false; f.arcs.visible = false; });
       stopUntil = slowUntil = 0; shake = punch = 0; hitLightK = 0;
@@ -1816,6 +2223,7 @@ window.DuelScene = (() => {
 
     function dispose() {
       alive = false;
+      if (struggle.loop) { struggle.loop.stop(); struggle.loop = null; }
       F.forEach(f => { if (f.op) f.op.dispose(); if (f.bf) f.bf.dispose(); });
       renderer.setAnimationLoop(null);
       if (arena) arena.dispose();
@@ -1829,9 +2237,9 @@ window.DuelScene = (() => {
       renderer.domElement.remove();
     }
 
-    return { shot, key, wpm, hold, strike, exchange, deflect, ricochet, fizzle, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
+    return { spellReady, struggle: () => struggle, shot, key, wpm, hold, strike, exchange, deflect, ricochet, fizzle, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
       _kb: (i, kb) => { F[i].kb = kb; }, _scene: () => scene, _cam: () => camera, _hold: on => { if (on && !testHold) testClock = performance.now() / 1000; testHold = !!on; }, _step: s => { testStep += s; }, _frames: () => frameN, _stg: () => STG,   // tests: a side's keyboard, stepping time by hand
-      arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
+      arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')), at: F.map(f => (f.bf ? +f.bf.group.position.x.toFixed(2) : 0)), hurt: F.map(f => (f.bf ? f.bf.motion().hurt + ':' + f.bf.motion().push.toFixed(2) : '')) }) };
   }
 
   return { mount };

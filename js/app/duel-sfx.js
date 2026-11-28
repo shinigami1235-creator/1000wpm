@@ -6,12 +6,15 @@
 //
 //   const s = DuelSfx.create(arenaAudio, { vol })   arenaAudio: the duel's ArenaAudio (its ctx is shared)
 //   s.play(name, k)      k 0..1 scales it (power, or how near); pan -1..1 as the third argument
+//   s.loop(name, k, pan) a held sound ('beamCrackle') -> { set(k, x), stop() }; x (0..1) moves its pitch
+//   DuelSfx.renderSeq(events, loops, secs)   a whole scene offline, for peak checks
 //   DuelSfx.NAMES        every sound
 //   DuelSfx.render(name, k, secs)   Float32 samples through the same chain, for peak checks in tests
 window.DuelSfx = (() => {
   // levels set from offline renders (DuelSfx.render): hits peak about 0.25 to 0.45, small moves about 0.1 to 0.2
   const LEVEL = { slash: 0.75, uppercut: 0.7, spin: 2.0, slam: 0.95, dive: 1.6, pass: 1.6, volley: 2.6, clang: 1.0, ricochet: 1.8, fizzleShield: 2.4,
-    clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.95, rise: 1.2 };
+    clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.95, rise: 1.2,
+    beamCharge: 1.3, beamFire: 0.85, beamRelease: 0.7, heart: 0.75, beamRiser: 0.6, beamCrackle: 0.3 };
   const GAP = { volley: 40, dodge: 60, thump: 50, graze: 60 };
 
   function kit(c, out) {
@@ -75,6 +78,47 @@ window.DuelSfx = (() => {
       crit(d, t, k) { tone(d, t, 'sine', 70, 28, 0.8, 1.0 * k); hiss(d, t, 0.05, 4000, 0.6, 0.8 * k); hiss(d, t + 0.02, 0.7, 500, 0.6, 0.35 * k, 'lowpass', 0.01, 120); ring(d, t + 0.01, 520, 0.9, 0.16 * k); },
       // rising to cast
       rise(d, t, k) { tone(d, t, 'sine', 180, 520, 0.5, 0.15 * k, 0.15); hiss(d, t, 0.5, 600, 2, 0.15 * k, 'bandpass', 0.2, 2400); },
+      // the beam struggle (28 Nov 2026). Charging: a riser that swells over about 1.3 s, a detuned saw pair
+      // climbing under a hiss that opens up, ending in a tight whine
+      beamCharge(d, t, k) {
+        const L = 1.25 * Math.max(0.4, k);
+        for (const det of [1, 1.012]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(90 * det, t); o.frequency.exponentialRampToValueAtTime(420 * det, t + L);
+          const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3200, t + L); f.Q.value = 4;
+          const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + L * 0.85); g.gain.exponentialRampToValueAtTime(0.0001, t + L + 0.12);
+          o.connect(f).connect(g).connect(d); o.start(t); o.stop(t + L + 0.2); }
+        hiss(d, t, L, 500, 1.5, 0.18, 'bandpass', L * 0.8, 4000);
+        tone(d, t + L * 0.55, 'sine', 900, 2400, L * 0.45, 0.05, L * 0.4);
+      },
+      // the beams leave: a punch and a tearing hiss
+      beamFire(d, t, k) { tone(d, t, 'sine', 140, 48, 0.4, 0.8 * k); hiss(d, t, 0.35, 1800, 0.7, 0.5 * k, 'bandpass', 0.004, 600); hiss(d, t, 0.06, 5000, 1, 0.4 * k); },
+      // the break: the biggest sound in the duel, a crack, a deep boom with a long tail and a rush
+      beamRelease(d, t, k) { hiss(d, t, 0.07, 3600, 0.5, 0.9 * k); tone(d, t, 'sine', 80, 26, 1.1, 1.0 * k); tone(d, t, 'triangle', 160, 50, 0.5, 0.35 * k);
+        hiss(d, t + 0.02, 1.2, 700, 0.6, 0.45 * k, 'lowpass', 0.01, 90); hiss(d, t + 0.05, 0.5, 1200, 1.2, 0.3 * k, 'bandpass', 0.06, 4200); ring(d, t, 330, 1.2, 0.1 * k); },
+      // a heartbeat under the struggle: lub-dub
+      heart(d, t, k) { tone(d, t, 'sine', 62, 40, 0.16, 0.9 * k, 0.006); tone(d, t + 0.17, 'sine', 55, 36, 0.2, 0.65 * k, 0.006); },
+      // a slow sub riser under the whole struggle
+      beamRiser(d, t, k) { const L = 2.3 * Math.max(0.3, k); tone(d, t, 'sine', 45, 110, L, 0.4, L * 0.9); tone(d, t, 'triangle', 90, 220, L, 0.08, L * 0.9); },
+    };
+    // the collision's crackle: a loop whose pitch follows the collision point. set(k, x): k loudness 0..1, x 0..1
+    S.loop = {
+      beamCrackle(d) {
+        const len = 2, b = c.createBuffer(1, c.sampleRate * len, c.sampleRate), D = b.getChannelData(0);
+        // sparse pops of different sizes over a bed of fizz
+        for (let i = 0; i < D.length; i++) D[i] = (Math.random() * 2 - 1) * 0.12;
+        for (let n = 0; n < 420; n++) { const at = Math.floor(Math.random() * (D.length - 600)), L = 20 + Math.floor(Math.random() * 300), a = 0.3 + Math.random() * 0.7; for (let j = 0; j < L; j++) D[at + j] += (Math.random() * 2 - 1) * a * Math.exp(-j / (L / 4)); }
+        const src = c.createBufferSource(); src.buffer = b; src.loop = true;
+        const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+        const hum = c.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 110;
+        const hl = c.createBiquadFilter(); hl.type = 'lowpass'; hl.frequency.value = 700; hl.Q.value = 6;
+        const hg = c.createGain(); hg.gain.value = 0.18;
+        const g = c.createGain(), t = c.currentTime; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.08);
+        src.connect(bp).connect(g); hum.connect(hl).connect(hg).connect(g); g.connect(d);
+        src.start(t); hum.start(t);
+        return {
+          set(k, x) { const n = c.currentTime, p = 0.75 + x * 0.6; src.playbackRate.setTargetAtTime(p, n, 0.05); bp.frequency.setTargetAtTime(1200 + x * 1600, n, 0.05); hum.frequency.setTargetAtTime(80 + x * 90, n, 0.05); g.gain.setTargetAtTime(0.3 + 0.4 * Math.min(1, k), n, 0.08); },
+          stop() { const n = c.currentTime; g.gain.cancelScheduledValues(n); g.gain.setTargetAtTime(0.0001, n, 0.04); src.stop(n + 0.3); hum.stop(n + 0.3); },
+        };
+      },
     };
     return S;
   }
@@ -108,7 +152,23 @@ window.DuelSfx = (() => {
         S[name](dest, c.currentTime + 0.005, Math.max(0.1, Math.min(1.4, k)));
       } catch (e) {}
     }
-    return { play, dispose() { removeEventListener('wpm-sound', onSound); if (ch) { try { ch.out.disconnect(); } catch (e) {} } ch = null; c = null; } };
+    // a held sound (the beam's crackle): returns { set(k, x), stop() }, or a stub when sound is off
+    function loop(name, k = 1, pan = 0) {
+      const stub = { set() {}, stop() {} };
+      if (!on || (o.on && !o.on())) return stub;
+      try {
+        const cx = arena && arena.ctx ? arena.ctx() : null;
+        if (!cx) return stub;
+        if (cx !== c) { c = cx; ch = chain(c); ch.out.connect(c.destination); S = kit(c, ch.inp); }
+        if (!S.loop[name]) return stub;
+        const g = c.createGain(); g.gain.value = (LEVEL[name] || 0.5) * k * (o.vol == null ? 1 : o.vol);
+        if (pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p).connect(ch.inp); } else g.connect(ch.inp);
+        const h = S.loop[name](g);
+        let done = false;
+        return { set: (k2, x) => { if (!done) try { h.set(k2, x); } catch (e) {} }, stop: () => { if (!done) { done = true; try { h.stop(); } catch (e) {} } } };
+      } catch (e) { return stub; }
+    }
+    return { play, loop, dispose() { removeEventListener('wpm-sound', onSound); if (ch) { try { ch.out.disconnect(); } catch (e) {} } ch = null; c = null; } };
   }
   async function render(name, k = 1, secs = 1.5) {
     const sr = 44100, c = new OfflineAudioContext(1, sr * secs, sr), ch = chain(c); ch.out.connect(c.destination);
@@ -116,5 +176,23 @@ window.DuelSfx = (() => {
     S[name](g, 0.01, k);
     return (await c.startRendering()).getChannelData(0);
   }
-  return { create, render, LEVEL, NAMES: Object.keys(LEVEL) };
+  // a whole scene through the chain, for peak checks: events [[name, at, k, pan]], loops [[name, at, stop, [[t, k, x], ...]]]
+  async function renderSeq(events, loops = [], secs = 6) {
+    const sr = 44100, c = new OfflineAudioContext(2, sr * secs, sr), ch = chain(c); ch.out.connect(c.destination);
+    const S = kit(c, ch.inp);
+    for (const [name, at, k = 1, pan = 0] of events) { const g = c.createGain(); g.gain.value = LEVEL[name] || 0.5; const p = c.createStereoPanner(); p.pan.value = pan; g.connect(p).connect(ch.inp); S[name](g, at, k); }
+    // loops start at 0 in an offline context, so each is rendered from its own suspend point
+    for (const [name, at, stop, keys = []] of loops) {
+      c.suspend(at).then(() => {
+        const g = c.createGain(); g.gain.value = LEVEL[name] || 0.5; g.connect(ch.inp);
+        const h = S.loop[name](g);
+        for (const [kt, k, x] of keys) c.suspend(kt).then(() => { h.set(k, x); c.resume(); });
+        c.suspend(stop).then(() => { h.stop(); c.resume(); });
+        c.resume();
+      });
+    }
+    const buf = await c.startRendering();
+    return [buf.getChannelData(0), buf.getChannelData(1)];
+  }
+  return { create, render, renderSeq, LEVEL, NAMES: Object.keys(LEVEL).filter(n => n !== 'beamCrackle') };
 })();
