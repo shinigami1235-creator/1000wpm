@@ -56,7 +56,7 @@ window.RushScene = (() => {
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
       'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
-      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench']) ctl[n] = (...a) => call(n, ...a);
+      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench', 'entrance', 'cutaway']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
 
@@ -240,7 +240,7 @@ window.RushScene = (() => {
       const at = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => M.compose(P0.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), Sc.set(sx, sy, sz)).clone();
       const box = own(new THREE.BoxGeometry(1, 1, 1)), cyl = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 10)), oct = own(new THREE.CylinderGeometry(0.5, 0.5, 1, 8));
       const solid = [], lit = [];
-      const mat = own(new THREE.MeshLambertMaterial({ color: new THREE.Color(b.base).lerp(new THREE.Color('#3a3f45'), 0.75), flatShading: true }));
+      const mat = own(new THREE.MeshLambertMaterial({ color: new THREE.Color(b.base).lerp(new THREE.Color('#2b2f34'), 0.75), flatShading: true }));   // darker than the titan, so its outline stands off them
       const glowMat = own(new THREE.MeshBasicMaterial({ color: C(b.color, 2.2) }));
       // the floor: dark, polished, picking up the titan's colour from the environment
       // the floor: dark with a pool of the titan's light round where it stands, painted once into a texture
@@ -283,10 +283,10 @@ window.RushScene = (() => {
         anim = t => { fwMat.uniforms.uT.value = t; };
       } else if (id === 'colossus') {
         // data blocks drifting in the dark round it
-        const N = 16, im = new THREE.InstancedMesh(box, own(new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(b.color, 0.9) } },
+        const N = 6, im = new THREE.InstancedMesh(box, own(new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(b.color, 0.9) } },
           vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
           fragmentShader: `uniform vec3 uCol; varying vec2 vUv; void main(){ vec2 e = min(vUv, 1.0 - vUv); float d = min(e.x, e.y); gl_FragColor = vec4(vec3(0.03, 0.025, 0.05) + uCol * smoothstep(0.1, 0.02, d), 1.0); }` })), N);
-        const seeds = Array.from({ length: N }, (_, i) => ({ x: (i % 2 ? 1 : -1) * rnd(9, 18), y: rnd(1.5, 9), z: rnd(-18, -6), s: rnd(0.4, 1.1), p: rnd(0, 6) }));
+        const seeds = Array.from({ length: N }, (_, i) => ({ x: (i % 2 ? 1 : -1) * rnd(14, 21), y: rnd(3, 11), z: rnd(-22, -12), s: rnd(0.6, 1.3), p: rnd(0, 6) }));
         const o3 = new THREE.Object3D();
         anim = t => { seeds.forEach((q, i) => { o3.position.set(q.x, q.y + Math.sin(t * 0.6 + q.p) * 0.5, q.z); o3.rotation.set(t * 0.2 + q.p, t * 0.3, 0); o3.scale.setScalar(q.s); o3.updateMatrix(); im.setMatrixAt(i, o3.matrix); }); im.instanceMatrix.needsUpdate = true; };
         anim(0); group.add(im);
@@ -336,11 +336,11 @@ window.RushScene = (() => {
       function update(t, dt, bossPos) {
         clock += dt;
         shadow.position.x = bossPos.x; shadow.position.z = bossPos.z + 0.3;
-        for (let i = 0; i < DN; i++) { const q = dseed[i]; dpos[i * 3] = q[0] + Math.sin(clock * 0.2 + q[3]) * 0.8; dpos[i * 3 + 1] = (q[1] + clock * 0.25) % 11; dpos[i * 3 + 2] = q[2] + Math.cos(clock * 0.17 + q[3]) * 0.8; }
-        dg.attributes.position.needsUpdate = true;
+        if (dust.visible) for (let i = 0; i < DN; i++) { const q = dseed[i]; dpos[i * 3] = q[0] + Math.sin(clock * 0.2 + q[3]) * 0.8; dpos[i * 3 + 1] = (q[1] + clock * 0.25) % 11; dpos[i * 3 + 2] = q[2] + Math.cos(clock * 0.17 + q[3]) * 0.8; }
+        if (dust.visible) dg.attributes.position.needsUpdate = true;
         anim(clock, dt);
       }
-      return { group, update, dispose: () => {} };
+      return { group, update, dust, dispose: () => {} };
     }
 
     // ---------- the bosses ----------
@@ -414,7 +414,7 @@ window.RushScene = (() => {
       kit(b) {
         const root = new THREE.Group(), P = {};
         const plain = !!window.__rushPlain;   // tests only: the titans as they were, for frame-time comparisons
-        const env = b.kit === 'syntax' || plain ? null : envFor(b);
+        const env = b.kit === 'syntax' || plain || lowLevel ? null : envFor(b);
         const k = BossKit.create({ ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry }, b.kit, { glow: b.kit === 'syntax' ? null : b.color, detail: !plain, env });
         // mover: the titan's own offsets for its entrance, lunges and glitches, under the scene's sway and recoil
         const mover = new THREE.Group(); root.add(mover); mover.add(k.group);
@@ -606,6 +606,8 @@ window.RushScene = (() => {
       p.id = id; p.kind = kind; p.back = -1;
       p.e.material = kind === 'packet' ? pktLine : kind === 'decoy' ? badLine : giftLine;
       coreWorld(p.from);
+      // the Colossus throws its blocks from the ring round it, wide of its body
+      if (titanSig() === 'colossus' && kind !== 'gift') { sideNext = -sideNext; p.from.set((fig ? fig.root.position.x : 0) + sideNext * rnd(4.4, 5.4), rnd(5.5, 7), 0.6); }
       if (kind === 'gift') p.to.set((slotI - 1) * 3.2, 2.2 + (slotI === 1 ? 0.8 : 0), 5.4);
       else if (kind === 'decoy') p.to.copy(YOU).add(v1.set(rnd(-2.2, 2.2), rnd(0.2, 1.6), -0.8));
       else p.to.copy(YOU).add(v1.set(rnd(-1.4, 1.4), rnd(0.4, 1.4), -0.6));
@@ -636,7 +638,7 @@ window.RushScene = (() => {
     const pageMat = own(new THREE.MeshBasicMaterial({ color: C('#e9ffe0', 1.1), side: THREE.DoubleSide, transparent: true, opacity: 0.95,
       map: canvasTex(256, 176, (c, w, h) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1b2a22'; for (let i = 0; i < 6; i++) c.fillRect(20, 22 + i * 24, i % 3 === 2 ? 120 : 214, 9); }) }));
     const pageEdge = own(new THREE.LineBasicMaterial({ color: C('#c8ff3d', 2.2) })), pageEdgeGeo = own(new THREE.EdgesGeometry(pageGeo));
-    let stageN = 1, coneNext = 0;
+    let stageN = 1, coneNext = 0, sideNext = 1;
     // the titans' own throws: the Siege Titan's falling rubble and the Brute's pistons, in place of the
     // Signboard's signs and the Press's pages (same paths and timing, so the words sit where they did)
     const rockGeo = own(new THREE.IcosahedronGeometry(0.95, 0)), rockEdge = own(new THREE.EdgesGeometry(rockGeo));
@@ -667,14 +669,29 @@ window.RushScene = (() => {
           g.add(new THREE.Mesh(signGeo, DARK)); g.add(new THREE.LineSegments(signEdge, signLine));
           const face = new THREE.Mesh(faceGeo, signFace); face.position.z = 0.11; g.add(face);
         }
-        o.to.set(rnd(-2.6, 2.6), 1.2, YOU.z - rnd(1.2, 2.4));
-        o.from.set(o.to.x * 1.4 + rnd(-1, 1), 13, o.to.z - 4);
+        if (o.rock) {
+          // rubble hangs wide of the titan, left and right in turn, so its body and wind-up stay in view
+          const side = (sideNext = -sideNext);
+          o.to.set(side * rnd(4.2, 5.4), 1.2, YOU.z - rnd(1.6, 2.6));
+          o.from.set(o.to.x * 1.15, 13, o.to.z - 3);
+          g.scale.multiplyScalar(0.72);
+        } else {
+          o.to.set(rnd(-2.6, 2.6), 1.2, YOU.z - rnd(1.2, 2.4));
+          o.from.set(o.to.x * 1.4 + rnd(-1, 1), 13, o.to.z - 4);
+        }
         o.shadow = new THREE.Mesh(shadowGeo, shadowMat); o.shadow.rotation.x = -Math.PI / 2; o.shadow.position.set(o.to.x, 0.04, o.to.z); scene.add(o.shadow);
       } else {
         if (titanSig() === 'brute') { o.slug = true; const sg = new THREE.Group(); sg.rotation.z = Math.PI / 2; sg.add(new THREE.Mesh(slugGeo, DARK), new THREE.LineSegments(slugEdge, titanLine)); g.add(sg); }
         else { g.add(new THREE.Mesh(pageGeo, pageMat)); g.add(new THREE.LineSegments(pageEdgeGeo, pageEdge)); }
-        coreWorld(o.from); o.from.x += rnd(-2.6, 2.6); o.from.y = 1; o.from.z += 1;
-        o.to.set(rnd(-2.4, 2.4), 0.6, YOU.z - 0.6);
+        if (o.slug) {
+          // pistons come out from beside its feet, not across its body
+          const side = (sideNext = -sideNext);
+          o.from.set((fig ? fig.root.position.x : 0) + side * rnd(3.6, 4.6), 1, 2.2);
+          o.to.set(side * rnd(2.2, 3.4), 0.6, YOU.z - 0.6);
+        } else {
+          coreWorld(o.from); o.from.x += rnd(-2.6, 2.6); o.from.y = 1; o.from.z += 1;
+          o.to.set(rnd(-2.4, 2.4), 0.6, YOU.z - 0.6);
+        }
       }
       g.position.copy(o.from); scene.add(g);
       sigObj.set(id, o);
@@ -690,7 +707,7 @@ window.RushScene = (() => {
       if (!o.g) { sigObj.delete(id); return; }
       if (tfx && (o.rock || o.slug)) {
         const col = slotNow ? slotNow.boss.color : '#ffb020';
-        if (how === 'done') { tfx.debris(o.g.position, 8, { col, speed: 6, up: 3, size: 0.3 }); tfx.burst(o.g.position, 22, { col, speed: 7, life: 0.5 }); if (o.slug) tfx.burst(o.g.position, 6, { kind: 'steam', col: '#cfc9c1', speed: 3, size: 1.4, life: 1 }); sigFree(id, o); return; }
+        if (how === 'done') { tfx.debris(o.g.position, 5, { col, speed: 6, up: 3, size: 0.3, life: 0.8 }); tfx.burst(o.g.position, 22, { col, speed: 7, life: 0.5 }); if (o.slug) tfx.burst(o.g.position, 6, { kind: 'steam', col: '#cfc9c1', speed: 3, size: 1.4, life: 1 }); sigFree(id, o); return; }
         if (how === 'hit') { v1.copy(o.g.position).setY(0.05); tfx.ring(v1, 0.3, 3, 0.4, col, { k: 2 }); tfx.debris(v1, 6, { col, speed: 5, up: 3 }); tfx.burst(v1, 8, { kind: 'dust', col: '#8a8f96', speed: 3, size: 1.3, life: 1 }); }
       }
       if (how === 'done') { o.pop = 0; return; }   // bursts, then goes in the loop
@@ -826,6 +843,24 @@ window.RushScene = (() => {
     const dA = new V(), dB = new V();
     const SP = (pose, more) => Object.assign({ pose: (c, o) => pose(c.u, o.pos, o.look, c) }, more);
     const dirCtx = { threatAt: Infinity };
+    // The titans' signature shots, all on the game shot's right-hand side. o: the camera, l: where it looks,
+    // b: the titan's feet, H: its height, u: 0 to 1 through the shot
+    const SIG_LEN = 2.2;
+    const SIG_SHOT = {
+      // from the rubble at its feet, looking up the whole height of it to the fists
+      siege: (u, o, l, b, H) => { o.set(b.x + 2.4 + 0.3 * u, 0.45, b.z + 6.2 - 0.7 * u); l.set(b.x - 0.2, H * 0.74, b.z); },
+      // side on along the blade, the firewall gates behind it
+      warden: (u, o, l, b, H) => { o.set(b.x + 6.4 - 0.5 * u, H * 0.58, b.z + 3.4 + 0.5 * u); l.set(b.x - 0.6, H * 0.6, b.z + 0.6); },
+      // a low arc under the blocks circling it
+      colossus: (u, o, l, b, H) => { const a = 0.85 - 0.35 * u, d = 8.5; o.set(b.x + Math.sin(a) * d, 1.4 + 0.6 * u, b.z + Math.cos(a) * d); l.set(b.x, H * 0.78, b.z); },
+      // straight down the carpet at the throne, low and level
+      king: (u, o, l, b, H) => { o.set(b.x + 0.8, 1.5, b.z + 9.6 - 1.2 * u); l.set(b.x, H * 0.52, b.z); },
+      // close on the seam where the armour stops and the wire begins
+      half: (u, o, l, b, H) => { o.set(b.x + 3.0 + 0.4 * u, H * 0.62, b.z + 4.6 - 0.4 * u); l.set(b.x + 0.3, H * 0.6, b.z + 0.4); },
+      // low and close under the vents, the steam rolling off its back
+      brute: (u, o, l, b, H) => { o.set(b.x + 4.4 - 0.6 * u, H * 0.3, b.z + 5.0); l.set(b.x, H * 0.82, b.z - 0.4); },
+    };
+    let sigShotAt = 0;
     function makeDirector() {
       if (!window.CamDirector || director) return;
       director = CamDirector.create(THREE, camera, {
@@ -850,6 +885,10 @@ window.RushScene = (() => {
           stunned: { pri: 2, parts: [
             SP((u, o, l) => { coreWorld(dB); bossAt(dA); const H = bossH(); o.set(dA.x + 3.2 - 0.6 * u, H * 0.55, dA.z + 7.2 - 0.8 * u); l.copy(dB); }, { len: 1.2, cut: 1, fov: 40, omega: 6 }),
           ] },
+          // each titan's own shot, for the quiet moments when nothing is coming at you (asked for in the loop)
+          signature: { pri: 1, parts: [
+            SP((u, o, l, c) => { bossAt(dA); const H = bossH(); SIG_SHOT[fig && fig.P.T ? fig.P.T.id : 'siege'](u, o, l, dA, H); }, { len: SIG_LEN, cut: 1, fov: 40, omega: 5, hand: 0.05 }),
+          ] },
           kill: { pri: 4, free: true, parts: [
             SP((u, o, l) => { bossAt(dA); coreWorld(dB); const H = bossH(), r = fitD(H, 0.7, 42), a = 0.55 + 1.0 * u; o.set(dA.x + Math.sin(a) * r, 2.2 + 2.2 * u, dA.z + Math.cos(a) * r); l.copy(dB).lerp(dA.set(dA.x, H * 0.3, dA.z), 0.4 * u); }, { len: 3.0, slow: 0.6, cut: 1, fov: 42, omega: 5 }),
           ] },
@@ -861,11 +900,13 @@ window.RushScene = (() => {
     const io = new IntersectionObserver(es => { visible = es[0].isIntersecting; }); io.observe(host);
     fit();
 
+
     // ---------- the boss on stage ----------
     let fig = null, old = null, slotNow = null, frac = 1, shieldF = null;
     let windAt = 0, windMs = 0, windOn = false, atkT = 0, stunUntil = 0, freezeUntil = 0, flash = 0, recoil = 0, recoilV = 0;
     // jolt: a short reel from your hits; reelAt: the big reel when you block or stagger it
     let jolt = 0, reelAt = -9;
+    let enterMs = 0;   // the entrance now playing, for the page to hold the count until it's done
     let introT = 1, dying = -1, enraged = false, moveOn = false, paused = false, heat = 0;
     function setBoss(s, instant) {
       slotNow = s;
@@ -882,7 +923,7 @@ window.RushScene = (() => {
       fig.res = bucket; bucket = null;
       fig.root.scale.setScalar(0.01);
       scene.add(fig.root);
-      if (fig.P.set) scene.add(fig.P.set.group);
+      if (fig.P.set) { scene.add(fig.P.set.group); if (fig.P.set.dust) fig.P.set.dust.visible = detail > 0.85; }
       scene.fog.near = fig.P.T ? 18 : 22; scene.fog.far = fig.P.T ? 62 : 70;
       if (s.mark > 1) fig.root.position.z = -0.5;
       threatMs = Infinity; slowUntil = 0;
@@ -894,7 +935,8 @@ window.RushScene = (() => {
       pool.forEach(p => { p.id = ''; p.g.visible = false; });
       if (fx) fx.clear();
       if (tfx) tfx.clear();
-      if (fig.enter) { introT = 1; fig.root.scale.setScalar(fig.scale); fig.enter(); want('enter'); }
+      enterMs = 0; sigShotAt = nowS() + 7;
+      if (fig.enter) { introT = 1; fig.root.scale.setScalar(fig.scale); enterMs = Math.round((fig.enter() || 0) * 1000); want('enter'); }
       glitchK = Math.max(glitchK, 0.8); glitchUntil = nowS() + 0.6;
     }
     function disposeFig(f) {
@@ -908,6 +950,25 @@ window.RushScene = (() => {
       scene.background.copy(pal.bg); scene.fog.color.copy(pal.fog);
       grid.material.color.copy(pal.b); ringMat.color.copy(pal.a); wallMat.color.copy(pal.b); pilLine.color.copy(pal.b);
     }
+
+    // ---------- adaptive quality (js/room/aq.js, as the Superboss does) ----------
+    // A slow machine steps the resolution down first, then the extras: the arena's dust, half the particles
+    // and debris, then the bloom. Low (a crashed load or a device far too slow last time) starts without the
+    // bloom and the titans' reflections. window.__rushFull keeps everything for tests and frame-time checks.
+    const basePR = Math.min(1.5, devicePixelRatio || 1);
+    let detail = 1;
+    function setDetail(d) {
+      detail = d;
+      if (fig && fig.P.set && fig.P.set.dust) fig.P.set.dust.visible = d > 0.85;
+      if (tfx) tfx.setDetail(d > 0.7 ? 1 : 0.5);
+      bloom.enabled = d > 0.55 && !lowLevel;
+    }
+    const aq = window.AdaptiveQuality && !window.__rushFull ? AdaptiveQuality.create({ key: 'wpm-rush', fps: 60, minScale: 0.6, minDetail: 0.4,
+      onScale: k => { renderer.setPixelRatio(basePR * k); composer.setPixelRatio(basePR * k); fit(); }, onDetail: setDetail }) : null;
+    const lowLevel = !!aq && aq.level === 'low';
+    if (aq) { aq.loading(); aq.watch(renderer.domElement); aq.apply(); }
+    if (lowLevel) bloom.enabled = false;
+    let aqLoaded = false;
 
     // ---------- reactions ----------
     function react(kind, power = 0, extra) {
@@ -1056,6 +1117,9 @@ window.RushScene = (() => {
       const sk = shake * (reduce ? 0.12 : calm ? 0.55 : 1) * 0.5;
       if (director) {
         dirCtx.threatAt = t + threatMs / 1000;
+        // the titan's signature shot when the coast is clear: idle, nothing at you for the shot and the way back
+        if (fig && fig.P.T && dying < 0 && !windOn && !reviewCam && fig.P.T.mode() === 'idle' && director.shot() === 'game'
+          && t > sigShotAt && threatMs > (SIG_LEN + 1.6) * 1000) { sigShotAt = t + 9; want('signature'); }
         // its springs are stepped at 60 Hz or finer, so a slow frame can't make the camera overshoot
         const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 60))));
         for (let i = n - 1; i >= 0; i--) director.update(t - i * dt / n, dt / n, dirCtx);
@@ -1079,6 +1143,7 @@ window.RushScene = (() => {
           pts: [P2(head.clone(), 'head'), P2(v2, 'core'), P2(new V(fig.root.position.x, 0, fig.root.position.z), 'feet'), P2(YOU, 'you')] });
       }
       composer.render();
+      if (aq) { if (!aqLoaded) { aqLoaded = true; aq.loaded(); } if (!paused) aq.frame(performance.now()); }
     });
 
     // ---------- controls ----------
@@ -1120,6 +1185,8 @@ window.RushScene = (() => {
     return {
       live: () => visible && !document.hidden,
       setBoss,
+      entrance: () => enterMs,
+      cutaway: () => !!(director && director.shot() !== 'game'),
       setFrac: f => { frac = f; },
       windup: (ms, atk) => { windOn = true; windAt = pnow(); windMs = ms; if (fig && fig.P.T) fig.P.T.windup(atk, ms); },
       windupEnd: () => { windOn = false; if (fig && fig.P.T) fig.P.T.cancel(); },
@@ -1167,7 +1234,7 @@ window.RushScene = (() => {
       // tests only: the cost of drawing one frame, timed with the GPU finished, best of five batches
       bench: (n = 4) => { const gl = renderer.getContext(), px = new Uint8Array(4), sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); let best = Infinity; for (let b = 0; b < 5; b++) { sync(); const t0 = performance.now(); for (let i = 0; i < n; i++) { composer.render(); sync(); } best = Math.min(best, (performance.now() - t0) / n); } return +best.toFixed(1); },
       review: o => { reviewCam = o || null; if (!o) { camera.fov = 44; camera.updateProjectionMatrix(); } },
-      info: () => ({ frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
+      info: () => ({ aq: aq ? aq.state() : null, detail, frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
       dispose,
     };
   }

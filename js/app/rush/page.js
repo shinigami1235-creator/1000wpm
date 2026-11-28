@@ -23,7 +23,9 @@ window.RushPage = (() => {
   const ARENA = new Set(['popup', 'sign', 'mute', 'page', 'byte', 'decoy']);
   const TAG_LABEL = { sign: 'Sign', page: 'Page', byte: 'Packet', decoy: 'Fake', mute: 'Speaker' };
   // the titans' throws are named for what they are: rubble, data blocks, pistons; the King's pop-ups are decrees
-  const TITAN_TAG = { siege: { sign: 'Rubble' }, colossus: { byte: 'Block' }, brute: { page: 'Piston' } };
+  const TITAN_TAG = { siege: { sign: 'Rubble' }, colossus: { byte: 'Data block' }, brute: { page: 'Piston' } };
+  // where the King's decrees land, as [left %, top %] of the arena: right, left, right, left, right
+  const KING_SLOTS = [[76, 7], [3, 25], [76, 36], [3, 52], [76, 63]];
   const DECREES = ['ROYAL DECREE', 'BY ORDER', 'EDICT', 'PROCLAMATION', 'THE KING SAYS', 'BY DECREE'];
   const TIPS = {
     start: 'Type the highlighted word and press Space to hit the boss.',
@@ -191,7 +193,9 @@ window.RushPage = (() => {
       line.clear(); earned = [];
       f = RushFight.create({ plan, me, now, emit: onFight, lead: () => (line ? line.reach(f ? f.stack() : []) : 0) });
       scene.setBoss(plan.slot);
-      f.start(now());
+      // a titan's entrance plays out before the count, with only its name card over the arena
+      const entrance = scene.entrance ? scene.entrance() : 0;
+      f.start(now(), entrance);
       paintHead(); paintYou(); paintStrip();
       A.quiet(false);
       A.music(D().musicFor(plan.boss.id, 1));
@@ -200,7 +204,7 @@ window.RushPage = (() => {
       clearTags();
       const s = plan.slot, sg = D().SIG[plan.boss.id];
       const tw = s.mark > 1 && s.i === 0 ? D().TWISTS.find(x => x.mark === s.mark) : null;
-      banner(retry ? `Retry, boss ${s.n}` : `Boss ${s.n}`, s.title, tw ? `Mark ${D().markName(s.mark)}: ${tw.text}` : sg.text);
+      banner(retry ? `Retry, boss ${s.n}` : `Boss ${s.n}`, s.title, tw ? `Mark ${D().markName(s.mark)}: ${tw.text}` : sg.text, entrance ? entrance + 2200 : 2400, !!entrance);
       // only this boss's signature tip; another boss's still waiting in the queue would be wrong now
       tipQ = tipQ.filter(x => !x.startsWith('sig-'));
       const tn = q('tip'); if (tn && tn.dataset.id && tn.dataset.id.startsWith('sig-')) { tn.textContent = ''; tn.classList.remove('on'); tipUntil = 0; }
@@ -240,13 +244,16 @@ window.RushPage = (() => {
     // your speed in letters a second: the last few words, leaning on your usual speed
     function speed() { const base = priorWpm() * 5 / 60; return 0.9 * Math.max(1.2, liveCps ? 0.8 * liveCps + 0.2 * base : base); }
     const LABEL = { block: 'BLOCK', gift: 'GIFT', speaker: 'MUTE', popup: 'CLOSE', packet: 'SEND BACK', byte: 'PACKET', fix: 'FIX', answer: 'FIX', sign: 'FIX', page: 'PAGE', mute: 'MUTE', boost: 'BOOST', weak: 'WEAK POINT' };
+    // the titans' throws keep their own names in the line too
+    const TITAN_LABEL = { siege: { sign: 'RUBBLE' }, colossus: { byte: 'DATA BLOCK' }, brute: { page: 'PISTON' }, king: { popup: 'DECREE' } };
     // the specials live now, in the order they light words; decoys stay bait in the arena, and of the
     // spelled-right choices only the right one lights a word
     function specials(t) {
       if (!f || f.phase !== 'fight') return [];
       const list = f.chips(t).filter(c => c.kind !== 'decoy' && !(c.kind === 'answer' && !c.right))
         .sort((a, b) => (ORDER[a.kind] - ORDER[b.kind]) || ((a.order || 0) - (b.order || 0)) || ((a.due || 0) - (b.due || 0)));
-      const out = list.map(c => ({ id: c.id, kind: LOOK[c.kind] || 'add', label: c.label || LABEL[c.kind] || '', due: c.due, total: c.total, chip: c.kind }));
+      const tl = TITAN_LABEL[plan.boss.id] || {};
+      const out = list.map(c => ({ id: c.id, kind: LOOK[c.kind] || 'add', label: c.label || tl[c.kind] || LABEL[c.kind] || '', due: c.due, total: c.total, chip: c.kind }));
       for (const sp of earned) out.push({ id: sp.key, kind: 'spell', n: sp.word.split(' ').length, label: sp.word.toUpperCase(), color: sp.color, spell: sp });
       return out;
     }
@@ -343,7 +350,7 @@ window.RushPage = (() => {
       if (!f && name !== 'intro') return;
       const S = f ? f.state(now()) : null;
       switch (name) {
-        case 'intro': { const st = q('stage'); if (st) TT.countdown(st, null, { step: p.ms / 3 }); break; }
+        case 'intro': { const go = () => { const st = q('stage'); if (st && f && f.phase === 'intro') TT.countdown(st, null, { step: p.ms / 3 }); }; if (p.delay) wait(p.delay, go); else go(); break; }
         case 'fight': renderQueue(); paintChips(true); if (plan.slot.n > 1) tip('weak'); break;
         case 'windup':
           scene.windup(p.ms, p.atk);
@@ -626,11 +633,13 @@ window.RushPage = (() => {
       f.tick(t);
       if (!f) return;
       // the camera director keeps to the game shot while anything is coming at you (scene.js, camdir.js)
-      { const S = f.state(t); scene.threat(S.phase !== 'fight' ? Infinity : S.action || S.timed ? 0 : Math.min(S.nextAttack, ['sign', 'page', 'byte', 'mute'].includes(S.sig) ? S.nextSig : Infinity)); }
+      // a thrown word counts from when it lands: its word is lit in your line with its own timer, so a short
+      // cutaway may play while it falls and must end before it gets close (camdir's lock)
+      { const S = f.state(t); scene.threat(S.phase !== 'fight' ? Infinity : S.action ? 0 : Math.min(S.nextAttack, S.timed ? S.nextDue : Infinity, ['sign', 'page', 'byte', 'mute'].includes(S.sig) ? S.nextSig : Infinity)); }
       syncLine();
       paintChips(false);
       paintFlags(t);
-      paintTip(t);
+      if (f.phase === 'fight') paintTip(t);   // the intro keeps the arena clear for the entrance
     }
 
     // ---------- painting ----------
@@ -727,7 +736,36 @@ window.RushPage = (() => {
       const pens = {};
       if (f) for (const m of f.marks()) if (m.i >= 0 && m.i < 50) pens[m.i] = m.fake;
       flow.render({ cur: v.cur, typed, mine: true, next: v.next, pens, tags: v.tags });
+      layLabels(box);
       paintTags();
+    }
+    // The small labels over lit words (WEAK POINT, BLOCK SLAM) are wider than short words, so two lit words
+    // side by side ran their labels together ("WEAK POINTFIX"). On each line, a label that would touch the
+    // next one first takes its short name, then the next label slides right along its own word, and if
+    // they still meet the next one goes up a row.
+    const SHORT_LABEL = { 'WEAK POINT': 'WEAK', 'SEND BACK': 'SEND', 'DATA BLOCK': 'DATA', 'BOOST': 'BOOST' };
+    const shortOf = t => SHORT_LABEL[t] || (t.startsWith('BLOCK ') ? 'BLOCK' : null);
+    function layLabels(box) {
+      const ls = box.querySelectorAll('.fw-lbl');
+      if (ls.length < 2) return;
+      const it = [...ls].map(l => { const w = l.parentElement.getBoundingClientRect(), r = l.getBoundingClientRect(); return { l, wl: w.left, ww: w.width, row: Math.round(w.top), x: r.left, w: r.width }; })
+        .sort((a, b) => a.row - b.row || a.x - b.x);
+      const GAP = 8;
+      for (let i = 1; i < it.length; i++) {
+        const a = it[i - 1], b = it[i];
+        if (a.row !== b.row || a.x + a.w + GAP <= b.x) continue;
+        const sh = shortOf(a.l.textContent);
+        if (sh && sh !== a.l.textContent) { a.l.textContent = sh; a.w = a.l.getBoundingClientRect().width; }
+        if (a.x + a.w + GAP <= b.x) continue;
+        const room = Math.max(0, Math.max(b.ww - b.w, b.ww * 0.5) - (b.x - b.wl));
+        const move = Math.min(room, a.x + a.w + GAP - b.x);
+        if (move > 0) { b.l.style.left = (b.x - b.wl + move).toFixed(1) + 'px'; b.x += move; }
+        if (a.x + a.w + GAP > b.x) {
+          const bs = shortOf(b.l.textContent);
+          if (bs && bs !== b.l.textContent) { b.l.textContent = bs; b.w = b.l.getBoundingClientRect().width; }
+          b.l.classList.add('up'); b.x = a.x + a.w + GAP;   // lifted: the next label measures from here
+        }
+      }
     }
     function paintCombo(drop) {
       const box = q('cbox'); if (!box || !me) return;
@@ -762,13 +800,25 @@ window.RushPage = (() => {
         const el = document.createElement('div');
         el.className = 'rp';
         const n = [...tags.values()].filter(x => x.kind === 'popup').length;
-        el.style.left = (8 + ((n * 31 + Math.random() * 18) % 64)).toFixed(1) + '%';
-        el.style.top = (10 + ((n * 23 + Math.random() * 14) % 42)).toFixed(1) + '%';
         const king = plan.boss.id === 'king', ads = king ? DECREES : ['FREE GIFT!!', 'u won', 'CLICK NOW', 'hot deal', 'DM me', 'last chance'];
+        let slot = -1;
+        if (king) {
+          // the King's decrees land in the columns either side of him, clear of his body, the attack flags
+          // (top left) and the next-attack timer (bottom right)
+          const used = new Set([...tags.values()].filter(x => x.kind === 'popup').map(x => x.slot));
+          slot = KING_SLOTS.findIndex((_, i) => !used.has(i));
+          if (slot < 0) slot = n % KING_SLOTS.length;
+          const [lx, ty] = KING_SLOTS[slot];
+          el.style.left = (lx + Math.random() * 3).toFixed(1) + '%';
+          el.style.top = (ty + Math.random() * 3).toFixed(1) + '%';
+        } else {
+          el.style.left = (8 + ((n * 31 + Math.random() * 18) % 64)).toFixed(1) + '%';
+          el.style.top = (10 + ((n * 23 + Math.random() * 14) % 42)).toFixed(1) + '%';
+        }
         if (king) el.classList.add('rp-king');
         el.innerHTML = `<div class="rp-bar"><span>${esc(ads[Math.floor(Math.random() * ads.length)])}</span><i>x</i></div><b class="w"></b>`;
         box.append(el);
-        tags.set(p.id, { kind: 'popup', el, word: p.word, due: p.due, total: p.total, typed: null });
+        tags.set(p.id, { kind: 'popup', el, word: p.word, due: p.due, total: p.total, typed: null, slot });
       } else {
         const box = q('tags'); if (!box) return;
         const el = document.createElement('div');
@@ -807,11 +857,36 @@ window.RushPage = (() => {
       tagRaf = 0;
       if (!scene || !tags.size) return;
       const pn = now();
+      // a cutaway hides the arena's tags for its second or two; the words stay lit in your line with their timers
+      const tl = q('tags'); if (tl) tl.classList.toggle('cut', !!scene.cutaway());
+      // where each tag wants to be (its thing in the arena), then the ones that would overlap are stacked
+      // upward, nearest to the floor first, so two tags never cover each other's word
+      const boxes = [];
       for (const [id, x] of tags) {
-        if (x.kind !== 'popup') {
-          const at = scene.screen('sig:' + id, pt);
-          if (at) { x.el.style.transform = `translate(${at.x.toFixed(0)}px, ${at.y.toFixed(0)}px) translate(-50%, -100%)`; x.el.style.opacity = '1'; }
+        if (x.kind === 'popup') continue;
+        const at = scene.screen('sig:' + id, pt);
+        if (!at) continue;
+        if (!x.w || x.wordKey !== x.typed) { x.w = x.el.offsetWidth; x.h = x.el.offsetHeight; x.wordKey = x.typed; }
+        boxes.push({ x, cx: at.x, by: at.y });
+      }
+      boxes.sort((a, b) => b.by - a.by);
+      const stageH = tl ? tl.clientHeight : 9999;
+      const placed = [];
+      for (const b of boxes) {
+        let by = b.by;
+        const l = b.cx - b.x.w / 2 - 4, r = b.cx + b.x.w / 2 + 4;
+        for (let k = 0; k < 6; k++) {
+          const hit = placed.find(o => l < o.r && r > o.l && by > o.t && by - b.x.h < o.b);
+          if (!hit) break;
+          by = hit.t - 4;
         }
+        by = Math.min(Math.max(b.x.h + 2, by), stageH - 2);
+        b.x.dy = b.x.dy === undefined ? by - b.by : b.x.dy + (by - b.by - b.x.dy) * 0.35;
+        const y = b.by + b.x.dy;
+        placed.push({ l, r, t: y - b.x.h, b: y });
+        b.x.el.style.transform = `translate(${b.cx.toFixed(0)}px, ${y.toFixed(0)}px) translate(-50%, -100%)`; b.x.el.style.opacity = '1';
+      }
+      for (const [, x] of tags) {
         if (x.due) {
           const left = Math.max(0, x.due - pn);
           if (x.bar) x.bar.style.width = (100 * left / x.total).toFixed(1) + '%';
@@ -854,9 +929,12 @@ window.RushPage = (() => {
       tintT = now();
       n.classList.remove('go'); void n.offsetWidth; n.classList.add('go');
     }
-    function banner(small, big, line, ms = 2400) {
+    // card: the titan's name in the arena's top left with no band behind it, so its entrance stays clear
+    function banner(small, big, line, ms = 2400, card = false) {
       const b = q('banner'); if (!b) return;
       b.hidden = false;
+      b.classList.toggle('card', card);
+      b.style.setProperty('--bms', ms + 'ms');
       b.innerHTML = `<div class="in"><small>${esc(small)}</small><b>${esc(big)}</b>${line ? `<span>${esc(line)}</span>` : ''}</div>`;
       b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
       clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, ms);

@@ -219,3 +219,15 @@
 @media (prefers-reduced-motion: reduce) {
   .rush .boss-words.loud .fw-lines, .rush .boss-words.louder .fw-lines, .rush .rush-vol[data-l="2"] > i > i { animation: none; }
 }
+
+/* a lit word's label lifted a row when the one before it is in the way (page.js layLabels) */
+.rush .fw-lbl.up { top: -1.0em; }
+
+/* a titan's name card: top left of the arena, no band behind it, so the entrance plays in the clear */
+.rush .wb-banner.card { top: 14px; left: 20px; right: auto; transform: none; }
+.rush .wb-banner.card .in { justify-items: start; gap: 4px; padding: 0; background: none; text-align: left; }
+.rush .wb-banner.card.go .in { animation-duration: var(--bms, 2800ms); }
+.rush .wb-banner.card b { font-size: clamp(26px, 3vw, 40px); }
+.rush .wb-banner.card :is(small, b, span) { text-shadow: 0 2px 8px #000, 0 0 2px #000; }
+.rush .wb-banner.card span { max-width: 42ch; }
+.rush .rush-tags.cut { opacity: 0; transition: opacity 120ms; }

@@ -24,6 +24,7 @@ window.RushTitanFX = (() => {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const C = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
     const root = new THREE.Group(); scene.add(root);
+    let detailK = 1;   // adaptive quality: fewer particles and chunks on a slow machine (setDetail)
 
     // ---------- particles: one point cloud ----------
     const NP = reduce ? 360 : 720;
@@ -68,7 +69,7 @@ window.RushTitanFX = (() => {
     const KIND = { spark: 0, ember: 1, dust: 2, steam: 3, glow: 4 };
     function burst(at, n, b = {}) {
       const kind = KIND[b.kind || 'spark'], soft = kind === 2 || kind === 3;
-      n = Math.round(n * (reduce ? 0.5 : calm ? 0.8 : 1));
+      n = Math.round(n * (reduce ? 0.5 : calm ? 0.8 : 1) * detailK);
       const col = C(b.col || '#ffffff', soft ? 1 : (b.k || 2));
       for (let i = 0; i < n; i++) {
         const P = soft ? sv : pv, idx = soft ? (sNext = (sNext + 1) % NS) : (pNext = (pNext + 1) % NP);
@@ -130,7 +131,7 @@ window.RushTitanFX = (() => {
     let dNext = 0;
     const _o = new THREE.Object3D();
     function debris(at, n, b = {}) {
-      n = Math.round(n * (reduce ? 0.5 : 1));
+      n = Math.round(n * (reduce ? 0.5 : 1) * detailK);
       const col = C(b.col || '#ffb020', 1.4);
       for (let i = 0; i < n; i++) {
         const d = dv[dNext = (dNext + 1) % ND];
@@ -141,7 +142,7 @@ window.RushTitanFX = (() => {
         d.v.y += b.up ?? 3;
         d.r.set(rnd(0, 6), rnd(0, 6), rnd(0, 6)); d.w.set(rnd(-8, 8), rnd(-8, 8), rnd(-8, 8));
         d.s = (b.size || 0.35) * rnd(0.5, 1.4);
-        d.max = d.life = (b.life || 1.8) * rnd(0.7, 1.2);
+        d.max = d.life = (b.life || 1.15) * rnd(0.7, 1.15);
         debrisMesh.instanceColor.setXYZ(dNext, col.r, col.g, col.b);
       }
       debrisMesh.instanceColor.needsUpdate = true;
@@ -155,7 +156,8 @@ window.RushTitanFX = (() => {
         d.life -= dt;
         d.v.y -= 22 * dt;
         d.p.addScaledVector(d.v, dt);
-        if (d.p.y < d.s * 0.5) { d.p.y = d.s * 0.5; d.v.y = Math.abs(d.v.y) * 0.35; d.v.x *= 0.6; d.v.z *= 0.6; d.w.multiplyScalar(0.6); }
+        // a chunk that lands bounces once or twice and burns out fast, so no rubble lies round the titan's feet
+        if (d.p.y < d.s * 0.5) { d.p.y = d.s * 0.5; d.v.y = Math.abs(d.v.y) * 0.35; d.v.x *= 0.6; d.v.z *= 0.6; d.w.multiplyScalar(0.6); d.life = Math.min(d.life, d.max * 0.35); }
         d.r.addScaledVector(d.w, dt);
         const k = d.life / d.max;
         _o.position.copy(d.p); _o.rotation.set(d.r.x, d.r.y, d.r.z); _o.scale.setScalar(d.s * Math.min(1, k * 4));
@@ -420,7 +422,7 @@ window.RushTitanFX = (() => {
       lightK = 0; if (flashSpr) flashSpr.visible = false; if (o.onFlash) o.onFlash(flashCol, 0); novaMesh.visible = false;
     }
     function dispose() { scene.remove(root); keep.forEach(x => x.dispose && x.dispose()); }
-    return { root, tele, teleOff, burst, debris, ring, scorch, nova, flash, beam, beamOff, trail, update, clear, dispose, setScale, info: () => ({ particles: pLive, debris: dv.filter(d => d.life > 0).length }) };
+    return { setDetail: k => { detailK = k; }, root, tele, teleOff, burst, debris, ring, scorch, nova, flash, beam, beamOff, trail, update, clear, dispose, setScale, info: () => ({ particles: pLive, debris: dv.filter(d => d.life > 0).length }) };
   }
   return { create };
 })();
