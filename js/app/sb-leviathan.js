@@ -55,7 +55,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
 
   // ---------- one body segment, in its own frame: +y toward the head, +z the back, x the flanks ----------
   // Unit radius, 1.5 long. The rope stretches each one to reach the next, so they overlap a little.
-  const segCore = lathe([[0.55, -0.75], [0.93, -0.56], [1.02, -0.22], [1.0, 0.22], [0.86, 0.58], [0.62, 0.75]], 12);
+  const segCore = lathe([[0.55, -0.75], [0.93, -0.56], [1.0, -0.2], [0.86, 0.58], [0.62, 0.75]], 10);
   // plain boxes for the many small plates (a rounded box is nine times the triangles, and flat shading hides the difference)
   const plate = (w, h, d = 0.15) => G.own(new THREE.BoxGeometry(w, h, d));
   const segArmor = G.merge([
@@ -63,22 +63,19 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     onRing(plate(1.15, 1.05, 0.18), 0, 1.0, 0.0, 0.2), onRing(plate(0.7, 0.6, 0.14), 0, 1.08, 0.42, 0.28),
     onRing(plate(0.95, 1.0), 0.85, 1.0, 0.02, 0.18), onRing(plate(0.95, 1.0), -0.85, 1.0, 0.02, 0.18),
     onRing(plate(0.85, 0.95), 1.7, 0.98, 0.05, 0.16), onRing(plate(0.85, 0.95), -1.7, 0.98, 0.05, 0.16),
-    // a lip at the back edge, so each segment reads as a ring overlapping the next
-    [G.own(new THREE.TorusGeometry(0.9, 0.07, 4, 12)), [0, -0.62, 0], [Math.PI / 2, 0, 0]],
   ]);
   const segBelly = G.merge([
-    onRing(plate(0.8, 0.5, 0.12), 2.45, 0.96, -0.24, 0.1), onRing(plate(0.8, 0.5, 0.12), -2.45, 0.96, -0.24, 0.1), onRing(plate(0.9, 0.5, 0.12), Math.PI, 0.98, -0.24, 0.1),
-    onRing(plate(0.8, 0.5, 0.12), 2.45, 0.96, 0.28, 0.1), onRing(plate(0.8, 0.5, 0.12), -2.45, 0.96, 0.28, 0.1), onRing(plate(0.9, 0.5, 0.12), Math.PI, 0.98, 0.28, 0.1),
+    onRing(plate(0.8, 1.0, 0.12), 2.45, 0.94, 0.02, 0.1), onRing(plate(0.8, 1.0, 0.12), -2.45, 0.94, 0.02, 0.1), onRing(plate(0.9, 1.0, 0.12), Math.PI, 0.96, 0.02, 0.1),
   ]);
   const segGlow = (() => {
     const p = [[G.own(new THREE.CylinderGeometry(1.035, 1.035, 0.07, 12, 1, true)), [0, -0.48, 0]], [G.cbox(0.07, 1.1, 0.05, 0.02), [0, 0.0, 1.2], [0.2, 0, 0]]];
-    for (const sd of [-1, 1]) for (const y of [-0.3, 0.05, 0.38]) p.push([G.own(new THREE.OctahedronGeometry(0.075, 0)), [Math.sin(sd * 1.28) * 1.04, y, Math.cos(sd * 1.28) * 1.04]]);
+    for (const sd of [-1, 1]) for (const y of [-0.25, 0.3]) p.push([G.own(new THREE.OctahedronGeometry(0.075, 0)), [Math.sin(sd * 1.28) * 1.04, y, Math.cos(sd * 1.28) * 1.04]]);
     return G.merge(p);
   })();
-  const spineGeo = G.merge([[G.horn(1.7, 0.2, -0.9, 5, 5), [0, 0, 0]], [G.horn(0.8, 0.12, -0.6, 4, 3), [0, -0.45, -0.05], [0, 0, 0]]]);
+  const spineGeo = G.horn(1.7, 0.2, -0.9, 4, 4);
   const finGeo = (() => {
-    const mem = taperX(G.cbox(2.2, 1.4, 0.05, 0.02, 1, 1, 1).translate(1.1, -0.35, 0), 2.2, 0.25, 0.9);
-    const ribs = [0, 1, 2].map(k => [G.horn(2.3 - k * 0.35, 0.09, 0.2, 4, 4), [0, 0.2 - k * 0.32, 0], [0, Math.PI / 2, -0.15 - k * 0.32, 'ZYX']]);
+    const mem = taperX(G.own(new THREE.BoxGeometry(2.2, 1.4, 0.05, 3, 1, 1)).translate(1.1, -0.35, 0), 2.2, 0.25, 0.9);
+    const ribs = [0, 2].map(k => [G.horn(2.3 - k * 0.35, 0.09, 0.2, 4, 4), [0, 0.2 - k * 0.32, 0], [0, Math.PI / 2, -0.15 - k * 0.32, 'ZYX']]);
     return G.merge([[mem], ...ribs]);
   })();
   const flukeGeo = (() => {
@@ -176,7 +173,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   const weakR = opener('#ffffff'), decoyR = opener('#ff4d5e');
 
   // ---------- the sea: ripples and foam where the body crosses it ----------
-  const NR = 32;
+  const NR = 24;
   const ripGeo = G.own(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2));
   const aAge = new Float32Array(NR).fill(1), aK = new Float32Array(NR), aSeed = new Float32Array(NR);
   ripGeo.setAttribute('aAge', new THREE.InstancedBufferAttribute(aAge, 1).setUsage(THREE.DynamicDrawUsage));
