@@ -310,9 +310,10 @@
     const sn = q('.st-n b'), so = q('.st-o');
     const ns = decoded(R.nd.label, T.status, t, 0.5, 31);
     set(sn, 'sn', ns == null ? '' : ns);
-    if (t >= T.status + 0.25) { if (R.ops == null) R.ops = operators() || ''; }
+    // the count shows once Activity is running; until then the line stays out
+    if (t >= T.status + 0.25 && !R.ops && (!R.opsAt || t - R.opsAt > 0.3 || R.frozen != null)) { R.opsAt = t; R.ops = operators() || ''; if (R.ops) R.opsT = t; }
     show(so, !!R.ops && t >= T.status + 0.25);
-    if (R.ops) set(q('.st-o b'), 'so', decoded(R.ops, T.status + 0.25, t, 0.5, 41) || '');
+    if (R.ops) set(q('.st-o b'), 'so', decoded(R.ops, Math.max(T.status + 0.25, R.opsT || 0), t, 0.5, 41) || R.ops);
     ov.classList.toggle('st-on', t >= T.status);
     // title block
     ov.classList.toggle('head-on', t >= T.head);
