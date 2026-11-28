@@ -14,7 +14,7 @@ window.DuelSfx = (() => {
   // levels set from offline renders (DuelSfx.render): hits peak about 0.25 to 0.45, small moves about 0.1 to 0.2
   const LEVEL = { slash: 0.75, uppercut: 0.7, spin: 2.0, slam: 0.95, dive: 1.6, pass: 1.6, volley: 2.6, clang: 1.0, ricochet: 1.8, fizzleShield: 2.4,
     clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.95, rise: 1.2,
-    beamCharge: 0.9, beamFire: 0.85, beamRelease: 0.85, heart: 1.3, beamRiser: 0.8, beamCrackle: 0.55 };
+    beamCharge: 1.3, beamFire: 0.85, beamRelease: 0.7, heart: 0.75, beamRiser: 0.6, beamCrackle: 0.3 };
   const GAP = { volley: 40, dodge: 60, thump: 50, graze: 60 };
 
   function kit(c, out) {

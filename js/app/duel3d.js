@@ -951,7 +951,7 @@ window.DuelScene = (() => {
         strip(b.hot, M, end, w * 0.09, 0.85);
         strip(b.core, M, end, w * 0.36, 0.9);
         strip(b.glow, M, end, w * 1.0, 0.42);
-        strip(b.haze, M, end, w * 2.4, 0.07 + ST.heat * 0.04);
+        strip(b.haze, M, end, w * 1.7, 0.045 + ST.heat * 0.03);
         b.hot.material.color.copy(col).lerp(WHITE, 0.6).multiplyScalar(1.1);
         b.core.material.color.copy(col).lerp(WHITE, 0.12).multiplyScalar(1.25);
         b.glow.material.color.copy(ST.sc[i]).lerp(col, 0.25).multiplyScalar(0.75);
@@ -1448,7 +1448,7 @@ window.DuelScene = (() => {
         const J = struggle.J.copy(muzzleOf(0, new V())).lerp(muzzleOf(1, tmp), 0.5);
         flare(J, WHITE, 2.4, 0.16); burst(J, 26, 10, cols[0], { shard: true, size: 0.34, life: 0.6, grav: 5, k: 1.5 }); burst(J, 26, 10, cols[1], { shard: true, size: 0.34, life: 0.6, grav: 5, k: 1.5 });
         stRing(J, tmp.subVectors(muzzleOf(1, new V()), muzzleOf(0, tmp2)).normalize(), WHITE, 4.5, 0.55);
-        flashLight(J, WHITE, 6); xs('clash', 1);
+        flashLight(J, WHITE, 6); xs('clash', 0.8);
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 80); shake = Math.max(shake, 0.35); }
         struggle.loop = dsfx ? dsfx.loop('beamCrackle', 1) : null;
         xs('beamRiser', 1);
@@ -1862,8 +1862,8 @@ window.DuelScene = (() => {
       beam: { pri: 3.5, parts: [
         { len: 1.35, cut: 1, fov: 30, omega: 5, pose(c, out) { const i = c.x.hero, j = 1 - i, gap = Math.abs(along(fp[j]) - along(fp[i])), k = 1 - 0.1 * c.u;
           fr(out.pos, fp[i], i, Math.min(gap * 0.4, 4.4) * k, fc[i].y + 0.2, 7.6 * k); fr(out.look, fc[i], i, 0.7, fc[i].y + 0.2, 0); } },
-        { len: 0.55, cut: 1, fov: 34, omega: 6, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 5.5, D = fitD(span, 6.5, 34) + 0.5; fr(out.pos, MID, 0, 0, 2.6, D); out.look.copy(MID).setY(2.9); } },
-        { len: 4, cut: 0, fov: 34, omega: 2.2, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 5.5, D = (fitD(span, 6.5, 34) + 0.5) * (1 - 0.3 * c.u); const J = struggle.on ? struggle.J : MID; fr(out.pos, MID, 0, 0, 2.3 - 0.4 * c.u, D); out.look.copy(MID).lerp(J, 0.6).setY(Math.max(2.5, J.y + 0.1)); } },
+        { len: 0.55, cut: 1, fov: 34, omega: 6, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = fitD(span, 6.5, 34) + 0.5; fr(out.pos, MID, 0, 0, 2.6, D); out.look.copy(MID).setY(2.9); } },
+        { len: 4, cut: 0, fov: 34, omega: 2.2, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = (fitD(span, 6.5, 34) + 0.5) * (1 - 0.2 * c.u); const J = struggle.on ? struggle.J : MID; fr(out.pos, MID, 0, 0, 2.3 - 0.4 * c.u, D); out.look.copy(MID).lerp(J, 0.6).setY(Math.max(2.5, J.y + 0.1)); } },
       ] },
       // the break: from behind the winner in slow motion as its beam drives through, then beside the loser as it
       // is shoved back across the stage (asked for at the break itself, so it lands on the moment)
