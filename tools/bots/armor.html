@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bot fight poses</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; background: #070908; color: #dfe8e2; font: 600 13px system-ui, sans-serif; }
+  #sheet { position: relative; display: inline-block; }
+  canvas { display: block; }
+  .lab { position: absolute; text-align: center; letter-spacing: .1em; text-transform: uppercase; font-size: 12px; color: #8cff58; }
+  .lab small { display: block; color: #8a978f; font-weight: 500; letter-spacing: .02em; text-transform: none; font-size: 11px; margin-top: 2px; }
+  .row { position: absolute; left: 10px; writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="sheet"></div>
+<script src="../../js/keyboards.js"></script>
+<script src="../../js/app/botkit.js"></script>
+<script src="../../js/app/bot-fighter.js"></script>
+<script type="module">
+import * as T from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+const THREE = { ...T, RoundedBoxGeometry };
+// armour sets (rows) on every bot (columns)
+const q = new URLSearchParams(location.search);
+const BOTS = (q.get('bots') || 'orbit,pixel,nova,kite,beep,raze').split(',');
+const SETS = (q.get('sets') || Object.keys(BotKit.ARMOR).join(',')).split(',');
+const back = q.get('view') === 'back', pose = q.get('pose') || 'ready', u = +(q.get('u') || 0.5);
+const CW = 280, CH = 320, LX = 40, TOP = 48, W = LX + CW * BOTS.length, H = TOP + CH * SETS.length;
+const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.autoClear = false;
+renderer.toneMapping = T.ACESFilmicToneMapping; renderer.outputColorSpace = T.SRGBColorSpace;
+const sheet = document.getElementById('sheet'); sheet.appendChild(renderer.domElement);
+const scene = new T.Scene();
+scene.add(new T.HemisphereLight('#cfe9ff', '#1a2420', 1.2));
+const sun = new T.DirectionalLight('#ffffff', 2.6); sun.position.set(-4, 8, 7); scene.add(sun);
+const rim = new T.DirectionalLight('#9fd8ff', 1.0); rim.position.set(5, 4, -6); scene.add(rim);
+const floor = new T.Mesh(new T.CircleGeometry(7, 48), new T.MeshStandardMaterial({ color: '#10161a', roughness: 0.8 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const cam = new T.PerspectiveCamera(30, CW / CH, 0.1, 100);
+if (back) cam.position.set(-6.9, 4.1, -9.8); else cam.position.set(-7.5, 4.1, 9.4);
+cam.lookAt(0, 2.0, 0);
+const COLOR = { orbit: '#5cc8ff', pixel: '#8cff58', nova: '#ff7a3d', kite: '#c77dff', beep: '#ff5cae', raze: '#ffd23d' };
+BOTS.forEach((id, i) => { const d = document.createElement('div'); d.className = 'lab'; d.style.left = (LX + i * CW) + 'px'; d.style.width = CW + 'px'; d.style.top = '8px'; d.style.color = COLOR[id]; d.innerHTML = `${BotKit.BOTS[id].name}<small>${back ? 'from behind' : ''}</small>`; sheet.appendChild(d); });
+SETS.forEach((set, r) => {
+  const d = document.createElement('div'); d.className = 'row'; d.style.top = (TOP + r * CH) + 'px'; d.style.height = CH + 'px'; d.style.textAlign = 'center'; d.style.color = BotKit.ARMOR[set].trim;
+  d.textContent = BotKit.ARMOR[set].name; sheet.appendChild(d);
+  BOTS.forEach((id, i) => {
+    const f = BotFighter.create(THREE, id, { color: COLOR[id], armor: set }, { gap: 12 });
+    scene.add(f.group); f.pose(pose, u);
+    const x = LX + i * CW, y = H - TOP - (r + 1) * CH;
+    renderer.setViewport(x, y, CW, CH); renderer.setScissor(x, y, CW, CH); renderer.setScissorTest(true);
+    renderer.setClearColor((i + r) % 2 ? '#0b100e' : '#0d1311'); renderer.clear(); renderer.render(scene, cam);
+    scene.remove(f.group); f.dispose();
+  });
+});
+document.title = 'done';
+</script>
+</body>
+</html>

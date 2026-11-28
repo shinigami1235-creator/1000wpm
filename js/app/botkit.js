@@ -48,6 +48,13 @@ window.BotKit = (() => {
     raze: { name: 'Raze', role: 'Finisher', division: 'Hunter', face: 'focus' },
   };
 
+  // armour sets (28 Nov 2026), our own designs: plate, inlay, glowing trim, cloth and lining, and the pieces each has
+  const ARMOR = {
+    sovereign: { name: 'Sovereign', shell: 'black', plate: '#c99a2e', inlay: '#17191c', trim: '#8cff58', cloth: '#123d22', lining: '#0b0d0c', hem: '#c99a2e', cape: 2.1, crown: true, shoulder: 1.05 },
+    vigil: { name: 'Vigil', shell: 'pearl', plate: '#eef0f4', metal: 0.55, rough: 0.22, inlay: '#c8cbd6', trim: '#a27bff', cloth: '#3b2470', lining: '#a27bff', skirt: 0.85, crest: true, shoulder: 0.95 },
+    ember: { name: 'Ember Warden', shell: 'carbon', plate: '#3a3d43', metal: 0.85, rough: 0.4, inlay: '#16171a', trim: '#ff6a1f', cloth: '#26262a', lining: '#4a1a08', hem: '#ff6a1f', cape: 1.8, ragged: true, horns: true, spikes: true, shoulder: 1.15, cracks: true },
+  };
+
   // what the hangar offers; the first of each is the default
   const OPTIONS = {
     shell: [['white', 'White'], ['gunmetal', 'Gunmetal'], ['black', 'Matte black'], ['chrome', 'Chrome'], ['twotone', 'Two-tone'],
@@ -296,7 +303,7 @@ window.BotKit = (() => {
     body.scale.setScalar(sc);
 
     // materials: white shell, dark joints, glow
-    const SH = SHELLS[opts.shell] || SHELLS.white, sig = opts.sig ? 1 : 0;
+    const SH = SHELLS[(opts.armor && ARMOR[opts.armor] && ARMOR[opts.armor].shell) || opts.shell] || SHELLS.white, sig = opts.sig ? 1 : 0;   // an armour set brings its own shell
     // the shell is lacquered: a clear coat over the paint gives it a sharp highlight on top of the soft one
     // (28 Nov 2026); the iridescent ones shift colour across the curve
     const PM = THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial;
@@ -664,6 +671,110 @@ window.BotKit = (() => {
           }
         }
       }
+    }
+
+    // ---------- armour sets (28 Nov 2026) ----------
+    // Gid: knight bots in our own designs, "a cape or skirt with armor". Each set is plate shoulders, a collar under
+    // the face, an armoured skirt or a cape, and a crown or a crest, in a palette of its own. Original designs only.
+    if (opts.armor && ARMOR[opts.armor]) {
+      const A = ARMOR[opts.armor];
+      const plate = own(new PM({ color: A.plate, roughness: A.rough ?? 0.28, metalness: A.metal ?? 0.9, clearcoat: 0.6, clearcoatRoughness: 0.2 }));
+      const inlay = own(new THREE.MeshStandardMaterial({ color: A.inlay, roughness: 0.5, metalness: 0.4 }));
+      const trim = own(new THREE.MeshBasicMaterial({ color: new THREE.Color(A.trim).multiplyScalar(1.8), toneMapped: false }));
+      const cloth = own(new THREE.MeshStandardMaterial({ color: A.cloth, roughness: 0.85, metalness: 0, side: THREE.DoubleSide }));
+      const lining = own(new THREE.MeshStandardMaterial({ color: A.lining || A.cloth, roughness: 0.8, metalness: 0, side: THREE.DoubleSide }));
+      const S = { orbit: [1.0, 0.25, 1, -0.72], pixel: [1.02, 0.42, 0.95, -0.66], nova: [0.98, 0.18, 0.95, -0.7], kite: [0.95, 0.1, 0.95, -0.72], beep: [1.0, 0.2, 1, -0.7], raze: [1.12, -0.05, 1.1, -0.3] }[id] || [1, 0.2, 1, -0.7];
+      const [px, py, R, cy] = S;   // shoulder x and y, body radius, collar height
+      const arm = new THREE.Group(); body.add(arm); parts.armor = arm;
+      // shoulders: a domed plate with a lame under it, edged in the trim
+      for (const sx of [-1, 1]) {
+        const sh = new THREE.Group(); arm.add(sh); sh.position.set(sx * px * 0.86, py - 0.12, -0.05); sh.rotation.z = -sx * 0.95;
+        const big = A.shoulder || 1, ph = Math.PI * 0.38;
+        for (let l = 0; l < 3; l++) {   // the top plate, then two lames lapping down the arm
+          const r = 0.62 * big * (1 - l * 0.08), g3 = new THREE.Group(); sh.add(g3); g3.position.set(sx * l * 0.1, -l * 0.17, 0); g3.rotation.z = -sx * l * 0.12;
+          const d = mesh(new THREE.SphereGeometry(r, 28, 10, 0, Math.PI * 2, 0, ph), l ? inlay : plate, g3); d.scale.set(1, 0.6, 1.1);
+          if (l) d.material = plate;
+          if (l === 1) continue;
+          const rim = mesh(new THREE.TorusGeometry(r * Math.sin(ph), 0.028, 6, 36), trim, g3); rim.rotation.x = Math.PI / 2; rim.scale.set(1, 1.1, 1); rim.position.y = r * Math.cos(ph) * 0.6;
+        }
+        if (A.spikes) for (const k of [-1, 0, 1]) { const sp = mesh(new THREE.ConeGeometry(0.07, 0.42 - Math.abs(k) * 0.12, 6), inlay, sh); sp.position.set(0, 0.32 * big, k * 0.22); sp.rotation.x = k * 0.3; }
+      }
+      // the collar: a plate band below the face
+      const col = mesh(new THREE.TorusGeometry(R * 0.78, 0.13, 10, 40), plate, arm); col.rotation.x = Math.PI / 2; col.position.y = cy; col.scale.z = 0.6;
+      const colT = mesh(new THREE.TorusGeometry(R * 0.78, 0.03, 6, 40), trim, arm); colT.rotation.x = Math.PI / 2; colT.position.y = cy + 0.08;
+      const gem = mesh(new THREE.OctahedronGeometry(0.11, 0), trim, arm); gem.position.set(0, cy + 0.02, R * 0.88); gem.scale.set(1, 1.3, 0.5);
+      // the skirt: overlapping plates hanging round the body over a cloth layer, open at the front
+      if (A.skirt && id !== 'raze') {
+        const sk = new THREE.Group(); arm.add(sk); sk.position.y = cy - 0.05; parts.armorSkirt = [];
+        const clothG = new THREE.CylinderGeometry(R * 0.8, R * 1.3, A.skirt, 48, 4, true, Math.PI * 0.6, Math.PI * 1.8);
+        { const cp = clothG.attributes.position; for (let i = 0; i < cp.count; i++) { const x = cp.getX(i), z = cp.getZ(i), y = cp.getY(i), a = Math.atan2(x, z), v = 0.5 - y / A.skirt, k = 1 + Math.sin(a * 16) * 0.07 * v; cp.setX(i, x * k); cp.setZ(i, z * k); } clothG.computeVertexNormals(); }
+        const cl = mesh(clothG, cloth, sk); cl.position.y = -A.skirt / 2;
+        const hem = mesh(new THREE.TorusGeometry(R * 1.3, 0.025, 6, 48, Math.PI * 1.8), trim, sk); hem.rotation.set(Math.PI / 2, 0, Math.PI * 0.6 - Math.PI / 2); hem.position.y = -A.skirt; hem.rotation.z = -Math.PI * 0.6 + Math.PI / 2 - Math.PI * 0.9 + Math.PI;
+        const n = 9;
+        for (let i = 0; i < n; i++) {
+          const a = Math.PI * 0.68 + (i / (n - 1)) * Math.PI * 1.64, g2 = new THREE.Group(); sk.add(g2);
+          g2.position.set(Math.sin(a) * R * 0.82, 0, Math.cos(a) * R * 0.82); g2.rotation.y = a;
+          const pl = mesh(new THREE.BoxGeometry(0.44, A.skirt * 0.55, 0.05), plate, g2); pl.position.set(0, -A.skirt * 0.27, 0.06);
+          const pt = mesh(new THREE.BoxGeometry(0.44, 0.03, 0.06), trim, g2); pt.position.set(0, -A.skirt * 0.55, 0.07);
+          g2.rotation.x = 0.28; parts.armorSkirt.push(g2);
+        }
+      }
+      // the cape: hangs from the shoulders down the back, lined in a second colour
+      if (A.cape) {
+        const cp = new THREE.Group(); arm.add(cp); cp.position.set(0, py + 0.05, -R * 0.55); parts.armorCape = cp;
+        const W = px * 1.7, H = A.cape, geo = new THREE.PlaneGeometry(W, H, 16, 14), pos = geo.attributes.position, hemPts = [];
+        const shape = (x, v) => {   // x across (-1..1), v down (0..1): where that point of the cape hangs
+          const wide = 1 + v * 0.55, ax = x * wide * W / 2, wrap = 0.75 - v * 0.25;
+          const ang = x * wrap * 1.3, rr = R * 0.95 + v * 0.25;
+          return [Math.sin(ang) * rr * (0.6 + 0.4 * wide), -v * H, -Math.cos(ang) * rr * 0.55 + R * 0.55 - v * 0.55 + Math.sin(x * 9 + v * 4) * 0.05 * v - Math.abs(ax) * 0];
+        };
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i) / (W / 2), v = (H / 2 - pos.getY(i)) / H;
+          let [X, Y, Z] = shape(x, v);
+          if (A.ragged && v > 0.97) Y += ((i * 37) % 7) / 7 * 0.28;
+          pos.setXYZ(i, X, Y, Z);
+        }
+        geo.computeVertexNormals();
+        for (let k = 0; k <= 24; k++) { const [X, Y, Z] = shape(k / 12 - 1, 1); hemPts.push(new V(X, Y, Z)); }
+        mesh(geo, cloth, cp);
+        const inner = mesh(geo.clone(), lining, cp); inner.position.z = 0.02; inner.scale.set(0.97, 0.99, 0.97);
+        const hemMat = A.hem ? own(new THREE.MeshBasicMaterial({ color: new THREE.Color(A.hem).multiplyScalar(A.ragged ? 1.8 : 1.1), toneMapped: !!A.ragged ? false : true })) : trim;
+        mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hemPts), 48, 0.035, 6), hemMat, cp);
+        for (const sx of [-1, 1]) { const cl = mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 6), plate, cp); cl.rotation.x = Math.PI / 2; const [X, , Z] = shape(sx * 0.95, 0); cl.position.set(X, -0.02, Z + 0.04); const g4 = mesh(new THREE.OctahedronGeometry(0.06, 0), trim, cp); g4.position.set(X, -0.02, Z + 0.09); }
+      }
+      // the head: a crown of points, or a pair of swept horns
+      const T = { orbit: [0.97, 0], pixel: [0.68, -0.05], nova: [0.9, -0.05], kite: [sig ? 1.15 : 1.32, sig ? -0.1 : -0.42], beep: [0.88, 0.02], raze: [0.78, 0] }[id] || [1, 0];
+      if (A.crown) {
+        const cr = new THREE.Group(); arm.add(cr); cr.position.set(0, T[0] - 0.08, T[1]);
+        const cw = id === 'kite' ? 0.32 : 0.55;
+        const band = mesh(new THREE.CylinderGeometry(cw, cw * 1.08, 0.22, 32, 1, true), plate, cr);
+        for (const y of [-0.11, 0.11]) { const rr = mesh(new THREE.TorusGeometry(cw * (y < 0 ? 1.08 : 1), 0.03, 6, 40), trim, cr); rr.rotation.x = Math.PI / 2; rr.position.y = y; }
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * Math.PI * 2 + Math.PI / 2, h = i === 0 ? 0.55 : 0.34 + (i % 2) * 0.08;
+          const pt = mesh(new THREE.ConeGeometry(0.11, h, 4), plate, cr); pt.position.set(Math.cos(a) * cw, 0.11 + h / 2, Math.sin(a) * cw); pt.rotation.y = -a;
+          const tip = mesh(new THREE.OctahedronGeometry(0.06, 0), trim, cr); tip.position.set(Math.cos(a) * cw, 0.14 + h, Math.sin(a) * cw);
+        }
+      }
+      if (A.horns) {
+        for (const sx of [-1, 1]) {
+          const hg = new THREE.Group(); arm.add(hg); hg.position.set(sx * 0.5, T[0] - 0.25, T[1] + 0.1); hg.rotation.set(0.15, 0, -sx * 0.55); hg.scale.setScalar(1.7);
+          const curve = new THREE.CatmullRomCurve3([new V(0, 0, 0), new V(sx * 0.12, 0.3, -0.02), new V(sx * 0.1, 0.62, -0.18), new V(-sx * 0.02, 0.85, -0.45)]);
+          const tube = new THREE.TubeGeometry(curve, 24, 1, 10), tp = tube.attributes.position;
+          for (let i = 0; i < tp.count; i++) {   // taper the tube from 0.16 at the root to a point
+            const seg = Math.floor(i / 11) / 24, p0 = curve.getPoint(seg), k = 0.16 * (1 - seg * 0.92);
+            tp.setXYZ(i, p0.x + (tp.getX(i) - p0.x) * k, p0.y + (tp.getY(i) - p0.y) * k, p0.z + (tp.getZ(i) - p0.z) * k);
+          }
+          tube.computeVertexNormals(); mesh(tube, plate, hg);
+          for (const sg of [0.3, 0.55]) { const p0 = curve.getPoint(sg), rg = mesh(new THREE.TorusGeometry(0.16 * (1 - sg * 0.92) + 0.01, 0.018, 6, 20), trim, hg); rg.position.copy(p0); rg.lookAt(hg.localToWorld(curve.getPoint(sg + 0.02).clone())); }
+        }
+      }
+      if (A.crest) {   // a tall fin of plate along the top, edged in trim
+        const cg = new THREE.Group(); arm.add(cg); cg.position.set(0, T[0] - 0.05, T[1] - 0.05);
+        const sh = new THREE.Shape(); sh.moveTo(-0.45, 0); sh.quadraticCurveTo(-0.3, 0.55, 0.35, 0.62); sh.lineTo(0.5, 0.05); sh.lineTo(-0.45, 0);
+        const fin = mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false }), plate, cg); fin.rotation.y = Math.PI / 2; fin.position.x = -0.025;
+        const edge = mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new V(0, 0, 0.45), new V(0, 0.55, 0.3), new V(0, 0.62, -0.35)), 16, 0.025, 6), trim, cg);
+      }
+      if (A.cracks) parts.armorGlow = trim;
     }
 
     // ---------- arm attachment (28 Nov 2026): a tool on the bot's left side, pointing ahead ----------
@@ -1097,6 +1208,9 @@ window.BotKit = (() => {
       if (parts.flower) parts.flower.rotation.z = Math.sin(t * 1.6 + seed) * 0.25;
       if (parts.balloon) parts.balloon.rotation.set(Math.sin(t * 1.3 + seed) * 0.12 + lean.x * 1.5, 0, Math.sin(t * 1.7) * 0.15 + lean.z * 1.5);
       if (parts.cape) parts.cape.rotation.x = -0.12 + Math.sin(t * 2.2 + seed) * 0.06 + lean.x * 1.2;
+      if (parts.armorCape) parts.armorCape.rotation.x = 0.08 + Math.sin(t * 2.1 + seed) * 0.05 + Math.max(0, lean.x) * 1.3;
+      if (parts.armorSkirt) parts.armorSkirt.forEach((g, i) => { g.rotation.x = 0.28 + Math.sin(t * 2.6 + i * 0.7 + seed) * 0.04 + Math.abs(lean.x) * 0.5; });
+      if (parts.armorGlow) parts.armorGlow.color.copy(_hc.set('#ff6a1f').multiplyScalar(1.4 + 0.5 * Math.sin(t * 3.1 + seed) * Math.sin(t * 1.3)));
       if (parts.flames) parts.flames.forEach((f, i) => { f.scale.y = 0.8 + Math.sin(t * 30 + i * 2) * 0.2 + Math.abs(lean.x) * 1.5; });
       // 28 Nov 2026: the glow breathes, the status lights blink, the exhaust flickers, the new parts move
       const breath = 1 + 0.12 * Math.sin(t * 1.7 + seed);
@@ -1132,7 +1246,7 @@ window.BotKit = (() => {
       particles(t, dt, sp);
     }
     function dispose() { group.parent && group.parent.remove(group); keep.forEach(x => x.dispose && x.dispose()); }
-    return { id, ...def, group, body, face, hit, update, dispose, emote, fire, cheer, look: { arm: opts.arm || 'none', trail: TRAIL || 'none', emote: opts.emote || 'wave', victory: opts.victory || 'hop' } };
+    return { id, ...def, group, body, parts, glowMat: glow, face, hit, update, dispose, emote, fire, cheer, look: { arm: opts.arm || 'none', trail: TRAIL || 'none', emote: opts.emote || 'wave', victory: opts.victory || 'hop' } };
   }
   // ---------- in fights ----------
   const DIV_BOT = { striker: 'nova', precision: 'pixel', hunter: 'raze', sentinel: 'orbit', ghost: 'kite', architect: 'beep' };
@@ -1250,5 +1364,5 @@ window.BotKit = (() => {
     return { meshes, dispose() { keep.forEach(x => x.dispose && x.dispose()); meshes.forEach(m => m.dispose && m.dispose()); } };
   }
 
-  return { create, FX, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon, victoryPose };
+  return { create, FX, ARMOR, BOTS, OPTIONS, STICKERS, DIV_BOT, HOVER, mine, random, actor, crowd, locked, owned, itemFor, icon, victoryPose };
 })();
