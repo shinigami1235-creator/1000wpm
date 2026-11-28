@@ -10,6 +10,8 @@ python3 tools/superboss/fight_shots.py <boss> <out_dir> [options]
   --bench                frame time (ms, draw calls) with 4 supporters on stage, before the fight starts
   --dial typemaster      the difficulty dial
   --wpm 165              the bot's speed
+  --keep                 to the kill: top Art's HP back up under 40 (the software renderer starves the bot's typing,
+                         so it loses fights it wins on a real machine; this checks the whole fight runs clean to the end)
 Writes NNN_<t>.png, log.json (status, hp, shot, errors) and prints a summary.
 """
 import argparse, json, os, sys, time
@@ -21,7 +23,7 @@ p.add_argument('--size', default='1920x940'); p.add_argument('--page', default='
 p.add_argument('--port', type=int, default=8807); p.add_argument('--every', type=float, default=6)
 p.add_argument('--until', default='kill'); p.add_argument('--support', default='')
 p.add_argument('--bench', action='store_true'); p.add_argument('--dial', default='typemaster')
-p.add_argument('--wpm', type=int, default=165); p.add_argument('--full', action='store_true', help='window.__sbFull: no adaptive quality')
+p.add_argument('--wpm', type=int, default=165); p.add_argument('--keep', action='store_true'); p.add_argument('--full', action='store_true', help='window.__sbFull: no adaptive quality')
 a = p.parse_args()
 W, H = map(int, a.size.split('x'))
 os.makedirs(a.out, exist_ok=True)
@@ -61,6 +63,8 @@ with sync_playwright() as pw:
     limit = 600 if a.until == 'kill' else float(a.until)
     while time.time() - t0 < limit:
         el = time.time() - t0
+        if a.keep:
+            page.evaluate("(() => { const f = window._sb ? _sb.fight() : window._sbw && _sbw.sim && _sbw.sim(); if (f && f.state().art.hp < 40) f.debug.artHp(100); })()")
         for i, (at, it, who) in enumerate(sup):
             if i not in sent and el >= at and a.page == 'stream':
                 sent.add(i); page.evaluate(f"_sb.support('{it}', '{who}')")

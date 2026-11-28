@@ -752,7 +752,8 @@ window.SuperScene = (() => {
         shed((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), 16, C('#3ee6ff'), 1.4, 0.45);
         attackerPos(d.attack, d.owner, v4);
         const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
-        if (fx) fx.shot(model ? 2 : 4, artFrom(new V()), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
+        // the counter leaves once the bot has weaved clear (sb-bots.js), so the close look at the weave isn't a streak
+        if (fx) after(bots ? 0.5 : 0, () => fx.shot(model ? 2 : 4, artFrom(new V()), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2, flash: 0.7 })); else back();
       }
       // an interrupt: the charge shatters in the boss's face and it reels
       if (n === 'cancel') {
@@ -787,6 +788,9 @@ window.SuperScene = (() => {
       if (n === 'tier' && d.tier >= 3) { wave(v1.copy(artPos).setY(0.15), C(Theme.hex('ink-hi')), 1, 10, 0.6); }
     }
 
+    // things that happen a moment later on the scene's clock (it slows and stops with the hit feel)
+    const laters = [];
+    const after = (secs, fn) => { if (secs <= 0) fn(); else laters.push({ at: clock.t + secs, fn }); };
     // ---------- the frame ----------
     let paused = false, slowK = 1, lastT = performance.now(), debugCam = null;
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
@@ -803,6 +807,7 @@ window.SuperScene = (() => {
       const adt = stopped ? 0 : dt * (finishing ? 0.55 : 1);
       clock.t += adt;
       const t = clock.t;
+      for (let i = laters.length - 1; i >= 0; i--) if (laters[i].at <= t) { const f = laters[i].fn; laters.splice(i, 1); f(); }
       if (palT < 1) { palT = Math.min(1, palT + dt / 1.6); applyPal(ease(palT)); }
       scene.background.copy(pal.bg); scene.fog.color.copy(pal.bg);
       wallMat.color.copy(pal.a); codeTex.offset.y -= adt * (0.05 + phase * 0.03);

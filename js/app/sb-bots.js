@@ -87,8 +87,8 @@ window.SuperBots = (() => {
     const ringGeo = own(new THREE.TorusGeometry(1.75, 0.035, 6, 64));
     const rings = [0, 1].map(i => { const m = new THREE.Mesh(ringGeo, ringMat); m.visible = false; scene.add(m); return m; });
     let pow = 0, powTo = 0, flareAt = -9;
-    // a soft light that rides with the bot on the camera's side, so a dark shell still reads against a dark arena
-    const key = new THREE.PointLight('#cfefff', 26, 9, 1.6); scene.add(key);
+    // the bot's shell is read against the dark arena by the glow behind it (no extra light: one more light in every lit
+    // material cost about a tenth of the frame in the software renderer)
 
     // ---------- drops: the item on the floor ----------
     const dropGeo = own(new THREE.CylinderGeometry(0.62, 0.62, 1.1, 6));
@@ -361,8 +361,6 @@ window.SuperBots = (() => {
       pow += (powTo - pow) * Math.min(1, dt * 3);
       const fl = Math.max(0, 1 - (t - flareAt) / 0.5);
       aura.position.copy(v2);
-      faceVecs(M.yaw); key.position.copy(v2).addScaledVector(fwd, -2.2); key.position.y += 1.6;
-      key.intensity = 26 + pow * 30 + fl * 40;
       aura.material.opacity = clamp(0.1 + pow * 0.22 + fl * 0.35, 0, 0.6) * (c.lost ? 0 : 1);
       aura.material.color.copy(C('#3ee6ff')).lerp(new THREE.Color(1, 1, 1), clamp(pow * 0.25 + fl * 0.3, 0, 1));
       aura.scale.setScalar(2.8 + pow * 1.5 + fl * 1.6 + Math.sin(t * 9) * 0.12 * pow);
@@ -441,7 +439,7 @@ window.SuperBots = (() => {
     function dispose() {
       clear();
       if (bot) { scene.remove(bot.group); bot.dispose(); bot = null; }
-      scene.remove(aura, key, ...rings);
+      scene.remove(aura, ...rings);
       if (crowd) { crowd.meshes.forEach(m => scene.remove(m)); crowd.dispose(); }
       layer.remove();
       keep.forEach(x => x.dispose && x.dispose());
