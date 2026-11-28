@@ -13,7 +13,7 @@ Router.register('hangar', (() => {
   const KEY = 'wpm-bot', IDLE_AFTER = 3;
   const GLOWS = ['theme', '#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
   const SCREENS = ['', '#ffffff', '#9ff3ff', '#ffd27a', '#ff9be0', '#c6ffa8'];
-  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop', armor: 'none', orb: 'core' });
+  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop', armor: 'none', orb: 'core', livery: 'none' });
   const voice = mood => { if (window.IdleAudio && store) IdleAudio.bot(store.active, mood); };
   // a bought part's price tag, or nothing if it's free or yours
   const lockOf = (part, v) => { const it = BotKit.itemFor(part, v === true ? 'on' : v); return it && !WPM.owns(it.id) ? it : null; };
@@ -29,7 +29,7 @@ Router.register('hangar', (() => {
   const load = () => { const s = TT.store.get(KEY, null); return s && s.bots ? s : { active: fight(), bots: {} }; };
   const fight = () => { const d = window.Ops && Ops.division(); return (d && BotKit.DIV_BOT[d.id]) || null; };
   const look = () => (store.bots[store.active] = { ...fresh(), ...(store.bots[store.active] || {}) });
-  const glowOf = L => (!L.color || L.color === 'theme' ? Theme.hex('accent') : BotKit.FX[L.color] ? BotKit.FX[L.color].base : L.color);
+  const glowOf = L => (L.livery === 'ctrl' ? '#1ee0f0' : !L.color || L.color === 'theme' ? Theme.hex('accent') : BotKit.FX[L.color] ? BotKit.FX[L.color].base : L.color);
   function commit() {
     const s = JSON.stringify(store); if (s === hist[hi]) return;
     hist = hist.slice(0, hi + 1); hist.push(s); hi = hist.length - 1;
@@ -147,6 +147,7 @@ Router.register('hangar', (() => {
     if (tab === 'Colour') {
       h += `<div class="hg-group"><span class="label">Glow</span><div class="hg-sw">${GLOWS.map(c => `<button type="button" class="hg-dot ${(L.color || 'theme') === c ? 'on' : ''}" style="background:${c === 'theme' ? Theme.hex('accent') : c}" data-set="color" data-v="${c}" aria-label="${c === 'theme' ? 'Theme colour' : c}" title="${c === 'theme' ? 'Theme colour' : c}"></button>`).join('')}</div></div>`;
       h += `<div class="hg-group"><span class="label">Colour sets</span><div class="hg-sw">${Object.entries(BotKit.FX).map(([v, fx]) => { const lk = lockOf('color', v); return `<button type="button" class="hg-dot ${L.color === v ? 'on' : ''}${lk ? ' locked' : ''}" style="background:${fx.swatch}" data-set="color" data-v="${v}" aria-label="${fx.name} glow${lk ? `, ${lk.price} coins` : ''}" title="${fx.name}${lk ? `: ${UI.fmt(lk.price)} coins` : ''}"></button>`; }).join('')}</div></div>`;
+      h += `<div class="hg-group"><span class="label">Livery</span>${cards('livery', BotKit.OPTIONS.livery, L)}<p class="hg-hint">The CTRL livery paints the shell matte black and the glow CTRL cyan, with the wing mark on the side.</p></div>`;
       h += `<div class="hg-group"><span class="label">Shell</span>${cards('shell', BotKit.OPTIONS.shell, L)}</div>`;
     } else if (tab === 'Face') {
       h += `<div class="hg-group"><span class="label">Eyes</span>${cards('eyes', BotKit.OPTIONS.eyes, L)}</div>`;
@@ -173,7 +174,7 @@ Router.register('hangar', (() => {
       h += `<div class="hg-group"><span class="label">Victory pose</span>${cards('victory', BotKit.OPTIONS.victory, L)}<p class="hg-hint">Played when the boss goes down.</p></div>`;
     } else {
       h += `<div class="hg-group"><label class="label" for="hg-nm">Name</label><input id="hg-nm" class="field" data-nm type="text" maxlength="12" value="${esc(L.name)}" placeholder="${esc(B.name)}"></div>`;
-      h += `<div class="hg-group"><span class="label">Stickers</span>${Object.entries(BotKit.STICKERS).map(([k, n]) => `<label class="hg-stick"><input type="checkbox" data-stick="${k}" ${L.stickers.includes(k) ? 'checked' : ''}> ${esc(n)}</label>`).join('')}<p class="hg-hint">One for each boss your bot helped repair.</p></div>`;
+      h += `<div class="hg-group"><span class="label">Stickers</span>${Object.entries(BotKit.STICKERS).map(([k, n]) => `<label class="hg-stick"><input type="checkbox" data-stick="${k}" ${L.stickers.includes(k) ? 'checked' : ''}> ${esc(n)}</label>`).join('')}<p class="hg-hint">One for each boss your bot helped repair. The CTRL tag is every operator's.</p></div>`;
       h += `<div class="hg-group"><label class="label" for="hg-wear">Battle wear</label><input id="hg-wear" data-wear type="range" min="0" max="100" value="${Math.round(L.wear * 100)}"></div>`;
     }
     q('[data-pane]').innerHTML = h;
@@ -281,7 +282,7 @@ Router.register('hangar', (() => {
       if (bot) bot.dispose();
       const L = { ...look(), ...(over || {}) };
       bot = BotKit.create(THREE, store.active, { color: BotKit.FX[L.color] ? L.color : glowOf(L), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, top: L.top, blush: !!L.blush,
-        marks: { stickers: L.stickers, wear: L.wear }, arm: L.arm, trail: L.trail, emote: L.emote, victory: L.victory, armor: L.armor });
+        marks: { stickers: L.stickers, wear: L.wear }, arm: L.arm, trail: L.trail, emote: L.emote, victory: L.victory, armor: L.armor, livery: L.livery });
       bot.group.traverse(o => { if (o.isMesh && !(o.material && (o.material.blending === THREE.AdditiveBlending || o.material.transparent))) o.castShadow = true; });
       scene.add(bot.group);
       const c = accent(); ringMat.color.copy(c).multiplyScalar(1.15); bgMat.uniforms.uCol.value.copy(c); floorMat.uniforms.uCol.value.copy(c); rimA.color.copy(c).lerp(new THREE.Color('#ffffff'), 0.35);

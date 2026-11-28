@@ -24,7 +24,7 @@ Router.register('home', (() => {
         <section class="hero-map" aria-labelledby="map-h">
           <div class="hm-frame">
             <div class="hm-hud">
-              <p class="hm-brand">CTRL // Keyspace ops map</p>
+              <p class="hm-brand"><svg class="hm-word" viewBox="0 0 2074 456" role="img" aria-label="CTRL"><use href="#i-ctrl-word"/></svg> // Keyspace ops map</p>
               <div class="hm-live">
                 <p class="hm-stat"><small><span class="l">Online now</span><span class="s">Online</span></small><b data-k="online">-</b></p>
                 <p class="hm-stat hm-bossbar"><small><span class="l">Fighting Syntax Error</span><span class="s">Syntax Error</span></small><b data-k="inBoss">-</b><span class="bar" aria-hidden="true"><i data-hud-bar></i></span><b class="pct" data-k="hp">-</b></p>
