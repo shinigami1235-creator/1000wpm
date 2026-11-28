@@ -209,7 +209,9 @@ Router.register('duel', (() => {
     const stage = el.querySelector('[data-stage]');
     UI.play('duel', true);
     // each side's operator: yours from the Character Lab, everyone else's seeded from their name
-    const preset = k => (!window.Operator ? null : k === me ? Operator.mine() : Operator.random(P[k].art ? 'art' : P[k].name || P[k].id));
+    // other players get a base with a made model (the procedural one read dark and blocky under the stadium lights)
+    const other = seed => { const p = Operator.random(seed); if (!(Operator.MODELS || {})[p.base]) p.base = 'male'; return p; };
+    const preset = k => (!window.Operator ? null : k === me ? Operator.mine() : other(P[k].art ? 'art' : P[k].name || P[k].id));
     // the arena's sounds: hits, blocks, the bell, the crowd (js/app/arena-audio.js)
     snd = window.ArenaAudio ? ArenaAudio.create() : null;
     phaseWas = ''; countWas = 0;

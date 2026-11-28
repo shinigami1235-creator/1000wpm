@@ -506,7 +506,7 @@ Router.register('party', (() => {
         lanePop(ev.id, `-${ev.dmg}`, ev.shielded ? 'block' : 'in');
         break;
       case 'down': scene.down(ev.id); pop(ev.id === 'me' ? "You're down. Keep typing to come back sooner." : `${who(ev.id).name} is down. Type ${who(ev.id).handle || handleOf(ev.id)} to bring them back.`, 'in'); sfx('blockFail'); break;
-      case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.up(ev.id); sfx('milestone'); break;
+      case 'up': if (ev.by) pop(`${nameOf(ev.by)} brought ${ev.id === 'me' ? 'you' : who(ev.id).name} back`, 'buff'); lanePop(ev.id, `+${ev.hp}`, 'heal'); scene.up(ev.id, ev.by); sfx('milestone'); break;
       case 'heal': scene.heal(ev.id, ev.by); lanePop(ev.id, `+${ev.amount}`, 'heal'); if (ev.by === 'me' || ev.id === 'me') sfx('weakOpen'); break;
       case 'shield': scene.shield(ev.id, ev.by); lanePop(ev.id, 'Shield', 'block'); if (ev.by === 'me' || ev.id === 'me') sfx('shieldUp'); break;
       case 'foeGone': scene.foeGone(ev.id, ev.how); if (ev.how === 'pop' || ev.how === 'kill') sfx('addKill'); if (ev.how === 'bite') sfx('projHit'); break;

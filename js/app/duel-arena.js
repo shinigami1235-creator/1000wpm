@@ -249,7 +249,7 @@ window.DuelArena = (() => {
     const jFrame = new THREE.Mesh(own(new THREE.BoxGeometry(17.8, 8, 0.6)), frameMat); jFrame.position.z = -0.34; jumbo.add(jFrame);
     for (const sx of [-1, 1]) { const strut = new THREE.Mesh(own(new THREE.BoxGeometry(0.4, 11, 0.4)), frameMat); strut.position.set(sx * 6, -8.5, -0.6); jumbo.add(strut); }
     const banners = [0, 1].map(i => {
-      const L = led(256, 640);
+      const L = led(256, 1024); L.t.wrapT = THREE.RepeatWrapping;
       const b = new THREE.Group(); b.position.set((i ? 1 : -1) * 21, 9.5, -19); b.rotation.y = (i ? -1 : 1) * 0.62; root.add(b);
       const scr = new THREE.Mesh(own(new THREE.PlaneGeometry(4.2, 10.5)), own(new THREE.MeshBasicMaterial({ map: L.t, toneMapped: false, color: C('#ffffff', 0.9), fog: false })));
       b.add(scr);
@@ -258,16 +258,19 @@ window.DuelArena = (() => {
     });
     const names = o.names || ['', ''];
     function drawBanner(i, flash = 0) {
-      const L = banners[i].L, c = L.c, W = 256, H = 640, col = cols[i];
+      const L = banners[i].L, c = L.c, W = 256, H = 1024, col = cols[i];
       const rgb = `${col.r * 255 | 0},${col.g * 255 | 0},${col.b * 255 | 0}`;
       const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, `rgba(${rgb},${0.35 + flash * 0.5})`); g.addColorStop(0.5, '#05090b'); g.addColorStop(1, `rgba(${rgb},${0.25 + flash * 0.4})`);
       c.fillStyle = '#05090b'; c.fillRect(0, 0, W, H); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      // the name runs up the screen as a ticker, twice per loop with a mark between, so a shot that
+      // crops the screen shows a running ticker and never a name cut short
       c.save(); c.translate(W / 2, H / 2); c.rotate(-Math.PI / 2);
-      c.fillStyle = `rgb(${rgb})`; c.font = '700 92px "JetBrains Mono", ui-monospace, monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = `rgb(${rgb})`; c.font = '700 84px "JetBrains Mono", ui-monospace, monospace'; c.textAlign = 'center'; c.textBaseline = 'middle';
       const nm = String(names[i] || '').toUpperCase().slice(0, 12);
-      c.shadowColor = `rgb(${rgb})`; c.shadowBlur = 18; c.fillText(nm, 0, -6, H - 60); c.shadowBlur = 0;
-      c.restore();
-      c.fillStyle = `rgba(${rgb},0.9)`; for (let k = 0; k < 6; k++) c.fillRect(W / 2 - 60 + k * 22, 26, 14, 14);
+      c.shadowColor = `rgb(${rgb})`; c.shadowBlur = 18;
+      for (const y of [-H / 4, H / 4]) { c.fillText(nm, y, -4, H / 2 - 70); }
+      for (const y of [0, -H / 2, H / 2]) { c.fillRect(y - 9, -13, 18, 18); }
+      c.shadowBlur = 0; c.restore();
       grid(L); L.t.needsUpdate = true;
     }
     let boardKey = '';
@@ -369,14 +372,23 @@ window.DuelArena = (() => {
         b.m.rotation.order = 'YXZ'; b.m.rotation.y = b.a + Math.PI / 2 + sw * 0.5;
         b.m.material.uniforms.uOp.value = b.base * (0.8 + 0.2 * Math.sin(t * 1.1 + b.ph)) + hypeT[b.side] * 0.14;
       }
+      for (const b of banners) b.L.t.offset.y = (t * 0.035) % 1;
       for (const p of pylons) p.s.material.opacity = 0.65 + 0.35 * Math.sin(t * 1.6 + p.ph) * (hypeT[p.side] > 0.1 ? Math.sin(t * 22) : 1);
       const dp = dGeo.attributes.position.array;
       for (let i = 0; i < DN; i++) { dp[i * 3 + 1] += dt * 0.15; if (dp[i * 3 + 1] > 14) dp[i * 3 + 1] = 0.3; dp[i * 3] += Math.sin(t * 0.3 + i) * dt * 0.05; }
       dGeo.attributes.position.needsUpdate = true;
       for (const h of haze) { h.m.position.x = h.x + Math.sin(t * 0.07 + h.ph) * 3; if (cam) h.m.quaternion.copy(cam.quaternion); }
-      if (cam) stickMat.uniforms.uPx.value = (o.pixelHeight ? o.pixelHeight() : 600) / 600;
+      if (cam) stickMat.uniforms.uPx.value = (o.pixelHeight ? o.pixelHeight() : 600) * (o.farScale || 1) / 600;
     }
     function pad(i, out) { return out.copy(POS[i]).setY(PAD_TOP); }
+    // The far set (stands, crowd, screens, truss, beams, haze, floor, ground) goes on layer 1, which
+    // duel3d.js draws at a lower resolution into a background picture each frame; only the pedestals
+    // stay with the fighters at full resolution. The haze and the soft focus hide the lower resolution,
+    // and it is most of what made the stadium cost more than the old ring.
+    const near = new Set(); pads.forEach(P => { P.g.traverse(x => near.add(x)); near.add(P.hot); });
+    root.traverse(x => { if (!near.has(x)) x.layers.set(1); });
+    // points are sized for the canvas; the background is drawn smaller, so they shrink with it
+    dust.material.size = 0.12 * (o.farScale || 1);
     // 2 is everything; 1 drops the beams and the haze; 0 drops the crowd's lights and the dust too
     let level = 2;
     function quality(l) {

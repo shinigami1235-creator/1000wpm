@@ -9,6 +9,7 @@
 //   mv.hold('ready' | 'down')  mv.release()      a held pose (the guard before a round, lying after a KO)
 //   mv.update(dt) -> root { x, y, z, rx, ry }    x: toward the other fighter, z: toward the camera side,
 //                                                rx: the fall backward (radians), in the operator's own scale
+//   mv.play('dodge' | 'cover' | 'heal' | 'revive' | 'attack')   the operator's own one-shot, moves stand aside
 //   mv.busy()  mv.name()  mv.down()
 //
 // Moves: flick (a word shot), jab, blast, smash (the big one), cast, block, flinch, stagger, knock
@@ -156,7 +157,7 @@ window.FightMoves = (() => {
 
   function create(THREE, op) {
     const qa = [], qb = new THREE.Quaternion(), ha = new THREE.Vector3();
-    let cur = null, holdName = '', fade = null, bones = null, names = null;
+    let cur = null, holdName = '', fade = null, bones = null, names = null, opT = 0;
     const root = { x: 0, y: 0, z: 0, rx: 0, ry: 0 };
     function prep() {
       const B = op.bones;
@@ -165,6 +166,8 @@ window.FightMoves = (() => {
     }
     function act(name, o = {}) {
       const m = M[name]; if (!m) return false;
+      if (opT > 0 && m.pri < 2) return false;   // a light move waits for the operator's own one-shot
+      opT = 0;
       if (cur && cur.name === 'knock' && name !== 'getup') return false;          // lying down until getup
       if (cur && cur.name === 'knock' && name === 'getup') { cur = { name, t: 0, o, done: false }; fade = null; return true; }
       if (cur && !cur.done && M[cur.name].pri > m.pri && cur.t < M[cur.name].len * 0.6) return false;
@@ -174,8 +177,17 @@ window.FightMoves = (() => {
     }
     function hold(name) { holdName = name; if (!cur || cur.done || M[cur.name].pri <= M[name].pri) act(name); }
     function release() { holdName = ''; if (cur && M[cur.name].hold && cur.name !== 'knock') { fade = { from: cur, t: 0 }; cur = null; } }
+    // one of the operator's own one-shots (operator3d.js: attack, dodge, cover, heal, revive, hit):
+    // it plays on the operator while the fight moves stand aside, since posing over it would cut it off
+    function play(name) {
+      const len = window.Operator && Operator.ONCE_LEN && Operator.ONCE_LEN[name];
+      if (!len || !op.once || (cur && cur.name === 'knock')) return false;
+      cur = null; fade = null; opT = len; op.once(name);
+      return true;
+    }
     function update(dt) {
       root.x = root.y = root.z = root.rx = root.ry = 0;
+      if (opT > 0) { opT -= dt; return root; }
       if (cur) { cur.t += dt; if (cur.t >= M[cur.name].len && !M[cur.name].hold) { cur.done = true; cur = null; if (holdName && M[holdName]) act(holdName); } }
       if (!cur && holdName && holdName !== 'knock') act(holdName);
       let r = null, w = 0;
@@ -196,12 +208,12 @@ window.FightMoves = (() => {
       return root;
     }
     return {
-      act, hold, release, update,
-      busy: () => !!(cur && !M[cur.name].hold),
+      act, hold, release, update, play,
+      busy: () => opT > 0 || !!(cur && !M[cur.name].hold),
       name: () => (cur ? cur.name : ''),
       down: () => !!(cur && cur.name === 'knock'),
       landed: () => !!(cur && cur.name === 'knock' && cur.t >= 0.52),
-      reset() { cur = null; holdName = ''; fade = null; },
+      reset() { cur = null; holdName = ''; fade = null; opT = 0; },
       // tests: hold a move at time t
       seek(name, t) { cur = { name, t, o: {}, done: false }; fade = null; holdName = ''; },
     };
