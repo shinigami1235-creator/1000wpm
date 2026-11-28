@@ -15,7 +15,7 @@ One skeleton for both bodies, with Mixamo-style bone names: Hips, Spine, Spine1,
 
 | Slot | File | Height | Stand-in now | Shows in |
 |---|---|---|---|---|
-| Male body (headless, cut at the neck) | `assets/operators/male.glb`, `male-lite.glb` | 1.80 m | the generated male body from 24 Nov, with head | World Boss, duels, party, Operator page |
+| Male body (headless, cut at the neck) | `assets/operators/male.glb`, `male-lite.glb` | 1.80 m | the generated male body from 24 Nov, with head | World Boss, duels, Operator page (Party uses bots since 28 Nov) |
 | Female body | `assets/operators/female.glb`, `female-lite.glb` | 1.72 m | code-built female base | same |
 | Heads | `assets/operators/heads/<id>.glb` | fits the Neck bone | the body's own head | same |
 | Hair | `assets/operators/hair/<id>.glb` | on the Head bone | code-built short and shag | same; hidden under headgear |

@@ -281,7 +281,15 @@ Router.register('party', (() => {
       onFrame: placeTags,
     });
     window._party = { scene: () => scene };   // tests
-    el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); Net.lobbies.leave().then(() => { location.hash = '#/party'; browser(); }); });
+    // Leave run asks first; so do menu links, the back button and closing the tab, and Esc opens the
+    // menu (js/app/game-guard.js). A run ended early is recorded and shows its result.
+    el.querySelector('[data-leave]').addEventListener('click', () => { if (window.GameGuard) GameGuard.confirm(); else quitRun(); });
+    if (window.GameGuard) GameGuard.start({
+      name: 'run',
+      live: () => view === 'run' && !endShown && !!lastState && lastState.phase !== 'over',
+      end: () => quitRun(),
+      after: () => { location.hash = '#/party'; browser(); },
+    });
     flow = null;
     ty = NetTypist.create({
       stream: () => { const st = lastState; if (!st || !words.length) return ''; const p = st.players.find(x => x.id === 'me'); return p ? words[p.idx % words.length] || '' : ''; },
@@ -446,7 +454,11 @@ Router.register('party', (() => {
     const m0 = r0 && (r0.marks || []).find(m => r0.idx >= m.pos && r0.idx < m.pos + m.n);
     litWas = m0 ? LOOK[m0.kind] || 'add' : null;
     const r = ty.key(k, t);
-    if (r && r.key) TT.click(false);
+    if (r && r.key) {
+      TT.click(false);
+      // each right key sends a spark into your bot's orb, charged by how much of the word is typed
+      if (r.good && scene) { const s = ty.state(), w = s.target ? s.target.word.length : 0; scene.key('me', w ? s.typed.length / w : 0.5); }
+    }
     if (r && r.submit && flow) flow.push(r.submit.word, r.submit.typed, r.submit.ok, litWas || false);
     litWas = null;
     const cur = Net.match.current(); if (cur && cur.state) lastState = cur.state;
@@ -523,7 +535,7 @@ Router.register('party', (() => {
         break;
       }
       case 'callout': { const p = el.querySelector('[data-call]'); if (p) { p.textContent = ev.text; p.parentElement.classList.remove('say'); void p.offsetWidth; p.parentElement.classList.add('say'); } break; }
-      case 'typo': if (ev.id === 'me') { const b = el.querySelector('[data-box]'); b.classList.remove('slip'); void b.offsetWidth; b.classList.add('slip'); } break;
+      case 'typo': if (scene) scene.typo(ev.id); if (ev.id === 'me') { const b = el.querySelector('[data-box]'); b.classList.remove('slip'); void b.offsetWidth; b.classList.add('slip'); } break;
       default: break;
     }
   }
@@ -631,6 +643,38 @@ Router.register('party', (() => {
     if (box.innerHTML !== html) box.innerHTML = html;
   }
 
+  // the run ended early (Leave run, End run in the Esc menu, or a link away): what you did so far is
+  // recorded and the result window shows it
+  function quitRun() {
+    if (!run || endShown) return null;
+    const st = lastState, mine = st && st.players.find(p => p.id === 'me');
+    endShown = true;
+    const ms = st ? st.clock || 0 : 0;
+    const cleared = !st ? 0 : st.phase === 'clear' ? st.fight + 1 : Math.max(0, st.fight);
+    const of = st ? st.of : R().RUNS[run.run].fights.length;
+    const S = mine ? mine.stats : { chars: 0, keys: 0, good: 0, dmg: 0 };
+    const wpm = ms > 0 ? Math.round(S.chars / 5 / (ms / 60000)) : 0, acc = S.keys ? Math.round(1000 * S.good / S.keys) / 10 : 100;
+    let reward = null;
+    if (S.keys) {
+      const base = Math.round(S.chars / 10 * Math.max(0, (acc - 50) / 50)) + cleared * 25;
+      reward = WPM.record({ mode: 'party', wpm, acc, correct: S.chars, keys: S.keys, ms, won: false, cleared: false, score: S.dmg || 0, coins: Math.round(base * (st && st.art ? 1.5 : 1)) });
+    }
+    WPM.track('party_run', { run: run.run, difficulty: run.difficulty, won: false, cleared, role: mine ? mine.role : '', dmg: S.dmg || 0, art: !!(st && st.art), left: true });
+    Net.match.leave();
+    Net.lobbies.leave();
+    UI.play('party', false);
+    return {
+      label: 'RUN ENDED', title: `${cleared} of ${of} fights cleared`,
+      sub: `You left ${st && st.boss ? `the fight with ${st.boss.name}` : 'the run'}.`,
+      stats: [['Time played', UI.clock(Math.round(ms / 1000))], ['Damage dealt', S.dmg || 0], ['wpm', wpm], ['Accuracy', acc + '%'], ['Team combo', st ? st.teamCombo : 0]],
+      xp: reward ? reward.xp : 0, coins: reward ? reward.coins : 0,
+      share: shareLine(cleared, of, S.dmg || 0, wpm, false),
+    };
+  }
+  const shareLine = (cleared, of, dmg, wpm, won) => won
+    ? `My team cleared a ${R().RUNS[run.run].name} on Stormtyper: ${of} bosses down, ${UI.fmt(dmg)} damage from me at ${wpm} wpm. Can you clear it?`
+    : `I dealt ${UI.fmt(dmg)} damage in a ${R().RUNS[run.run].name} on Stormtyper at ${wpm} wpm, ${cleared} of ${of} fights cleared. Can you go further?`;
+
   function end(m) {
     if (endShown) return;
     endShown = true;
@@ -659,14 +703,17 @@ Router.register('party', (() => {
           <td class="num r">${UI.fmt(p.dmg)}</td><td class="num r">${p.wpm}</td><td class="num r">${p.acc}%</td><td class="num r hide-sm">${p.healed || 0}</td><td class="num r hide-sm">${p.blocks}</td><td class="num r hide-sm">${p.revives || 0}</td><td class="num r hide-sm">${p.downs || 0}</td>
           <td class="sp hide-sm">${p.spells.length ? p.spells.map(MultiUI.spellName).map(e).join(', ') : 'None'}</td></tr>`).join('')}</tbody></table></div>
       <ol class="pa-fights">${(r.fights || []).map(f => `<li class="${f.won ? 'w' : 'l'}"><b>${e(f.boss)}</b><span class="dim">${e(f.area)}</span><span class="num">${f.won ? UI.clock(Math.round((f.endedAt - f.startedAt) / 1000)) : 'Lost'}</span></li>`).join('')}</ol>
+      ${window.GameGuard ? GameGuard.shareHtml(shareLine(r.cleared, r.of, mine.dmg || 0, mine.wpm || 0, !!r.won)) : ''}
       <div class="row"><button class="btn" type="button" data-back>Back to the lobby</button><a class="btn out" href="#/party" data-out>Leave</a></div>
     </div>`;
+    if (window.GameGuard) { GameGuard.stop(); GameGuard.wire(box, shareLine(r.cleared, r.of, mine.dmg || 0, mine.wpm || 0, !!r.won)); }
     box.querySelector('[data-back]').addEventListener('click', () => lobbyView());
     box.querySelector('[data-out]').addEventListener('click', ev => { ev.preventDefault(); Net.lobbies.leave().then(() => { location.hash = '#/party'; browser(); }); });
     const h = box.querySelector('h2'); h.tabIndex = -1; h.focus({ preventScroll: true });
   }
 
   function stopRun() {
+    if (window.GameGuard && run) GameGuard.stop();
     cancelAnimationFrame(raf); raf = 0;
     if (scene) { scene.dispose(); scene = null; }
     if (arenaSnd) { arenaSnd.dispose(); arenaSnd = null; }
