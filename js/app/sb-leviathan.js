@@ -30,7 +30,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   const group = new THREE.Group(), props = new THREE.Group();
 
   // ---------- materials ----------
-  const plateMat = K.armor({ env: 0.35, color: '#27313a', seam: '#3ee6ff', seamK: 1.0, rim: '#3ee6ff', rimK: 0.45, metal: 0.8, rough: 0.36, scale: 1.7, density: 0.4 });
+  const plateMat = K.armor({ env: 0.35, color: '#25303a', seam: '#3ee6ff', seamK: 1.0, rim: '#3ee6ff', rimK: 0.45, metal: 0.75, rough: 0.5, scale: 1.7, density: 0.4 });
   const bellyMat = K.armor({ color: '#46525a', seam: '#3ee6ff', seamK: 0.35, rim: '#3ee6ff', rimK: 0.2, metal: 0.5, rough: 0.45, scale: 2.4, density: 0.2 });
   const finMat = K.armor({ color: '#162026', seam: '#39ffd2', seamK: 0.7, rim: '#39ffd2', rimK: 0.6, metal: 0.55, rough: 0.4, scale: 2.2, density: 0.3 });
   finMat.side = THREE.DoubleSide;
@@ -56,7 +56,8 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   // ---------- one body segment, in its own frame: +y toward the head, +z the back, x the flanks ----------
   // Unit radius, 1.5 long. The rope stretches each one to reach the next, so they overlap a little.
   const segCore = lathe([[0.55, -0.75], [0.93, -0.56], [1.02, -0.22], [1.0, 0.22], [0.86, 0.58], [0.62, 0.75]], 12);
-  const plate = (w, h, d = 0.15) => G.cbox(w, h, d, 0.05, 1, 1);
+  // plain boxes for the many small plates (a rounded box is nine times the triangles, and flat shading hides the difference)
+  const plate = (w, h, d = 0.15) => G.own(new THREE.BoxGeometry(w, h, d));
   const segArmor = G.merge([
     [segCore],
     onRing(plate(1.15, 1.05, 0.18), 0, 1.0, 0.0, 0.2), onRing(plate(0.7, 0.6, 0.14), 0, 1.08, 0.42, 0.28),
@@ -127,7 +128,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     skull.add(new THREE.Mesh(G.merge(gl), gillMat));
     // the roof of the mouth, dark, with the throat's glow along it
     skull.add(new THREE.Mesh(G.taperZ(G.cbox(1.6, 0.08, 4.4, 0.03), 4.4, 0.5, 1, 0.2), mawMat).translateY(-0.05).translateZ(2.4));
-    const throat = new THREE.Mesh(G.taperZ(G.cbox(1.1, 0.1, 4, 0.04), 4, 0.5, 1, 0.2), throatMat); throat.position.set(0, -0.15, 2.2); skull.add(throat);
+    const throat = new THREE.Mesh(G.taperZ(G.cbox(0.7, 0.08, 3.6, 0.03), 3.6, 0.45, 1, 0.2), throatMat); throat.position.set(0, -0.12, 2.0); skull.add(throat);
     // lures: two stalks from the brow with glowing bulbs, swaying on their own
     for (const sd of [-1, 1]) {
       const g = new THREE.Group(); g.position.set(sd * 0.55, 1.45, 0.9); skull.add(g);
@@ -163,22 +164,19 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   // ---------- the weak point and the decoy: four plates open round a core ----------
   function opener(coreHex) {
     const g = new THREE.Group(); g.matrixAutoUpdate = false; g.visible = false; group.add(g);
-    const core = new THREE.Mesh(G.own(new THREE.IcosahedronGeometry(0.5, 1)), K.glow(coreHex, 3)); core.position.set(0, 0, 1.05); g.add(core);
-    const halo = new THREE.Mesh(G.own(new THREE.IcosahedronGeometry(0.85, 2)), K.shellMat(coreHex, 1.4)); core.add(halo);
-    // a soft column of light out of the open plates
-    const beams = new THREE.Mesh(G.own(new THREE.CylinderGeometry(0.55, 0.2, 2.6, 16, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.3)), K.shellMat(coreHex, 0.9));
-    beams.position.set(0, 0, 1.05); g.add(beams);
+    const core = new THREE.Mesh(G.own(new THREE.IcosahedronGeometry(0.42, 1)), K.glow(coreHex, 2.2)); core.position.set(0, 0, 1.02); g.add(core);
+    const halo = new THREE.Mesh(G.own(new THREE.IcosahedronGeometry(0.6, 2)), K.shellMat(coreHex, 0.9)); core.add(halo);
     const petals = [0, 1, 2, 3].map(k => {
       const piv = new THREE.Object3D(); piv.position.set(Math.cos(k * Math.PI / 2 + Math.PI / 4) * 0.25, Math.sin(k * Math.PI / 2 + Math.PI / 4) * 0.25, 1.12); g.add(piv);
       const m = new THREE.Mesh(G.cbox(0.8, 0.7, 0.12, 0.04, 1, 1), plateMat); m.position.set(0.38, 0, 0); piv.add(m);
       return { piv, a: k * Math.PI / 2 + Math.PI / 4 };
     });
-    return { g, core, halo, beams, petals, open: 0, i: -1, mat: core.material, hex: coreHex };
+    return { g, core, halo, petals, open: 0, i: -1, mat: core.material, hex: coreHex };
   }
   const weakR = opener('#ffffff'), decoyR = opener('#ff4d5e');
 
   // ---------- the sea: ripples and foam where the body crosses it ----------
-  const NR = 48;
+  const NR = 32;
   const ripGeo = G.own(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2));
   const aAge = new Float32Array(NR).fill(1), aK = new Float32Array(NR), aSeed = new Float32Array(NR);
   ripGeo.setAttribute('aAge', new THREE.InstancedBufferAttribute(aAge, 1).setUsage(THREE.DynamicDrawUsage));
@@ -190,13 +188,17 @@ SuperModels.leviathan = function (THREE, K, ctx) {
       void main(){ vP = position.xz; vAge = aAge; vK = aK; vSeed = aSeed; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform vec3 uC; varying vec2 vP; varying float vAge; varying float vK; varying float vSeed;
       void main(){ if (vAge >= 1.0) discard;
-        float r = length(vP); float a = atan(vP.y, vP.x);
-        float R = 0.12 + vAge * 0.85;
+        float r = length(vP);
+        float R = 0.12 + vAge * 0.85, w = 0.05 + vAge * 0.06;
+        float foamOn = 1.0 - smoothstep(0.0, 0.35, vAge);
+        if (r > 1.0 || (abs(r - R) > w * 2.5 && abs(r - R * 0.62) > 0.12 && (r > 0.55 || foamOn <= 0.0))) discard;
+        float a = atan(vP.y, vP.x);
         float n = 0.65 + 0.35 * sin(a * 9.0 + vSeed * 7.0) * sin(a * 4.0 - vSeed * 3.0 + vAge * 4.0);
-        float ring = exp(-pow((r - R) / (0.05 + vAge * 0.06), 2.0)) * n;
-        float ring2 = exp(-pow((r - R * 0.62) / 0.05, 2.0)) * 0.45 * step(0.15, vAge);
-        float foam = smoothstep(0.55, 0.0, r) * (1.0 - smoothstep(0.0, 0.35, vAge)) * (0.5 + 0.5 * sin(vP.x * 23.0 + vSeed) * sin(vP.y * 19.0 - vSeed));
-        float f = (ring + ring2 + foam * 0.7) * pow(1.0 - vAge, 1.4) * vK * smoothstep(1.0, 0.92, r);
+        float d1 = (r - R) / w, d2 = (r - R * 0.62) / 0.05;
+        float ring = exp(-d1 * d1) * n + exp(-d2 * d2) * 0.45 * step(0.15, vAge);
+        float foam = smoothstep(0.55, 0.0, r) * foamOn * (0.5 + 0.5 * sin(vP.x * 23.0 + vSeed) * sin(vP.y * 19.0 - vSeed));
+        float k = 1.0 - vAge;
+        float f = (ring + foam * 0.7) * k * sqrt(k) * vK * smoothstep(1.0, 0.92, r);
         gl_FragColor = vec4(uC * f, 1.0); }`,
     transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   }));
@@ -448,7 +450,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     boltK = Math.max(0, boltK - dt * 3.5); skyFlash = Math.max(0, skyFlash - dt * 2.5);
     boltMat.opacity = boltK > 0.6 ? 1 : boltK * (Math.random() < 0.5 ? 1 : 0.3);
     if (S.phase >= 2 && !dead && Math.random() < dt * (S.phase >= 3 ? 0.09 : 0.05)) lightning(Math.random() < 0.35);
-    const speed = [0, 0.3, 0.36, 0.45][phaseN] * (S.enraged ? 1.3 : 1) * (dead ? Math.max(0, 1 - deadT * 0.5) : finishing ? 0.2 : 1);
+    const speed = [0, 0.3, 0.36, 0.45][phaseN] * (S.enraged ? 1.3 : 1) * (dead ? Math.max(0, 1 - deadT) : finishing ? 0.2 : 1);
     serpS += dt * speed;
     // springs: the head thrown back by hits and blocks, and tilted
     kbHV += (-kbH * 70 - kbHV * 9) * dt; kbH = clamp(kbH + kbHV * dt, -0.5, 3);
@@ -462,7 +464,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     const target = v2.copy(idleP);
     ctx.artAim(aimV);
     const look = headLook.copy(aimV).add(v3.set(Math.sin(t * 0.37) * 2, 0, 0));
-    let jawK = 0.18 + Math.max(0, Math.sin(t * 1.1)) * 0.14, throat = 0.6, eyeK = 1, lureK = 1, follow = 6, snap = false, neckDown = 0, neckDive = 0;
+    let jawK = 0.18 + Math.max(0, Math.sin(t * 1.1)) * 0.14, throat = 0.35, eyeK = 1, lureK = 1, follow = 6, snap = false, neckDown = 0, neckDive = 0;
     // idle life: a look round now and then, a snap of the jaws
     idleT -= dt;
     if (idleT < 0 && !atk && !dead && !finishing) { idle = { t0: t, kind: Math.random() < 0.5 ? 'look' : 'snap', side: Math.random() < 0.5 ? -1 : 1 }; idleT = rnd(6, 10); }
@@ -547,11 +549,12 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (finishing && !atk && !dead) { target.set(clamp(idleP.x * 0.3, -5, 5), 3.2 + Math.sin(t * 1.5) * 0.4, 1); look.copy(aimV).setY(-2); jawK = 0.6 + Math.sin(t * 4.5) * 0.25; eyeK = 0.5 + Math.random() * 0.5; neckDive = 1; }
     // the kill: thrashes, rears up and roars, then topples into the sea
     if (dead) {
-      const thr = Math.min(1, deadT * 3) * Math.max(0, 1 - deadT / 2.6);
-      if (deadT < 2.4) { target.copy(idleP).add(v5.set(Math.sin(t * 13) * 2.2 * thr, 6 * Math.min(1, deadT * 2), 2)); look.y += 22; jawK = 1.25; eyeK = 3.5; throat = 3; lureK = 3; }
-      else { const u = deadT - 2.4; target.copy(idleP).add(v5.set(0, 6 - u * u * 7, 2 + u * 5)); look.copy(target).add(v5.set(0, -10, 8)); jawK = 0.9; eyeK = Math.max(0, 1 - u * 1.2); lureK = Math.max(0, 1 - u); throat = Math.max(0, 2 - u * 2); follow = 12; neckDive = 1;
+      // the climax lands before the results card comes up (2.2 s after the win, slow motion included)
+      const thr = Math.min(1, deadT * 4) * Math.max(0, 1 - deadT / 1.2);
+      if (deadT < 0.9) { target.copy(idleP).add(v5.set(Math.sin(t * 13) * 2.2 * thr, 6 * Math.min(1, deadT * 3), 2)); look.y += 22; jawK = 1.25; eyeK = 3.5; throat = 3; lureK = 3; follow = 9; }
+      else { const u = deadT - 0.9; target.copy(idleP).add(v5.set(0, 6 - u * u * 20, 2 + u * 7)); look.copy(target).add(v5.set(0, -10, 8)); jawK = 0.9; eyeK = Math.max(0, 1 - u * 1.5); lureK = Math.max(0, 1 - u * 1.2); throat = Math.max(0, 2 - u * 2.5); follow = 14; neckDive = 1;
         if (!splashedHead && headPos.y < 0.5) { splashedHead = true; burstWater(v5.copy(headPos).setY(0), true, t); K.fx.light(v5.setY(2), '#ffffff', 70, 1.5); ctx.juice.shake(0.8); ctx.juice.flash(0.4); sfx('levBurst'); } }
-      if (deadT > 2.4 && deadT < 6 && Math.random() < dt * 30) { v5.copy(headPos).setY(0.1).add(v4.set(rnd(-2, 2), 0, rnd(-2, 2))); if (headPos.y < 0) K.fx.spark(v5, v4.set(rnd(-0.4, 0.4), rnd(2, 5), rnd(-0.4, 0.4)), C('#cfefff', 0.9), { size: 0.3, life: 0.6, g: 6, floor: 0.05 }); }
+      if (deadT > 0.9 && deadT < 5 && Math.random() < dt * 30) { v5.copy(headPos).setY(0.1).add(v4.set(rnd(-2, 2), 0, rnd(-2, 2))); if (headPos.y < 0) K.fx.spark(v5, v4.set(rnd(-0.4, 0.4), rnd(2, 5), rnd(-0.4, 0.4)), C('#cfefff', 0.9), { size: 0.3, life: 0.6, g: 6, floor: 0.05 }); }
     }
     // hits throw the head back from Art and tilt it
     v3.copy(aimV).sub(target).setY(0); if (v3.lengthSq() > 1e-4) v3.normalize();
@@ -569,7 +572,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     hFwd.set(0, 0, 1).applyQuaternion(head.quaternion);
     // eyes, lures, gills
     const ek = eyeK * (1 + headFlash);
-    for (const e of eyes) { e.material = ek > 2.2 ? eyeHot : eyeMat; e.scale.set(1.6 * (0.85 + 0.15 * Math.min(2, ek)), 0.6 * (1 - blink * 0.9) * (dead && deadT > 3 ? 0.2 : 1), 1); }
+    for (const e of eyes) { e.material = ek > 2.2 ? eyeHot : eyeMat; e.scale.set(1.6 * (0.85 + 0.15 * Math.min(2, ek)), 0.6 * (1 - blink * 0.9) * (dead && deadT > 1.6 ? 0.2 : 1), 1); }
     for (const L of lures) {
       // the stalks lag behind the head's moves and sway on their own
       L.swV += (-L.sw * 30 - L.swV * 3 + (Math.sin(t * 1.7 + L.sd) * 4)) * dt - kbHV * dt * 2 - (snap ? 20 * dt : 0); L.sw = clamp(L.sw + L.swV * dt, -0.7, 0.7);
@@ -583,14 +586,14 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     // ----- the body: a rope from the neck socket, each segment leaning toward its place on the loop -----
     q[0].copy(SOCKET).applyQuaternion(head.quaternion).add(hp);
     P[0].copy(idleP);
-    const bi = dead ? SEG - 1 - Math.floor(Math.max(0, deadT - 0.6) * 10) : SEG;   // segments past bi have burst
+    const bi = dead ? SEG - 1 - Math.floor(Math.max(0, deadT - 0.2) * 18) : SEG;   // segments past bi have burst
     for (let i = 1; i < SEG; i++) {
       pathAt(serpS - i * GAPU, P[i]);
       segKick[i] = Math.max(0, segKick[i] - dt * 2.2); segFlash[i] = Math.max(0, segFlash[i] - dt * 3);
       P[i].z -= segKick[i] * 2.5 + S.kb * 1.0; P[i].y += segKick[i] * 1.2;
       for (const w of waves) { const d = Math.abs(i - w.i) - (t - w.t0) * 18; if (d > -3 && d < 3) P[i].y += Math.cos(d / 3 * Math.PI * 0.5) * w.k * 1.4 * Math.max(0, 1 - (t - w.t0) * 1.2); }
       if (finishing) P[i].y = Math.max(-1, P[i].y * 0.5 + 0.5);
-      if (dead) { P[i].x += Math.sin(t * 11 + i * 0.6) * 1.6 * Math.max(0, 1 - deadT / 3); if (i > bi) P[i].y -= 4; P[i].y -= Math.max(0, deadT - 2.6) * 2; }
+      if (dead) { P[i].x += Math.sin(t * 11 + i * 0.6) * 1.6 * Math.max(0, 1 - deadT / 1.5); if (i > bi) P[i].y -= 4; P[i].y -= Math.max(0, deadT - 1.2) * 3; }
     }
     // a lunge or the finish pulls the neck down into the sea behind the head; a breach takes it straight down
     for (let i = 1; i < SEG; i++) {
@@ -649,7 +652,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
       }
       // data runs down the spine; hits flash; the weak point and the decoy glow through
       const pulse = Math.max(0, Math.sin(i * 0.7 - t * 6)) ** 4;
-      const deathRun = dead ? Math.max(0, 1 - Math.abs(i - (deadT * 14 % SEG))) * 3 : 0;
+      const deathRun = dead ? Math.max(0, 1 - Math.abs(i - (deadT * 30 % SEG))) * 3 : 0;
       const c = i === weakI ? tmpC.setRGB(2.4, 2.4, 2.4) : i === decoyI ? tmpC.set('#ff4d5e').multiplyScalar(2 + Math.sin(t * 12)) : tmpC.copy(ctx.pal.a).multiplyScalar(0.6 + pulse * 1.8 + segFlash[i] * 2.2 + bigFlash + deathRun + crackK * 0.3);
       glows.setColorAt(i, c);
       if (p.z > best && p.y > 1.5 && i > 3) { best = p.z; frontI = i; }
@@ -666,7 +669,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
         const y0 = q[i - 1].y, y1 = p.y;
         if ((y0 > 0) !== (y1 > 0)) {
           const k = y0 / (y0 - y1); v4.copy(q[i - 1]).lerp(p, k);
-          if (Math.random() < dt * (phaseN >= 2 ? 3.2 : 2.4)) ripple(v4, r * 1.8 + rnd(0, 1.2), 0.85, 1.5);
+          if (Math.random() < dt * (phaseN >= 2 ? 1.7 : 1.3)) ripple(v4, r * 1.8 + rnd(0, 1.2), 0.9, 1.3);
           if (Math.random() < dt * 14) K.fx.spark(v4.setY(0.25).add(v5.set(rnd(-r, r), 0, rnd(-r, r))), v5.set(rnd(-2, 2), rnd(3, 6.5), rnd(-2, 2)), C('#cfefff', 0.75), { size: 0.3, life: 0.6, g: 14, floor: 0.05 });
         }
       }
@@ -708,7 +711,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     }
 
     // ----- materials follow the phase colour; flashes; cracks in phase 3; heat when it dies -----
-    const heat = dead ? smooth((deadT - 0.4) / 2) : finishing ? 0.2 + Math.sin(t * 6) * 0.08 : crackK * 0.14;
+    const heat = dead ? smooth(deadT / 1.2) : finishing ? 0.2 + Math.sin(t * 6) * 0.08 : crackK * 0.14;
     for (const m of [plateMat, bellyMat, finMat, headMat]) {
       const u2 = m.userData.u;
       u2.uSeam.value.copy(m === finMat ? lureCol : ctx.pal.a).multiplyScalar(m === finMat ? 0.7 * spineK : m === bellyMat ? 0.4 : 0.95);
@@ -755,7 +758,6 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     R.g.matrix.compose(q[j], segQ[j], sc.setScalar(r)); R.g.matrixWorldNeedsUpdate = true;
     for (const p of R.petals) p.piv.rotation.set(0, -R.open * 1.15, p.a, 'ZYX');
     R.core.scale.setScalar(0.3 + R.open * (0.75 + Math.sin(t * 18) * 0.06)); R.core.rotation.set(t * 2, t * 3, 0);
-    R.beams.scale.set(R.open, R.open, R.open * (0.8 + Math.sin(t * 9) * 0.1)); R.beams.material.uniforms.uT.value = t;
     R.halo.material.uniforms.uT.value = t;
   }
 

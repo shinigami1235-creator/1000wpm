@@ -67,8 +67,8 @@ window.SuperCam = (() => {
       ] },
       // levKill: its last roar up close in slow motion, then wide and low on the water as it bursts and falls
       levKill: { pri: 5.5, free: true, parts: [
-        { len: 1.2, cut: 1, slow: 0.35, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1, p.z); out.pos.set(p.x * 0.4 + (p.x < 0 ? -6 : 6), Math.max(2, p.y - 1), Math.max(p.z + 16, 12) - c.u * 2); } },
-        { len: 4.4, cut: 1, slow: 0.8, fov: 46, omega: 3, pose: (c, out) => { const f = M().focus, a = -0.35 + c.u * 0.5, r = 38; out.look.set(f.x, 4, f.z); out.pos.set(f.x + Math.sin(a) * r, 2.2 + c.u * 2, f.z + Math.cos(a) * r); } },
+        { len: 0.8, cut: 1, slow: 0.5, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1, p.z); out.pos.set(p.x * 0.4 + (p.x < 0 ? -6 : 6), Math.max(2, p.y - 1), Math.max(p.z + 16, 12) - c.u * 2); } },
+        { len: 4.4, cut: 1, slow: 0.9, fov: 46, omega: 3, pose: (c, out) => { const f = M().focus, a = -0.35 + c.u * 0.5, r = 38; out.look.set(f.x, 4, f.z); out.pos.set(f.x + Math.sin(a) * r, 2.2 + c.u * 2, f.z + Math.cos(a) * r); } },
       ] },
       kill: { pri: 5, free: true, parts: [
         { len: 1.4, cut: 1, slow: 0.25, fov: 34, hand: 0.04, pose: (c, out) => { const p = sub('core') || M().focus, h = H(); out.look.copy(p); out.pos.set(p.x + h * 0.4, p.y + h * 0.12 + 1.5, p.z + h * 0.9 + 4 - c.u * 2); } },
