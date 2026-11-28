@@ -748,7 +748,7 @@ Combat.FX = (() => {
           _sv.subVectors(_sa, _sb); if (_sv.lengthSq() < 1e-6) _sv.subVectors(b, a); _sv.normalize();
           const r = (0.5 - i * 0.13) * w;
           drop(_sa, _sv, r, r * (2.1 - i * 0.35), ink);
-          circle(_sa, _sd.subVectors(camera.position, _sa).normalize(), r * 1.3, 0.05 * w, rim, 1.2 * k, 16, clock * 6 + i);
+          circle(_sa, _sd.subVectors(camera.position, _sa).normalize(), r * 1.3, 0.05 * w, rim, 1.2 * k, 12, clock * 6 + i);
           if (i === 0) { flare(_sa, rim, 1.1 * w, 0.05, 0.5, 0.1); seg(_sb.copy(_sa).addScaledVector(_sv, -1.6 * w), _sa, 0.06 * w, rim, 0.7 * k); }
         }
         if (!reduce && u < 1 && Math.random() < 0.55) { sigPath(S, a, b, Math.max(0, hd - 0.05), w, _sa); puff(_sa, _sv.set(rnd(-0.3, 0.3), -0.6, rnd(-0.3, 0.3)), ink, 0.9 * w, 0.6, 0.6); }
@@ -806,8 +806,8 @@ Combat.FX = (() => {
           if (s <= 0) continue;
           sigPath(S, a, b, s, w, _sa);
           const r = (0.28 + i * 0.2 + 0.05 * Math.sin(clock * 40 - i)) * w, kk = (1 - i * 0.22) * k;
-          circle(_sa, _sv, r, 0.07 * w, c1, 1.3 * kk, 26, clock * 4);
-          circle(_sa, _sv, r * 0.8, 0.03 * w, c2, 1.2 * kk, 22, -clock * 4);
+          circle(_sa, _sv, r, 0.07 * w, c1, 1.3 * kk, 18, clock * 4);
+          if (i < 2) circle(_sa, _sv, r * 0.8, 0.03 * w, c2, 1.2 * kk, 14, -clock * 4);
         }
         sigPath(S, a, b, hd, w, _sa);
         flare(_sa, c2, 1.1 * w, 0.05, 1.1, 0.1);
@@ -832,7 +832,7 @@ Combat.FX = (() => {
           // a field loop either side of the core, facing the camera
           for (const rr of [0.35, 0.6]) {
             _se.copy(_sa).addScaledVector(su, sd * rr * w);
-            circle(_se, scam, rr * w, 0.045 * w, sd > 0 ? c2 : c3, 1.3 * k, 18, clock * 5 * sd, 0.72);
+            circle(_se, scam, rr * w, 0.045 * w, sd > 0 ? c2 : c3, 1.3 * k, 14, clock * 5 * sd, 0.72);
           }
         }
       }
@@ -864,13 +864,13 @@ Combat.FX = (() => {
         }
         square(at, 0.4 * w * (1 + (1 - k)), S.pal ? S.pal[1] : WHITE, 1.6 * k, (1 - k) * 1.5, 0.07 * w);
       } else if (kb === 'ring') {
-        circle(at, _sv, (0.5 + ease(1 - k) * 3) * w, 0.1 * w * k + 0.02, pc(S, 0, col), 1.4 * k, 36);
-        if (k < 0.85) circle(at, _sv, (0.3 + ease((0.85 - k) / 0.85) * 2.2) * w, 0.05 * w, S.pal ? S.pal[1] : WHITE, 1.2 * k, 32);
+        circle(at, _sv, (0.5 + ease(1 - k) * 3) * w, 0.1 * w * k + 0.02, pc(S, 0, col), 1.4 * k, 28);
+        if (k < 0.85) circle(at, _sv, (0.3 + ease((0.85 - k) / 0.85) * 2.2) * w, 0.05 * w, S.pal ? S.pal[1] : WHITE, 1.2 * k, 22);
       } else if (kb === 'mag') {
         // the field loops snap shut onto the target
         const c2 = S.pal ? S.pal[1] : MAGN, c3 = S.pal ? S.pal[2] : MAGS; camFrame(at, _sv);
         for (const [rr, kk] of [[(0.6 + 1.8 * k) * w, 1.6 * k], [(0.35 + 1.1 * k) * w, 1.3 * k]]) for (const sd of [1, -1]) {
-          _se.copy(at).addScaledVector(su, sd * rr); circle(_se, scam, rr, 0.06 * w, sd > 0 ? c2 : c3, kk, 26, clock * 8 * sd, 0.8);
+          _se.copy(at).addScaledVector(su, sd * rr); circle(_se, scam, rr, 0.06 * w, sd > 0 ? c2 : c3, kk, 18, clock * 8 * sd, 0.8);
         }
       }
     }
@@ -934,7 +934,6 @@ Combat.FX = (() => {
       } else if (kb === 'ring') {
         const c1 = pc(S, 0, col);
         shock(at, c1, 0.4 * w, 4 * w, 0.4, 0.12 * w, null, 1.6);
-        shock(at, S.pal ? S.pal[1] : WHITE, 0.2 * w, 2.6 * w, 0.3, 0.05 * w, null, 1.2);
         flare(at, WHITE, 2.2 * w, 0.1, 1.3, 0.2);
         juice('shake', 0.1);
       } else if (kb === 'mag') {

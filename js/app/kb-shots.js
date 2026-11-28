@@ -113,7 +113,7 @@ window.KbShots = (() => {
     if (!b) {
       const comp = c.createDynamicsCompressor();
       comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.002; comp.release.value = 0.12;
-      const g = c.createGain(); g.gain.value = 0.85;
+      const g = c.createGain(); g.gain.value = 1.4;
       comp.connect(g).connect(c.destination);
       b = comp; buses.set(c, b);
     }
@@ -208,7 +208,7 @@ window.KbShots = (() => {
       case 'laser': return `<rect x="26" y="96" width="148" height="22" rx="4" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".85">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => `<rect x="${33 + i * 12.4}" y="91" width="10" height="4" rx="1"/>`).join('')}</g><path d="M26 136h148" stroke="${c}" stroke-width="2" opacity=".5"/><path d="M40 74h120" stroke="${c}" stroke-width="1.5"/><circle cx="160" cy="74" r="4" fill="${c}"/>`;
       case 'grid': return `<rect x="38" y="62" width="124" height="76" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".85">${keys(47, 71, 11, 8, 4, 2.6)}</g>`;
       case 'ring': return `<rect x="40" y="104" width="120" height="44" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(49, 113, 10, 8, 2, 4.6)}</g><rect x="88" y="78" width="24" height="20" rx="3" fill="${c}"/>${[22, 38, 54].map((r, i) => `<path d="M${100 - r} ${80 - i * 2}a${r} ${r * 0.62} 0 0 1 ${r * 2} 0" fill="none" stroke="${c}" stroke-width="${4 - i}" opacity="${1 - i * 0.25}"/>`).join('')}`;
-      case 'mag': return `<rect x="34" y="112" width="132" height="44" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(43, 121, 10, 9, 2, 4.4)}</g><path d="M76 52v22a24 24 0 0 0 48 0V52" fill="none" stroke="${c}" stroke-width="12"/><path d="M70 52h12M118 52h12" stroke="#050a07" stroke-width="3"/>${[18, 30].map((r, i) => `<path d="M${100 - 24 - r} 60c0 ${40 + r} ${48 + r * 2} ${40 + r} ${48 + r * 2} 0" fill="none" stroke="${c}" stroke-width="2" stroke-dasharray="5 5" opacity="${0.7 - i * 0.2}"/>`).join('')}`;
+      case 'mag': return `<rect x="34" y="112" width="132" height="44" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(43, 121, 10, 9, 2, 4.4)}</g><path d="M76 62v18a22 22 0 0 0 48 0V62" fill="none" stroke="${c}" stroke-width="12"/><path d="M70 64h12M118 64h12" stroke="#050a07" stroke-width="3"/>${[14, 26].map((r, i) => `<path d="M${100 - 24 - r} 66c0 ${34 + r} ${48 + r * 2} ${34 + r} ${48 + r * 2} 0" fill="none" stroke="${c}" stroke-width="2" stroke-dasharray="5 5" opacity="${0.7 - i * 0.2}"/>`).join('')}`;
       default: return '';
     }
   }
