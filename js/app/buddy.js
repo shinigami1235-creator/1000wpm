@@ -69,9 +69,10 @@
     { route: 'shop', sel: '.shop-hero .coin-box', at: 'out-l', dx: -30, dy: 2, face: 'right', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'shop', sel: '.shop-bar .seg', at: 'out-r', dx: 40, dy: 6, face: 'right', bonus: -100 },
     // My Room: in its seat at the left end of the shop bar (js/room/tier.css makes the room), so it
-    // never covers the room's slots; under the menu when the bar is shut
+    // never covers the room's slots
     { route: 'room', sel: '.rm-bar', at: 'in-bl', dx: 8, dy: -10, face: 'right', bonus: 2000, arrive: ['point', 'happy'] },
-    { route: 'room', sel: '.rm-menu', at: 'below', dx: 18, dy: 24, face: 'right', bonus: 90, arrive: ['point', 'happy'] },
+    // with the shop shut it waits beside the Customise button at the bottom, clear of every slot
+    { route: 'room', sel: '.rm-tab', at: 'out-l', dx: -10, dy: 6, face: 'right', bonus: 90, arrive: ['point', 'happy'] },
     { route: 'profile', sel: '.avc-head h1', at: 'text', dx: 34, dy: 4, face: 'left', bonus: 400, arrive: ['point', 'happy'] },
     { route: 'profile', sel: '.streak-top b', at: 'text', dx: 34, dy: 6, face: 'left', bonus: 90, arrive: ['point', 'proud'] },
     { route: 'profile', sel: '[data-buddy-toggle]', at: 'out-r', dx: 22, dy: 10, face: 'left', bonus: 20 },

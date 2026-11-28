@@ -28,8 +28,11 @@
     WPM.setRoom(r);
   }
   const level = () => WPM.levelInfo().level;
-  const openTier = () => RT.tierFor(level());
-  const activeTier = (r = load()) => Math.min(openTier(), r.tier || openTier());
+  // Gid, 28 Nov: every room open while he checks them. Set to false to lock rooms by level again.
+  const ALL_OPEN = true;
+  const openTier = () => (ALL_OPEN ? 5 : RT.tierFor(level()));
+  // the room shown: the one picked in Room tiers, or the highest the player's level opens
+  const activeTier = (r = load()) => Math.min(openTier(), r.tier || RT.tierFor(level()));
 
   // items from the old 3D room shop: owners get the new item that replaces each one
   function migrate() {
@@ -121,10 +124,14 @@
     root = document.createElement('div'); root.className = 'rm' + (visit ? ' visiting' : '');
     root.innerHTML = '<div class="rm-stage" data-stage></div>';
     host.append(root);
+    // the room fills the window under the header with no page scroll
+    const top = () => { const h = document.querySelector('header.top'); if (root) root.style.setProperty('--rm-top', Math.round(h ? h.getBoundingClientRect().bottom : 69) + 'px'); };
+    top(); addEventListener('resize', top); offs.push(() => removeEventListener('resize', top));
+    document.documentElement.classList.add('rm-on'); offs.push(() => document.documentElement.classList.remove('rm-on'));
     const stage = root.querySelector('[data-stage]');
     const phone = matchMedia('(max-width: 760px)');
     const d = visit ? of(visit) : mine();
-    state = { visit, tab: 'view', slot: 'view', mode: 'custom', pending: null, phone, touched: false };
+    state = { visit, tab: 'view', slot: 'view', mode: 'custom', pending: null, phone, touched: false, bar: false, menu: false };
     view = RV.create(stage, { ...d, interactive: !visit, fit: phone.matches ? 'height' : 'cover', onSlot: openSlot });
     if (phone.matches) requestAnimationFrame(() => { stage.scrollLeft = (stage.scrollWidth - stage.clientWidth) * RT.TIERS[d.tier].focus; });
     const onPhone = () => { if (!view) return; view.set({ fit: phone.matches ? 'height' : 'cover' }); };
@@ -150,16 +157,19 @@
     const t = view.tier, T = RT.TIERS[t];
     const nSlots = RT.slots(t).length, earned = mine().earned.length, cap = (T.case || T.pins || []).length;
     const items = [['custom', 'Customise', `${nSlots} slots`], ['ach', 'Achievements', `${Math.min(earned, cap)} of ${cap}`], ['visit', 'Visit a room', ''], ['tiers', 'Room tiers', `${openTier()} of 5`]];
-    const n = ui('rm-menu', `<h1>My Room</h1><span class="tier">Tier ${t} // ${esc(T.name)}</span>${items.map(([k, a, b]) => `<button type="button" data-m="${k}" aria-pressed="${state.mode === k}">${a}<small>${b}</small></button>`).join('')}`, 'nav');
-    n.insertAdjacentHTML('beforeend', '<button type="button" data-hide>Hide panels<small>H</small></button>');
+    const n = ui('rm-menu' + (state.menu ? ' open' : ''), `<button type="button" class="rm-head" data-open aria-expanded="${state.menu}"><span><h1>My Room</h1><span class="tier">Tier ${t} // ${esc(T.name)}</span></span><i aria-hidden="true"></i></button>
+      <div class="rm-list">${items.map(([k, a, b]) => `<button type="button" data-m="${k}" aria-pressed="${(k === 'custom' ? state.bar : state.mode === k) && k === state.mode}">${a}<small>${b}</small></button>`).join('')}
+      <button type="button" data-hide>Hide everything<small>H</small></button></div>`, 'nav');
     n.setAttribute('aria-label', 'My Room');
-    n.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+    n.querySelector('[data-open]').addEventListener('click', () => { state.menu = !state.menu; paintMenu(); });
+    n.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => { state.menu = false; setMode(b.dataset.m, true); }));
     n.querySelector('[data-hide]').addEventListener('click', () => clean(true));
   }
-  function setMode(m) {
+  function setMode(m, open) {
     state.mode = m; state.pending = null; view.preview(null);
+    if (m === 'custom' && open) state.bar = true;
     paintMenu();
-    drop('rm-bar'); drop('rm-sheet');
+    drop('rm-bar'); drop('rm-sheet'); drop('rm-tab');
     if (m === 'custom') paintBar();
     if (m === 'tiers') paintTiers();
     if (m === 'ach') paintAch();
@@ -177,16 +187,21 @@
   function onKey(ev) {
     if (!root || ev.ctrlKey || ev.metaKey || ev.altKey || /input|textarea|select/i.test(ev.target.tagName)) return;
     if (ev.key === 'h' || ev.key === 'H') clean(!root.classList.contains('clean'));
-    if (ev.key === 'Escape' && root.classList.contains('clean')) clean(false);
+    if (ev.key === 'Escape' && root.classList.contains('clean')) return clean(false);
+    if (ev.key === 'Escape' && state.mode !== 'custom') return setMode('custom');
+    if (ev.key === 'Escape' && state.bar) return closeBar();
+    if (ev.key === 'Escape' && state.menu) { state.menu = false; paintMenu(); }
   }
 
   // ---------- the operator panel
   function paintOp() {
     if (!root) return;
     const L = WPM.levelInfo(), o = openTier(), nx = RT.TIERS[o + 1];
-    ui('rm-op', `<div class="l">Operator // ${esc(WPM.profile().name || 'You')}</div><div class="lv">Level <b>${L.level}</b></div>
-      <div class="xp" title="${fmt(L.into)} of ${fmt(L.next)} XP"><i style="width:${(100 * L.into / L.next).toFixed(1)}%"></i></div>
-      <div class="next ${nx ? '' : 'top'}">${nx ? `${LOCK}<span>${esc(nx.name)} unlocks at <b>level ${nx.level}</b></span>` : `${STAR}<span><b>Top tier reached</b></span>`}</div>`);
+    // the room you'd unlock next by level (while every room is open for checking, the real lock still shows)
+    const nxL = RT.TIERS[RT.tierFor(L.level) + 1];
+    ui('rm-op', `<div class="lv">Level <b>${L.level}</b>${nxL ? `<span class="next">${LOCK}${esc(nxL.name)} at ${nxL.level}</span>` : `<span class="next top">${STAR}Top tier</span>`}</div>
+      <div class="xp" title="${fmt(L.into)} of ${fmt(L.next)} XP"><i style="width:${(100 * L.into / L.next).toFixed(1)}%"></i></div>`);
+    void nx; void o;
   }
 
   // ---------- the shop bar
@@ -199,21 +214,32 @@
     if (!ks.some(k => k.id === state.tab && k.slots.length)) { state.tab = ks[0].id; state.slot = ks[0].slots[0].id; }
     const k = ks.find(x => x.id === state.tab);
     if (!k.slots.some(s => s.id === state.slot)) state.slot = k.slots[0].id;
-    const n = ui('rm-bar', `<div class="rm-tabs" role="tablist">${ks.map(x => x.slots.length
+    if (!state.bar) { drop('rm-bar'); view.select(null); return paintTab(); }
+    drop('rm-tab');
+    const n = ui('rm-bar', `<div class="rm-tabs" role="tablist"><button type="button" class="rm-close" data-close aria-label="Close the shop">&times;</button>${ks.map(x => x.slots.length
       ? `<button type="button" role="tab" data-k="${x.id}" aria-selected="${x.id === state.tab}">${esc(x.name)}</button>`
       : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.from].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.from].level}</button>`).join('')}</div>
       ${k.slots.length > 1 ? `<div class="rm-slots">${k.slots.map((s, i) => `<button type="button" data-s="${s.id}" aria-pressed="${s.id === state.slot}">${esc(s.name || `${k.id === 'wall' ? 'Wall' : k.name.replace(/s$/, '')} ${i + 1}`)}</button>`).join('')}</div>` : ''}
       <div class="rm-items" data-items></div><p class="rm-msg" data-msg role="status"></p>`);
     n.setAttribute('aria-label', 'Customise');
+    n.querySelector('[data-close]').addEventListener('click', closeBar);
     n.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.tab = b.dataset.k; state.slot = null; cancelPending(); paintBar(); }));
     n.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.slot = b.dataset.s; cancelPending(); paintBar(); }));
     view.select(state.touched ? state.slot : null);
     paintItems();
   }
+  // the shop stays tucked away as one small button until it's needed
+  function paintTab() {
+    const b = ui('rm-tab', `${coin()}<span>Customise</span>`, 'button');
+    b.type = 'button'; b.setAttribute('aria-label', 'Open the shop');
+    b.onclick = () => { state.bar = true; state.menu = false; paintMenu(); paintBar(); };
+  }
+  function closeBar() { state.bar = false; cancelPending(); paintBar(); paintMenu(); }
   function openSlot(sl) {
     if (state.visit) return;
     if (sl.kind === 'case') return setMode('ach');
     if (state.mode !== 'custom') setMode('custom');
+    state.bar = true; state.menu = false; paintMenu();
     state.touched = true; state.tab = sl.kind; state.slot = sl.id; cancelPending(); paintBar();
     sfx(false);
   }
@@ -293,7 +319,7 @@
     n.querySelector('[data-x]').addEventListener('click', () => setMode('custom'));
     n.querySelectorAll('.rm-tier:not(.locked)').forEach(b => b.addEventListener('click', () => {
       const t = +b.dataset.t, r = load();
-      r.tier = t === o ? null : t; save(r);
+      r.tier = t === RT.tierFor(level()) ? null : t; save(r);
       const d = mine(); view.set({ tier: d.tier, equip: d.equip, earned: d.earned, data: d.data });
       sfx(true); setMode('custom');
     }));
