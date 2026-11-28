@@ -7,7 +7,7 @@ window.Theme = (() => {
   const KEY = 'wpm-theme';
   const list = [
     { id: 'matrix', name: 'Matrix', note: 'The original green', accent: '#39ff88', bg: '#040806', ink: '#d7f5e3' },
-    { id: 'ctrl', name: 'CTRL', note: 'Lime on steel', accent: '#8cff58', bg: '#060707', ink: '#e4e8ea' },
+    { id: 'ctrl', name: 'CTRL', note: 'Official: cyan on matte black', accent: '#1ee0f0', bg: '#0a0b0d', ink: '#e9edf0' },
     { id: 'ice', name: 'Ice', note: 'Blue team', accent: '#5cc8ff', bg: '#03070b', ink: '#d8ecf7' },
     { id: 'amber', name: 'Amber', note: 'Old terminal', accent: '#ffb000', bg: '#0a0602', ink: '#f7e6c8' },
     { id: 'phosphor', name: 'Phosphor', note: 'White mono', accent: '#e8f0f2', bg: '#050606', ink: '#e8ecee' },
@@ -15,8 +15,15 @@ window.Theme = (() => {
   const root = document.documentElement;
   const valid = id => list.some(t => t.id === id);
   let cur = 'matrix';
-  try { const v = JSON.parse(localStorage.getItem(KEY)); if (valid(v)) cur = v; } catch (e) {}
+  // CTRL's official look (28 Nov 2026) is the default for new players. Someone who already has a
+  // player record and never picked a theme keeps the green they know.
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY));
+    if (valid(v)) cur = v;
+    else if (!localStorage.getItem('wpm-player-v1')) { cur = 'ctrl'; localStorage.setItem(KEY, JSON.stringify(cur)); }
+  } catch (e) {}
   if (cur !== 'matrix') root.dataset.theme = cur;
+  { const meta = document.querySelector('meta[name="theme-color"]'), t = list.find(x => x.id === cur); if (meta && t) meta.content = t.bg; }
 
   // read a colour token as #rrggbb; works for any --name in css/site.css
   const cache = {};

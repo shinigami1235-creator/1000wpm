@@ -1,0 +1,86 @@
+/* The CTRL brand (official logo and merch, 28 Nov 2026; CTRL.md "Logo").
+   The logo is the same on every theme: white, flat, never recoloured. The techwear details
+   (glitch bars, circuit traces, the cyan light strip) belong to the CTRL theme only, so a player
+   on Matrix or Amber keeps the look they picked. Everything here stays off the middle of the screen. */
+
+/* ---------- the logo in the top bar ---------- */
+.logo .logo-mark { width: auto; height: 40px; color: var(--ink-hi); filter: none; flex: none; }
+.logo small { display: flex; align-items: center; gap: 6px; }
+.logo .logo-word { width: auto; height: 8px; color: var(--ink); opacity: .85; filter: none; }
+@media (max-width: 560px) { .logo .logo-mark { width: auto; height: 30px; } }
+
+/* ---------- the tag patch: the wing mark in a small square, like the patches on the hoodie ---------- */
+.ctrl-tag {
+  display: inline-grid; place-items: center; flex: none;
+  width: 22px; height: 22px; padding: 3px;
+  background: #0a0b0d; border: 1px solid rgba(255,255,255,.22);
+  color: #fff;
+}
+.ctrl-tag svg { width: auto; height: 100%; display: block; }
+
+/* ---------- footer ---------- */
+.foot-brand { display: inline-flex; align-items: center; gap: 8px; }
+.foot-brand .foot-word { width: auto; height: 9px; color: var(--ink); }
+
+/* ---------- loading: the mark with a scan line under it ---------- */
+.loading-state.brand-load { flex-direction: column; gap: 14px; }
+.loading-state.brand-load::after { content: none; }
+.brand-load svg { height: 44px; width: auto; color: var(--ink-hi); opacity: .9; }
+.brand-load .bl-bar { position: relative; width: 120px; height: 2px; background: rgba(var(--accent-rgb),.15); overflow: hidden; }
+.brand-load .bl-bar::after { content: ""; position: absolute; inset: 0; width: 36%; background: var(--accent); animation: bl-scan 1.1s linear infinite; }
+@keyframes bl-scan { from { transform: translateX(-100%); } to { transform: translateX(280%); } }
+@media (prefers-reduced-motion: reduce) { .brand-load .bl-bar::after { animation: none; width: 100%; opacity: .5; } }
+
+/* =====================  CTRL theme only  ===================== */
+
+/* the matte look: less glow, the logo-white for headings, the scanlines lighter */
+:root[data-theme="ctrl"] body::after { opacity: .3; }
+:root[data-theme="ctrl"] .panel { box-shadow: none; }
+:root[data-theme="ctrl"] .panel::after { filter: none; opacity: .9; }
+:root[data-theme="ctrl"] .title-block h1 { color: var(--ink-hi); text-shadow: none; }
+
+/* the cyan light strip along the edge of the top bar, under the logo, like the one on the hood */
+:root[data-theme="ctrl"] .top-in { position: relative; }
+:root[data-theme="ctrl"] .top-in::after {
+  content: ""; position: absolute; left: 12px; bottom: -1px; width: min(300px, 40vw); height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 18%, var(--accent) 72%, transparent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb),.55);
+}
+
+/* panel corners as circuit traces: a line that bends 45 degrees and ends in a node, in place of the brackets */
+:root[data-theme="ctrl"] .panel::after {
+  background:
+    linear-gradient(var(--accent), var(--accent)) top right / 26px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top right / 1px 10px no-repeat,
+    radial-gradient(circle, var(--accent) 0 1.6px, transparent 2.2px) right 0 top 10px / 5px 5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom left / 26px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom left / 1px 10px no-repeat,
+    radial-gradient(circle, var(--accent) 0 1.6px, transparent 2.2px) left -2px bottom 9px / 5px 5px no-repeat;
+}
+
+/* glitch bars: two thin slices that jump across a nav link or a button for a moment on hover, and
+   sit still under the page you're on */
+:root[data-theme="ctrl"] .nav a[aria-current="page"]::after {
+  background: linear-gradient(90deg, var(--accent) 0 62%, transparent 62% 68%, var(--accent) 68% 80%, transparent 80% 86%, #fff 86%);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb),.6);
+}
+:root[data-theme="ctrl"] .nav a[aria-current="page"] { text-shadow: none; color: var(--ink-hi); }
+:root[data-theme="ctrl"] .nav a::before,
+:root[data-theme="ctrl"] .btn::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 30%; height: 40%; pointer-events: none; opacity: 0;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 8% 0 / 34% 1px no-repeat,
+    linear-gradient(#fff, #fff) 60% 100% / 22% 1px no-repeat;
+}
+:root[data-theme="ctrl"] .btn { position: relative; }
+:root[data-theme="ctrl"] .nav a:hover::before,
+:root[data-theme="ctrl"] .btn:hover::before { animation: ctrl-glitch 260ms steps(4) 1; }
+@keyframes ctrl-glitch {
+  0% { opacity: 1; transform: translateX(-6px); }
+  33% { opacity: 1; transform: translateX(5px); background-position: 40% 0, 20% 100%; }
+  66% { opacity: .8; transform: translateX(-3px); background-position: 70% 0, 50% 100%; }
+  100% { opacity: 0; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="ctrl"] .nav a:hover::before, :root[data-theme="ctrl"] .btn:hover::before { animation: none; }
+}

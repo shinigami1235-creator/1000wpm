@@ -19,7 +19,7 @@ window.Router = (() => {
       lazy: true,
       mount(el) {
         live = true;
-        el.innerHTML = '<div class="loading-state">Loading</div>';
+        el.innerHTML = '<div class="loading-state brand-load" role="status"><svg viewBox="0 0 2380 2895" aria-hidden="true"><use href="#i-ctrl"/></svg><span class="bl-bar" aria-hidden="true"></span><span class="sr-only">Loading</span></div>';
         Lazy.need(group).then(() => {
           if (live && curName === name && pages[name] && !pages[name].lazy) go(true);
         }, e => {

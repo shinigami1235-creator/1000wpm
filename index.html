@@ -7,11 +7,23 @@
 <title>Stormtyper by 10000wpm</title>
 <meta name="description" content="Stormtyper by 10000wpm. Join CTRL as an operator: take a typing test, race Art's 204 wpm, fight bosses with other operators and earn coins for your room.">
 <meta name="theme-color" content="#040806">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-2 -2 68 68'%3E%3Crect x='-2' y='-2' width='68' height='68' rx='10' fill='%23040806'/%3E%3Cpath d='M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z' fill='none' stroke='%23d7f5e3' stroke-width='3' stroke-linejoin='round'/%3E%3Cpath d='M41 21.5H27.5L21 28v8l6.5 6.5H41' fill='none' stroke='%23d7f5e3' stroke-width='5' stroke-linejoin='miter'/%3E%3Cpath d='M28 36l6-8 6 8' fill='none' stroke='%23d7f5e3' stroke-width='3.2' stroke-linecap='square'/%3E%3Cpath d='M32 0v7M32 57v7M3 32h7M54 32h7' stroke='%2339ff88' stroke-width='2.6'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/brand/icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/brand/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/brand/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:title" content="10000wpm - Stormtyper">
+<meta property="og:description" content="Join CTRL as an operator: race Art's 204 wpm, fight bosses with other operators and earn coins for your room.">
+<meta property="og:image" content="https://10000wpm.com/assets/brand/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="fonts/chakra-petch-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/site.css">
 <script src="js/app/theme.js"></script>
+<script src="js/app/brand.js"></script>
+<link rel="stylesheet" href="css/brand.css">
 <link rel="stylesheet" href="css/buddy.css">
 <link rel="stylesheet" href="css/avatar.css">
 <link rel="stylesheet" href="css/progress.css">
@@ -29,20 +41,13 @@
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- the CTRL insignia (CTRL.md): a hexagon, a C, and the Control key's caret inside it,
-         with sight marks at the four points. i-mark is kept as an alias for older pages. -->
-    <symbol id="i-ctrl" viewBox="-2 -2 68 68">
-      <path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="miter"/>
-      <path d="M28 36l6-8 6 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-      <path d="M32 0v7M32 57v7M3 32h7M54 32h7" style="stroke:var(--accent)" stroke-width="2.6"/>
-    </symbol>
-    <symbol id="i-mark" viewBox="-2 -2 68 68">
-      <path d="M32 5 55.4 18.5v27L32 59 8.6 45.5v-27z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M41 21.5H27.5L21 28v8l6.5 6.5H41" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="miter"/>
-      <path d="M28 36l6-8 6 8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/>
-      <path d="M32 0v7M32 57v7M3 32h7M54 32h7" stroke="#39ff88" stroke-width="2.6"/>
-    </symbol>
+    <!-- the CTRL logo (official, 28 Nov 2026; assets/brand, CTRL.md "Logo"): i-ctrl the wing mark,
+         i-ctrl-word the italic wordmark, i-ctrl-lockup the mark over the wordmark. Always one flat colour.
+         i-mark is kept as an alias for older pages. The same paths are in js/app/brand.js for canvases. -->
+    <symbol id="i-ctrl" viewBox="0 0 2380 2895"><path fill="currentColor" fill-rule="evenodd" d="M554.5 2886.0Q553.0 2885.0 548.4 2878.5L303.6 2532.5Q299.0 2526.0 304.7 2520.4L1447.3 1391.6Q1453.0 1386.0 1458.7 1380.4L1978.3 877.6Q1984.0 872.0 1989.9 866.6L2123.6 742.3Q2129.5 736.8 2126.6 744.3L2039.9 966.9Q2037.0 974.4 2033.9 981.7L1956.1 1165.3Q1953.0 1172.6 1947.5 1178.4L836.5 2333.4Q831.0 2339.2 837.6 2334.7L867.4 2314.5Q874.0 2310.0 880.2 2305.0L1024.2 2189.5Q1030.5 2184.5 1036.6 2179.4L1462.6 1821.0Q1468.8 1815.9 1474.6 1810.4L1925.0 1393.6Q1930.9 1388.1 1932.4 1388.6L1932.4 1388.6Q1934.0 1389.0 1931.3 1396.5L1922.7 1420.5Q1920.0 1428.0 1916.9 1435.4L1829.4 1641.9Q1826.3 1649.3 1820.6 1654.9L1403.7 2070.4Q1398.0 2076.0 1392.2 2081.6L573.6 2871.4Q567.9 2877.0 561.9 2882.0L561.9 2882.0Q556.0 2887.0 554.5 2886.0ZM199.9 2392.8Q197.0 2391.0 191.9 2384.8L15.2 2172.1Q10.1 2165.9 9.5 2162.6L9.5 2162.6Q9.0 2159.2 14.8 2153.7L643.3 1558.5Q649.1 1553.0 655.0 1547.6L1206.1 1038.4Q1212.0 1033.0 1210.5 1040.9L1125.9 1480.7Q1124.4 1488.6 1118.7 1494.2L269.3 2330.5Q263.6 2336.1 257.9 2341.7L208.7 2389.0Q202.9 2394.5 199.9 2392.8ZM1231.8 1386.5Q1231.0 1384.0 1232.8 1376.2L1305.2 1063.8Q1307.0 1056.0 1309.2 1048.3L1334.4 957.9Q1336.6 950.2 1342.5 944.8L2367.0 14.1Q2372.9 8.7 2369.5 15.9L2150.8 469.8Q2147.4 477.1 2141.7 482.7L1296.5 1328.1Q1290.9 1333.8 1285.2 1339.4L1243.1 1380.2Q1237.4 1385.8 1235.0 1387.4L1235.0 1387.4Q1232.6 1389.0 1231.8 1386.5Z"/></symbol>
+    <symbol id="i-mark" viewBox="0 0 2380 2895"><use href="#i-ctrl"/></symbol>
+    <symbol id="i-ctrl-word" viewBox="0 0 2474 536"><path fill="currentColor" fill-rule="evenodd" d="M121.0 527.0Q113.0 527.0 105.4 524.7L73.9 515.0Q66.2 512.7 60.1 507.6L39.2 490.3Q33.0 485.2 29.4 478.1L12.8 445.0Q9.2 437.8 9.0 429.8L8.3 402.8Q8.1 394.8 9.7 387.0L16.3 355.8Q18.0 348.0 20.3 340.3L79.7 141.8Q82.0 134.1 85.3 126.8L94.7 106.3Q98.0 99.0 103.0 92.8L118.7 73.2Q123.7 67.0 130.2 62.3L169.5 33.6Q176.0 28.9 183.3 25.6L192.7 21.3Q200.0 18.0 207.8 16.2L234.9 10.0Q242.7 8.2 250.7 8.2L658.7 8.0Q666.7 8.0 667.2 12.6L667.2 12.6Q667.6 17.2 665.3 24.9L641.3 103.3Q639.0 111.0 631.0 111.0L279.2 112.5Q271.2 112.6 263.7 115.3L244.4 122.3Q236.8 125.0 232.0 131.4L215.9 152.9Q211.2 159.3 208.9 167.0L157.7 342.1Q155.5 349.8 155.9 357.8L157.1 379.5Q157.5 387.5 163.2 393.2L164.3 394.3Q170.0 400.0 176.0 402.0L176.0 402.0Q181.9 404.0 189.9 404.1L588.0 407.9Q596.0 408.0 593.8 415.7L564.2 520.3Q562.0 528.0 554.0 528.0ZM797.0 526.1Q789.0 526.0 791.1 518.3L900.5 122.1Q902.7 114.4 894.7 114.1L726.0 109.2Q718.0 109.0 717.6 101.6L717.6 101.6Q717.2 94.2 719.6 86.6L742.2 16.2Q744.6 8.6 752.6 8.6L1250.0 8.0Q1258.0 8.0 1256.0 15.7L1235.8 94.3Q1233.8 102.1 1230.4 106.0L1230.4 106.0Q1227.0 110.0 1219.0 110.1L1076.9 111.2Q1068.9 111.3 1060.9 112.4L1051.3 113.9Q1043.4 115.1 1041.2 122.7L926.2 519.3Q924.0 527.0 916.0 526.9ZM1201.0 525.2Q1193.0 525.0 1195.2 517.3L1335.8 16.7Q1338.0 9.0 1346.0 9.0L1787.0 8.3Q1795.0 8.2 1802.7 10.5L1828.6 18.2Q1836.3 20.5 1842.3 25.8L1861.9 43.1Q1867.9 48.4 1870.9 55.9L1879.3 77.2Q1882.3 84.7 1882.0 92.7L1881.4 112.0Q1881.1 120.0 1879.0 127.7L1858.1 204.3Q1856.0 212.0 1853.0 219.4L1843.4 243.0Q1840.4 250.4 1835.3 256.5L1817.1 278.3Q1812.0 284.4 1805.3 288.8L1776.9 307.5Q1770.3 311.9 1762.8 314.9L1743.4 322.7Q1736.0 325.7 1728.1 327.0L1690.2 333.2Q1682.3 334.5 1686.5 341.3L1797.8 521.2Q1802.0 528.0 1794.0 528.0L1652.0 528.0Q1644.0 528.0 1639.6 521.3L1519.4 338.7Q1515.0 332.0 1507.0 332.1L1398.0 332.9Q1390.0 333.0 1387.7 340.7L1333.3 520.3Q1331.0 528.0 1323.0 527.8ZM1859.0 525.0Q1851.0 525.0 1853.2 517.3L1999.4 16.2Q2001.6 8.5 2009.6 8.6L2128.7 10.0Q2136.7 10.1 2134.5 17.8L2032.2 372.3Q2030.0 380.0 2029.0 387.9L2028.0 396.1Q2027.0 404.0 2035.0 404.1L2458.7 408.5Q2466.7 408.6 2464.7 416.4L2448.0 480.3Q2446.0 488.0 2443.0 495.4L2433.0 520.6Q2430.0 528.0 2422.0 528.0ZM1674.0 225.1Q1682.0 225.0 1689.5 222.3L1691.8 221.5Q1699.3 218.7 1705.1 213.2L1706.8 211.5Q1712.6 206.0 1715.4 198.5L1726.2 169.5Q1729.0 162.0 1730.4 154.1L1732.6 140.9Q1734.0 133.0 1734.0 128.5L1734.0 128.5Q1734.0 124.0 1728.2 118.9L1728.2 118.9Q1722.4 113.9 1714.5 113.4L1696.2 112.3Q1688.2 111.8 1680.2 111.8L1460.8 112.1Q1452.8 112.2 1450.5 119.8L1422.0 214.5Q1419.7 222.1 1421.2 224.0L1421.2 224.0Q1422.7 225.9 1430.7 226.3L1439.1 226.7Q1447.1 227.1 1455.1 227.1Z"/></symbol>
+    <symbol id="i-ctrl-lockup" viewBox="0 0 2554 3548"><path fill="currentColor" fill-rule="evenodd" d="M121.0 3539.0Q113.0 3539.0 105.4 3536.7L73.9 3527.0Q66.2 3524.7 60.1 3519.6L39.2 3502.3Q33.0 3497.2 29.4 3490.1L12.8 3457.0Q9.2 3449.8 9.0 3441.8L8.3 3414.8Q8.1 3406.8 9.7 3399.0L16.3 3367.8Q18.0 3360.0 20.3 3352.3L79.7 3153.8Q82.0 3146.1 85.3 3138.8L94.7 3118.3Q98.0 3111.0 103.0 3104.8L118.7 3085.2Q123.7 3079.0 130.2 3074.3L169.5 3045.6Q176.0 3040.9 183.3 3037.6L192.7 3033.3Q200.0 3030.0 207.8 3028.2L234.9 3022.0Q242.7 3020.2 250.7 3020.2L658.7 3020.0Q666.7 3020.0 667.2 3024.6L667.2 3024.6Q667.6 3029.2 665.3 3036.9L641.3 3115.3Q639.0 3123.0 631.0 3123.0L279.2 3124.5Q271.2 3124.6 263.7 3127.3L244.4 3134.3Q236.8 3137.0 232.0 3143.4L215.9 3164.9Q211.2 3171.3 208.9 3179.0L157.7 3354.1Q155.5 3361.8 155.9 3369.8L157.1 3391.5Q157.5 3399.5 163.2 3405.2L164.3 3406.3Q170.0 3412.0 176.0 3414.0L176.0 3414.0Q181.9 3416.0 189.9 3416.1L588.0 3419.9Q596.0 3420.0 593.8 3427.7L564.2 3532.3Q562.0 3540.0 554.0 3540.0ZM797.0 3538.1Q789.0 3538.0 791.1 3530.3L900.5 3134.1Q902.7 3126.4 894.7 3126.1L726.0 3121.2Q718.0 3121.0 717.6 3113.6L717.6 3113.6Q717.2 3106.2 719.6 3098.6L742.2 3028.2Q744.6 3020.6 752.6 3020.6L1250.0 3020.0Q1258.0 3020.0 1256.0 3027.7L1235.8 3106.3Q1233.8 3114.1 1230.4 3118.0L1230.4 3118.0Q1227.0 3122.0 1219.0 3122.1L1076.9 3123.2Q1068.9 3123.3 1060.9 3124.4L1051.3 3125.9Q1043.4 3127.1 1041.2 3134.7L926.2 3531.3Q924.0 3539.0 916.0 3538.9ZM1201.0 3537.2Q1193.0 3537.0 1195.2 3529.3L1335.8 3028.7Q1338.0 3021.0 1346.0 3021.0L1787.0 3020.3Q1795.0 3020.2 1802.7 3022.5L1828.6 3030.2Q1836.3 3032.5 1842.3 3037.8L1861.9 3055.1Q1867.9 3060.4 1870.9 3067.9L1879.3 3089.2Q1882.3 3096.7 1882.0 3104.7L1881.4 3124.0Q1881.1 3132.0 1879.0 3139.7L1858.1 3216.3Q1856.0 3224.0 1853.0 3231.4L1843.4 3255.0Q1840.4 3262.4 1835.3 3268.5L1817.1 3290.3Q1812.0 3296.4 1805.3 3300.8L1776.9 3319.5Q1770.3 3323.9 1762.8 3326.9L1743.4 3334.7Q1736.0 3337.7 1728.1 3339.0L1690.2 3345.2Q1682.3 3346.5 1686.5 3353.3L1797.8 3533.2Q1802.0 3540.0 1794.0 3540.0L1652.0 3540.0Q1644.0 3540.0 1639.6 3533.3L1519.4 3350.7Q1515.0 3344.0 1507.0 3344.1L1398.0 3344.9Q1390.0 3345.0 1387.7 3352.7L1333.3 3532.3Q1331.0 3540.0 1323.0 3539.8ZM1859.0 3537.0Q1851.0 3537.0 1853.2 3529.3L1999.4 3028.2Q2001.6 3020.5 2009.6 3020.6L2128.7 3022.0Q2136.7 3022.1 2134.5 3029.8L2032.2 3384.3Q2030.0 3392.0 2029.0 3399.9L2028.0 3408.1Q2027.0 3416.0 2035.0 3416.1L2458.7 3420.5Q2466.7 3420.6 2464.7 3428.4L2448.0 3492.3Q2446.0 3500.0 2443.0 3507.4L2433.0 3532.6Q2430.0 3540.0 2422.0 3540.0ZM1674.0 3237.1Q1682.0 3237.0 1689.5 3234.3L1691.8 3233.5Q1699.3 3230.7 1705.1 3225.2L1706.8 3223.5Q1712.6 3218.0 1715.4 3210.5L1726.2 3181.5Q1729.0 3174.0 1730.4 3166.1L1732.6 3152.9Q1734.0 3145.0 1734.0 3140.5L1734.0 3140.5Q1734.0 3136.0 1728.2 3130.9L1728.2 3130.9Q1722.4 3125.9 1714.5 3125.4L1696.2 3124.3Q1688.2 3123.8 1680.2 3123.8L1460.8 3124.1Q1452.8 3124.2 1450.5 3131.8L1422.0 3226.5Q1419.7 3234.1 1421.2 3236.0L1421.2 3236.0Q1422.7 3237.9 1430.7 3238.3L1439.1 3238.7Q1447.1 3239.1 1455.1 3239.1ZM728.5 2886.0Q727.0 2885.0 722.4 2878.5L477.6 2532.5Q473.0 2526.0 478.7 2520.4L1621.3 1391.6Q1627.0 1386.0 1632.7 1380.4L2152.3 877.6Q2158.0 872.0 2163.9 866.6L2297.6 742.3Q2303.5 736.8 2300.6 744.3L2213.9 966.9Q2211.0 974.4 2207.9 981.7L2130.1 1165.3Q2127.0 1172.6 2121.5 1178.4L1010.5 2333.4Q1005.0 2339.2 1011.6 2334.7L1041.4 2314.5Q1048.0 2310.0 1054.2 2305.0L1198.2 2189.5Q1204.5 2184.5 1210.6 2179.4L1636.6 1821.0Q1642.8 1815.9 1648.6 1810.4L2099.0 1393.6Q2104.9 1388.1 2106.4 1388.6L2106.4 1388.6Q2108.0 1389.0 2105.3 1396.5L2096.7 1420.5Q2094.0 1428.0 2090.9 1435.4L2003.4 1641.9Q2000.3 1649.3 1994.6 1654.9L1577.7 2070.4Q1572.0 2076.0 1566.2 2081.6L747.6 2871.4Q741.9 2877.0 735.9 2882.0L735.9 2882.0Q730.0 2887.0 728.5 2886.0ZM373.9 2392.8Q371.0 2391.0 365.9 2384.8L189.2 2172.1Q184.1 2165.9 183.5 2162.6L183.5 2162.6Q183.0 2159.2 188.8 2153.7L817.3 1558.5Q823.1 1553.0 829.0 1547.6L1380.1 1038.4Q1386.0 1033.0 1384.5 1040.9L1299.9 1480.7Q1298.4 1488.6 1292.7 1494.2L443.3 2330.5Q437.6 2336.1 431.9 2341.7L382.7 2389.0Q376.9 2394.5 373.9 2392.8ZM1405.8 1386.5Q1405.0 1384.0 1406.8 1376.2L1479.2 1063.8Q1481.0 1056.0 1483.2 1048.3L1508.4 957.9Q1510.6 950.2 1516.5 944.8L2541.0 14.1Q2546.9 8.7 2543.5 15.9L2324.8 469.8Q2321.4 477.1 2315.7 482.7L1470.5 1328.1Q1464.9 1333.8 1459.2 1339.4L1417.1 1380.2Q1411.4 1385.8 1409.0 1387.4L1409.0 1387.4Q1406.6 1389.0 1405.8 1386.5Z"/></symbol>
     <!-- Art's laurel mark (@10000wpm), used wherever Art himself appears -->
     <symbol id="i-logo" viewBox="0 0 64 64">
       <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -97,8 +102,8 @@
   <header class="top">
     <div class="top-in">
       <a class="logo" href="#/home" aria-label="Stormtyper home">
-        <svg class="green" aria-hidden="true"><use href="#i-ctrl"/></svg>
-        <span><b>Stormtyper<i class="logo-cur" aria-hidden="true">_</i></b><small>by 10000wpm // CTRL</small></span>
+        <svg class="logo-mark" viewBox="0 0 2380 2895" aria-hidden="true"><use href="#i-ctrl"/></svg>
+        <span><b>Stormtyper<i class="logo-cur" aria-hidden="true">_</i></b><small>by 10000wpm <svg class="logo-word" viewBox="0 0 2474 536" role="img" aria-label="CTRL"><use href="#i-ctrl-word"/></svg></small></span>
       </a>
       <nav class="nav" id="nav" aria-label="Pages">
         <a href="#/home" data-route="home">[ home ]</a>
@@ -128,13 +133,13 @@
     </div>
   </header>
 
-  <main id="view" tabindex="-1"><div class="loading-state">Loading</div></main>
+  <main id="view" tabindex="-1"><div class="loading-state brand-load" role="status"><svg viewBox="0 0 2380 2895" aria-hidden="true"><use href="#i-ctrl"/></svg><span class="bl-bar" aria-hidden="true"></span><span class="sr-only">Loading</span></div></main>
 
   <footer class="foot">
     <div class="foot-in">
       <a href="https://www.instagram.com/10000wpm/" target="_blank" rel="noopener">@10000wpm on Instagram</a>
       <a class="foot-replay" href="#/home" data-replay-intro>Replay intro</a>
-      <span>© 2026 10000wpm. CTRL: control the chaos.</span>
+      <span class="foot-brand"><span class="ctrl-tag" aria-hidden="true"><svg viewBox="0 0 2380 2895"><use href="#i-ctrl"/></svg></span><svg class="foot-word" viewBox="0 0 2474 536" role="img" aria-label="CTRL"><use href="#i-ctrl-word"/></svg> Control the chaos. © 2026 10000wpm</span>
     </div>
   </footer>
 </div>
