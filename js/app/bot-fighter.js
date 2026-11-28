@@ -93,7 +93,7 @@ window.BotFighter = (() => {
     // the ground slam: rise high over the other bot, hang, come down on it
     slam: { len: 0.8, hit: 0.62, reach: u => (u < 0.38 ? 0.35 * sm(ramp(u, 0, 0.38)) : u < 0.62 ? 0.35 + 0.58 * Math.pow(ramp(u, 0.4, 0.62), 2) : 0.93 * (1 - back(ramp(u, 0.75, 1)))),
       body(u, P) { const up = sm(ramp(u, 0, 0.38)), down = Math.pow(ramp(u, 0.42, 0.62), 2.2), land = snap(u, 0.6, 0.66, 0.92);
-        P.y += 2.4 * up * (1 - down) - 0.55 * land; P.rx += -0.4 * up * (1 - down) + 0.7 * down * (1 - ramp(u, 0.62, 0.9)); P.sy -= 0.32 * land; P.sx += 0.26 * land; P.glow += 1.2 * up + 2 * land; P.flash += 1.4 * land; P.legs += -0.9 * up + 1.2 * land; P.ears += up; } },
+        P.y += 2.4 * up * (1 - down) - 0.55 * land; P.rx += -0.4 * up * (1 - down) + 0.7 * down * (1 - ramp(u, 0.62, 0.9)); P.sy -= 0.32 * land; P.sx += 0.26 * land; P.glow += 1.2 * up + 2 * land; P.flash += 1.4 * land; P.legs += -0.9 * up + 0.9 * land; P.ears += up; } },
     // the aerial dive: climb up and back, tip nose down and dive steep onto the other bot, pull out
     dive: { len: 0.75, hit: 0.6, reach: u => (u < 0.4 ? -0.15 * sm(ramp(u, 0, 0.4)) : u < 0.6 ? -0.15 + 1.1 * Math.pow(ramp(u, 0.4, 0.6), 1.5) : 0.95 * (1 - back(ramp(u, 0.68, 1)))),
       body(u, P) { const up = env(u, 0, 0.4, 0.6), tip = env(u, 0.3, 0.55, 0.8), pull = snap(u, 0.6, 0.75, 1);
@@ -125,7 +125,7 @@ window.BotFighter = (() => {
       body(u, P, o) { const b = env(u, 0, 0.2, 0.35), s = snap(u, 0.24, 0.34, 1); P.shield += Math.max(b, s); P.rz += o.side * (0.5 * b - 0.9 * s); P.ry += o.side * (-0.4 * b + 0.7 * s); P.z -= 0.3 * b; P.glow += 1.2 * s; P.halo += 0.8 * s; P.flash += 0.6 * s; } },
     // dodges besides the barrel roll: a duck under, a hop over
     duck: { len: 0.42, hit: 0.3, reach: u => -0.04 * env(u, 0, 0.3, 1),
-      body(u, P) { const d = snap(u, 0, 0.28, 1); P.y -= 1.2 * d; P.rx += 0.4 * d; P.sy -= 0.15 * snap(u, 0.2, 0.3, 0.6); P.legs += 0.6 * d; } },
+      body(u, P) { const d = snap(u, 0, 0.28, 1); P.y -= 0.9 * d; P.rx += 0.4 * d; P.sy -= 0.15 * snap(u, 0.2, 0.3, 0.6); P.legs += 0.6 * d; } },
     leap: { len: 0.48, hit: 0.3, reach: u => -0.04 * env(u, 0, 0.3, 1),
       body(u, P) { const d = Math.sin(Math.PI * ramp(u, 0, 0.9)); P.y += 1.7 * d; P.rx -= 0.8 * d; P.legs -= 0.7 * d; P.ears += d; } },
   };
@@ -135,7 +135,7 @@ window.BotFighter = (() => {
     knock: { len: 0.7, push: u => 1.6 * snap(u, 0, 0.2, 1), body(u, P, o) { const k = snap(u, 0, 0.16, 1); P.rx -= 0.8 * k; P.rz += 0.45 * o.side * k; P.y += 0.35 * Math.sin(Math.PI * ramp(u, 0, 0.6)); P.sx += 0.12 * env(u, 0, 0.05, 0.2); P.sy -= 0.12 * env(u, 0, 0.05, 0.2); P.glow -= 0.8 * k; } },
     spinout: { len: 0.7, push: u => 1.1 * snap(u, 0, 0.2, 1), body(u, P, o) { P.spinZ += o.side * TAU * sm(ramp(u, 0, 0.65)); P.ry += o.side * 0.8 * env(u, 0, 0.2, 1); P.y += 0.2 * env(u, 0, 0.2, 1); P.glow -= 0.6 * env(u, 0, 0.1, 1); } },
     launch: { len: 1.0, push: u => 2.0 * snap(u, 0, 0.3, 1), body(u, P) { const a = Math.sin(Math.PI * ramp(u, 0, 0.7)); P.y += 2.0 * a; P.rx -= TAU * sm(ramp(u, 0, 0.62)); P.sy -= 0.2 * snap(u, 0.68, 0.74, 0.95); P.glow -= 1 * env(u, 0, 0.1, 1); } },
-    crumple: { len: 0.8, push: u => 0.6 * snap(u, 0, 0.2, 1), body(u, P, o) { const d = snap(u, 0, 0.25, 1); P.y -= 1.1 * d; P.rz += 0.6 * o.side * d; P.rx += 0.4 * d; P.sy -= 0.15 * d; P.glow -= 1.2 * d; } },
+    crumple: { len: 0.8, push: u => 0.6 * snap(u, 0, 0.2, 1), body(u, P, o) { const d = snap(u, 0, 0.25, 1); P.y -= 0.85 * d; P.rz += 0.6 * o.side * d; P.rx += 0.4 * d; P.sy -= 0.15 * d; P.glow -= 1.2 * d; } },
     graze: { len: 0.4, push: u => 0.25 * snap(u, 0, 0.15, 1), body(u, P, o) { const k = snap(u, 0, 0.12, 1); P.ry += 0.9 * o.side * k; P.x += 0.6 * o.side * k; P.rz += 0.3 * o.side * k; } },
     pulled: { len: 0.9, push: u => -1.3 * env(u, 0, 0.7, 1), body(u, P) { const k = env(u, 0, 0.7, 1); P.rx += 0.5 * k; P.sx -= 0.15 * k; P.sy += 0.18 * k; P.z += 0.3 * k; P.glow += 0.6 * k; } },
     stiff: { len: 0.5, push: u => 0.3 * snap(u, 0, 0.1, 1), body(u, P) { const k = snap(u, 0, 0.08, 1); P.rx -= 0.2 * k; P.sx -= 0.06 * k; } },

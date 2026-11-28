@@ -1487,7 +1487,7 @@ window.DuelScene = (() => {
       // a spell from the caster to where it lands (Gid, 28 Nov 2026: "not just a close-up of the caster"):
       // low on the caster as it rises, along the spell's way, then on the target as it lands
       spell: { pri: 2, parts: [
-        { len: 0.55, cut: 1, fov: 32, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, 0.73 * 9, fc[i].y - 0.8 + c.u * 0.5, 0.68 * 9); fr(out.look, fc[i], i, 1.2, fc[i].y + 0.5, 0); } },
+        { len: 0.55, cut: 1, fov: 32, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, 0.3 * 12, fc[i].y - 0.6 + c.u * 0.5, 0.95 * 12); fr(out.look, fc[i], i, 1.2, fc[i].y + 0.4, 0); } },
         { len: 0.6, cut: 1, fov: 36, omega: 5, pose(c, out) { const i = c.x, j = 1 - i; out.look.lerpVectors(fc[i], fc[j], 0.3 + 0.55 * c.u); fr(out.pos, out.look, i, -1.4, 3.0 + Math.max(0, fc[i].y - 3.6) * 0.4, 10.5); } },
         { len: 1.2, cut: 1, slow: 0.6, fov: 36, omega: 4, pose(c, out) { const j = 1 - c.x; fr(out.pos, fp[j], j, -0.42 * 10.5 - c.u * 0.5, 2.2 + Math.max(0, fc[j].y - 3.4) * 0.7, 0.9 * 10.5); fr(out.look, fc[j], j, 1.4, fc[j].y + 0.2, 0); } },
       ] },
@@ -1495,7 +1495,7 @@ window.DuelScene = (() => {
       finisher: { pri: 3, parts: [
         // over the attacker's shoulder, low, onto the target as the orb swells; then wide from the side as it drives in
         { len: 0.8, cut: 1, slow: 0.5, fov: 36, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, -(3.4 + c.u * 0.6), fc[i].y + 0.6 + c.u * 0.3, 11.5); fr(out.look, MID, i, 0.3, 2.8 + Math.max(0, fc[i].y - 3.6) * 0.6, 0); } },
-        { len: 1.1, cut: 1, slow: 0.7, fov: 40, omega: 3, pose(c, out) { const i = c.x; fr(out.pos, MID, i, -1.5, 1.6 + c.u * 0.4, 12.5); fr(out.look, MID, i, 1.5, 2.4, 0); } },
+        { len: 1.1, cut: 1, slow: 0.7, fov: 40, omega: 3, pose(c, out) { const i = c.x, hi = Math.max(0, fc[i].y - 3.6); fr(out.pos, MID, i, -1.5, 1.6 + c.u * 0.4 + hi * 0.5, 12.5 + hi); fr(out.look, MID, i, 1.5, 2.4 + hi * 0.75, 0); } },
       ] },
       // an exchange in Showdown: low and wide from the side, centred between them, slowly tracking the attacker
       xtrack: { pri: 3, len: 1.4, fov: 34, omega: 4, pose(c, out) { const i = c.x; const m = out.look.lerpVectors(fc[0], fc[1], 0.5); m.lerp(fc[i], 0.15); fr(out.pos, m, i, -1.2 + c.u * 1.6, 1.7, 11.5); out.look.y = 2.6 + Math.max(0, Math.max(fc[0].y, fc[1].y) - 3.6) * 0.5; } },
@@ -1656,6 +1656,7 @@ window.DuelScene = (() => {
         const sc = g.size * (0.5 + 0.5 * Math.min(1, u * 5));
         g.s.scale.setScalar(g.flick ? sc * (0.7 + Math.random() * 0.5) : sc); g.s.material.rotation = g.spin * (g.t - g.delay) * 0.3;
         g.s.material.opacity = g.flick && Math.random() < 0.35 ? 0.25 : 1;   // a fizzled spell sputters on its way
+        if (g.flick && u < 1 && Math.random() < dt * 40) { burst(g.s.position, 1, 2.5, Math.random() < 0.5 ? RED : SMOKE, { shard: true, size: 0.16, life: 0.4, grav: 6, k: 1.2 }); if (Math.random() < 0.3) smoke(g.s.position, 1, 0.4, { size: 0.7, life: 0.6, op: 0.3 }); }
         g.tr.forEach((x, k) => { bez(x.position, g, Math.max(0, e - 0.05 * (k + 1))); x.scale.setScalar(sc * (0.55 - k * 0.15)); x.visible = u > 0.05; });
         // an orb's comet tail: a bright streak back along its path
         if (g.tail) { bez(_p1, g, Math.max(0, e - 0.26)); const fl = g.flick ? (Math.random() < 0.4 ? 0.3 : 1) : 1; strip(g.tail.core, _p1, g.s.position, sc * 0.2, fl * Math.min(1, u * 6)); strip(g.tail.glow, _p1, g.s.position, sc * 0.62, 0.45 * fl * Math.min(1, u * 6)); }
