@@ -52,19 +52,18 @@ with sync_playwright() as p:
         # let the fight settle (the page may restart the loop once as it mounts)
         time.sleep(2.5)
         # a cut: out in 0.3 s for 0.6 s, back on the top of a bar
-        # (the raid's own attacks also cut the music, and can call a test cut off, so try a few times)
-        for attempt in range(4):
-            page.evaluate('BossAudio.cut(0.3, 0.6)'); time.sleep(1.3)
-            s = st(page); l = s['last']
-            if l['why'] == 'cut': break
-            time.sleep(2)
+        # the raid's own attacks cut the music too: hold them off while the test drives cut and uncut
+        page.evaluate("BossAudio._cut = BossAudio.cut; BossAudio._uncut = BossAudio.uncut; BossAudio.cut = () => {}; BossAudio.uncut = () => {}")
+        page.evaluate('BossAudio._cut(0.3, 0.6)'); time.sleep(1.3)
+        s = st(page); l = s['last']
         ok(l['why'] == 'cut' and on_grid(l['pos'], BAR), f"a cut comes back on the top of a bar ({l})")
         # a block before the music drops: nothing changes
         before = st(page)['last']
-        page.evaluate('BossAudio.cut(1.0, 0.8)'); time.sleep(0.3); page.evaluate('BossAudio.uncut()'); time.sleep(1.8)
+        page.evaluate('BossAudio._cut(1.0, 0.8)'); time.sleep(0.3); page.evaluate('BossAudio._uncut()'); time.sleep(1.8)
         ok(st(page)['last'] == before, 'a block before the cut leaves the loop alone')
         # a block during the cut: back now, on a bar
-        page.evaluate('BossAudio.cut(0.1, 1.5)'); time.sleep(0.6); page.evaluate('BossAudio.uncut()'); time.sleep(0.3)
+        page.evaluate('BossAudio._cut(0.1, 1.5)'); time.sleep(0.6); page.evaluate('BossAudio._uncut()'); time.sleep(0.3)
+        page.evaluate('BossAudio.cut = BossAudio._cut; BossAudio.uncut = BossAudio._uncut')
         l = st(page)['last']
         ok(l['why'] == 'uncut' and on_grid(l['pos'], BAR), f'a block during the cut brings it back on a bar ({l})')
         # phase 2: on a beat of the old loop, from the new loop's first bar
