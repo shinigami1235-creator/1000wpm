@@ -249,7 +249,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
           const bm = K.fx.beam(v1, v2, '#f2c230', 0.35, 0.7, { grow: 0.25, follow: (a, b) => { if (!st[id].up || !st.patch.up) { bm.t = bm.life; return; } mouthWorld('patch', a); faceWorld(id, b); } });
           K.fx.burst(v2, 26, '#ffe08a', { speed: 5, g: -2, life: 1, size: 0.3 }); st[id].flash = 1;
           // a gold ring round each mended head (it was one big disc behind the hull that hid the necks)
-          K.fx.shock(v2, C('#f2c230'), 0.6, 4.5, 0.6, { flat: false, face: ctx.camPos, w: 0.2, k: 0.8 });
+          K.fx.shock(v2, C('#f2c230'), 0.5, 3, 0.5, { flat: false, face: ctx.camPos, w: 0.25, k: 0.7 });
         }
         K.fx.light(v1, '#f2c230', 30, 3);
       }
