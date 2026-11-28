@@ -87,6 +87,7 @@ Router.register('duel', (() => {
             <li>When time is up, or you're both done, the bots attack: 1 to 3 words a shot, 4 to 6 a double shot, 7 to 9 a dash strike, all ${C.words} the finisher.</li>
             <li>Accuracy sets the damage. A round with no wrong key is a crit, 1.5 times the damage.</li>
             <li>Whoever finishes first strikes first. Finish all ${C.words} early and you may dodge the other attack.</li>
+            <li>About every other round one word is a spell, the same one for both of you. Type it with no wrong key and it casts after the strikes. A typo in it fizzles.</li>
             <li>Each side has ${C.hp} HP for the whole match. First to ${C.winRounds} rounds wins, or empty the other bot's HP.</li>
             <li>Showdown has its own MMR, separate from Clash.</li>
           </ul>
@@ -238,7 +239,7 @@ Router.register('duel', (() => {
 
   // ---------- the fight ----------
   function fight(i) {
-    mode = 'fight'; info = i; endShown = false; fog = 0; typedWas = [0, 0];
+    mode = 'fight'; info = i; endShown = false; fog = 0; typedWas = [0, 0]; hpAt = [0, 0];
     const P = info.players, me = info.you;
     const L = 0, R = 1;
     // each side's bot: yours from the hangar (owned parts only), everyone else's seeded from their name, Art's in his cyan
@@ -295,7 +296,7 @@ Router.register('duel', (() => {
     phaseWas = ''; countWas = 0;
     // a keyboard you own only changes how your shots fly (Compact three bolts, Split two that cross, Arc forked lightning)
     sideCols = cols;
-    scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ color: cols[k], bot: bots[k], kb: k === me ? Showdown.kbStyle() : Showdown.kbOf(P[k].id), name: P[k].name })) });
+    scene = DuelScene.mount(stage, { me, audio: snd, onSpellHit: i => onSpellHit(i), sides: [0, 1].map(k => ({ color: cols[k], bot: bots[k], kb: k === me ? Showdown.kbStyle() : Showdown.kbOf(P[k].id), name: P[k].name })) });
     window._duel = { scene: () => scene };   // tests
     // load and play every effect once behind the cover, then tell the server this side is ready.
     // The countdown starts only when both sides are; a stuck load gives up after 12 seconds.
@@ -378,21 +379,62 @@ Router.register('duel', (() => {
   function screenOf(k) { const o = scene && scene.screen(k, {}); return o || { x: k ? el.clientWidth * 0.7 : el.clientWidth * 0.3, y: 120 }; }
   function num(k, text, cls) { const p = screenOf(k); MultiUI.pop(el.querySelector('[data-nums]'), p.x, p.y, text, cls); }
 
+  // damage numbers that wait for what's on screen: word hits by `side:landAt`, spell hits per target
+  const pend = new Map(), spellQ = [[], []], spellCredit = [0, 0], spellCreditAt = [0, 0];
+  let hpAt = [0, 0];
+  function landed(k) {
+    const p = pend.get(k);
+    if (!p) return;
+    p.landed = true;
+    if (p.ev) { clearTimeout(p.timer); pend.delete(k); showHit(p.ev); }
+    // shots that never get a hit (blocked) are dropped after a while
+    for (const [k2, q] of pend) if (performance.now() - q.at > 4000) { clearTimeout(q.timer); pend.delete(k2); }
+  }
+  function onSpellHit(i) {
+    const q = spellQ[i].shift();
+    if (q) { clearTimeout(q.timer); showHit(q.ev); } else { spellCredit[i] = Math.min(3, spellCredit[i] + 1); spellCreditAt[i] = performance.now(); }
+  }
+  function flushHits() {
+    for (const [, p] of pend) { clearTimeout(p.timer); if (p.ev) showHit(p.ev); }
+    pend.clear();
+    spellQ.forEach(q => { q.splice(0).forEach(x => { clearTimeout(x.timer); showHit(x.ev); }); });
+    spellCredit[0] = spellCredit[1] = 0;
+  }
+  function showHit(ev) {
+    if (!info || !el) return;
+    const me = info.you;
+    num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
+    if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
+    else if (ev.kind === 'reflect') scene.ricochet(ev.side, ev.to);   // packet storm sends it back
+    else if (ev.kind !== 'word' && ev.kind !== 'spell') scene.react(ev.to, 'hit', ev.dmg >= 40 ? 1 : 0.5);   // a spell's own effect plays its hits
+    // a number that waited never puts back HP that a later hit already took
+    if (ev.at >= hpAt[ev.to]) { hpAt[ev.to] = ev.at; hpTo(ev.to, ev.hp); }
+  }
+
   function event(ev) {
     const me = info.you;
     switch (ev.type) {
       case 'shot': {
-        // a word typed with a slip under 88% accuracy only grazes (the damage is the rules', the look is ours)
-        const s = lastState && lastState.sides[ev.side];
-        scene.shot(ev.side, ev.tier, null, { color: sideCols[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock(), graze: !ev.crit && !!s && s.acc != null && s.acc < 88 });
+        // a word typed with a slip under 88% accuracy only grazes (the damage is the rules', the look is ours).
+        // Its damage number and the HP bar wait for the shot to land on screen: hit stop, slow motion and the
+        // Clash beam lock stretch the flight past the rules' 380 ms (28 Nov 2026)
+        const s = lastState && lastState.sides[ev.side], k = ev.side + ':' + ev.landAt;
+        pend.set(k, { landed: false, ev: null, at: performance.now() });
+        scene.shot(ev.side, ev.tier, () => landed(k), { color: sideCols[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock(), graze: !ev.crit && !!s && s.acc != null && s.acc < 88 });
         break;
       }
       case 'hit': {
-        num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
-        if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
-        else if (ev.kind === 'reflect') scene.ricochet(ev.side, ev.to);   // packet storm sends it back
-        else if (ev.kind !== 'word' && ev.kind !== 'spell') scene.react(ev.to, 'hit', ev.dmg >= 40 ? 1 : 0.5);   // a spell's own effect plays its hits
-        hpTo(ev.to, ev.hp);
+        if (ev.kind === 'word') {
+          const k = ev.side + ':' + ev.at, p = pend.get(k);
+          if (p && !p.landed) { p.ev = ev; p.timer = setTimeout(() => landed(k), 1500); break; }
+          pend.delete(k);
+        }
+        // a spell's hit shows as its effect visibly lands on the bot (Combat.FX tells the scene, onSpellHit below)
+        if (ev.kind === 'spell' && scene && scene.info()) {
+          if (spellCredit[ev.to] > 0 && performance.now() - spellCreditAt[ev.to] < 400) spellCredit[ev.to]--;
+          else { const q = { ev, timer: 0 }; q.timer = setTimeout(() => { const i = spellQ[ev.to].indexOf(q); if (i >= 0) spellQ[ev.to].splice(i, 1); showHit(ev); }, 450); spellQ[ev.to].push(q); break; }
+        }
+        showHit(ev);
         break;
       }
       case 'cast': {
@@ -411,7 +453,7 @@ Router.register('duel', (() => {
       case 'locked': if (ev.side === me) flashLock(); break;
       case 'effect': effect(ev); break;
       case 'status': if (['ward', 'hyper', 'root', 'split'].includes(ev.name)) scene.aura(ev.side, ev.name, ev.on); break;
-      case 'round': round(ev); break;
+      case 'round': flushHits(); hpAt = [0, 0]; round(ev); break;
       case 'combo': if (ev.side === me && ev.combo && ev.combo % 5 === 0 && ev.combo > ev.from) WPM.track('combo', { n: ev.combo, mode: 'duel' });
         if (ev.side === me && ev.tier > 0 && ev.combo > ev.from && Combat.TIERS[ev.tier].at === ev.combo) { banner(Combat.TIERS[ev.tier].name, 'tier', 900); if (snd) snd.combat('tierUp', ev.tier); }
         if (ev.side === me && ev.combo < ev.from && ev.from >= 5 && snd) snd.combat('break'); break;
@@ -744,9 +786,11 @@ Router.register('duel', (() => {
     if (scene) { scene.dispose(); scene = null; }
     if (snd) { snd.dispose(); snd = null; }
     if (onDoc) { document.removeEventListener('keydown', onDoc); onDoc = null; }
+    flushHitsQuiet();
     keys = null; ty = null; info = null; lastState = null; waitC = null;
     clearTimeout(incT); clearTimeout(bannerT); clearTimeout(endT); clearTimeout(resT);
   }
+  function flushHitsQuiet() { for (const [, p] of pend) clearTimeout(p.timer); pend.clear(); spellQ.forEach(q => { q.splice(0).forEach(x => clearTimeout(x.timer)); }); }
   function unmount() {
     stopFight();
     off.forEach(f => f()); off = [];
