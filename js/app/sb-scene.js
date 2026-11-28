@@ -406,6 +406,7 @@ window.SuperScene = (() => {
         bots = SuperBots.create(THREE, scene, K, { three: { ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, artPos, fx, host,
           focus: out => out.copy(model && model.focus ? model.focus : anchors.core),
           // a tall boss (the Compiler) has the bots fly higher, so the camera can look up at both
+          lane: () => (model && model.botLane) || null,
           liftK: () => Math.max(0, ((model && model.height) || 16) - 16) * 0.25,
           target: (out, i) => worldOf(i % 3 === 2 ? 'body' : 'core', out),
           sfx: (n, a) => mctx.sfx(n, a) });

@@ -972,9 +972,10 @@ SuperModels.compiler = function (THREE, K, ctx) {
     props.userData.tick = (t, pal) => { barMat.color.copy(pal.a).multiplyScalar(1 + Math.sin(t * 2) * 0.3); pm.userData.u.uSeam.value.copy(pal.a).multiplyScalar(0.5); };
   }
 
-  // the game shot (sb-cam.js) holds Art's bot to the right of the screen, so the code laid over it never hides the bot
+  // Art's bot keeps to a lane right of the tower (botLane, world x), so from the game shot the code laid over the
+  // screen never hides it (sb-bots.js, sb-cam.js)
   return { group, props, update, event, apply, anchor, worldOf, attacker, subj, packets, reset, shots, dispose() {}, height: 27, width: 50, camY: 9, focus: new V(0, 12, -6), face: 'core',
-    botBox: [0.5, 0.76, -0.3, 0.02], camSide: -1,
+    botLane: [9.5, 13],
     info: () => ({ stack: blocks.filter(b => b.mode === 'col').length, blocks: blocks.length, laser: laser ? (laser.fired ? 'fired' : 'charging') : null, drones: drones.size }),
     // joint check: the elbow's bend (0 = straight) and which way it points; it must stay behind the arm
     // (toward the pole), so the forearm always folds forward like an elbow, never backward

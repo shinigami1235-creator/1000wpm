@@ -27,9 +27,8 @@ window.SuperCam = (() => {
     const game = { pos: new V(), look: new V(), fov: 42, push: 0, threat: 0 };
     const tmp = camera.clone(), fw = new V(), rt = new V(), ndc = new V(), A = new V(), Ag = new V();
     const artBody = out => (o.art ? o.art(out) : out.set(0, 3.2, 15));
-    // forward on the ground from the bot toward the boss, and the camera's side of the bot (its right, or its left
-    // when the boss says camSide -1)
-    function axes(a, f) { fw.set(f.x - a.x, 0, f.z - a.z); const L = fw.length() || 1; fw.divideScalar(L); const sd = (M() && M().camSide) || 1; rt.set(-fw.z * sd, 0, fw.x * sd); return L; }
+    // forward on the ground from the bot toward the boss, and the bot's right
+    function axes(a, f) { fw.set(f.x - a.x, 0, f.z - a.z); const L = fw.length() || 1; fw.divideScalar(L); rt.set(-fw.z, 0, fw.x); return L; }
     // nudge the look point so a subject lands at (x, y) on screen, or inside a box [x0, x1, y0, y1]
     function hold(out, p, box, fov) {
       tmp.position.copy(out.pos); tmp.fov = fov; tmp.aspect = camera.aspect || 1.6; tmp.updateProjectionMatrix();
@@ -60,6 +59,13 @@ window.SuperCam = (() => {
       artBody(A); Ag.set(A.x, 0, A.z);
       const fx = f.x, fz = f.z;
       const L = axes(A, { x: fx, z: fz });
+      if (m && m.botLane) {
+        // a boss with a lane for the bot (the Compiler): the camera stays square on the boss and the bot keeps to its side
+        out.pos.set(f.x + 1.5 + Math.sin(c.t * 0.21) * 0.5, Math.max(4, A.y + 0.8) + game.threat * 0.8 - game.push * 1.2, f.z + need + 4 - game.push * 6);
+        out.look.set(f.x + 1.2, f.y - 1.5 - game.push * 0.6, f.z);
+        out.fov = FOV - game.push * 3 + game.threat * 2;
+        return;
+      }
       const back = Math.max(11, need - L + 2) - game.push * 5 + game.threat * 1.5;
       const t = c.t;
       // the camera takes half the bot's sideways moves, so its patch of the arena stays in the frame
@@ -70,7 +76,7 @@ window.SuperCam = (() => {
       out.look.set(fx, f.y - game.push * 0.6, fz).lerp(A, 0.12);
       out.fov = FOV - game.push * 3 + game.threat * 2;
       // the bot stays in the lower left third, above the word line (a boss may say where else: the Compiler's screen)
-      hold(out, A, (m && m.botBox) || [-0.45, -0.15, -0.06, 0.2], out.fov);
+      hold(out, A, [-0.45, -0.15, -0.06, 0.2], out.fov);
     }
     const H = () => (M() && M().height) || 16;
     const shots = {

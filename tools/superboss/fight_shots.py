@@ -10,7 +10,7 @@ python3 tools/superboss/fight_shots.py <boss> <out_dir> [options]
   --bench                frame time (ms, draw calls) with 4 supporters on stage, before the fight starts
   --dial typemaster      the difficulty dial
   --wpm 165              the bot's speed
-  --keep                 to the kill: top Art's HP back up under 40 (the software renderer starves the bot's typing,
+  --keep                 to the kill: top Art's HP back up under 60 and cut the boss to phase 3 at 100 s, to 4% at 150 s (the software renderer starves the bot's typing,
                          so it loses fights it wins on a real machine; this checks the whole fight runs clean to the end)
 Writes NNN_<t>.png, log.json (status, hp, shot, errors) and prints a summary.
 """
@@ -64,7 +64,9 @@ with sync_playwright() as pw:
     while time.time() - t0 < limit:
         el = time.time() - t0
         if a.keep:
-            page.evaluate("(() => { const f = window._sb ? _sb.fight() : window._sbw && _sbw.sim && _sbw.sim(); if (f && f.state().art.hp < 40) f.debug.artHp(100); })()")
+            # Art's HP topped up under 60, and the boss's HP cut to phase 3 at 100 s and near the end at 150 s,
+            # so every phase, the finish and the kill play within the run
+            page.evaluate("(el) => { const f = window._sb ? _sb.fight() : window._sbw && _sbw.sim && _sbw.sim(); if (!f || !f.state || !f.debug) return; const s = f.state(); if (s.status !== 'fight') return; if (s.art.hp < 60) f.debug.artHp(100); if (el > 100 && s.hp / s.maxHp > 0.32) f.debug.hp(0.3); if (el > 150 && s.hp / s.maxHp > 0.05) f.debug.hp(0.04); }", el)
         for i, (at, it, who) in enumerate(sup):
             if i not in sent and el >= at and a.page == 'stream':
                 sent.add(i); page.evaluate(f"_sb.support('{it}', '{who}')")

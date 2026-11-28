@@ -68,7 +68,8 @@ window.SuperBots = (() => {
     function pickGoal() {
       const s = window.BotFighter ? BotFighter.stanceOf(wpm) : 1;
       if (Math.random() < 0.72) M.side = -M.side;
-      M.goal.x = M.side * rnd(1.2, 2.6 + s * 1.3);
+      const ln = o.lane && o.lane();
+      M.goal.x = ln ? (ln[0] + ln[1]) / 2 + M.side * rnd(0.3, (ln[1] - ln[0]) / 2) : M.side * rnd(1.2, 2.6 + s * 1.3);
       M.goal.z = ZONE.zFar - 1.3 - s * 1.6 + rnd(-1.4, 1.4);
       M.goalLift = rnd(0.7, 1.9) + s * 0.25 + o.liftK();
       M.nextAt = t + rnd(1.0, 2.1) / (0.85 + s * 0.18);
@@ -116,7 +117,8 @@ window.SuperBots = (() => {
     }
     function spotFor(i) {
       for (let k = 0; k < SPOTS.length; k++) {
-        const s = SPOTS[(i + k) % SPOTS.length];
+        const s = SPOTS[(i + k) % SPOTS.length].slice(), ln = o.lane && o.lane();
+        if (ln) s[0] = clamp(s[0] * 0.4 + (ln[0] + ln[1]) / 2, ln[0] - 1.5, ln[1] + 1.5);
         if (Math.hypot(s[0] - M.p.x, s[1] - M.p.z) > 4.5) return new V(s[0], 0, s[1]);
       }
       return new V(SPOTS[i % SPOTS.length][0], 0, SPOTS[i % SPOTS.length][1]);
@@ -297,8 +299,8 @@ window.SuperBots = (() => {
       let w = 3.0, gx = M.goal.x, gz = M.goal.z, gl = M.goalLift;
       const threat = c.threatIn != null && c.threatIn < 1.6;
       if (c.lost) { gl = -1.4; w = 2; }
-      else if (c.dead) { gx = 0; gz = 13.5; gl = 1.6 + o.liftK(); w = 1.6; }
-      else if (c.finishing) { gx = Math.sin(t * 0.7) * 1.2; gz = 12.2; gl = 1.5 + o.liftK(); w = 2.2; }
+      else if (c.dead) { gx = o.lane && o.lane() ? (o.lane()[0] + o.lane()[1]) / 2 : 0; gz = 13.5; gl = 1.6 + o.liftK(); w = 1.6; }
+      else if (c.finishing) { gx = Math.sin(t * 0.7) * 1.2 + (o.lane && o.lane() ? (o.lane()[0] + o.lane()[1]) / 2 : 0); gz = 12.2; gl = 1.5 + o.liftK(); w = 2.2; }
       else if (chase) {
         // the drop chase: along a curve to the item, weaving, arriving as the rules hand it over
         const u = clamp((t - chase.t0) / chase.len, 0, 1), e = sm(u);
@@ -313,7 +315,7 @@ window.SuperBots = (() => {
       } else {
         if (t >= M.nextAt && t >= holdUntil) pickGoal();
         // never still: a sway on top of the goal, wider the faster he types
-        const s = window.BotFighter ? BotFighter.stanceOf(wpm) : 1, k = (threat ? 0.45 : 1) * (0.6 + s * 0.2);
+        const s = window.BotFighter ? BotFighter.stanceOf(wpm) : 1, k = (threat ? 0.45 : 1) * (0.6 + s * 0.2) * (o.lane && o.lane() ? 0.6 : 1);
         gx += Math.sin(t * 1.15 + M.sway) * 1.1 * k + Math.sin(t * 2.7) * 0.35 * k;
         gz += Math.sin(t * 0.83 + M.sway * 2) * 0.8 * k;
         gl += Math.sin(t * 1.6 + M.sway) * 0.45 * k;
@@ -340,7 +342,8 @@ window.SuperBots = (() => {
       M.liftV += ((gl - M.lift) * w * w - 2 * z * w * M.liftV) * dt;
       M.p.x += M.v.x * dt; M.p.z += M.v.z * dt; M.lift += M.liftV * dt;
       // the walls of its patch: soft, so a knock-back slides along them
-      if (Math.abs(M.p.x) > ZONE.x) { M.p.x = Math.sign(M.p.x) * ZONE.x; M.v.x *= -0.3; }
+      const ln = o.lane && o.lane(), xl = ln ? ln[0] - 1.5 : -ZONE.x, xh = ln ? ln[1] + 1.5 : ZONE.x;
+      if (M.p.x < xl || M.p.x > xh) { M.p.x = clamp(M.p.x, xl, xh); M.v.x *= -0.3; }
       if (M.p.z < ZONE.zNear) { M.p.z = ZONE.zNear; M.v.z = Math.abs(M.v.z) * 0.3; }
       if (M.p.z > ZONE.zFar) { M.p.z = ZONE.zFar; M.v.z = -Math.abs(M.v.z) * 0.3; }
       if (!c.lost) M.lift = clamp(M.lift, ZONE.lo - (chase ? 0.4 : 0), ZONE.hi + 1 + o.liftK());
