@@ -666,7 +666,7 @@ Router.register('party', (() => {
     return {
       label: 'RUN ENDED', title: `${cleared} of ${of} fights cleared`,
       sub: `You left ${st && st.boss ? `the fight with ${st.boss.name}` : 'the run'}.`,
-      stats: [['Time played', UI.clock(Math.round(ms / 1000))], ['Damage dealt', S.dmg || 0], ['wpm', wpm], ['Accuracy', acc + '%'], ['Best team combo', st ? st.teamCombo : 0]],
+      stats: [['Time played', UI.clock(Math.round(ms / 1000))], ['Damage dealt', S.dmg || 0], ['wpm', wpm], ['Accuracy', acc + '%'], ['Team combo', st ? st.teamCombo : 0]],
       xp: reward ? reward.xp : 0, coins: reward ? reward.coins : 0,
       share: shareLine(cleared, of, S.dmg || 0, wpm, false),
     };
