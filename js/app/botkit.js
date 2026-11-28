@@ -247,7 +247,7 @@ window.BotKit = (() => {
       prism: ['#ff3b3b', '#ff9a2e', '#ffe14a', '#4dff7a', '#3bc8ff', '#5a6bff', '#b45cff'].map((c2, i) => `<path d="M150 142L198 ${112 + i * 10}v8z" fill="${c2}" opacity=".85"/>`).join('') + '<path d="M148 116l12 26-12 26-12-26z" fill="#e9f3ff" stroke="#fff" stroke-width="2"/><path d="M148 116v52M136 142h24" stroke="#9fd6ff" stroke-width="1.5"/>',
       pulse: `<circle cx="148" cy="142" r="28" stroke="${acc}" stroke-width="2.5" fill="none" opacity=".7"/><path d="M148 156l-13-13a8 8 0 0 1 13-10a8 8 0 0 1 13 10z" fill="#ff2d63"/><path d="M114 144h18l5-10 6 22 6-30 6 18h29" stroke="${acc}" stroke-width="3" fill="none" stroke-linejoin="round"/>`,
     };
-    const orbArt = it.part === 'orb' ? ORBS[it.v] || ORBS.core : '';
+    const orbArt = it.part === 'orb' ? `<g transform="translate(148 142) scale(1.45) translate(-148 -142)">${ORBS[it.v] || ORBS.core}</g>` : '';
     const moves = it.part === 'emote' || it.part === 'victory' ? (it.part === 'victory' && (it.v === 'spin' || it.v === 'flip' || it.v === 'dance') ? spark(40, 36, '#ffd23d') + spark(164, 34, '#ff6fae', 7) : '') + (MOVES[it.v] || '') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
       <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}${arBack}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}

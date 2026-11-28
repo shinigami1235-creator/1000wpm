@@ -100,7 +100,7 @@ window.BotFighter = (() => {
   const TEXC = {}, GEOC = {};
   function tex(THREE, name) {
     if (TEXC[name]) return TEXC[name];
-    const N = ['cloud', 'molten', 'ring', 'halo', 'ecg', 'flat'].includes(name) ? 128 : 64, h = N / 2;
+    const N = ['cloud', 'swirl', 'molten', 'ring', 'halo', 'ecg', 'flat'].includes(name) ? 128 : 64, h = N / 2;
     const cv = document.createElement('canvas'); cv.width = N; cv.height = name === 'flame' ? N * 2 : N;
     const c = cv.getContext('2d'), R = rng(name.length * 7919 + name.charCodeAt(0));
     const radial = (x, y, r, stops) => { const g = c.createRadialGradient(x, y, 0, x, y, r); stops.forEach(([o, s]) => g.addColorStop(o, s)); return g; };
@@ -133,14 +133,23 @@ window.BotFighter = (() => {
       blob(h, h, h * 0.35, 0.6);
       c.globalCompositeOperation = 'destination-out';
       for (let k = 0; k < 2; k++) for (let j = 2; j < 12; j++) { const a = k * Math.PI + j * 0.38 + 0.9, d = 4 + j * 3.6; blob(h + Math.cos(a) * d, h + Math.sin(a) * d, h * 0.1, 0.5); }
+    } else if (name === 'swirl') {   // a spiral of gas: two arms winding out of a bright middle, dark lanes between
+      c.globalCompositeOperation = 'lighter'; c.filter = 'blur(2px)';
+      for (let k = 0; k < 2; k++) for (let j = 0; j < 60; j++) {
+        const u = j / 59, a = k * Math.PI + u * 4.2, d = 3 + u * h * 0.78, w = h * (0.16 - 0.1 * u);
+        blob(h + Math.cos(a) * d, h + Math.sin(a) * d, w, 0.2 * (1 - 0.7 * u));
+        if (j % 5 === 0) blob(h + Math.cos(a + 0.3) * d * 1.08, h + Math.sin(a + 0.3) * d * 1.08, w * 0.6, 0.12);
+      }
+      c.filter = 'none'; blob(h, h, h * 0.3, 0.75);
+      c.globalCompositeOperation = 'destination-out';
+      for (let k = 0; k < 2; k++) for (let j = 6; j < 40; j++) { const u = j / 39, a = k * Math.PI + u * 4.2 + 1.3, d = 3 + u * h * 0.7; blob(h + Math.cos(a) * d, h + Math.sin(a) * d, h * 0.09, 0.35); }
     } else if (name === 'molten') {   // white-hot inside, red at the rim, with dark crust floating on it
       c.fillStyle = radial(h, h, h, [[0, '#fffbe8'], [0.2, '#ffe27a'], [0.42, '#ff9a2a'], [0.62, 'rgba(226,60,12,0.9)'], [0.8, 'rgba(140,20,4,0.45)'], [1, 'rgba(80,8,0,0)']]); c.fillRect(0, 0, N, N);
       c.globalCompositeOperation = 'source-atop'; c.filter = 'blur(2px)';
       for (let i = 0; i < 26; i++) { const a = R() * TAU, d = h * (0.3 + R() * 0.42), r = h * (0.05 + R() * 0.09); c.fillStyle = `rgba(${60 + R() * 40 | 0},${8 + R() * 10 | 0},0,${0.5 + R() * 0.35})`; c.beginPath(); c.arc(h + Math.cos(a) * d, h + Math.sin(a) * d, r, 0, TAU); c.fill(); }
     } else if (name === 'flame') {   // a tongue of fire, its base at the bottom
-      const H2 = N * 2; c.filter = 'blur(2.5px)';
-      const g = c.createLinearGradient(0, H2, 0, 0); g.addColorStop(0, 'rgba(255,250,220,1)'); g.addColorStop(0.22, 'rgba(255,214,90,1)'); g.addColorStop(0.55, 'rgba(255,110,24,0.85)'); g.addColorStop(1, 'rgba(200,30,0,0)');
-      c.fillStyle = g; c.beginPath(); c.moveTo(N / 2, 6); c.bezierCurveTo(N * 0.6, H2 * 0.35, N * 0.92, H2 * 0.6, N * 0.8, H2 * 0.8); c.bezierCurveTo(N * 0.7, H2 * 0.97, N * 0.3, H2 * 0.97, N * 0.2, H2 * 0.8); c.bezierCurveTo(N * 0.08, H2 * 0.6, N * 0.4, H2 * 0.35, N / 2, 6); c.fill();
+      const H2 = N * 2; const g = c.createLinearGradient(0, H2, 0, 0); g.addColorStop(0, 'rgba(255,250,220,1)'); g.addColorStop(0.22, 'rgba(255,214,90,1)'); g.addColorStop(0.55, 'rgba(255,110,24,0.85)'); g.addColorStop(1, 'rgba(200,30,0,0)');
+      c.filter = 'blur(4px)'; c.fillStyle = g; c.beginPath(); c.moveTo(N * 0.55, 10); c.bezierCurveTo(N * 0.5, H2 * 0.3, N * 0.95, H2 * 0.5, N * 0.86, H2 * 0.78); c.bezierCurveTo(N * 0.78, H2 * 0.98, N * 0.22, H2 * 0.98, N * 0.14, H2 * 0.78); c.bezierCurveTo(N * 0.06, H2 * 0.52, N * 0.42, H2 * 0.4, N * 0.55, 10); c.fill();
     } else if (name === 'ring') { c.strokeStyle = '#fff'; c.filter = 'blur(3px)'; c.lineWidth = 8; c.beginPath(); c.arc(h, h, h * 0.8, 0, TAU); c.stroke(); c.filter = 'none'; c.lineWidth = 2.5; c.beginPath(); c.arc(h, h, h * 0.8, 0, TAU); c.stroke(); }
     else if (name === 'halo') {   // a black hole's lensed light: a thin ring, the far side of the disk bent over the top, a fainter band under
       c.strokeStyle = '#fff'; c.filter = 'blur(5px)'; c.lineWidth = 11; c.beginPath(); c.arc(h, h, h * 0.6, Math.PI * 1.06, Math.PI * 1.94); c.stroke();
@@ -161,7 +170,7 @@ window.BotFighter = (() => {
     if (name === 'ball') g = new THREE.SphereGeometry(1, 24, 16);
     else if (name === 'shard') { g = flat(THREE, new THREE.LatheGeometry([new THREE.Vector2(0, 0), new THREE.Vector2(0.2, 0.12), new THREE.Vector2(0.21, 0.64), new THREE.Vector2(0, 1)], 6)); g.rotateX(Math.PI / 2); }   // an ice column, base at the middle
     else if (name === 'gem') g = flat(THREE, new THREE.LatheGeometry([new THREE.Vector2(0, -1), new THREE.Vector2(0.5, -0.2), new THREE.Vector2(0.5, 0.25), new THREE.Vector2(0, 1)], 3));   // a three-sided glass shard
-    else if (name === 'disk') g = new THREE.RingGeometry(1, 2.5, 72, 1);
+    else if (name === 'disk') g = new THREE.RingGeometry(1, 2.2, 72, 1);
     else if (name === 'fan') {   // seven beams leaving the prism toward +z, one per colour, spread in y
       const P = [], C = [], D = [], S = [], RB = ['#ff3b3b', '#ff9a2e', '#ffe14a', '#4dff7a', '#3bc8ff', '#5a6bff', '#b45cff'];
       const col = new THREE.Color();
@@ -218,7 +227,7 @@ window.BotFighter = (() => {
     uniforms: { uT: { value: 0 }, uOp: { value: 1 }, cHot: { value: hot }, cCol: { value: col } },
     vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `uniform float uT; uniform float uOp; uniform vec3 cHot; uniform vec3 cCol; varying vec2 vP;
-      void main(){ float r = length(vP), a = atan(vP.y, vP.x), k = clamp((r - 1.0) / 1.5, 0.0, 1.0);
+      void main(){ float r = length(vP), a = atan(vP.y, vP.x), k = clamp((r - 1.0) / 1.2, 0.0, 1.0);
         float sw = a + uT * (2.6 / r);   // the inside turns faster
         float bands = 0.5 + 0.3 * sin(sw * 3.0 - log(r) * 10.0) + 0.2 * sin(sw * 7.0 + r * 9.0);
         float dop = 0.55 + 0.75 * (0.5 + 0.5 * cos(a));   // the side turning toward you is brighter
@@ -256,7 +265,7 @@ window.BotFighter = (() => {
         const { THREE, col } = c, hsl = {}; col.getHSL(hsl);
         const a = new THREE.Color().setHSL(hsl.h, 0.85, 0.55), b = new THREE.Color().setHSL((hsl.h + 0.42) % 1, 0.9, 0.5), d = new THREE.Color().setHSL((hsl.h + 0.7) % 1, 0.95, 0.4);
         c.pal = { a, b, d, star: a.clone().lerp(WHITE, 0.75).multiplyScalar(1.5) };
-        c.clouds = [[d, 0.7, 1, 4.4], [b, 0.65, -1, 3.4], [a, 0.7, 1, 2.3]].map(([k, m, dir, sz], i) => { const s = c.sprite('cloud', k.clone().multiplyScalar(m)); s.material.rotation = i * 2.1; s.userData = { dir, sz, spin: 0.5 + 0.35 * i }; return s; });
+        c.clouds = [[d, 0.5, 1, 4.6, 'cloud'], [b, 0.75, -1, 3.4, 'swirl'], [a, 0.95, 1, 2.8, 'swirl']].map(([k, m, dir, sz, tx], i) => { const s = c.sprite(tx, k.clone().multiplyScalar(m)); s.material.rotation = i * 2.1; s.userData = { dir, sz, spin: [0.3, 0.7, 1.1][i] }; return s; });
         c.heart = c.sprite('glow', a.clone().lerp(WHITE, 0.5).multiplyScalar(1.1));
         c.dust = c.points(64, 'star');
         this.burst = { tex: 'cloud', size: 2.4, grow: 2.2, len: 0.45, col: b.clone().multiplyScalar(0.8) };
@@ -345,7 +354,7 @@ window.BotFighter = (() => {
         const { THREE } = c;
         c.pal = { ember: new THREE.Color('#ff9a3a'), hot: new THREE.Color('#ffe08a'), red: new THREE.Color('#ff4a12'), smoke: new THREE.Color('#5a4a44') };
         c.heat = c.sprite('glow', new THREE.Color('#ff4a10').multiplyScalar(0.9));
-        c.flames = [0, 1, 2, 3, 4, 5, 6].map(i => { const s = c.sprite('flame', new THREE.Color(i % 2 ? '#ff6a14' : '#ffa03a').multiplyScalar(1.1)); s.center.set(0.5, 0.1); return s; });
+        c.flames = [0, 1, 2, 3, 4, 5, 6].map(i => { const s = c.sprite('flame', new THREE.Color(i % 2 ? '#ff6a14' : '#ffa03a').multiplyScalar(1.1)); s.center.set(0.5 + (i - 3) * 0.09, 0.14); return s; });
         c.ball = c.sprite('molten', new THREE.Color(1.5, 1.5, 1.5));
         c.dust = c.points(72, 'dot');
         this.burst = { tex: 'molten', size: 2.0, grow: 2.4, len: 0.35, col: new THREE.Color(1.8, 1.6, 1.4) };
@@ -363,7 +372,7 @@ window.BotFighter = (() => {
             const fl2 = 0.5 + 0.5 * Math.sin(time * (9 + i * 1.7) + i * 2) * Math.sin(time * (5.3 + i) + i);
             const h = r0 * (1.9 + 1.3 * fl2) * (1 + 0.5 * ob + 0.8 * hot) * (1 - 0.7 * sour);
             s.scale.set(r0 * (1.05 + 0.2 * fl2), h, 1);
-            s.material.rotation = (i - 3) * 0.19 + 0.1 * Math.sin(time * 6 + i * 1.3);
+            s.material.rotation = (i - 3) * 0.11 + 0.12 * Math.sin(time * 5 + i * 1.3);
             s.material.opacity = 0.85 - 0.25 * sour;
           });
           // embers rising off it
@@ -374,31 +383,31 @@ window.BotFighter = (() => {
         }
         c.trails(4, 0.022, 0.11, c.pal.red, 0.85);
       },
-      sparkFx(c, sp, time) { if (sp.st === 2) sp.m.scale.multiplyScalar(0.8 + 0.3 * Math.abs(Math.sin(time * 17 + sp.slot * 3))); },
+      sparkFx(c, sp, time) { if (sp.st === 1 || sp.st === 2) sp.m.scale.multiplyScalar(0.5 + 0.2 * Math.abs(Math.sin(time * 17 + sp.slot * 3))); },
     },
 
     // a black hole: a dark centre, a bright accretion disk round it and the disk's far side bent over the top
     void: {
       sparkTex: 'dot',
-      sparkCol: c => c.pal.hot.clone().multiplyScalar(2.6),
+      sparkCol: c => c.pal.hot.clone().lerp(c.pal.rim, 0.4).multiplyScalar(2.2),
       build(c) {
         const { THREE, col, own } = c;
         const hot = new THREE.Color('#fff1d6'), rim = col.clone().lerp(new THREE.Color('#ffae5c'), 0.3);
         c.pal = { hot, rim, deep: col.clone().multiplyScalar(0.6) };
         c.hole = new THREE.Mesh(geo(THREE, 'ball'), own(new THREE.MeshBasicMaterial({ color: '#000000' }))); c.group.add(c.hole);
-        c.photon = new THREE.Mesh(geo(THREE, 'ball'), own(shellMat(THREE, hot.clone().lerp(rim, 0.5), 1.8, 5))); c.group.add(c.photon);
+        c.photon = new THREE.Mesh(geo(THREE, 'ball'), own(shellMat(THREE, hot.clone().lerp(rim, 0.5), 1.1, 6))); c.group.add(c.photon);
         c.disk = new THREE.Mesh(geo(THREE, 'disk'), own(diskMat(THREE, hot.clone(), rim.clone())));
         c.dX = new THREE.Vector3(0, 0, -1); c.dY = new THREE.Vector3(0, 1, 0); c.dN = new THREE.Vector3(1, 0, 0);
         const v = new THREE.Vector3(), u = new THREE.Vector3(), m = new THREE.Matrix4();
         c.disk.onBeforeRender = (r, s, cam) => {   // tip the disk to the camera, so it reads the same from every side
           v.setFromMatrixPosition(cam.matrixWorld); c.group.worldToLocal(v); if (v.lengthSq() < 1e-6) return; v.normalize();
           u.set(0, 1, 0).addScaledVector(v, -v.y); if (u.lengthSq() < 1e-4) u.set(0, 0, 1); u.normalize();
-          const b = 1.08 + c.wob;
+          const b = 1.33 + c.wob;
           c.dX.crossVectors(u, v).normalize(); c.dN.copy(v).multiplyScalar(Math.cos(b)).addScaledVector(u, Math.sin(b)).normalize(); c.dY.crossVectors(c.dN, c.dX);
           c.disk.quaternion.setFromRotationMatrix(m.makeBasis(c.dX, c.dY, c.dN)); c.disk.updateMatrixWorld();
         };
         c.group.add(c.disk);
-        c.lens = c.sprite('halo', rim.clone().lerp(WHITE, 0.25).multiplyScalar(1.3));
+        c.lens = c.sprite('halo', hot.clone().lerp(rim, 0.35).multiplyScalar(1.1));
         c.dust = c.points(32, 'dot');
         c.wob = 0;
         this.burst = { tex: 'glow', size: 1.6, grow: 1.0, len: 0.18, col: hot.clone().multiplyScalar(1.2) };
@@ -409,12 +418,12 @@ window.BotFighter = (() => {
         const ru = time - c.relAt, pop = ru >= 0 && ru < 0.3 ? 1 - Math.sin(Math.min(1, ru / 0.3) * Math.PI) : 1;   // the hole snaps shut on the strike and opens again
         c.group.visible = vis;
         if (!vis) return;
-        const R = r0 * 0.95, sour = c.sour;
+        const R = (c.base + 0.15 * Math.min(1, fl)) * 0.95, sour = c.sour;
         c.wob = sour * 0.35 * Math.sin(time * 47);
-        c.hole.scale.setScalar(R * pop); c.photon.scale.setScalar(R * 1.1 * pop); c.photon.material.uniforms.op.value = 0.9 + Math.min(1, fl);
-        c.disk.scale.setScalar(R * (1 + 0.6 * Math.min(1, fl)));
-        const u = c.disk.material.uniforms; u.uT.value = time * (1 + 2.5 * ob); u.uOp.value = (1.2 + 0.8 * ob + Math.min(1, fl)) * (1 - 0.6 * sour * (Math.sin(time * 80) > 0 ? 1 : 0));
-        c.lens.scale.setScalar(R * 3.7 * pop); c.lens.material.opacity = 0.45 * (1 - 0.6 * sour);
+        c.hole.scale.setScalar(R * 0.78 * pop); c.photon.scale.setScalar(R * 0.84 * pop); c.photon.material.uniforms.op.value = 0.7 + Math.min(1, fl);
+        c.disk.scale.setScalar(R);
+        const u = c.disk.material.uniforms; u.uT.value = time * (1 + 2.5 * ob); u.uOp.value = (0.85 + 0.5 * ob + Math.min(1, fl)) * (1 - 0.6 * sour * (Math.sin(time * 80) > 0 ? 1 : 0));
+        c.lens.scale.setScalar(R * 2.9 * pop); c.lens.material.opacity = 0.9 * (1 - 0.6 * sour);
         c.trails(3, 0.025, 0.08, c.pal.rim, 0.6);
       },
       // sparks circle on the disk and spiral in the longer they wait
@@ -422,7 +431,7 @@ window.BotFighter = (() => {
         const age = Math.max(0, time - sp.at), r = (0.95 - 0.25 * ch) * (0.45 + 0.55 * Math.exp(-age * 0.9)), a = sp.slot * 2.399 + time * (1.2 + 1.4 / r);
         return out.copy(c.CORE).addScaledVector(c.dX, Math.cos(a) * r).addScaledVector(c.dY, Math.sin(a) * r);
       },
-      sparkFx(c, sp, time) { if (sp.st === 1 || sp.st === 2) sp.m.scale.multiplyScalar(0.6); if (sp.st === 4) { const k = (time - sp.at) / 0.25; sp.m.position.lerp(c.CORE, Math.min(1, k * 0.6)); sp.m.scale.setScalar(0.3 * (1 - k)); } },
+      sparkFx(c, sp, time) { if (sp.st === 1 || sp.st === 2) sp.m.scale.multiplyScalar(0.42); if (sp.st === 4) { const k = (time - sp.at) / 0.25; sp.m.position.lerp(c.CORE, Math.min(1, k * 0.6)); sp.m.scale.setScalar(0.3 * (1 - k)); } },
     },
 
     // a turning glass shard that splits light into a rainbow fan aimed at the other bot
@@ -626,7 +635,7 @@ window.BotFighter = (() => {
       }
     }
     return {
-      group, CORE, style: STYLES[style] ? style : 'core', sparks,
+      group, CORE, style: STYLES[style] ? style : 'core', sparks, _c: c,
       launch,
       // the word is done: every spark goes with the shot
       release(at, still) {
@@ -645,15 +654,17 @@ window.BotFighter = (() => {
       clear() { sparks.forEach(sp => { sp.st = 0; sp.m.visible = false; }); nLive = 0; c.nKeys = 0; c.relAt = c.typoAt = -9; c.relN = 0; c.kRing.fill(-9); },
       // ob: how big the charge is (0..1, more in a spell), fl: the strike's flash
       draw(time, dt, ob, fl) {
-        c.time = time; c.ob = ob;
-        const r0 = 0.08 + 0.34 * ob + 0.5 * fl, vis = r0 > 0.08, ty = time - c.typoAt;
+        c.time = time; c.ob = ob; c.base = Math.min(0.08 + 0.34 * ob, 0.45 + Math.max(0, 0.34 * ob - 0.37) * 0.3);
+        let r0 = 0.08 + 0.34 * ob + 0.5 * fl; const vis = r0 > 0.08, ty = time - c.typoAt;
+        // past a full word (a spell, a strike's flash) the styled orbs grow slowly, so they never swallow the bot
+        if (ST.build !== STYLES.core.build && r0 > 0.45) r0 = 0.45 + (r0 - 0.45) * 0.3;
         c.sour = ty >= 0 && ty < 0.4 ? 1 - ty / 0.4 : 0;
         if (c.dust) c.dust.begin();
         ST.draw(c, time, dt, r0, ob, fl, vis);
         if (ST.debris) scatter(ST.debris, c.relAt, time, c.relR, 0);
         if (ST.fizz) scatter(ST.fizz, c.typoAt, time, Math.max(0.15, r0), 7);
-        for (const [S, m] of [[ST.burst, c.bs], [ST.shock, c.sk]]) {
-          if (!S) continue;
+        for (let j = 0; j < 2; j++) {
+          const S = j ? ST.shock : ST.burst, m = j ? c.sk : c.bs; if (!S) continue;
           const k = (time - c.relAt) / S.len; m.visible = k >= 0 && k < 1;
           if (m.visible) { m.scale.setScalar(c.relR * S.size * (1 + S.grow * easeOut(k))); m.material.opacity = Math.pow(1 - k, 2); m.material.rotation = k * 1.5; }
         }
