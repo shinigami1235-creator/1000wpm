@@ -113,7 +113,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (n === 'windup' && d.kind === 'spit') spitT = t;
     if ((n === 'block' || n === 'blockFail' || n === 'cancel') && atk && !atk.done && (d.attack === 'lunge' || d.attack === 'sweep' || d.attack === 'breach')) {
       atk.done = true; atk.how = n; atk.t1 = t; if (atk.mark) { atk.mark.off(); atk.mark = null; }
-      const hit = n === 'blockFail', at = hit ? v1.copy(art).setY(1.2) : ctx.shieldAt(v1);
+      const hit = n === 'blockFail', at = hit ? ctx.artAim(v1) : ctx.shieldAt(v1);
       if (atk.kind === 'breach') {
         const p = hit ? v2.copy(art).setY(0.2) : v2.copy(ctx.shieldAt(v3)).setY(0.2).add(v4.set(0, 0, -2));
         K.fx.burst(p, 160, '#cfefff', { speed: 16, up: 3, g: 16, life: 1.3, size: 0.5, spread: 2.5, floor: 0.05 });

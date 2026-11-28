@@ -409,6 +409,9 @@ window.SuperScene = (() => {
       sfx: (n, a) => { if (opts.sfx !== false && window.SuperAudio) SuperAudio.play(n, a); },
       // where a blocked attack stops: Art's barrier, a little in front of him
       shieldAt: out => out.set(artPos.x, 2.2, artPos.z - 3.2),
+      // where an attack that lands should hit: the middle of Art's bot (it hovers about 2.6 up), or chest height
+      // on the old marker. Gid, 28 Nov 2026: the hydra's beam was hitting the floor under the bot
+      artAim: out => { if (artBot) { artBot.bot.body.getWorldPosition(out); return out; } return out.copy(artPos).setY(1.4); },
     };
     const sup = SuperSupport.create(THREE, scene, K, { artPos, glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
     function mountModel(id) {

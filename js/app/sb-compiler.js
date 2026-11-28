@@ -153,7 +153,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
     if (n === 'compile') {
       compileT = t; compileArm = Math.random() < 0.5 ? 0 : 1; screenRed = 1; screenPulse = 1;
       const from = v1.set(T.x + rnd(-8, 8), T.y + rnd(-3, 3), T.z + 1);
-      K.fx.beam(from, v2.copy(art).setY(1.4), '#ff4d5e', 0.6, 0.35, { grow: 0.06 });
+      K.fx.beam(from, ctx.artAim(v2), '#ff4d5e', 0.6, 0.35, { grow: 0.06 });
       K.fx.burst(v2, 40, '#ff8a8a', { speed: 10, g: 8, life: 0.5, size: 0.3 });
       K.fx.light(v2, '#ff4d5e', 40, 5);
     }
@@ -166,14 +166,14 @@ SuperModels.compiler = function (THREE, K, ctx) {
   function throwStack(hit, t) {
     if (stackMark) { stackMark.off(); stackMark = null; }
     thrown = true;
-    const to = hit ? v2.copy(art).setY(1.2) : ctx.shieldAt(v2);
+    const to = hit ? ctx.artAim(v2) : ctx.shieldAt(v2);
     for (const b of stackBlocks) { b.flying = true; b.v.copy(to).sub(b.p).multiplyScalar(rnd(2.6, 3.4)); b.v.y += rnd(2, 5); b.to = to.clone(); }
     stackT = -9;
   }
   function fireLaser(hit, t) {
     if (!laser) return;
     eye.getWorldPosition(v1);
-    const to = hit ? v2.copy(art).setY(1.2) : ctx.shieldAt(v2);
+    const to = hit ? ctx.artAim(v2) : ctx.shieldAt(v2);
     K.fx.beam(v1, to, '#ff4d5e', 1.1, 0.6, { grow: 0.05 });
     K.fx.burst(to, hit ? 70 : 60, hit ? '#ffb3b3' : '#ffd0d0', { speed: 13, g: 6, life: 0.6, size: 0.32 });
     K.fx.light(to, '#ff4d5e', 60, 4);
