@@ -116,7 +116,8 @@ window.SuperSupport = (() => {
       barRise = Math.min(1, barRise + dt * 1.6);
       barFlash = Math.max(0, barFlash - dt * 2.4);
       barrier.visible = barA > 0.01 || barFlash > 0.01;
-      barMat.uniforms.uA.value = barA; barMat.uniforms.uFlash.value = barFlash; barMat.uniforms.uRise.value = shields || barFlash > 0 ? barRise : 1; barMat.uniforms.uT.value = t;
+      // the camera looks over Art's bot through the barrier, so it is kept faint enough to see the boss through
+      barMat.uniforms.uA.value = barA * 0.55; barMat.uniforms.uFlash.value = barFlash * 0.5; barMat.uniforms.uRise.value = shields || barFlash > 0 ? barRise : 1; barMat.uniforms.uT.value = t;
       barMat.uniforms.uC.value.copy(barCol);
       // heal
       const hu = (t - healT) / 1.6;
