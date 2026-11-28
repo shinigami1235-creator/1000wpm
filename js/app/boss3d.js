@@ -1296,14 +1296,15 @@ window.BossScene = (() => {
     // over your bot's shoulder as the spell leaves it, then a hard cut side on to the boss as it lands and
     // reels. The parts are sized to the spell, from its first and last hit; a fizzle gets the same two beats
     // for the block or the dodge. A self buff gets a short look at your bot. CamDir still turns any of them
-    // down while an attack at you is on its way.
+    // down while an attack at you is on its way. It takes 0.25 s to decide, so the cut to the landing is timed
+    // to come just before the first hit.
     function spellCam(id, hits, fizz) {
       if (!director || !dirShots || reduce) return;
       const sp = window.Combat && Combat.spell(id);
       if (!fizz && sp && !sp.strike) { dirShots.buffCam ||= { pri: 1, parts: [{ ...CLOSE, len: 0.9, slow: 0 }] }; play('buffCam'); return; }
       const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
-      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20;
-      const b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      const a = Math.round(clamp(f - 0.4, 0.2, 0.6) * 20) / 20;
+      const b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
       const name = `spell_${a}_${b}`;
       // your own spell outranks the raid's routine cutaways (priority 3 gets past their budget), with its own
       // gap of 4 s so a run of spells doesn't cut every second; a fizzle stays at the routine priority

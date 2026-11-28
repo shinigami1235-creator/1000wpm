@@ -1415,10 +1415,11 @@ Combat.FX = (() => {
           t5.copy(t1); t5.z += 1.2 * S;
           for (let g = 2; g >= 0; g--) {
             const u = clamp((e.t - g * 0.025) / fly, 0, 1); if (u <= 0) continue;
-            t2.lerpVectors(e.src, t5, easeIn(u) * 0.6 + u * 0.4); t2.y += Math.sin(u * Math.PI) * 1.2;
+            // it leaves a little ahead of you, small, so it never fills the screen near the camera
+            t2.lerpVectors(e.src, t5, 0.12 + 0.88 * (easeIn(u) * 0.6 + u * 0.4)); t2.y += Math.sin(u * Math.PI) * 1.2;
             t3.subVectors(camera.position, t2).normalize();
             _u.copy(UP).cross(t3).normalize(); _v.copy(t3).cross(_u).normalize();
-            const R = (0.9 + 3.2 * u) * S, tilt = -0.55, ct = Math.cos(tilt), st = Math.sin(tilt);
+            const R = (0.35 + 3.4 * u * u) * S * Math.min(1, t2.distanceTo(camera.position) / 14), tilt = -0.55, ct = Math.cos(tilt), st = Math.sin(tilt);
             for (let i = 0; i <= 12; i++) {
               const a = -1.25 + 2.5 * i / 12, x = Math.sin(a) * R, y = (Math.cos(a) - 1) * R * 0.55;
               e.flyPts[i].copy(t2).addScaledVector(_u, x * ct - y * st).addScaledVector(_v, x * st + y * ct);
@@ -1923,7 +1924,7 @@ Combat.FX = (() => {
       const S = sizeOf(tg) / 6, amber = C('#ffc46b'), hi = C('#fff2d6');
       sigil(cs, amber, 0.35, 1.8);
       P(cs, 'pos', t1);
-      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.32, amber, 0.9, null, { delay: 0.12, arc: 2, glyph: G.key });
+      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.32, amber, 1.4, null, { delay: 0.12, arc: 2, glyph: G.key });
       e.strike = (i, h) => {
         P(tg, 'pos', t1); t1.z += 1.5 * S;
         impact(t1, amber, 1.2 * S, { glyph: G.lock, shake: 0.3 });
@@ -2004,17 +2005,20 @@ Combat.FX = (() => {
         if (e.boom === undefined && e.t < 1.3) {
           // the upload: a red pillar climbs from you, then a stream of code arcs over to the target's sky
           P(cs, 'pos', e.src);
-          const up = ease(e.t / 0.35), fade = e.t < 0.9 ? 1 : 1 - (e.t - 0.9) / 0.4;
-          h0.copy(e.src).setY(e.src.y + 14 * up);
-          seg(e.src, h0, 1.4 * fade, deep, 0.5 * fade); seg(e.src, h0, 0.45 * fade, red, 1.2 * fade); seg(e.src, h0, 0.12 * fade, hi, 2 * fade);
-          if (e.t < 0.1) flare(e.src, red, 6, 0.3, 1);
-          const go = clamp((e.t - 0.25) / 0.55, 0, 1);
+          const up = ease(e.t / 0.3), fade = e.t < 0.7 ? 1 : Math.max(0, 1 - (e.t - 0.7) / 0.5);
+          h0.copy(e.src).setY(e.src.y + 7 * up);
+          seg(e.src, h0, 0.8 * fade, deep, 0.4 * fade); seg(e.src, h0, 0.26 * fade, red, 0.9 * fade); seg(e.src, h0, 0.07 * fade, hi, 1.6 * fade);
+          if (e.t < 0.1) flare(e.src, red, 4, 0.3, 0.9);
+          // the stream lands over the target, low enough to stay in the game shot's frame
+          h2.set(t2.x, e.top.y + 3 * S, t2.z);
+          const go = clamp((e.t - 0.2) / 0.55, 0, 1);
           if (go > 0) {
             const tl = Math.max(0, go - 0.45);
             for (let i = 0; i <= 16; i++) {
               const s2 = tl + (go - tl) * i / 16;
-              e.upPts[i].lerpVectors(h1.copy(e.src).setY(e.src.y + 14), sky, s2); e.upPts[i].y += Math.sin(s2 * Math.PI) * 8;
+              e.upPts[i].lerpVectors(h1.copy(e.src).setY(e.src.y + 7), h2, s2); e.upPts[i].y += Math.sin(s2 * Math.PI) * 6;
             }
+            if (go >= 1 && !e.landed) { e.landed = true; flare(h2, red, 5 * S, 0.2, 0.9); burst(h2, 12, 6, hi, 0.4, 0.5, G.one, { drag: 2 }); }
             line(e.upPts, 0.9 * S * fade, red, 0.45 * fade, 0.7);
             line(e.upPts, 0.25 * S * fade, hi, 1.4 * fade, 0.7);
             if (!reduce && go < 1) for (let k = 0; k < 3; k++) spawn(e.upPts[16], _pv.set(rnd(-2, 2), rnd(-3, 1), rnd(-2, 2)), Math.random() < 0.3 ? hi : red, 0.7 * S, 0.7, [G.zero, G.one, G.hash][k], { drag: 1.5 });
@@ -2143,8 +2147,9 @@ Combat.FX = (() => {
               burst(e.end, 16, 8 * S, col, 0.35, 0.45, G.star, { drag: 2.5 });
               juice('shake', 0.1);
             } else {
-              // sails on past where the target stood
-              e.vel.copy(e.dir).multiplyScalar(e.dist / fly * 0.8);
+              // sails on past where the target stood, veering away from it so the miss stays in sight
+              const sp2 = e.dist / fly;
+              e.vel.copy(e.dir).multiplyScalar(sp2 * 0.55).addScaledVector(e.lat, -e.side * sp2 * 0.3).addScaledVector(UP, 4);
             }
           }
         } else {
@@ -2178,7 +2183,7 @@ Combat.FX = (() => {
             }
           }
           // swat and dodge: the bolt flies on, losing itself, then goes out with a pop
-          const life = e.how === 'swat' ? 0.42 : 0.55;
+          const life = e.how === 'swat' ? 0.42 : 0.4;
           if (v >= life) {
             if (!e.out) {
               e.out = true;
@@ -2198,10 +2203,10 @@ Combat.FX = (() => {
         const tr = e.trail; tr.unshift(tr.pop().copy(e.pos)); e.nTrail = Math.min(tr.length, e.nTrail + 1);
         const dying = e.phase === 1 ? clamp(1 - (e.t - e.hitT) / 0.6, 0.2, 1) : 1;
         for (let j = 0; j < e.nTrail - 1; j++) {
-          if (Math.random() < 0.28) continue;   // the gaps are the instability
           const f = 1 - j / tr.length, c2 = Math.random() < 0.3 ? TYPO : col;
-          seg(tr[j], tr[j + 1], 0.55 * Math.sqrt(S) * f, c2, 0.5 * f * dying);
-          seg(tr[j], tr[j + 1], 0.16 * Math.sqrt(S) * f, hi, 1.2 * f * dying);
+          seg(tr[j], tr[j + 1], 0.45 * Math.sqrt(S) * f, c2, 0.45 * f * dying);
+          if (Math.random() < 0.2) continue;   // the core breaks up: the instability
+          seg(tr[j], tr[j + 1], 0.12 * Math.sqrt(S) * f, hi, 1.2 * f * dying);
         }
         const fl = Math.random();
         flare(e.pos, fl < 0.25 ? TYPO : col, (1.4 + fl * 1.4) * Math.sqrt(S) * dying, 0.05, 1.1, 0.1);

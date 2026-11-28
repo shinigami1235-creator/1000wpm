@@ -14,7 +14,7 @@
 //   s.stage(n)               a new phase: the boss grows, glitches and moves faster
 //   s.lunge()                a short lunge at you, for each signature attack
 //   s.hit(h)                 a word's shot from your marker; onImpact(h, x, y) when it lands
-//   s.cast(id, { hits, effect })  s.aura(name, on)  s.fxEvent(kind)  s.react(kind, power, extra)
+//   s.cast(id, { hits, effect })  s.fizzle(id, how)  s.aura(name, on)  s.fxEvent(kind)  s.react(kind, power, extra)
 //   s.hurt()  s.defeat()  s.screen(key, out)  s.pause(on)  s.info()  s.dispose()
 window.RushScene = (() => {
   let libs = null;
@@ -55,7 +55,7 @@ window.RushScene = (() => {
       dispose: () => { gone = true; if (impl) impl.dispose(); impl = null; },
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
-      'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
+      'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'fizzle', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
       'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench', 'entrance', 'cutaway']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
@@ -873,8 +873,8 @@ window.RushScene = (() => {
       const sp = window.Combat && Combat.spell(id);
       if (!fizz && sp && !sp.strike) { dirShots.buffCam ||= { pri: 1, parts: [{ ...BUFF, len: 0.9 }] }; want('buffCam'); return; }
       const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
-      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20;
-      const b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      const a = Math.round(clamp(f - 0.4, 0.2, 0.6) * 20) / 20;
+      const b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
       const name = `spell_${a}_${b}`, t = nowS();
       if (!fizz && t - spellCamAt < 4) return;
       dirShots[name] ||= { pri: 2, parts: [{ ...CAST_OUT, len: a }, { ...LANDS, len: b }] };

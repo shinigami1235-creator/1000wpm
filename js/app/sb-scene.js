@@ -658,7 +658,7 @@ window.SuperScene = (() => {
       const sp = window.Combat && Combat.spell(id);
       if (!sp || (!fizz && !sp.strike)) return;
       const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
-      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20, b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      const a = Math.round(clamp(f - 0.4, 0.2, 0.6) * 20) / 20, b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
       if (!fizz && clock.t - spellCamAt < 4) return;
       if (cam.spell(a, b, fizz ? 2 : 3) && !fizz) spellCamAt = clock.t;
     }
