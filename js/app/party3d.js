@@ -2,16 +2,18 @@
 // blocks in code. hydra (three necks on a mound), swarm (the Cache Wraith and its mites),
 // snake (the Null Conductor's train of word cars), golem (a block giant with a core
 // that opens) and twins (Syntax, a crystal, and Echo, its wire ghost).
-// Each area is dressed by js/app/party-arena.js (its floor, light and set). The team stand at the
-// front, each over their card under the canvas (lane(id) says where), and fight with the moves in
-// js/app/fight-moves.js. The boss winds up with a charge you can see and hear, lands with a
+// Each area is dressed by js/app/party-arena.js (its floor, light and set). The team's bots hover at
+// the front, each over their card under the canvas (lane(id) says where), and fight with the moves in
+// js/app/bot-fighter.js, driven by their players' typing. The boss winds up with a charge you can see and hear, lands with a
 // shockwave, and a camera director (js/app/camdir.js) cuts to the boss's big moments and the kill
 // only while no attack is on its way to the team.
 //
 //   const sc = PartyScene.mount(host, { lane: id => ({ x, y }) | null, now: () => netMs, color: id => '#hex', onImpact(h, x, y), audio })
 //   sc.setFight({ kind, look, foes })   build the creatures for a fight
 //   sc.sync(state)                      every paint: foes, HP, the attack being wound up, the core, relink clock
-//   sc.shot({ id, foe, dmg, tier, crit, you })   a word from a player's card to a foe; onImpact on landing
+//   sc.key(id, frac)                    a right key from a player (frac: share of the word typed): a spark into their bot's orb
+//   sc.typo(id)                         a wrong key: their bot glitches
+//   sc.shot({ id, foe, dmg, tier, crit, you })   a word from a player's bot to a foe; onImpact on landing
 //   sc.cast(spellId, { from, foe, hits, effect })  a spell from the combat layer
 //   sc.attackLands({ id, target }) / sc.block({ id, by }) / sc.chip({ from, targets, what })
 //   sc.foeGone(id, how)  how: kill | pop | bite | cut     sc.regrow(id)   sc.down(id)   sc.up(id)   sc.heal(id, by)   sc.shield(id, by)
@@ -27,16 +29,26 @@ window.PartyScene = (() => {
       import('three/addons/postprocessing/UnrealBloomPass.js'),
       import('three/addons/postprocessing/OutputPass.js'),
       import('three/addons/geometries/RoundedBoxGeometry.js'),
+      import('three/addons/environments/RoomEnvironment.js'),
     ]).catch(e => { libs = null; throw e; });
     return libs;
+  }
+
+  // your keyboard's style, saved with your Character Lab look; a board you don't own fires as the Slab
+  function kbStyle() {
+    try {
+      const p = TT.store.get('wpm-operator', null), s = p && p.kb && p.kb.style;
+      if (!['split', 'arc', 'compact'].includes(s)) return 'slab';
+      return window.WPM && WPM.owns && !WPM.owns('kb-' + s) ? 'slab' : s;
+    } catch (e) { return 'slab'; }
   }
 
   function mount(host, opts = {}) {
     let impl = null, gone = false, fight = null, last = null;
     const ctl = {
-      ready: load().then(([THREE, EC, RP, UB, OP, RB]) => {
+      ready: load().then(([THREE, EC, RP, UB, OP, RB, RE]) => {
         if (gone) return false;
-        impl = build(host, { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry }, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
+        impl = build(host, { ...opts, RoundedBoxGeometry: RB.RoundedBoxGeometry, RoomEnvironment: RE.RoomEnvironment }, THREE, EC.EffectComposer, RP.RenderPass, UB.UnrealBloomPass, OP.OutputPass);
         if (fight) impl.setFight(fight);
         if (last) impl.sync(last);
         return true;
@@ -44,6 +56,8 @@ window.PartyScene = (() => {
       setFight: f => { fight = f; if (impl) impl.setFight(f); },
       sync: st => { last = st; if (impl) impl.sync(st); },
       shot: h => { if (impl && impl.live()) impl.shot(h); else if (opts.onImpact) opts.onImpact(h, null, null); },
+      key: (id, frac) => impl && impl.key(id, frac),
+      typo: id => impl && impl.typo(id),
       cast: (id, c) => impl && impl.cast(id, c),
       attackLands: a => impl && impl.attackLands(a),
       block: b => impl && impl.block(b),
@@ -88,6 +102,9 @@ window.PartyScene = (() => {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));
+    // draw calls are counted over the whole frame (every pass), for tests
+    renderer.info.autoReset = false;
+    const gl = renderer.info;
     host.prepend(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
     const scene = new THREE.Scene();
@@ -313,20 +330,28 @@ window.PartyScene = (() => {
     }
     const colorOf = id => C(opts.color ? opts.color(id) : Theme.hex('accent'));
 
-    // ---------- the team's operators (js/app/operator3d.js) ----------
-    // Each player stands on the floor above their card, facing the creatures: you with your
-    // Character Lab look, the others seeded from their names. They type while their words fly,
-    // cast on big shots, flinch when an attack lands, kneel when down and celebrate a clear.
-    const team = new Map();   // id -> { op, typeAt }
+    // ---------- the team's bots (js/app/botkit.js, js/app/bot-fighter.js) ----------
+    // Gid, 28 Nov 2026: Party fights are bots, the same as Duel. Each player's bot hovers over their card,
+    // turned to the creature it is hitting, and moves only when its player types: a spark flies into its
+    // orb on every right key, the strike leaves when the word is done, a typo glitches it, a spell lifts
+    // it. Yours is BotKit.mine() (your division's bot as dressed in the hangar, owned parts only); the
+    // others are seeded from their names, or wear their own look when the match carries one (botLook).
+    // Your keyboard only changes how your shots look (Compact, Split, Arc, Slab), as in Duel.
+    const team = new Map();   // id -> { f, ring, pool, typed, keys, down, yaw }
     let teamWon = false, teamLit = false;
-    const TH = window.Operator ? { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry } : null;
-    // your keyboard's look on your shots (js/app/combat/fx3d.js, keyboard signatures)
-    const myKb = window.Operator ? Operator.mine().kb.style : null;
-    const OPS = 1.9;
-    // other players get a base with a made model (the procedural one read dark and blocky on the stage)
-    const others = seed => { const p = Operator.random(seed); if (!(Operator.MODELS || {})[p.base]) p.base = 'male'; return p; };
+    const TB = window.BotFighter && window.BotKit ? { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry } : null;
+    const myKb = kbStyle();
+    // the bots' size follows the room between the cards: about a fifth of the gap, so wide stages
+    // (where the cards sit far apart in the world) get bigger bots and none overlap its neighbour
+    let bsc = 1;
+    // a soft studio for the bots' shells and clear coat to reflect (the hangar's), on their own materials only
+    let envTex = null;
+    if (TB && opts.RoomEnvironment) { try { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new opts.RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) { envTex = null; } }
+    function shine(obj) { if (envTex) obj.traverse(o => { for (const mt of [].concat(o.material || [])) if (mt.isMeshStandardMaterial) { mt.envMap = envTex; mt.envMapIntensity = 0.25; mt.needsUpdate = true; } }); }
+    const lookFor = p => (p.id === 'me' ? BotKit.mine() : p.botLook && p.botLook.id ? p.botLook : BotKit.random(p.name || p.id));
+    const tsnd = (k, arg) => { if (opts.audio) opts.audio.combat('op-' + k, arg); };
     function teamSync(players) {
-      if (!TH || !players) return;
+      if (!TB || !players) return;
       if (!teamLit) {
         teamLit = true;
         if (!arena) {
@@ -335,52 +360,106 @@ window.PartyScene = (() => {
         }
       }
       for (const p of players) if (!team.has(p.id)) {
-        const op = Operator.create(TH, p.id === 'me' ? Operator.mine() : others(p.name || p.id), { lite: p.id !== 'me', onAct: k => { if (k !== 'cast' && opts.audio) opts.audio.combat('op-' + k); } });   // full detail for you only
-        op.group.scale.setScalar(OPS); op.group.rotation.order = 'YXZ'; op.group.rotation.y = Math.PI;
-        scene.add(op.group);
+        const L = lookFor(p);
+        // gap: how far a fast typist's bot presses in toward the boss, kept short so it stays over its card
+        const f = BotFighter.create(TB, L.id, L.look, { gap: 6, lite: p.id !== 'me' });
+        f.group.rotation.order = 'YXZ'; f.group.rotation.y = Math.PI;
+        shine(f.group); scene.add(f.group);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; scene.add(ring);
         const pool = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: glowTex, color: colorOf(p.id).multiplyScalar(0.6), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
         pool.rotation.x = -Math.PI / 2; scene.add(pool);
-        team.set(p.id, { op, ring, pool, mv: window.FightMoves ? FightMoves.create(THREE, op) : null, typeAt: -9, down: false });
+        team.set(p.id, { f, rig: f.group.children[0], ring, pool, typed: '', keys: [], down: false, yaw: Math.PI, kx: 1, won: false });
       }
-      for (const [id, m] of team) if (!players.some(p => p.id === id)) { scene.remove(m.op.group, m.ring, m.pool); m.op.dispose(); team.delete(id); }
+      for (const [id, m] of team) if (!players.some(p => p.id === id)) { scene.remove(m.f.group, m.ring, m.pool); m.f.dispose(); m.ring.geometry.dispose(); m.ring.material.dispose(); m.pool.geometry.dispose(); m.pool.material.dispose(); team.delete(id); }
+      for (const p of players) {
+        const m = team.get(p.id); if (!m) continue;
+        // a teammate's typing reaches us with the state: each new letter is a spark. Their word's length
+        // isn't sent, so the charge is a guess that fills as the word grows. Your own keys come from key().
+        if (p.id !== 'me') {
+          const ty = p.typed || '';
+          if (ty.length > m.typed.length && ty.startsWith(m.typed) && !p.down) {
+            const n = Math.min(4, ty.length - m.typed.length);
+            for (let k = n; k >= 1; k--) teamKey(p.id, (ty.length - k + 1) / Math.max(6, ty.length + 2));
+          }
+          m.typed = ty;
+        }
+        if (p.down && !m.down) { m.f.ko(); }
+        else if (!p.down && m.down) m.f.rise();
+        m.down = !!p.down;
+      }
     }
-    const tv = new V();
+    function teamKey(id, frac) {
+      const m = team.get(id); if (!m || m.down) return;
+      m.f.key(frac); m.keys.push(nowS());
+    }
+    // a word from this player is done: the strike leaves at once. Returns the ms until its shot leaves.
+    function teamStrike(id, tier) {
+      const m = team.get(id); if (!m || m.down) return 0;
+      m.typed = '';
+      // the word lands while the boss's blow is about to hit them: a barrel roll aside, firing on the way
+      const now = opts.now ? opts.now() : 0;
+      if (atk && st && (atk.target === id || atk.target === 'team') && atk.land - now < 650 && atk.land - now > 0) { m.f.dodge(); tsnd('dodge'); return 70; }
+      return m.f.attack(tier);
+    }
+    const tv = new V(), tw = new V(), lanesX = [];
     function teamTick(t, dt) {
+      // how wide each bot may strafe: half the room to its neighbour, less its own width
+      lanesX.length = 0;
+      for (const id of team.keys()) lanesX.push(laneAt(id, tv).x);
+      let gapMin = 9;
+      for (let i = 0; i < lanesX.length; i++) for (let j = 0; j < i; j++) gapMin = Math.min(gapMin, Math.abs(lanesX[i] - lanesX[j]));
+      const want = clamp(gapMin * 0.22, 0.85, 1.4);
+      bsc += (want - bsc) * (bsc === 1 ? 1 : Math.min(1, dt * 4));
       for (const [id, m] of team) {
         laneAt(id, tv);
+        let half = 6;
+        for (const x of lanesX) if (Math.abs(x - tv.x) > 0.01) half = Math.min(half, Math.abs(x - tv.x) / 2);
+        m.kx = clamp((half - 1.3 * bsc) / (2.2 * bsc), 0.1, 1);
+        m.f.group.scale.setScalar(bsc);
         const p = st && st.players ? st.players.find(x => x.id === id) : null;
-        const down = !!(p && p.down);
-        if (down && !m.down && m.mv) m.mv.act('stagger');
-        m.down = down;
-        m.op.play(down ? 'defeat' : teamWon ? 'victory' : t - m.typeAt < 1.6 ? 'type' : 'idle');
-        m.op.update(dt);
-        const r = m.mv && !down ? m.mv.update(dt) : null;
-        // they face the boss (away from the camera), so a lunge goes into the screen and a hit pushes them back
-        m.op.group.position.set(tv.x, r ? r.y * OPS : 0, tv.z - 2.4 - (r ? r.x * OPS : 0));
-        m.op.group.rotation.x = r ? r.rx : 0;
-        m.ring.position.set(tv.x, 0.03, tv.z - 2.4); m.pool.position.set(tv.x, 0.02, tv.z - 2.4);
+        const down = m.down;
+        // live wpm from the last 4 s of keys sets the stance: slow typists hang back, fast ones press in
+        while (m.keys.length && t - m.keys[0] > 4) m.keys.shift();
+        m.f.setWpm(m.keys.length * 3);
+        if (teamWon && !down && !m.won) { m.won = true; m.f.victory(); }
+        // turned to the creature it is hitting, or the middle of the boss; to the camera to celebrate a clear
+        const foe = p && p.target && foes.get(p.target);
+        if (teamWon && !down) tw.copy(homeCam.position);
+        else if (cre && foe && foe.alive) cre.hitPos(foe.id, tw); else tw.copy(bossAt);
+        let yw = Math.atan2(tw.x - tv.x, tw.z - (tv.z - 2.4));
+        // in the fight a bot turns at most 20 degrees off straight ahead, so a dash or a combo runs up its
+        // own lane and never through its neighbour's
+        if (!(teamWon && !down)) yw = Math.PI + clamp(Math.atan2(Math.sin(yw - Math.PI), Math.cos(yw - Math.PI)), -0.35, 0.35);
+        let d = yw - m.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+        m.yaw += d * Math.min(1, dt * 5);
+        m.f.group.position.set(tv.x, 0, tv.z - 2.4);
+        m.f.group.rotation.y = m.yaw;
+        m.f.update(dt);
+        m.rig.position.x *= m.kx;
+        // the ring and its glow follow the bot over the floor
+        m.f.bot.group.getWorldPosition(tw);
+        m.ring.position.set(tw.x, 0.03, tw.z); m.pool.position.set(tw.x, 0.02, tw.z);
         const aimed = !!(atk && st && (atk.target === id || atk.target === 'team') && !down);
         m.ring.material.color.copy(aimed ? RED : colorOf(id)).multiplyScalar(aimed ? 1.6 + Math.sin(t * 14) * 0.5 : 1.4);
         m.ring.material.opacity = down ? 0.3 : 0.85;
+        // a downed bot smokes where it lies, so the knock-out reads from behind
+        if (down && !reduce && t > (m.smokeAt || 0)) { m.smokeAt = t + 0.35; smoke(tw.setY(0.9 * bsc), 1, 0.8, { up: 1.2, size: 1.1, life: 1.4, op: 0.3, col: '#3b4246' }); }
       }
     }
-    const OP_ONCE = new Set(['heal', 'cover', 'revive', 'attack', 'dodge']);
-    function teamAct(id, kind) {
-      const m = team.get(id); if (!m) return;
-      if (kind === 'type') { m.typeAt = nowS(); return; }
-      // the operator's own one-shots (operator3d.js): a heal, a cover behind the hex plate, a revive,
-      // the keyboard slammed for a plain shot; the fight moves stand aside while they play
-      if (OP_ONCE.has(kind)) { if (!m.down || kind === 'revive') { if (m.mv) m.mv.play(kind); else m.op.once(kind); } return; }
-      if (m.mv && !m.down) m.mv.act(kind === 'hit' ? 'stagger' : kind);
-      else if (kind === 'cast' || kind === 'hit') m.op.once(kind === 'hit' ? 'hit' : 'cast');
-    }
-    // where a shot leaves a player: the right hand, or over their card
+    // where a shot leaves a player: the front of their bot, or over their card
     function handAt(id, out) {
       const m = team.get(id);
-      if (m && m.op.bones && m.op.bones.RightHand) return m.op.bones.RightHand.getWorldPosition(out).add(v4.set(0, 0.3, -1.6));
-      return laneAt(id, out).add(v4.set(0, 0.6, 0));
+      if (m) return m.f.muzzle(out);
+      return laneAt(id, out).add(v4.set(0, 2.4, -2.4));
+    }
+    // a move that waits for the bot's wind-up (a shot leaves a strike's ms after the word), on the real clock
+    const later = [];
+    function after(ms, fn) { if (ms <= 0) fn(); else later.push({ at: nowS() + ms / 1000, fn }); }
+    function runLater() {
+      if (!later.length) return;
+      const t = nowS();
+      for (let i = later.length - 1; i >= 0; i--) if (later[i].at <= t) { const x = later.splice(i, 1)[0]; x.fn(); }
     }
 
     // ---------- creatures ----------
@@ -877,6 +956,7 @@ window.PartyScene = (() => {
     function setFight(f) {
       clearCreature();
       teamWon = false;
+      for (const m of team.values()) { m.won = false; if (!m.down) m.f.rise(); }
       kind = f.kind; applyPal(f.look || 0, f.kind);
       foes = new Map((f.foes || []).map(x => [x.id, x]));
       deadAt = -9;
@@ -1010,8 +1090,13 @@ window.PartyScene = (() => {
     // ---------- events ----------
     const hitAt = new V();
     function shot(h) {
-      teamAct(h.id, 'type'); teamAct(h.id, h.crit || h.tier >= 3 ? 'blast' : h.tier >= 2 ? 'jab' : h.tier >= 1 ? 'attack' : 'flick');
+      const ms = teamStrike(h.id, Math.min(3, (h.tier || 0) + (h.crit ? 1 : 0)));
+      if (!h.you && (h.tier || 0) >= 2) tsnd('attack');
       if (!cre) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
+      // the shot leaves the bot's orb as the strike releases, a few frames after the word
+      after(ms, () => { if (cre) fire(h); });
+    }
+    function fire(h) {
       const from = handAt(h.id, new V());
       const foe = h.foe;
       const to = out => foePos(foe, out);
@@ -1029,10 +1114,18 @@ window.PartyScene = (() => {
       // camera and filled the near screen here); your combo shots and keyboard signatures use the combat layer
       const tier = h.you ? Math.min(3, h.tier || 0) : 0;
       if (fx && (tier >= 2 || (h.you && myKb && myKb !== 'slab'))) fx.shot(tier, from, to, land, { color: col, kb: h.you ? myKb : null, w: 0.5 });
-      else streak(from, to, col ? C(col) : h.you ? C('#eafff4') : colorOf(h.id), h.crit ? 0.3 : 0.26, land, h.you ? 1 : 0.7);
+      else {
+        const sc = col ? C(col) : h.you ? C('#eafff4') : colorOf(h.id);
+        streak(from, to, sc, h.crit ? 0.3 : 0.26, land, h.you ? 1 : 0.7);
+        // a double (tier 1): a second, thinner bolt right behind the first
+        if ((h.tier || 0) === 1) after(70, () => { if (cre) streak(handAt(h.id, new V()), to, sc, 0.26, null, h.you ? 0.6 : 0.45); });
+      }
     }
     function cast(id, c = {}) {
-      teamAct(c.from || 'me', 'cast');
+      const m = team.get(c.from || 'me');
+      if (m && !m.down) m.f.spell();
+      // your own spell: a short look at your bot rising and driving in, when nothing is coming at you
+      if ((c.from || 'me') === 'me') want('spell', { pri: 2 });
       if (!fx || !cre) return;
       const caster = { pos: out => handAt(c.from || 'me', out) };
       const foe = c.foe;
@@ -1051,7 +1144,11 @@ window.PartyScene = (() => {
     function attackLands(a) {
       if (!cre) return;
       const ids = a.target === 'team' ? (st ? st.players.filter(p => !p.down).map(p => p.id) : []) : [a.target];
-      ids.forEach(id => teamAct(id, 'hit'));
+      ids.forEach(id => {
+        const m = team.get(id), p = st && st.players.find(x => x.id === id);
+        if (!m || m.down) return;
+        if (p && p.shield) { m.f.block(); tsnd('cover'); } else { m.f.hit(v3.set(rnd(-0.5, 0.5), 0.2, -1), 1); tsnd('hit'); }
+      });
       const from = a.from || (st && st.foes[0] && st.foes[0].id);
       // the lunge stops above and in front of the player, so it never covers them on screen
       if (ids.length === 1) { laneAt(ids[0], v1).add(v4.set(0, 3.8, -5.5)); cre.lunge(from, v1); }
@@ -1070,9 +1167,10 @@ window.PartyScene = (() => {
       if (!cre || !atk) return;
       cre.hitPos(atk.from, v1);
       const by = b.by === 'firewall' ? (atk.target === 'team' ? 'me' : atk.target) : b.by;
-      if (b.by !== 'firewall') teamAct(by, 'cover');
-      laneAt(by, v2);
-      bolt(v2.clone().add(v4.set(0, 2.2, -2.4)), orb.visible ? orb.position.clone() : v1, SHIELD, 0.45, 0.7);
+      const bm = team.get(by);
+      if (bm && !bm.down) { bm.f.block(); tsnd('cover'); }
+      handAt(by, v2);
+      bolt(v2.clone(), orb.visible ? orb.position.clone() : v1, SHIELD, 0.45, 0.7);
       burst(v1, 24, 7, SHIELD, {});
       // the gathered charge bursts apart
       if (orb.visible) { burst(orb.position, 30, 9, C(pal.c), { size: 0.3 }); ring(v3.copy(orb.position).setY(0.1), SHIELD, 6, 0.5); }
@@ -1085,13 +1183,18 @@ window.PartyScene = (() => {
       if (!cre) return;
       if (cre.chip) cre.chip();
       cre.hitPos(c.from, v1);
-      for (const id of c.targets || []) { laneAt(id, v2); v2.z -= 2.4; v2.y += 1.6; bolt(v1, v2, c.what === 'spit' ? C(pal.c) : RED, c.what === 'beam' ? 0.5 : 0.3, c.what === 'quake' ? 0.2 : c.what === 'beam' ? 0.6 : 0.32); burst(v2, 8, 4, RED, {}); teamAct(id, 'flinch'); }
+      for (const id of c.targets || []) { laneAt(id, v2); v2.z -= 2.4; v2.y += 1.6; bolt(v1, v2, c.what === 'spit' ? C(pal.c) : RED, c.what === 'beam' ? 0.5 : 0.3, c.what === 'quake' ? 0.2 : c.what === 'beam' ? 0.6 : 0.32); burst(v2, 8, 4, RED, {}); const m = team.get(id); if (m && !m.down) m.f.hit(v4.set(rnd(-0.6, 0.6), 0, -1), 0.4); }
       if (c.what === 'quake') { ring(v1.set(0, 0, -2), RED, 14, 0.7); smoke(v1.set(0, 0.2, -1), 8, 5, { size: 2.2, life: 1.4, op: 0.4 }); shake = Math.max(shake, 0.4); if (arena) arena.pulse(0.8); }
       snd(CHIP_SND[c.what] || 'teamHit');
     }
     function foeGone(id, how) {
       if (!cre) return;
-      if (isMite(id)) { mites.gone(id, how); return; }
+      if (isMite(id)) {
+        mites.gone(id, how);
+        const f = foes.get(id), m = f && f.lane && team.get(f.lane);
+        if (how === 'bite' && m && !m.down) m.f.hit(v4.set(rnd(-0.5, 0.5), 0.3, -1), 0.6);
+        return;
+      }
       const f = foes.get(id);
       cre.hitPos(id, v1);
       cre.gone(id, how);
@@ -1103,13 +1206,20 @@ window.PartyScene = (() => {
       }
     }
     function regrow(id) { if (cre) cre.regrow(id); const f = foes.get(id); if (f && cre) { cre.hitPos(id, v1); burst(v1, 26, 6, C(pal.c), { up: 0.8 }); ring(v3.copy(v1).setY(0.05), C(pal.c), 5, 0.6); snd('bossRoar'); } }
-    function down(id) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.5), 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); smoke(v1, 5, 2, { size: 1.8, op: 0.4 }); snd('knock'); }
-    function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); teamAct(by || id, 'heal'); snd('heal'); }
-    function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.5), 16, 3, SHIELD, { up: 1, grav: -1 }); if (by && by !== id) teamAct(by, 'cast'); teamAct(id, 'cover'); snd('shield'); }
-    function up(id, by) { const m = team.get(id); if (by && by !== id && team.has(by)) teamAct(by, 'revive'); else if (m && m.mv) m.mv.act('cast'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
+    function down(id) { const m = team.get(id); if (m && !m.down) { m.f.ko(); m.down = true; tsnd('down'); } laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.5), 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); smoke(v1, 5, 2, { size: 1.8, op: 0.4 }); snd('knock'); }
+    // a heal, a shield or a revive from one bot to another: the giver strikes and a beam of light joins them
+    function giveBeam(id, by, col) {
+      const g = team.get(by); if (!g || g.down || by === id) return;
+      const ms = g.f.attack(0);
+      after(ms, () => { handAt(by, v2); handAt(id, v3); if (!team.get(id)) return; v3.y = Math.max(1.6, v3.y); bolt(v2.clone(), v3.clone(), col, 0.4, 0.55); });
+    }
+    function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.6), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); giveBeam(id, by, HEAL); tsnd('heal'); snd('heal'); }
+    function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.8), 16, 3, SHIELD, { up: 1, grav: -1 }); giveBeam(id, by, SHIELD); const m = team.get(id); if (m && !m.down) m.f.block(); snd('shield'); }
+    function up(id, by) { const m = team.get(id); if (m) { m.f.rise(); m.down = false; } if (by) giveBeam(id, by, HEAL); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); tsnd('revive'); snd('revive'); }
     // the boss dies: it bursts into pieces, slow motion, and the camera circles where it stood
     function clear() {
       teamWon = true; deadAt = nowS(); atk = null;
+      setTimeout(() => tsnd('victory'), 700);
       const at = cre ? cre.hitPos(null, new V()) : new V(0, 5, -3);
       for (const f of foes.values()) { if (cre && f.alive) cre.gone(f.id, 'kill'); f.alive = false; }
       shake = Math.max(shake, 1); punch = 1;
@@ -1147,7 +1257,7 @@ window.PartyScene = (() => {
     }
     function anchors() {
       const out = new Map();
-      if (!cre) return out;
+      if (!cre || lineupNow()) return out;
       for (const f of foes.values()) {
         if (!f.alive) continue;
         const p = f.kind === 'mite' ? (mites ? mites.anchor(f.id, v3) : null) : cre.anchor(f.id, v3);
@@ -1163,7 +1273,7 @@ window.PartyScene = (() => {
     // a little toward it. Cutaways: the boss rising at the start of a fight, a head or a twin falling,
     // the core opening, and the kill. None plays while an attack is winding up at the team or a mite
     // is about to land, so the counter word, the aim lines and the mites stay in view.
-    const bossAt = new V(), lookTo = new V();
+    const bossAt = new V(), lookTo = new V(), myAt = new V();
     function bossCentre(out) { if (!cre) return out.set(0, 5, -4); return cre.hitPos(atk ? atk.from : null, out); }
     const shots = {
       game: { fov: 42, omega: 4, pose(c, out) {
@@ -1173,12 +1283,30 @@ window.PartyScene = (() => {
         out.fov = 42 - lean * 8;
       } },
       reveal: { pri: 3, free: true, parts: [
-        // low between the team and the boss, looking up as it rises, then a three-quarter from its side
-        { len: 1.6, cut: 1, fov: 46, omega: 3, pose(c, out) { const u = c.u; out.pos.set(-8 + u * 4, 0.9 + u * 1.6, 2.2); out.look.set(bossAt.x, 3.5 + u * 2.5, bossAt.z); } },
-        { len: 1.2, cut: 1, fov: 38, omega: 3, pose(c, out) { out.pos.set(9, 5 + c.u * 1.5, 3.5); out.look.set(bossAt.x, bossAt.y + 1, bossAt.z); } },
+        // the team from the boss's side, low, every bot turned to the camera as it squares up; then low
+        // between the team and the boss, looking up as it rises; then a three-quarter from its side
+        { len: 1.3, cut: 1, fov: 50, omega: 3, pose(c, out) {
+          // far enough back that the outer bots and their parts stay in frame on any stage shape; the
+          // boss isn't drawn yet in this part (it rises in the next), so it never stands in the way
+          const z = teamZ - 2.4, u = c.u;
+          let wide = 0; for (const id of team.keys()) wide = Math.max(wide, Math.abs(laneAt(id, myAt).x));
+          const far = Math.max(7.5, (wide + 3 * bsc) / (Math.tan(THREE.MathUtils.degToRad(25)) * camera.aspect), (2.2 * bsc) / Math.tan(THREE.MathUtils.degToRad(25)));
+          out.pos.set(Math.sin(u * 0.8 - 0.4) * 2, 1.9 + u * 0.4, z - far - 1 + u * 0.8); out.look.set(0, 2.5 * bsc, z);
+        } },
+        { len: 1.2, cut: 1, fov: 46, omega: 3, pose(c, out) { const u = c.u; out.pos.set(-8 + u * 4, 0.9 + u * 1.6, 2.2); out.look.set(bossAt.x, 3.5 + u * 2.5, bossAt.z); } },
+        { len: 1.0, cut: 1, fov: 38, omega: 3, pose(c, out) { out.pos.set(9, 5 + c.u * 1.5, 3.5); out.look.set(bossAt.x, bossAt.y + 1, bossAt.z); } },
       ] },
       sever: { pri: 3, parts: [
         { len: 1.25, cut: 1, slow: 0.4, fov: 36, pose(c, out) { const x = c.x || bossAt; out.pos.set(x.x * 0.6 + 4, x.y + 1.2, x.z + 11 - c.u * 1.5); out.look.copy(x); } },
+      ] },
+      // your spell: from behind your bot's shoulder, low, as it rises and drives in at the boss
+      spell: { pri: 2, parts: [
+        { len: 1.05, cut: 1, slow: 0.6, fov: 44, pose(c, out) {
+          const m = team.get('me'); if (m) m.f.group.getWorldPosition(myAt); else laneAt('me', myAt);
+          const side = myAt.x > 0 ? 1 : -1;
+          out.pos.set(myAt.x + side * (4.6 - c.u * 0.8), 3 + c.u * 0.9, myAt.z + 9.5 - c.u * 1.5);
+          out.look.copy(myAt).setY(3.4).lerp(bossAt, 0.55);
+        } },
       ] },
       weak: { pri: 2, len: 1.5, fov: 34, pose(c, out) { out.pos.set(3.5, 6.5, 8.5 - c.u * 1.2); out.look.copy(bossAt); } },
       kill: { pri: 5, free: true, duringThreat: true, parts: [
@@ -1188,9 +1316,11 @@ window.PartyScene = (() => {
     };
     const dir = window.CamDirector ? CamDirector.create(THREE, camera, {
       reduce, shots, lockBefore: 5.5, gap: 6, budget: 3,
-      onPart(name, idx, part) { if (part.slow && !reduce) { slowK = part.slow; slowUntil = performance.now() + part.len * 1000; } },
+      onPart(name, idx, part) { partNow = name + idx; if (part.slow && !reduce) { slowK = part.slow; slowUntil = performance.now() + part.len * 1000; } },
     }) : null;
     function want(name, w) { if (dir) dir.want(name, w); }
+    let partNow = '';
+    const lineupNow = () => (window.__camHold ? window.__camHold.name === 'reveal' && !window.__camHold.part : !!dir && dir.shot() === 'reveal' && partNow === 'reveal0');
 
     // ---------- the frame ----------
     let lastT = nowS();
@@ -1208,6 +1338,8 @@ window.PartyScene = (() => {
       else if (performance.now() < slowUntil) dt *= slowK;
       T.value = t;
       laneCache.clear();
+      if (gl) { gl.reset(); }
+      runLater();
       teamTick(t, dt);
       drawn = true;
       // the boss never just waits: every 1.6 to 3 s one of them makes a small feint toward a player,
@@ -1269,29 +1401,40 @@ window.PartyScene = (() => {
         // camera test probe (tests set window.__camProbe): the shot and whether an attack was winding up at the team
         if (window.__camProbe) (window.__camLog ||= []).push({ t: +t.toFixed(3), shot: dir.shot(), wind: !!(atk && st && st.phase === 'fight'), thr: Number.isFinite(thr) ? +(thr - t).toFixed(2) : null });
       } else { camera.position.copy(camBase); camera.lookAt(camLook); }
+      // tests: hold one moment of a shot (window.__camHold = { name, part, u }) to photograph it
+      const hold = window.__camHold;
+      if (hold && shots[hold.name]) {
+        const sh0 = shots[hold.name], pt = sh0.parts ? sh0.parts[hold.part || 0] : sh0, o = { pos: new V(), look: new V(), fov: pt.fov || 42 };
+        pt.pose({ t, u: hold.u || 0.5, x: hold.x }, o);
+        camera.position.copy(o.pos); camera.fov = o.fov; camera.lookAt(o.look); camera.updateProjectionMatrix();
+      }
       const sh = shake * (reduce ? 0.12 : calm ? 0.6 : 1);
       if (sh > 0) camera.position.add(v4.set(Math.sin(t * 41) * sh * 0.5, Math.sin(t * 37 + 1) * sh * 0.4, 0));
       const zoom = 1 + punch * 0.05 * (reduce ? 0 : 1);
       if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
+      if (!dieT && cre && !teamWon) holder.visible = !lineupNow();
       composer.render();
       if (opts.onFrame) opts.onFrame();
     }
 
     function dispose() {
       renderer.setAnimationLoop(null);
-      for (const m of team.values()) m.op.dispose(); team.clear();
+      for (const m of team.values()) m.f.dispose(); team.clear(); later.length = 0;
       if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); });
       geoCache.forEach(g => g.dispose());
-      glowTex.dispose(); stripTex.dispose();
+      glowTex.dispose(); stripTex.dispose(); if (envTex) envTex.dispose();
       if (arena) arena.dispose();
       bloom.dispose(); composer.dispose && composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
     const live = () => visible && !document.hidden;
     const info = () => ({ kind, foes: foes.size, cre: !!cre, fx: fx ? fx.info() : null });
-    return { setFight, sync, shot, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
+    function key(id, frac) { teamKey(id, frac); }
+    function typo(id) { const m = team.get(id); if (m && !m.down) m.f.typo(); }
+    return { setFight, sync, shot, key, typo, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
+      renderInfo: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures }),
       test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }) } };
   }
 

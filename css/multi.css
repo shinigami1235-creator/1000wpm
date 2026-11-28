@@ -304,6 +304,7 @@
 .pa-fights { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--t-s); }
 .pa-fights li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 6px 8px; background: var(--bg-3); }
 .pa-fights li.w b { color: var(--accent); } .pa-fights li.l b { color: var(--red); }
+.pa-run .du-end-card .gg-share { margin: 14px 0 12px; }
 
 /* ---------- player profile ---------- */
 .u-preview { margin-bottom: 14px; padding: 10px 14px; background: rgba(var(--accent-rgb),.07); font-size: var(--t-s); }
