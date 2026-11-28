@@ -245,10 +245,12 @@ SuperModels.hydra = function (THREE, K, ctx) {
         mouthWorld('patch', v1);
         for (const id of mendTargets()) {
           faceWorld(id, v2);
-          K.fx.beam(v1, v2, '#f2c230', 0.35, 0.7, { grow: 0.25, follow: (a, b) => { mouthWorld('patch', a); if (st[id].up) faceWorld(id, b); } });
+          // a thread snaps when either head is cut
+          const bm = K.fx.beam(v1, v2, '#f2c230', 0.35, 0.7, { grow: 0.25, follow: (a, b) => { if (!st[id].up || !st.patch.up) { bm.t = bm.life; return; } mouthWorld('patch', a); faceWorld(id, b); } });
           K.fx.burst(v2, 26, '#ffe08a', { speed: 5, g: -2, life: 1, size: 0.3 }); st[id].flash = 1;
+          // a gold ring round each mended head (it was one big disc behind the hull that hid the necks)
+          K.fx.shock(v2, C('#f2c230'), 0.6, 4.5, 0.6, { flat: false, face: ctx.camPos, w: 0.2, k: 0.8 });
         }
-        K.fx.shock(v2.copy(BODY).setY(6), C('#f2c230'), 2, 10, 0.7, { flat: false, face: ctx.camPos, w: 0.12, k: 0.7 });
         K.fx.light(v1, '#f2c230', 30, 3);
       }
     }
@@ -280,7 +282,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     const stop = hitArt ? ctx.artAim(v2) : ctx.shieldAt(v2);
     s.fireAt = hitArt ? 'art' : 'shield';
     // the beam stays in the mouth while the head recoils, and on Art's bot while it is thrown back
-    K.fx.beam(v1, stop, '#3ee6ff', 0.95, 0.6, { grow: 0.1, follow: (a, b) => { mouthWorld('root', a); if (hitArt) ctx.artAim(b); } });
+    const bm = K.fx.beam(v1, stop, '#3ee6ff', 0.95, 0.6, { grow: 0.1, follow: (a, b) => { if (!s.up) { bm.t = bm.life; return; } mouthWorld('root', a); if (hitArt) ctx.artAim(b); } });
     K.fx.burst(stop, hitArt ? 80 : 70, hitArt ? '#ff8a8a' : '#bfefff', { speed: 14, g: 8, life: 0.7, size: 0.35, dir: v3.set(0, 0.6, hitArt ? 0.3 : -0.5), dirK: 0.6 });
     K.fx.light(stop, hitArt ? '#ff4d5e' : '#3ee6ff', 60, 4);
     if (!hitArt) K.fx.shock(stop, C('#3ee6ff'), 0.6, 6, 0.4, { flat: false, face: ctx.camPos });
