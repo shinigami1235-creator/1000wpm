@@ -845,10 +845,12 @@ window.DuelScene = (() => {
       const lead = [null, null];
       for (const g of glyphs) if (g.on && !g.hide && g.how && g.how.clash && g.t > g.delay && (!lead[g.from] || g.t - g.delay > lead[g.from].t - lead[g.from].delay)) lead[g.from] = g;
       if (lead[0] && lead[1]) at = new V().addVectors(lead[0].s.position, lead[1].s.position).multiplyScalar(0.5);
-      burst(at, 12, 9, colA, { shard: true, size: 0.3, life: 0.5, dir: d * 1.6, up: 0.3, grav: 5, k: 1.5 });
-      burst(at, 12, 9, colB, { shard: true, size: 0.3, life: 0.5, dir: -d * 1.6, up: 0.3, grav: 5, k: 1.5 });
-      burst(at, 6, 5, WHITE, { size: 0.36, life: 0.12, grav: 0, k: 0.8 });
-      flare(at, colA.clone().lerp(colB, 0.5), 2.0, 0.12);
+      burst(at, 16, 10, colA, { shard: true, size: 0.34, life: 0.55, dir: d * 1.6, up: 0.3, grav: 5, k: 1.6 });
+      burst(at, 16, 10, colB, { shard: true, size: 0.34, life: 0.55, dir: -d * 1.6, up: 0.3, grav: 5, k: 1.6 });
+      burst(at, 8, 6, WHITE, { size: 0.42, life: 0.14, grav: 0, k: 0.85 });
+      flare(at, colA.clone().lerp(colB, 0.5), 2.6, 0.14);
+      // a crackle of both colours where they scrape, and a thin shock ring across the line
+      stRing(at, STG.a, colA.clone().lerp(colB, 0.5).lerp(WHITE, 0.3), 1.6, 0.3);
       flashLight(at, WHITE, 3.5);
       // the smaller shot is knocked off its line: its letters jink sideways and keep going
       const weak = tA === tB ? -1 : tA > tB ? 1 - from : from;
