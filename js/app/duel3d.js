@@ -879,7 +879,14 @@ window.DuelScene = (() => {
     const LOCK_GAP = 7;   // Clash: at most one beam lock every 7 s
     // the colour a side's beam takes: its orb's own glow, else the side's colour
     const orbCol = i => C((F[i].bf && F[i].bf.colour) || opts.sides[i].color || (i ? '#f29d30' : '#8cff58'));
-    function muzzleOf(i, out) { return F[i].bf ? F[i].bf.muzzle(out) : handOf(i, out); }
+    // where a beam leaves a bot: in front of its chest toward the other one, so a bot that tumbles or spins
+    // doesn't swing its beam round the arena
+    function muzzleOf(i, out) {
+      if (!F[i].bf) return handOf(i, out);
+      chest(i, out); chest(1 - i, _mz).sub(out); _mz.y = 0;
+      return out.addScaledVector(_mz.normalize(), 1.25 * BS).add(_mz.set(0, 0.1, 0));
+    }
+    const _mz = new V();
     // sparks drawn in from round the muzzle toward it, the orb gathering power
     function gather(at, col, n, r = 2.2) {
       if (reduce) n = Math.ceil(n / 3);
@@ -920,7 +927,7 @@ window.DuelScene = (() => {
       ST.t += dt;
       muzzleOf(0, ST.A); muzzleOf(1, ST.B);
       // the collision point: a stiff spring toward where the script wants it, plus a tremble that grows with the heat
-      const kx = 60, dx = 2 * Math.sqrt(kx) * 0.7;
+      const kx = ST.through >= 0 ? 420 : 60, dx = 2 * Math.sqrt(kx) * 0.75;   // a break drives through fast
       ST.xv += ((ST.xT - ST.x) * kx - ST.xv * dx) * dt; ST.x += ST.xv * dt;
       const x = clamp(ST.x + (reduce ? 0 : Math.sin(t * 47) * 0.006 * (1 + ST.heat * 3)), 0.02, 0.98);
       ST.J.lerpVectors(ST.A, ST.B, x);
@@ -985,6 +992,9 @@ window.DuelScene = (() => {
           for (let i = 0; i < 2; i++) burst(ST.J, 2, 6 + ST.heat * 6, ST.sc[i], { shard: Math.random() < 0.5, size: 0.2, life: 0.45, dir: (i ? 1 : -1) * -0.6, up: 0.5, grav: 7, k: 1.6 });
           if (Math.random() < 0.3) burst(ST.J, 1, 3, WHITE, { size: 0.5, life: 0.1, grav: 0, k: 0.7 });
         }
+        // the floor under the collision: dust blown out from under it, more as it heats up
+        ST.dustT = (ST.dustT || 0) - dt;
+        if (ST.dustT <= 0 && ST.mode !== 'lock') { ST.dustT = reduce ? 0.3 : 0.09 - ST.heat * 0.04; smoke(tmp.set(ST.J.x, arena ? 0.45 : 0.1, ST.J.z), 1, 2.2 + ST.heat * 2, { size: 1.1 + ST.heat * 0.6, life: 0.9, op: 0.28 + ST.heat * 0.12 }); }
         ST.ringT -= dt;
         if (ST.ringT <= 0) { ST.ringT = Math.max(0.16, 0.42 - ST.heat * 0.25); stRing(ST.J, axis, ST.sc[ST.xT > 0.5 ? 0 : 1].clone().lerp(WHITE, 0.2), 1.3 + ST.heat * 1.0, 0.42); }
         if (!reduce) shake = Math.max(shake, 0.04 + ST.heat * 0.22 * (ST.mode === 'lock' ? 0.5 : 1));
@@ -1025,7 +1035,6 @@ window.DuelScene = (() => {
         lock.done = true;
         const L = lock.lands.splice(0), first = L.filter(x => x.from === win), rest = L.filter(x => x.from !== win);
         first.forEach(x => x.fn());
-        if (F[lose].bf && !F[lose].ko) F[lose].bf.hurt('knock', { k: 1.2, side: lose ? -1 : 1 });
         stEnd();
         // the other side's shot, which was locked in the struggle, lands its real hit a beat later
         after(0.2, () => { rest.forEach(x => x.fn()); lock.lateDone = true; });
@@ -1861,7 +1870,7 @@ window.DuelScene = (() => {
       // beams launch, a slow push in on the collision, the break from behind the winner, the wide as the loser lands
       beam: { pri: 3.5, parts: [
         { len: 1.35, cut: 1, fov: 30, omega: 5, pose(c, out) { const i = c.x.hero, j = 1 - i, gap = Math.abs(along(fp[j]) - along(fp[i])), k = 1 - 0.1 * c.u;
-          fr(out.pos, fp[i], i, Math.min(gap * 0.4, 4.4) * k, fc[i].y + 0.2, 7.6 * k); fr(out.look, fc[i], i, 0.7, fc[i].y + 0.2, 0); } },
+          const d = Math.max(7.6, fitD(0, 5, 30) * 0.9); fr(out.pos, fp[i], i, Math.min(gap * 0.4, 4.4) * k, fc[i].y + 0.2, d * k); fr(out.look, fc[i], i, 0.7, fc[i].y + 0.2, 0); } },
         { len: 0.55, cut: 1, fov: 34, omega: 6, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = fitD(span, 6.5, 34) + 0.5; fr(out.pos, MID, 0, 0, 2.6, D); out.look.copy(MID).setY(2.9); } },
         { len: 4, cut: 0, fov: 34, omega: 2.2, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 9, D = (fitD(span, 6.5, 34) + 0.5) * (1 - 0.2 * c.u); const J = struggle.on ? struggle.J : MID; fr(out.pos, MID, 0, 0, 2.3 - 0.4 * c.u, D); out.look.copy(MID).lerp(J, 0.6).setY(Math.max(2.5, J.y + 0.1)); } },
       ] },
@@ -1869,7 +1878,7 @@ window.DuelScene = (() => {
       // is shoved back across the stage (asked for at the break itself, so it lands on the moment)
       bbreak: { pri: 4, parts: [
         { len: 0.6, cut: 1, slow: 0.5, fov: 36, pose(c, out) { const w = c.x.win, l = c.x.lose; fr(out.pos, fp[w], w, -5.2, fc[w].y + 1.5, 7.8); out.look.lerpVectors(fc[w], fc[l], 0.68); } },
-        { len: 1.3, cut: 1, fov: 34, omega: 4, pose(c, out) { const l = c.x.lose; fr(out.pos, fp[l], l, 1.6, 2.5, 9.8); fr(out.look, fc[l], l, 1.2, Math.max(2.3, fc[l].y), 0); } },
+        { len: 1.3, cut: 1, fov: 34, omega: 4, pose(c, out) { const l = c.x.lose; fr(out.pos, fp[l], l, 1.6, 2.5, 11.5); fr(out.look, fc[l], l, 1.2, Math.max(2.3, fc[l].y), 0); } },
       ] },
       // two spells going up together in Showdown: wide, low and centred
       xspell2: { pri: 3, len: 2.6, fov: 38, omega: 3, pose(c, out) { const span = Math.abs(along(fp[1]) - along(fp[0])) + 6, D = fitD(span, 7.5, 38); fr(out.pos, MID, 0, 0, 1.9 + c.u * 0.6, D - c.u * 1.2); out.look.copy(MID).setY(2.9); } },
