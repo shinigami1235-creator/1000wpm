@@ -376,7 +376,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
       if (d.attack === 'overflow') throwStack(hit, off, t);
       if (d.attack === 'laser') fireLaser(hit, off, t);
     }
-    if (n === 'packet') fate.set(d.id, d.returned ? 'back' : 'hit');
+    if (n === 'packet') { fate.set(d.id, d.returned ? 'back' : 'hit'); lastFate = { f: d.returned ? 'back' : 'hit', at: performance.now() }; }
     if (n === 'compile') {
       compileT = t; compileArm = Math.random() < 0.5 ? 0 : 1; screenRed = 1; screenPulse = 1; glitch = Math.max(glitch, 0.5);
       // the bolt leaves the chin under the screen, never the screen itself, and lands on Art's bot
@@ -467,7 +467,9 @@ SuperModels.compiler = function (THREE, K, ctx) {
   function endLaser() { if (laser) { if (laser.orb) laser.orb.pop(); if (laser.mark) laser.mark.off(); } laser = null; aims.forEach(m => { m.visible = false; }); locks.forEach(m => { m.visible = false; }); }
 
   // ---------- packets: the fork bomb's drones ----------
-  function packets(list, t) {
+  function packets(list, t, own) {
+    if (lineMode && !own) return;   // on the one line the drones come from line.tags (apply below), not from the stage's targets
+    if (t == null) t = nowT;
     const live = new Set();
     for (const p of list) {
       live.add(p.id);
@@ -484,7 +486,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
       d.left = p.left; d.total = p.total;
     }
     for (const [id, d] of drones) if (!live.has(id)) {
-      const f = fate.get(id); fate.delete(id);
+      const f = fate.get(id) || (lastFate && performance.now() - lastFate.at < 700 ? lastFate.f : 'back'); fate.delete(id); lastFate = null;
       if (f === 'hit') {
         // it reached Art: it dives into his bot and blows
         ctx.artAim(v1);
@@ -500,13 +502,24 @@ SuperModels.compiler = function (THREE, K, ctx) {
   }
 
   // snapshot: where each live line sits on the screen, for the flash when a fix lands
+  // The streamer's page fights on one line of words (InlineLine): its snapshot has no targets and the
+  // fork bomb's processes are lit words in s.line.tags (kind, ms, el). Read them there, with an id made
+  // from the kind and the total, which stays the same for as long as the word is lit.
+  let lineMode = false, lastFate = null, nowT = 0;
   function apply(s) {
     lineOrder.length = 0;
     if (s && s.b && s.b.lines) for (const l of s.b.lines) if (l.state === 'live') lineOrder.push(l.id);
+    lineMode = !!(s && s.line && !(s.targets && s.targets.length));
+    if (lineMode) {
+      const tg = [];
+      for (const g of s.line.tags || []) if (g && g.first && g.ms && g.kind === 'packet') tg.push({ id: 'L' + g.kind + g.ms, left: Math.max(0, g.ms - g.el), total: g.ms, i: tg.length });
+      packets(tg, nowT, true);
+    }
   }
 
   // ---------- frame ----------
   function update(t, dt, S) {
+    nowT = t;
     finishing = !!S.finishing; lost = !!S.lost;
     if (S.dead && !dead) { dead = true; deadT = 0; }
     if (!S.dead && dead && !S.lost) { dead = false; reset(); }
@@ -538,10 +551,13 @@ SuperModels.compiler = function (THREE, K, ctx) {
     }
     sinkMat.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(0.6 + hot * 1.4 + Math.sin(t * 3) * 0.2 * hot);
     sinkMat.userData.u.uHeat.value = Math.max(sinkMat.userData.u.uHeat.value, hot * (0.35 + Math.sin(t * 2.3) * 0.08));
-    pipeMat.userData.u.uSeam.value.copy(ctx.pal.a).multiplyScalar(0.3 + hot);
+    pipeMat.userData.u.uSeam.value.set('#ff9a4d').multiplyScalar(0.7 + hot * 0.8 + Math.sin(t * 1.7) * 0.15);
     pipeMat.userData.u.uHeat.value = dead ? smooth((deadT - 0.1) / 1.1) : hot * 0.25;
     const flick = finishing ? Math.sin(t * 23) * 0.8 : 0;
-    ledMat.color.copy(ctx.pal.a).multiplyScalar(1.4 + Math.sin(t * 5) * 0.3 + flick);
+    // while an attack winds up at Art the trim and the screen's edge pulse red, faster as it closes in
+    const warnU = stack ? clamp((t - stack.t0) / stack.len, 0, 1) : laser && !laser.fired ? clamp((t - laser.t0) / laser.len, 0, 1) : 0;
+    const warn = warnU > 0 ? (0.45 + 0.55 * warnU) * (0.5 + 0.5 * Math.sin(t * (7 + warnU * 16))) : 0;
+    ledMat.color.copy(ctx.pal.a).lerp(RED, Math.min(1, warnU * 1.5)).multiplyScalar(1.4 + Math.sin(t * 5) * 0.3 + flick + warn * 0.8);
     keyMat.color.copy(ctx.pal.a).multiplyScalar(0.9);
     ventMat.color.copy(ctx.pal.a).lerp(RED, hot * 0.4).multiplyScalar(1 + hot * 1.2 + Math.sin(t * 4) * 0.3 * hot + roar * 2);
     fanMat.color.copy(ctx.pal.a).multiplyScalar(0.8);
@@ -549,7 +565,7 @@ SuperModels.compiler = function (THREE, K, ctx) {
     // the screen
     const U = screenMat.uniforms;
     U.uT.value = t; U.uC.value.copy(ctx.pal.a); U.uPulse.value = (screenPulse + roar) * 0.4;
-    U.uRed.value = (screenRed + (finishing ? 0.4 + Math.sin(t * 9) * 0.2 : 0) + (lost ? 0.5 + Math.sin(t * 4) * 0.2 : 0)) * 0.6;
+    U.uRed.value = (screenRed + warn * 0.35 + (finishing ? 0.4 + Math.sin(t * 9) * 0.2 : 0) + (lost ? 0.5 + Math.sin(t * 4) * 0.2 : 0)) * 0.6;
     U.uBreak.value = dead ? clamp(deadT / 0.7, 0, 0.5) + (deathFx.glass ? clamp((deadT - 1.05) * 3, 0, 0.5) : 0) : 0;
     U.uPanic.value = Math.max(panic, dead ? 0.5 * (1 - pulse(deadT, 0.3, 0.7)) : 0);
     U.uOn.value = boot < 3 ? pulse(boot, 0.35, 1.2) : pr >= 1.0 && pr < 1.9 ? pulse(pr, 1.0, 1.75) : 1;
