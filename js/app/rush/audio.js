@@ -202,6 +202,8 @@ window.RushAudio = (() => {
       titanFall(o, t) { tone(o, t, 'sawtooth', 300, 40, 1.4, 0.25, 0.01); tone(o, t, 'square', 150, 30, 1.2, 0.1); hiss(o, t, 0.6, 2000, 0.6, 0.3, 'bandpass', 0.005, 300); },
       armourOff(o, t) { [0, 0.07, 0.15, 0.26, 0.4].forEach((w, i) => metal(o, t + w, 220 + i * 70, 0.18, 0.4)); },
       overload(o, t) { tone(o, t, 'sine', 300, 2400, 0.65, 0.2, 0.3); tone(o, t, 'sawtooth', 150, 1200, 0.65, 0.08, 0.3); },
+      // a titan's footstep (28 Nov 2026): a soft thud through the floor and the clink of its armour settling
+      footstep(o, t, k = 1) { boom(o, t, 0.32 * k, 0.45); metal(o, t + 0.03, 140 + Math.random() * 40, 0.05 * k, 0.35); hiss(o, t, 0.25, 260, 0.8, 0.12 * k, 'lowpass', 0.004, 70); },
       titanBoom(o, t) { boom(o, t, 1, 2.2); hiss(o, t, 2.4, 1600, 0.5, 0.55, 'lowpass', 0.005, 60); metal(o, t + 0.02, 50, 0.25, 2); hiss(o, t + 0.04, 0.5, 6000, 0.6, 0.25, 'highpass'); },
     };
   }
@@ -232,7 +234,7 @@ window.RushAudio = (() => {
       const g = ac.createGain(); g.gain.value = (TLEVEL[name] || 0.7) * (/Charge$|Build$/.test(name) ? CHARGE_K : 1); g.connect(bus);
       const t = ac.currentTime + 0.005;
       if (/Charge$|Build$/.test(name)) { stopCharge(true); charging = tk[name](g, t, arg); return; }
-      if (!/^(titanRoar|materialize|assemble|rise|compile|charge|armourOff|overload)$/.test(name)) stopCharge();
+      if (!/^(titanRoar|materialize|assemble|rise|compile|charge|armourOff|overload|footstep)$/.test(name)) stopCharge();
       tk[name](g, t, arg);
     } catch (e) {}
   }

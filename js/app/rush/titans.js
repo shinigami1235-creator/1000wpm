@@ -319,6 +319,103 @@ window.RushTitans = (() => {
       return L;
     }
 
+    // ---------- the live layer (28 Nov 2026, Gid: "the 2nd boss needs smoother movement and animation") ----------
+    // On top of the pose blend, for the Siege Titan: every upper-body bone follows its pose on a spring with
+    // its own speed, so the head lags the chest, the forearms trail the upper arms and a strike overshoots and
+    // settles instead of stopping dead; the idle breathes, looks round and shifts its weight; and its feet stay
+    // where they stand while the arena sways it about, stepping (thud, dust) when they're left too far
+    // behind, instead of sliding. window.__titanStiff turns it off (before/after review).
+    const LIVE = id === 'siege' && !window.__titanStiff;
+    // bone: [speed (rad/s), damping ratio]; lower damping overshoots more
+    const SPR = { spine: [10, 0.62], chest: [11, 0.55], neck: [8.5, 0.6], head: [7.5, 0.5], armL: [14, 0.5], armR: [14, 0.5], foreL: [12, 0.45], foreR: [12, 0.45], handL: [10, 0.45], handR: [10, 0.45] };
+    const spr = {};
+    function springBones(dt, fast) {
+      for (const k in SPR) {
+        const b = B[k]; if (!b) continue;
+        const r = b.rotation; let st = spr[k];
+        if (!st) st = spr[k] = { p: [r.x, r.y, r.z], v: [0, 0, 0] };
+        const limb = k !== 'spine' && k !== 'chest' && k !== 'neck' && k !== 'head';
+        const w = SPR[k][0] * (limb ? fast : 1 + (fast - 1) * 0.4), z = SPR[k][1];
+        const tg = [r.x, r.y, r.z], n = Math.max(1, Math.ceil(dt * w / 0.2)), h = dt / n;
+        for (let s2 = 0; s2 < n; s2++) for (let i = 0; i < 3; i++) { st.v[i] += (w * w * (tg[i] - st.p[i]) - 2 * z * w * st.v[i]) * h; st.p[i] += st.v[i] * h; }
+        r.set(st.p[0], st.p[1], st.p[2]);
+      }
+    }
+    // feet: each one keeps the spot (world x, z of the titan's root) it was planted at; the leg leans to reach it
+    const feet = { L: { at: null, step: null }, R: { at: null, step: null } };
+    const lastRoot = new V(), rootVel = new V(), body = new V();
+    let stepClock = 0;
+    const smoothU = x => { x = clamp(x, 0, 1); return x * x * x * (x * (x * 6 - 15) + 10); };
+    function plantLegs(dt, life) {
+      if (!S.legs) return;
+      const sc = scaleOf(), Lg = S.legs.thigh + S.legs.shin;
+      // where the body stands: the root plus the titan's own lunges (mover), so a lunge steps too
+      mover.updateWorldMatrix(true, false); mover.getWorldPosition(body);
+      if (dt > 0) { rootVel.set(body.x - lastRoot.x, 0, body.z - lastRoot.z).divideScalar(dt); lastRoot.copy(body); }
+      const free = mode === 'enter' || mode === 'die' || preview;
+      let lift = 0, liftSide = 0;
+      for (const k of ['L', 'R']) {
+        const F = feet[k], o = k === 'L' ? feet.R : feet.L;
+        // a foot the pose itself lifts (the stomp) is left to the pose and picks up its spot where it lands
+        foot(k, v2);
+        const raised = !F.step && v2.y > 0.45 + 0.08 * sc;
+        if (free || !F.at || raised) { F.at = (F.at || new V()).set(body.x, 0, body.z); F.step = null; continue; }
+        // left behind too far, and the other foot is down: step to where the body is going
+        const dx = F.at.x - body.x, dz = F.at.z - body.z;
+        if (!F.step && !o.step && Math.hypot(dx, dz) > (mode === 'wind' ? 0.6 : 0.42) && stepClock > 0.12) {
+          F.step = { from: F.at.clone(), to: new V(body.x + rootVel.x * 0.3, 0, body.z + rootVel.z * 0.3), t: 0 };
+          stepClock = 0;
+        }
+        let up = 0;
+        if (F.step) {
+          F.step.t += dt / 0.42;
+          const u = smoothU(F.step.t);
+          F.at.lerpVectors(F.step.from, F.step.to, u);
+          up = Math.sin(Math.PI * Math.min(1, F.step.t));
+          if (F.step.t >= 1) {
+            F.at.copy(F.step.to); F.step = null; up = 0;
+            foot(k, v1); v1.y = 0.06; tfx.burst(v1, 5, { kind: 'dust', col: '#8a8f96', speed: 1.6, size: 1.0, life: 0.8, up: 0.6, alpha: 0.5 });
+            J.shake(0.08); sfx('footstep', 0.8);
+          }
+          lift = Math.max(lift, up); liftSide = k === 'L' ? -1 : 1;
+        }
+        // lean the leg toward its spot: a sideways reach on the thigh's z, a forward or back one on its x
+        const th = B['thigh' + k], sh = B['shin' + k], ft = B['foot' + k];
+        const lx = clamp((F.at.x - body.x) / sc / Lg, -0.45, 0.45), lz = clamp((F.at.z - body.z) / sc / Lg, -0.45, 0.45);
+        th.rotation.z += Math.asin(lx);
+        th.rotation.x -= Math.asin(lz);
+        // the swing: hip and knee fold to lift the foot clear
+        th.rotation.x -= 0.42 * up; sh.rotation.x += 0.85 * up;
+        ft.rotation.set(-(th.rotation.x + sh.rotation.x), 0, -(th.rotation.z + sh.rotation.z));
+      }
+      stepClock += dt;
+      // the weight rides over the standing foot and dips as the stepping one comes down
+      if (lift > 0) { B.spine.rotation.z -= 0.05 * liftSide * lift * life; B.chest.rotation.z += 0.03 * liftSide * lift * life; B.hips.position.y -= 0.06 * lift; }
+    }
+    // what the moves above ask for on top of the poses, applied after the blend: the heave after a blow,
+    // the roar's shake, the wind-up's tremble (a strain at its own rate, not a new random angle each frame)
+    const XT = { heave: 0, roar: -1, trem: 0 };
+    function liveLayer(t, dt, fast, life) {
+      if (XT.heave) { B.chest.rotation.x += 0.07 * XT.heave; B.head.rotation.x -= 0.05 * XT.heave; B.armL.rotation.z -= 0.04 * XT.heave; B.armR.rotation.z += 0.04 * XT.heave; }
+
+      // breathing (in step with BossKit's chest rise), a slow look round, and a weight shift with the sway
+      const br = Math.sin(t * 1.6), ls = life;
+      B.chest.rotation.x += 0.035 * br * ls; B.head.rotation.x -= 0.025 * br * ls; B.spine.rotation.x += 0.012 * br * ls;
+      B.armL.rotation.z -= 0.03 * br * ls; B.armR.rotation.z += 0.03 * br * ls;
+      B.foreL.rotation.x -= 0.04 * (0.5 + 0.5 * br) * ls; B.foreR.rotation.x -= 0.04 * (0.5 + 0.5 * Math.sin(t * 1.6 + 0.4)) * ls;
+      B.head.rotation.y += (0.16 * Math.sin(t * 0.37) + 0.06 * Math.sin(t * 0.91 + 1)) * ls; B.neck.rotation.y += 0.05 * Math.sin(t * 0.37 - 0.3) * ls;
+      B.head.rotation.z += 0.03 * Math.sin(t * 0.53 + 2) * ls;
+      // leaning into the way the arena sways it, head turned a little after it
+      const lean = clamp(rootVel.x * 0.06, -0.08, 0.08);
+      B.spine.rotation.z -= lean; B.chest.rotation.z -= lean * 0.6; B.head.rotation.z += lean * 0.9; B.head.rotation.y += lean * 1.2;
+      plantLegs(dt, life);
+      springBones(dt, fast);
+      // shakes go on after the springs, which would smooth them away
+      if (XT.roar >= 0) { B.chest.rotation.y += Math.sin(XT.roar * 47) * 0.012; B.head.rotation.x += Math.sin(XT.roar * 39) * 0.02; }
+      if (XT.trem) { B.chest.rotation.y += Math.sin(t * 53) * XT.trem; B.armL.rotation.x += Math.sin(t * 61 + 1) * XT.trem * 0.8; B.armR.rotation.x += Math.sin(t * 57 + 2) * XT.trem * 0.8; }
+      XT.heave = 0; XT.roar = -1; XT.trem = 0;
+    }
+
     // ---------- every frame ----------
     const flags = {};
     function anim(t, dt, s, rdt = dt) {
@@ -341,8 +438,14 @@ window.RushTitans = (() => {
         if (mode === 'wind' && atk) {
           windK = s.wind;
           const w = ATK[atkId];
-          if (w) L.push([w[0], easeIn(Math.min(1, windK * 1.15)) * 0.85 + 0.15 * smooth(windK)]);
-          if (windK > 0.8) { const tr = (windK - 0.8) * 5 * 0.025; B.chest.rotation.y += rnd(-tr, tr); }
+          if (w && LIVE) {
+            // anticipation: a quick dip toward the strike first (the opposite way to the wind-up), then it commits
+            // fast to most of the wind-up and coils the rest of the way slowly
+            const k = windK, dip = Math.sin(Math.PI * clamp(k / 0.14, 0, 1)) * 0.22 * (1 - smooth(k / 0.2));
+            const wk = 1 - Math.pow(1 - clamp(k, 0, 1), 2.4);   // fast off the mark, slowing as it coils, no hitch
+            L.push([w[1], dip], [w[0], wk]);
+          } else if (w) L.push([w[0], easeIn(Math.min(1, windK * 1.15)) * 0.85 + 0.15 * smooth(windK)]);
+          if (windK > 0.8) { const tr = (windK - 0.8) * 5 * 0.025; if (LIVE) XT.trem = tr; else B.chest.rotation.y += rnd(-tr, tr); }
           if (atk.charge) atk.charge(windK);
           kit.charge(windK * 0.9);
           // the floor telegraph from the titan to you
@@ -363,8 +466,12 @@ window.RushTitans = (() => {
           strikeT += dt;
           const w = ATK[atkId], tS = strikeT;
           const into = landed ? ease(tS / 0.13) : ease(tS / 0.13) * 0.55;
-          const back = 1 - smooth((tS - (landed ? 0.45 : 0.22)) / 0.7);
-          if (w) L.push([w[0], back], [w[1], into * back]);
+          // the live titan holds the blow a moment, then lets it go with a slower, heavier recovery
+          const back = LIVE ? 1 - smoothU((tS - (landed ? 0.42 : 0.2)) / 0.95) : 1 - smooth((tS - (landed ? 0.45 : 0.22)) / 0.7);
+          // the live titan comes out of a landed blow straight back to its stance, not back up through the
+          // wind-up (the old blend lifted the fists half way up again on the way home)
+          if (w && LIVE && landed) L.push([w[0], into < 1 ? 1 : 0], [w[1], into * back]);
+          else if (w) L.push([w[0], back], [w[1], into * back]);
           lungeV.z = (atk.lunge || 0) * into * back * (landed ? 1 : 0.5);
           if (tS >= 0.13 && !hitDone) {
             hitDone = true;
@@ -384,16 +491,34 @@ window.RushTitans = (() => {
           if (beamT > 0) { beamT -= dt; core(v1); v2.copy(you); tfx.beam(v1, v2, beamT / 0.55, col); if (Math.random() < 0.8) tfx.burst(v2, 4, { col, speed: 6, life: 0.3 }); if (beamT <= 0) tfx.beamOff(); }
           if (id === 'colossus' && atkId === 'lash' && kit.tail) kit.tail.rotation.y = -1.1 * into * back;
           if (id === 'half' && atkId === 'lash') B.foreR.scale.y = 1 + 1.3 * into * back;
-          if (tS > 1.3) { mode = 'idle'; atk = null; lungeV.z = 0; B.foreR.scale.y = 1; mover.position.x = 0; }
+          if (LIVE && landed && tS > 0.15 && tS < 1.2) XT.heave = Math.sin(Math.PI * clamp((tS - 0.15) / 1.05, 0, 1));   // a heavy breath after the blow
+          if (tS > (LIVE ? 1.45 : 1.3)) { mode = 'idle'; atk = null; lungeV.z = 0; B.foreR.scale.y = 1; mover.position.x = 0; }
         }
         // a signature throw: a quick gesture
-        if (sigT >= 0) { sigT += dt; const g = SIGP[id]; const k = Math.sin(clamp(sigT / 0.6, 0, 1) * Math.PI); if (g) L.push([g[0], k * 0.6], [g[1], k * clamp((sigT - 0.2) / 0.2, 0, 1) * 0.5]); if (sigT > 0.6) sigT = -1; }
-        if (roarT >= 0) { roarT += dt; L.push(['roar', Math.sin(clamp(roarT / 1.5, 0, 1) * Math.PI) * 0.9]); if (roarT > 1.5) roarT = -1; }
+        if (sigT >= 0 && LIVE) {
+          // the throw: draws back over 0.25 s, snaps through in 0.1 s, eases home over half a second
+          sigT += dt; const g = SIGP[id];
+          const wv = smooth(sigT / 0.25) * (1 - smoothU((sigT - 0.3) / 0.5)), sv = ease((sigT - 0.25) / 0.1) * (1 - smoothU((sigT - 0.38) / 0.5));
+          if (g) L.push([g[0], wv * 0.65], [g[1], sv * 0.6]);
+          if (sigT > 0.9) sigT = -1;
+        } else if (sigT >= 0) { sigT += dt; const g = SIGP[id]; const k = Math.sin(clamp(sigT / 0.6, 0, 1) * Math.PI); if (g) L.push([g[0], k * 0.6], [g[1], k * clamp((sigT - 0.2) / 0.2, 0, 1) * 0.5]); if (sigT > 0.6) sigT = -1; }
+        if (roarT >= 0 && LIVE) {
+          // the roar: rears back fast, holds it shaking, then sags out of it
+          roarT += dt; const k = ease(roarT / 0.3) * (1 - smoothU((roarT - 1.05) / 0.6));
+          L.push(['roar', 0.95 * k]);
+          if (roarT > 0.3 && roarT < 1.1) XT.roar = roarT;
+          if (roarT > 1.7) roarT = -1;
+        } else if (roarT >= 0) { roarT += dt; L.push(['roar', Math.sin(clamp(roarT / 1.5, 0, 1) * Math.PI) * 0.9]); if (roarT > 1.5) roarT = -1; }
         mover.position.z = lungeV.z / scaleOf(); mover.position.y *= 0.8;
       }
       if (s.stun && mode !== 'die') L.push(['reel', 0.45]);
       if (s.reel > 0.01 && mode !== 'die') L.push(['reel', s.reel]);
       kit.mix(L);
+      if (LIVE) {
+        const life = mode === 'idle' && sigT < 0 && roarT < 0 ? 1 : mode === 'wind' ? 0.35 : 0.6;
+        const fast = mode === 'strike' && strikeT < 0.2 ? 2.4 : mode === 'strike' ? 1.25 : mode === 'enter' || mode === 'die' ? 1.6 : 1;
+        liveLayer(t, dt, fast, life);
+      }
       kit.update(t, dt);
       // steam from the Brute's vents, more as it builds
       if (id === 'brute' && mode !== 'enter' && !(mode === 'die' && dieT > 1.9)) {

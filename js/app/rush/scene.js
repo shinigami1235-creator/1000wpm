@@ -894,8 +894,9 @@ window.RushScene = (() => {
       o.pos.x += gB.z * GAME.side * k; o.pos.z -= gB.x * GAME.side * k;
       o.pos.y = GAME.y + 0.04 * H;
       // never let the bot (knocked about, or darting) come closer than 4.5 to the lens
-      gT.copy(o.pos).sub(YOU); const near = gT.length();
-      if (near < 4.5) o.pos.addScaledVector(gT.normalize(), 4.5 - near);
+      // (pushed straight out from the boss, so a bot thrown past the camera can't drag the camera in)
+      const near = o.pos.distanceTo(YOU);
+      if (near < 4.5) { gT.copy(o.pos).sub(gA).setY(0).normalize(); o.pos.addScaledVector(gT, 4.5 - near); }
       o.fov = GAME.fov;
       // aim: the bot on the left third (fx) and the top of the boss a little under the top edge (fy is the
       // lowest the bot may sit), found by nudging the look point the way camdir's frame target does
@@ -1208,8 +1209,6 @@ window.RushScene = (() => {
         const rk = t - reelAt;
         jolt = Math.max(0, jolt - adt * 2.6);
         pose.reel = Math.max(rk < 1.1 ? Math.sin(Math.min(1, rk / 1.1) * Math.PI) * 0.9 : 0, jolt) * (reduce ? 0.4 : 1);
-        if (dying < 0 || fig.P.T) fig.anim(at, adt, pose, dt);
-        if (fig.P.set) fig.P.set.update(at, adt, fig.root.position);
         recoilV += (-recoil * 40 - recoilV * 9) * adt; recoil += recoilV * adt; recoil = clamp(recoil, -1.1, 0.4);
         fig.root.position.z = (slotNow && slotNow.mark > 1 ? -0.5 : 0) + recoil;
         // pushed back, it leans back with it (every boss, kit-built or not)
@@ -1220,6 +1219,9 @@ window.RushScene = (() => {
         const du = t - dodgeAt, dodge = du < 1.2 ? (du < 0.22 ? ease(du / 0.22) : 1 - smooth((du - 0.45) / 0.75)) * 2.6 * dodgeSide * (reduce ? 0.4 : 1) : 0;
         fig.root.position.x = drift + dodge + (enraged && !calm ? Math.sin(t * 31) * 0.04 : 0);
         if (dying < 0) fig.root.rotation.z = -dodge * 0.06;
+        // the figure moves after its place for this frame is set, so a titan's feet can hold their spots on the floor
+        if (dying < 0 || fig.P.T) fig.anim(at, adt, pose, dt);
+        if (fig.P.set) fig.P.set.update(at, adt, fig.root.position);
         // edges: red through a wind-up, blue while frozen, brighter on a hit
         flash = Math.max(0, flash - dt * 3.5);
         for (const m of lineMats) {

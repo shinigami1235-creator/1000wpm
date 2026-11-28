@@ -65,7 +65,7 @@ window.RushBot = (() => {
         // so a blow never throws the bot into the lens)
         tmp.copy(pos).sub(from || base).setY(0); if (tmp.lengthSq() < 1e-4) tmp.set(0, 0, 1); tmp.normalize();
         tmp2.set(-tmp.z, 0, tmp.x);   // the bot's left, seen from the camera
-        knockV.addScaledVector(tmp, 3.2 * power).addScaledVector(tmp2, 3.6 * power).add(tmp2.set(0, 2.4 * power, 0));
+        knockV.addScaledVector(tmp, 2.2 * power).addScaledVector(tmp2, 3.0 * power).add(tmp2.set(0, 2.2 * power, 0));
         f.hurt(power > 0.8 ? 'knock' : 'jolt', { k: power, side: Math.random() < 0.5 ? -1 : 1 });
         f.hit(tmp2.set(0, 0, -1), Math.min(1.5, power));
         nextDart = last + 1.0;
@@ -105,6 +105,7 @@ window.RushBot = (() => {
       vel.addScaledVector(tmp.sub(pos), k2 * dt).addScaledVector(vel, -d2 * dt);
       // knockback decays on its own
       knock.addScaledVector(knockV, dt); knockV.multiplyScalar(Math.max(0, 1 - dt * 5)); knock.multiplyScalar(Math.max(0, 1 - dt * 2.2));
+      if (knock.length() > 2.4) knock.setLength(2.4);   // thrown back, never off the stage
       pos.addScaledVector(vel, dt);
       pos.y = Math.max(-0.4, pos.y);
       g.position.copy(pos).add(knock);
