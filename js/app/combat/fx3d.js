@@ -2205,9 +2205,9 @@ Combat.FX = (() => {
         const dying = e.phase === 1 ? clamp(1 - (e.t - e.hitT) / 0.6, 0.2, 1) : 1;
         for (let j = 0; j < e.nTrail - 1; j++) {
           const f = 1 - j / tr.length, c2 = Math.random() < 0.3 ? TYPO : col;
-          seg(tr[j], tr[j + 1], 0.8 * BS * f, c2, 0.45 * f * dying);
+          seg(tr[j], tr[j + 1], 0.6 * BS * f, c2, 0.45 * f * dying);
           if (Math.random() < 0.2) continue;   // the core breaks up: the instability
-          seg(tr[j], tr[j + 1], 0.2 * BS * f, hi, 1.3 * f * dying);
+          seg(tr[j], tr[j + 1], 0.16 * BS * f, hi, 1.3 * f * dying);
         }
         const fl = Math.random();
         flare(e.pos, fl < 0.25 ? TYPO : col, (2.4 + fl * 2) * BS * dying, 0.05, 1.1, 0.1);
