@@ -10,7 +10,7 @@ Router.register('shop', (() => {
     el = root;
     el.innerHTML = `
       <div class="panel shop-hero">
-        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR MY ROOM AND AVATAR</p></div>
+        <div class="title-block"><h1><span class="pre">&gt;</span>Shop_</h1><p>// ITEMS FOR YOUR ROOM, OPERATOR AND BOTS</p></div>
         <div class="shop-wallet">
           <div class="panel coin-box hot">${UI.coin()}<b data-coins>${UI.fmt(WPM.coins())}</b></div>
           <button type="button" class="btn out sm test-coins" data-test aria-pressed="${WPM.testing()}">${WPM.testing() ? 'Test coins: on' : 'Test coins: off'}</button>

@@ -102,7 +102,7 @@ img { display: block; max-width: 100%; }
   position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; opacity: 0;
 }
-:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 kbd {
   font: 400 13px/1 var(--f-label); color: var(--accent);
   border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; background: var(--bg-3);
@@ -1388,6 +1388,8 @@ html.intro-cover::before { content: ""; position: fixed; inset: 0; z-index: 199;
 .pk-info .pk-me { font: 400 14px/1.3 var(--f-mono); color: var(--accent); }
 .pk-info .btn { margin-top: 6px; }
 
+/* on a short window the screen gives up height so the Start button stays in view */
+@media (min-width: 861px) { .pk-screen { max-height: max(240px, 100svh - 420px); } }
 @media (max-width: 860px) {
   .pk { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .pk-side { position: static; order: -1; }

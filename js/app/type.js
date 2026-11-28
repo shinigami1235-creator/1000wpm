@@ -203,9 +203,12 @@ Router.register('type', (() => {
       onBack(word) { if (running) { word ? tt.backWord() : tt.back(); scroll(); live(); } },
       onKey(k) { if (k === 'Tab' || k === 'Escape') reset(); },
     });
+    // a phone has no Tab key, so it gets the button instead
+    const touch = !matchMedia('(pointer: fine)').matches;
     el.q('help').innerHTML = (opt.mode === 'time' ? 'The timer starts on your first key. ' : '') +
-      'Press <kbd>Tab</kbd> to start over.' +
+      (touch ? '<button class="btn out sm" type="button" data-k="again">Start over</button>' : 'Press <kbd>Tab</kbd> to start over.') +
       (opt.mode === 'custom' ? ' <button class="btn out sm" type="button" data-k="edit">Change text</button>' : '');
+    if (touch) el.q('again').addEventListener('click', () => reset());
     const edit = el.q('edit');
     if (edit) edit.addEventListener('click', () => { TT.store.set('wpm-custom-text', ''); reset(); });
     live();
@@ -408,7 +411,7 @@ Router.register('type', (() => {
     el.q('stage').querySelectorAll('.result-grid > *').forEach((n, i) => n.style.setProperty('--i', i));
     countUp(el.q('stage').querySelector('.result .big'), wpm);
     chime(pb);
-    el.q('help').innerHTML = 'Press <kbd>Tab</kbd> or the button to start over. <button class="btn out sm" type="button" data-k="again">Start over</button>';
+    el.q('help').innerHTML = (matchMedia('(pointer: fine)').matches ? 'Press <kbd>Tab</kbd> or the button to start over. ' : '') + '<button class="btn out sm" type="button" data-k="again">Start over</button>';
     el.q('again').addEventListener('click', () => reset());
     // keep Tab working after the text is gone
     const tab = e => { if (e.key === 'Tab' && ended) { e.preventDefault(); document.removeEventListener('keydown', tab); reset(); } };

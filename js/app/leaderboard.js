@@ -53,9 +53,9 @@ Router.register('leaderboard', (() => {
           </div>
           <div class="panel">
             <div class="ph">// THIS DEVICE</div>
-            <div class="stat"><span class="label">Best wpm</span><b class="mid">${st.bestWpm || 0}</b></div>
+            <div class="stat"><span class="label">Best wpm</span><b class="mid">${st.bestWpm || '-'}</b></div>
             <div class="stat"><span class="label">Runs today</span><b class="mid">${todayRuns}</b></div>
-            <div class="stat"><span class="label">Best accuracy</span><b class="mid">${st.bestAcc || 0}%</b></div>
+            <div class="stat"><span class="label">Best accuracy</span><b class="mid">${st.bestAcc ? st.bestAcc + '%' : '-'}</b></div>
           </div>
         </div>
         <section class="panel hot" aria-label="Board">
