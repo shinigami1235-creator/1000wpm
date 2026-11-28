@@ -111,8 +111,11 @@ window.RoomArt = (() => {
       sw = Math.max(w, h) / 170;
     } else if (it.id === 'sign-wing') { if (!a) return ''; body = pathIn(a.MARK.d, a.MARK.vb, w * 0.1, h * 0.08, w * 0.8, h * 0.84); sw = Math.max(w, h) / 150; }
     else if (it.id === 'sign-bolt') body = pathIn('M60 0 10 70h34L30 130 90 50H54z', [10, 0, 80, 130], w * 0.2, h * 0.1, w * 0.6, h * 0.8);
-    else if (it.id === 'sign-esc') body = pathIn('M8 4h84a6 6 0 0 1 6 6v60a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6zM14 12h72v46H14z', [0, 0, 100, 80], w * 0.12, h * 0.1, w * 0.36, h * 0.8)
-      + `<text x="${w * 0.71}" y="${h * 0.66}" text-anchor="middle" font-family="${HEAD}" font-weight="600" font-size="${h * 0.46}">ESC</text>`;
+    else if (it.id === 'sign-esc') {
+      const key = 'M8 4h84a6 6 0 0 1 6 6v60a6 6 0 0 1-6 6H8a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6zM14 12h72v46H14z';
+      body = vert ? pathIn(key, [0, 0, 100, 80], w * 0.08, h * 0.08, w * 0.84, h * 0.5) + `<text x="${w / 2}" y="${h * 0.86}" text-anchor="middle" font-family="${HEAD}" font-weight="600" font-size="${Math.min(w * 0.36, h * 0.22)}">ESC</text>`
+        : pathIn(key, [0, 0, 100, 80], w * 0.12, h * 0.1, w * 0.36, h * 0.8) + `<text x="${w * 0.71}" y="${h * 0.66}" text-anchor="middle" font-family="${HEAD}" font-weight="600" font-size="${Math.min(h * 0.46, w * 0.16)}">ESC</text>`;
+    }
     else {
       const txt = { 'sign-gg': 'GG', 'sign-wpm': '10000WPM', 'sign-type': vert ? 'TYPE\nFASTER' : 'TYPE FASTER' }[it.id] || 'CTRL';
       const lines = txt.split('\n'), fs = Math.min(h * 0.62 / lines.length, w * 1.5 / Math.max(...lines.map(l => l.length)));
@@ -230,8 +233,9 @@ window.RoomArt = (() => {
     // mood: per-channel gain, a lift added to the dark and how much the bright parts keep their own level
     const M = { 'mood-late': [0.62, 0.64, 0.68, 0, 0, 0, 0.55], 'mood-dusk': [1.2, 1.0, 0.76, 14, 6, 0, 0.2], 'mood-blue': [0.78, 0.94, 1.22, 0, 4, 14, 0.25],
       'mood-haze': [1, 1, 1, 0, 0, 0, 0], 'mood-alert': [1.15, 0.5, 0.52, 18, 0, 0, 0.25], 'mood-storm': [0.7, 0.8, 0.98, 0, 2, 8, 0.4] }[mood] || null;
-    for (let i = 0, p = 0; i < D.length; i += 4, p++) {
-      let r = D[i], gg = D[i + 1], b = D[i + 2];
+    // the grade depends only on a pixel's colour (bar the haze), so it is worked out once for a 33-step
+    // colour cube and each pixel reads it with trilinear blending: fast enough for the 2752 px picture
+    function px(r, gg, b, out, o) {
       const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), s = mx ? (mx - mn) / mx : 0, v = mx / 255;
       if (aOn && s > 0.12 && v > 0.08) {
         const h = hueOf(r, gg, b, mx, mn), dh = Math.abs(h - 172), w = ss(48, 22, dh) * ss(0.12, 0.32, s) * ss(0.06, 0.2, v);
@@ -241,12 +245,24 @@ window.RoomArt = (() => {
         const w = (1 - ss(0.12, 0.34, s)) * (1 - ss(0.55, 0.85, v));
         if (w > 0) { const L = r * 0.2126 + gg * 0.7152 + b * 0.0722; if (wt[3]) { r *= 1 - 0.32 * w; gg *= 1 - 0.32 * w; b *= 1 - 0.3 * w; } else { r += (L * wt[0] - r) * 0.42 * w; gg += (L * wt[1] - gg) * 0.42 * w; b += (L * wt[2] - b) * 0.42 * w; } }
       }
-      if (M) {
-        const keep = M[6] * ss(0.45, 0.9, v);
-        r = r * (M[0] + (1 - M[0]) * keep) + M[3] * (1 - v); gg = gg * (M[1] + (1 - M[1]) * keep) + M[4] * (1 - v); b = b * (M[2] + (1 - M[2]) * keep) + M[5] * (1 - v);
-        if (mood === 'mood-haze') { const x = (p % W) / W, y = (p / W | 0) / Hh, hz = 26 * (1 - v) * (0.6 + 0.4 * y); r += hz * (1 - x) * 1.1; gg += hz * x * 0.75; b += hz * (0.7 + x * 0.3); }
+      if (M) { const keep = M[6] * ss(0.45, 0.9, v); r = r * (M[0] + (1 - M[0]) * keep) + M[3] * (1 - v); gg = gg * (M[1] + (1 - M[1]) * keep) + M[4] * (1 - v); b = b * (M[2] + (1 - M[2]) * keep) + M[5] * (1 - v); }
+      out[o] = r; out[o + 1] = gg; out[o + 2] = b;
+    }
+    const N = 33, st = 255 / (N - 1), lut = new Float32Array(N * N * N * 3);
+    for (let bi = 0, o = 0; bi < N; bi++) for (let gi = 0; gi < N; gi++) for (let ri = 0; ri < N; ri++, o += 3) px(ri * st, gi * st, bi * st, lut, o);
+    const haze = mood === 'mood-haze';
+    for (let i = 0, p = 0; i < D.length; i += 4, p++) {
+      const fr = D[i] / st, fg = D[i + 1] / st, fb = D[i + 2] / st;
+      const r0 = Math.min(N - 2, fr | 0), g0 = Math.min(N - 2, fg | 0), b0 = Math.min(N - 2, fb | 0), dr = fr - r0, dg = fg - g0, db = fb - b0;
+      const o000 = ((b0 * N + g0) * N + r0) * 3, oG = N * 3, oB = N * N * 3;
+      for (let ch = 0; ch < 3; ch++) {
+        const o = o000 + ch;
+        const c00 = lut[o] + (lut[o + 3] - lut[o]) * dr, c10 = lut[o + oG] + (lut[o + oG + 3] - lut[o + oG]) * dr;
+        const c01 = lut[o + oB] + (lut[o + oB + 3] - lut[o + oB]) * dr, c11 = lut[o + oB + oG] + (lut[o + oB + oG + 3] - lut[o + oB + oG]) * dr;
+        const c0 = c00 + (c10 - c00) * dg, c1 = c01 + (c11 - c01) * dg;
+        D[i + ch] = c0 + (c1 - c0) * db;
       }
-      D[i] = r; D[i + 1] = gg; D[i + 2] = b;
+      if (haze) { const v = Math.max(D[i], D[i + 1], D[i + 2]) / 255, x = (p % W) / W, y = (p / W | 0) / Hh, hz = 26 * (1 - v) * (0.6 + 0.4 * y); D[i] += hz * (1 - x) * 1.1; D[i + 1] += hz * x * 0.75; D[i + 2] += hz * (0.7 + x * 0.3); }
     }
     g.putImageData(img, 0, 0);
     return c;

@@ -400,7 +400,7 @@
   function paintVisit(p, d) {
     const T = RT.TIERS[d.tier];
     const me = p.id === 'me';
-    const n = ui('rm-visitbar', `<h1>${me ? 'Your room' : `${esc(p.name)}'s room`}</h1><p>Tier ${d.tier} // ${esc(T.name)} · Level ${p.art ? 99 : d.data.level}</p>
+    const n = ui('rm-visitbar', `<h1>${me ? 'Your room' : `${esc(d.data.name || p.name)}'s room`}</h1><p>Tier ${d.tier} // ${esc(T.name)} · Level ${p.art ? 99 : d.data.level}</p>
       <div class="row"><a class="btn out sm" href="#/u/${encodeURIComponent(p.id)}">Profile</a>${me ? '' : p.art ? '<a class="btn sm" href="#/duel/art">Challenge Art</a>' : `<a class="btn sm" href="#/duel/vs/${encodeURIComponent(p.id)}">Challenge to a duel</a>`}<a class="btn out sm" href="#/room">${me ? 'Customise' : 'My Room'}</a></div>`);
     if (me) return;
     n.setAttribute('aria-label', 'Visiting');
