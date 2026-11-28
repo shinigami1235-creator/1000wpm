@@ -991,7 +991,7 @@ window.DuelScene = (() => {
       // Showdown's finisher: low in front of the bot as it rises and flares, then wide as it drives in
       finisher: { pri: 3, parts: [
         // over the attacker's shoulder, low, onto the target as the orb swells; then wide from the side as it drives in
-        { len: 0.8, cut: 1, slow: 0.5, fov: 34, pose(c, out) { const i = c.x, j = 1 - i, d = F[i].dir; out.pos.set(fp[i].x - d * (3.6 + c.u * 0.6), 2.2 + c.u * 0.5, fp[i].z + 4.6); out.look.set(fc[j].x - d * 1.2, fc[j].y + 0.2, fc[j].z); } },
+        { len: 0.8, cut: 1, slow: 0.5, fov: 36, pose(c, out) { const i = c.x, j = 1 - i, d = F[i].dir; out.pos.set(fp[i].x - d * (2.2 + c.u * 0.6), 3.4 + c.u * 0.4, fp[i].z + 8.2); out.look.set((fc[i].x + fc[j].x) / 2 + d * 0.8, 2.6, 0.4); } },
         { len: 1.1, cut: 1, slow: 0.7, fov: 40, omega: 3, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set((fp[0].x + fp[1].x) / 2 - d * 1.5, 1.6 + c.u * 0.4, 12.5); out.look.set((fc[0].x + fc[1].x) / 2 + d * 1.5, 2.4, 0.4); } },
       ] },
       ko: { pri: 4, free: true, parts: [

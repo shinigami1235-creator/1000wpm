@@ -109,7 +109,7 @@ window.Showdown = (() => {
           <div class="du-pips" data-pips="${k}" aria-label="Rounds won">${'<i></i>'.repeat(C.winRounds)}</div>
         </div>`;
       el.innerHTML = `
-        <div class="du sd" data-mode="showdown">
+        <div class="du sd" data-mode="showdown"${P[1].art ? ' data-art' : ''}>
           <header class="du-top">${side(0, 'l')}
             <div class="du-mid"><span class="label" data-round>Showdown</span><b class="num" data-clock>0:20</b></div>
             ${side(1, 'r')}</header>

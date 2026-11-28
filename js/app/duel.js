@@ -22,7 +22,7 @@ Router.register('duel', (() => {
   let ty = null, lastState = null, fog = 0, endShown = false, waitC = null, incoming = null, incT = 0, ctl = null, noticeT = 0;
   let snd = null, phaseWas = '', countWas = 0, endT = 0, resT = 0, sd = null, typedWas = [0, 0];
   const TAB = 'wpm-duel-tab';
-  let sideCols = SIDE_COL;
+  let sideCols = null;
   const SIDE_COL = [Theme.hex('accent'), '#f29d30'];
 
   function mount(root, params) {
