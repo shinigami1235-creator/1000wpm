@@ -213,7 +213,7 @@ Router.register('shop', (() => {
         wireTry();
       } else {
         // bot parts are worn in the hangar, gear on the operator, the rest goes in the room
-        const [href, where] = item.category === 'Bots' ? ['#/hangar', 'Hangar'] : item.acc || item.category === 'Operator' ? ['#/lab', 'Operator'] : ['#/room', 'My Room'];
+        const [href, where] = item.category === 'Bots' ? ['#/hangar', 'Hangar'] : item.kb || item.acc || item.category === 'Operator' ? ['#/lab', 'Operator'] : ['#/room', 'My Room'];
         row.innerHTML = `<span class="owned">Owned</span><a class="btn out sm" href="${href}">${where}</a>`;
       }
       card.querySelector('[data-msg]').textContent = '';
