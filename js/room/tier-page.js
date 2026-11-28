@@ -75,17 +75,22 @@
     const dmg = c.bossDmg || 0;
     const eq = { ...(r.eq[tier] || {}) };
     if (!TEST) for (const [k, id] of Object.entries(eq)) if (id && !RT.owns(id)) delete eq[k];   // placed while testing, not bought
+    const dv = window.Ops && Ops.division ? Ops.division() : null;
     return {
       tier, equip: eq,
       // TEST: the case shows every trophy, so a full case can be checked
       earned: TEST ? RT.TROPHIES.map(t => t.id) : RT.TROPHIES.filter(t => t.has(ctx)).map(t => t.id),
       data: { name, level: L.level, xp: L.next ? L.into / L.next : 0, best: st.bestWpm, avg: st.avgWpm, acc: st.accuracy || 0, runs: runs.length > 1 ? runs : [0, st.bestWpm],
         dmgS: dmg >= 1e6 ? (dmg / 1e6).toFixed(1) + 'M' : dmg >= 1e3 ? (dmg / 1e3).toFixed(1) + 'k' : String(dmg), board: board(name, st.bestWpm), ...bossHp(),
-        streak, streakN: window.Progress ? Progress.streak().n : 0, miss, rush: { bosses: rush.bosses, score: rush.score, beat: [...rush.beat] }, online: 18 + new Date().getHours() % 9 },
+        streak, streakN: window.Progress ? Progress.streak().n : 0, miss, rush: { bosses: rush.bosses, score: rush.score, beat: [...rush.beat] }, online: 18 + new Date().getHours() % 9,
+        div: dv ? dv.name : null, bot: botOf(dv && dv.id) },
     };
   }
   // someone else's room, the same every visit: their tier from their level, and items picked from
   // their name, more of them the higher they are (simulated players until the server keeps rooms)
+  // the bot of each division (js/app/botkit.js), for the Your bot screen
+  const BOT_OF = { sentinel: 'orbit', precision: 'pixel', striker: 'nova', ghost: 'kite', architect: 'beep', hunter: 'raze' };
+  const botOf = div => BOT_OF[div] || 'orbit';
   function rng(str) { let h = 2166136261; for (const ch of str) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; }; }
   function of(p) {
     if (!p || p.id === 'me') return mine();
@@ -97,20 +102,24 @@
     const eq = {};
     for (const sl of RT.slots(tier)) {
       if (r() > fill && sl.kind !== 'screen') continue;
+      if ((sl.kind === 'mood' || sl.kind === 'walls') && r() < 0.6) continue;   // most keep the room's own light
       const k = RT.kind(sl.kind);
       const it = k.type === 'prop' ? pick('prop', i => sl.kind === 'desk' || !i.desk) : pick(k.type, i => i.price <= 600 + lv * 260);
       if (it) eq[sl.id] = it.id;
     }
-    if (art) Object.assign(eq, { view: 'view-neon', holo: 'holo-syntax', banner: 'ban-laurel', pet: 'cat', l1: 'led-rainbow', l2: 'led-violet', p1: 'poster-204', p2: 'poster-syntax', m1: 'scr-stats', m2: 'scr-board', m3: 'scr-rain', m4: 'scr-radar' });
+    if (art) Object.assign(eq, { view: 'view-neon', holo: 'holo-syntax', banner: 'ban-laurel', pet: 'cat', l1: 'led-rainbow', l2: 'led-violet', p1: 'poster-204', p2: 'poster-syntax', m1: 'scr-stats', m2: 'scr-board', m3: 'scr-rain', m4: 'scr-radar',
+      sign: 'sign-ctrl', plate: 'plate-neon', accent: 'acc-teal', mood: 'mood-night', walls: 'walls-none', rug: 'rug-ctrl' });
     const best = p.stats ? p.stats.bestWpm || 0 : 0;
     const ctx = { ach: id => ({ wpm60: best >= 60, wpm100: best >= 100, wpm150: best >= 150, beatart: art, bosswin: r() < lv / 30, racewin: r() < 0.3, block50: r() < lv / 40, streak30: r() < lv / 60, combo250: r() < lv / 50 })[id] || false, level: lv,
       rush: { bosses: Math.floor(lv / 4 + r() * 4), beat: new Set(['spam', 'siege', 'sign', 'warden', 'announcer', 'colossus', 'press', 'king', 'correction', 'half', 'brute', 'syntax'].slice(0, Math.floor(lv / 4 + r() * 3))) } };
     const name = tst ? `Test room ${tst[1]}` : p.name || p.id;
+    const divs = ['Striker', 'Precision', 'Hunter', 'Sentinel', 'Ghost', 'Architect'], dv = art ? 'Striker' : divs[Math.floor(r() * 6)];
     return {
       tier, equip: eq, earned: RT.TROPHIES.filter(t => t.has(ctx)).map(t => t.id),
       data: { name, level: lv, xp: r(), best, avg: p.stats ? p.stats.avgWpm : 0, acc: p.stats ? p.stats.acc : 0, runs: [...Array(16)].map((_, i) => Math.round(best * (0.72 + i * 0.016 + r() * 0.06))),
         dmgS: (lv * 0.04 + r() * 0.3).toFixed(1) + 'M', board: board(name, best), ...bossHp(), streak: [...Array(35)].map(() => r() < 0.6), streakN: Math.floor(r() * 20),
-        miss: Object.fromEntries([...'qwertyuiopasdfghjklzxcvbnm'].map(k => [k, r() * 0.06])), rush: { bosses: ctx.rush.bosses, score: ctx.rush.bosses * 6100, beat: [...ctx.rush.beat] }, online: 21 },
+        miss: Object.fromEntries([...'qwertyuiopasdfghjklzxcvbnm'].map(k => [k, r() * 0.06])), rush: { bosses: ctx.rush.bosses, score: ctx.rush.bosses * 6100, beat: [...ctx.rush.beat] }, online: 21,
+        div: dv, bot: botOf(dv.toLowerCase()) },
     };
   }
   function thumb(host, p) {
@@ -211,39 +220,46 @@
   }
 
   // ---------- the shop bar
+  // Four shelves (Walls, Desk, Lighting, Decor), each with its tabs, then the slots of the tab picked.
+  // A tab whose slot this room doesn't have shows the level its room opens at; TEST: it opens that room.
   function kindsHere(t) {
     const sl = RT.slots(t);
-    return RT.KINDS.map(k => ({ ...k, slots: sl.filter(s => s.kind === k.id) })).filter(k => k.slots.length || (k.from && k.from > t));
-  }
-  // TEST: a tab this room lacks opens the first room that has it
-  function jump(id) {
-    const at = [1, 2, 3, 4, 5].find(n => RT.slots(n).some(s => s.kind === id));
-    if (!TEST || !at) return;
-    cancelPending();
-    const r = load(); r.tier = at; save(r);
-    const d = mine(); view.set({ tier: d.tier, equip: d.equip, earned: d.earned, data: d.data });
-    state.tab = id; state.slot = null; state.touched = true; paintMenu(); paintBar(); sfx(true);
+    return RT.KINDS.map(k => ({ ...k, slots: sl.filter(s => s.kind === k.id), at: [1, 2, 3, 4, 5].find(n => RT.slots(n).some(s => s.kind === k.id)) }))
+      .filter(k => k.slots.length || k.at);
   }
   function paintBar() {
     const t = view.tier, ks = kindsHere(t);
-    if (!ks.some(k => k.id === state.tab && k.slots.length)) { state.tab = ks[0].id; state.slot = ks[0].slots[0].id; }
+    if (!ks.some(k => k.id === state.tab && k.slots.length)) { const k0 = ks.find(k => k.slots.length); state.tab = k0.id; state.slot = k0.slots[0].id; }
     const k = ks.find(x => x.id === state.tab);
+    state.group = k.group;
     if (!k.slots.some(s => s.id === state.slot)) state.slot = k.slots[0].id;
     if (!state.bar) { drop('rm-bar'); view.select(null); return paintTab(); }
     drop('rm-tab');
-    const n = ui('rm-bar', `<div class="rm-tabs" role="tablist"><button type="button" class="rm-close" data-close aria-label="Close the shop">&times;</button>${ks.map(x => x.slots.length
+    const inGroup = ks.filter(x => x.group === state.group);
+    const tabBtn = x => x.slots.length
       ? `<button type="button" role="tab" data-k="${x.id}" aria-selected="${x.id === state.tab}">${esc(x.name)}</button>`
-      : TEST ? `<button type="button" data-jump="${x.id}" title="Opens room ${x.from}">${esc(x.name)} <small>room ${x.from}</small></button>`
-      : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.from].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.from].level}</button>`).join('')}${TEST ? '<span class="rm-test">Test: all open</span>' : ''}</div>
-      ${k.slots.length > 1 ? `<div class="rm-slots">${k.slots.map((s, i) => `<button type="button" data-s="${s.id}" aria-pressed="${s.id === state.slot}">${esc(s.name || `${k.id === 'wall' ? 'Wall' : k.name.replace(/s$/, '')} ${i + 1}`)}</button>`).join('')}</div>` : ''}
+      : TEST ? `<button type="button" class="jump" data-jump="${x.id}" title="Opens room ${x.at}">${esc(x.name)} <small>room ${x.at}</small></button>`
+        : `<button type="button" class="lock" disabled title="Opens at level ${RT.TIERS[x.at].level}">${esc(x.name)} ${LOCK}${RT.TIERS[x.at].level}</button>`;
+    const n = ui('rm-bar', `<div class="rm-tabs rm-groups" role="tablist"><button type="button" class="rm-close" data-close aria-label="Close the shop">&times;</button>${RT.GROUPS.map(g => `<button type="button" role="tab" data-g="${g.id}" aria-selected="${g.id === state.group}">${esc(g.name)}</button>`).join('')}${TEST ? '<span class="rm-test" title="RoomTiers.TEST in js/room/tier-items.js">Test: all open</span>' : ''}</div>
+      <div class="rm-sub"><div class="rm-kinds">${inGroup.map(tabBtn).join('')}</div>
+      ${k.slots.length > 1 ? `<div class="rm-slots">${k.slots.map((s, i) => `<button type="button" data-s="${s.id}" aria-pressed="${s.id === state.slot}">${esc(s.name || `${k.id === 'wall' ? 'Wall' : k.name.replace(/s$/, '')} ${i + 1}`)}</button>`).join('')}</div>` : ''}</div>
       <div class="rm-items" data-items></div><p class="rm-msg" data-msg role="status"></p>`);
     n.setAttribute('aria-label', 'Customise');
     n.querySelector('[data-close]').addEventListener('click', closeBar);
+    n.querySelectorAll('[data-g]').forEach(b => b.addEventListener('click', () => { const f = ks.find(x => x.group === b.dataset.g && x.slots.length) || ks.find(x => x.group === b.dataset.g); state.touched = true; if (!f.slots.length) return jump(f); state.tab = f.id; state.slot = null; cancelPending(); paintBar(); }));
     n.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.tab = b.dataset.k; state.slot = null; cancelPending(); paintBar(); }));
-    n.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => jump(b.dataset.jump)));
+    n.querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => jump(ks.find(x => x.id === b.dataset.jump))));
     n.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => { state.touched = true; state.slot = b.dataset.s; cancelPending(); paintBar(); }));
     view.select(state.touched ? state.slot : null);
     paintItems();
+  }
+  // TEST: a tab this room lacks opens the first room that has it
+  function jump(k) {
+    if (!TEST || !k || !k.at) return;
+    cancelPending();
+    const r = load(); r.tier = k.at; save(r);
+    const d = mine(); view.set({ tier: d.tier, equip: d.equip, earned: d.earned, data: d.data });
+    state.tab = k.id; state.slot = null; state.touched = true; paintMenu(); paintBar(); sfx(true);
   }
   // the shop stays tucked away as one small button until it's needed
   function paintTab() {
@@ -271,7 +287,8 @@
     // owned first, then by price
     const own = i => RT.owns(i.id);
     list.sort((a, b) => (own(b) - own(a)) || a.price - b.price);
-    const optional = ['poster', 'shelf', 'desk', 'pet', 'holo'].includes(kind);
+    // a mat or a keyboard covers the picture's own desk set; Original leaves the picture as it is
+    const optional = ['poster', 'shelf', 'desk', 'pet', 'holo', 'sign', 'plate', 'rug', 'kb', 'mat'].includes(kind);
     return { list, optional };
   }
   function paintItems() {
@@ -284,7 +301,8 @@
       const status = on ? '<small class="own">Placed</small>' : own ? '<small class="own">Owned</small>' : `<small>${coin()}${fmt(it.price)}</small>`;
       return `<button type="button" class="rm-it${on ? ' on' : ''}${pend === it.id ? ' on' : ''}${can ? '' : ' cant'}" data-i="${it.id}" title="${esc(it.desc || it.name)}"><span class="th ${it.type}">${thumbHtml(it)}</span><span class="nm">${esc(it.name)}</span>${status}</button>`;
     };
-    box.innerHTML = (optional ? `<button type="button" class="rm-it none${cur ? '' : ' on'}" data-i=""><span class="th">EMPTY</span><span class="nm">Nothing</span><small class="own">${cur ? 'Clear' : 'Placed'}</small></button>` : '') + list.map(card).join('');
+    const orig = state.tab === 'kb' || state.tab === 'mat';   // the picture's own keyboard and desk
+    box.innerHTML = (optional ? `<button type="button" class="rm-it none${cur ? '' : ' on'}" data-i=""><span class="th">${orig ? 'AS BUILT' : 'EMPTY'}</span><span class="nm">${orig ? 'Original' : 'Nothing'}</span><small class="own">${cur ? 'Clear' : 'Placed'}</small></button>` : '') + list.map(card).join('');
     box.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => choose(b.dataset.i || null)));
     // views draw their scene into the card once it is on screen
     box.querySelectorAll('canvas[data-view]').forEach(c => { const it = RT.get(c.dataset.view); RV.thumb(it).then(u => { if (u && c.isConnected) { const im = new Image(); im.src = u; im.className = 'view'; c.replaceWith(im); } }); });
@@ -292,6 +310,7 @@
     const sel = box.querySelector('.rm-it.on'); if (sel && sel.scrollIntoView && state.scrolled !== state.slot) { state.scrolled = state.slot; box.scrollLeft = Math.max(0, sel.offsetLeft - 40); }
   }
   function thumbHtml(it) {
+    if (it.type === 'accent' || it.type === 'walls' || it.type === 'mood') return `<span class="sw ${it.type}" style="--c:${it.sw && it.sw.startsWith('#') ? it.sw : it.c || '#2fe0c0'};${it.sw && !it.sw.startsWith('#') ? `background:${it.sw}` : ''}"></span>`;
     if (it.type === 'light') return `<span class="sw" style="--c:${it.sw || RT.colorOf(it)};${it.sw && !it.sw.startsWith('#') ? `background:${it.sw}` : ''}"></span>`;
     if (it.type === 'view') return `<canvas data-view="${it.id}" width="4" height="3"></canvas>`;
     if (it.type === 'holo') return `<img src="" alt="" data-holo="${it.id}">`;
@@ -363,7 +382,7 @@
       list.innerHTML = '';
       for (const p of ps) {
         const a = document.createElement('a'); a.className = 'rm-v'; a.href = `#/u/${encodeURIComponent(p.id)}/room`;
-        const tier = RT.tierFor(p.art ? 99 : p.level || 1);
+        const tier = RT.tierFor(p.art ? 99 : p.level || 1);   // a test room's level is set for its tier
         a.innerHTML = `<span class="pic"></span><span class="cap">${esc(p.name)}<small>Level ${p.art ? 99 : p.level || 1} · ${esc(RT.TIERS[tier].name)}</small></span>`;
         list.append(a);
         thumb(a.querySelector('.pic'), p);

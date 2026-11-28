@@ -8,7 +8,7 @@
   css.rel = 'stylesheet';
   css.href = base + 'tier.css';
   document.head.appendChild(css);
-  for (const f of ['scenes.js', 'tier-items.js', 'tier-view.js', 'tier-page.js']) {
+  for (const f of ['ctrl-art.js', 'scenes.js', 'tier-items.js', 'tier-art.js', 'tier-view.js', 'tier-page.js']) {
     const s = document.createElement('script');
     s.src = base + f;
     s.async = false;

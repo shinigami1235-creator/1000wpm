@@ -98,6 +98,10 @@ window.RoomView = (() => {
     'gift-pennant': { svg: () => svg(64, 64, `<path d="M32 6c4 12 16 16 16 32a16 16 0 0 1-32 0c0-8 4-12 8-16 0 6 2 10 6 10-2-10 2-20 2-26z" fill="#ff7a2a"/><path d="M32 30c3 6 8 8 8 16a8 8 0 0 1-16 0c0-5 4-8 8-16z" fill="#ffd23d"/>`), c: '' },
   };
 
+  // My Room, more (28 Nov 2026): the new posters, programs and prints from js/room/tier-art.js
+  const RA = window.RoomArt;
+  if (RA) { Object.assign(POSTERS, RA.POSTERS); Object.assign(SCREENS, RA.SCREENS); Object.assign(BANNERS, RA.BANNERS); }
+
   // the bunk room's corkboard badges
   const PIN_ICON = {
     star: '<path d="M20 11l2.6 5.4 5.9.8-4.3 4.1 1 5.9L20 24.4l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/>',
@@ -153,7 +157,7 @@ window.RoomView = (() => {
   // room's reflections from the original glass laid back on top, and the photo's grain.
   //   sc.keep: how much of the view's own brightness stays (0 takes the photo's, 1 keeps the scene's)
   function behindGlass(c, W, H, P, mk, [bx, by, bw, bh], tw, sc) {
-    const f = P.naturalWidth / tw;
+    const f = (P.naturalWidth || P.width) / tw;
     const grab = (w, h, blur = 0) => { const t = document.createElement('canvas'); t.width = w; t.height = h; const g = t.getContext('2d', { willReadFrequently: true }); if (blur) g.filter = `blur(${blur}px)`; g.drawImage(P, bx * f, by * f, bw * f, bh * f, 0, 0, w, h); return g.getImageData(0, 0, w, h).data; };
     const O = grab(W, H), Ob = grab(W, H, Math.max(2, W / 70));
     // the photo's light across the window, very soft: from a tiny copy, smoothed up
@@ -217,6 +221,21 @@ window.RoomView = (() => {
   const loadImg = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
   const mask = n => { if (!masks.has(n)) masks.set(n, loadImg(`assets/room/tiers/t${n}-glass.png`)); return masks.get(n); };
 
+  // the look from what's placed: accent colour, wall tint and mood
+  function lookOf(e) {
+    const g = (k, d) => RT.get(e[k] !== undefined ? e[k] || d : d) || RT.get(d);
+    const a = g('accent', 'acc-teal'), w = g('walls', 'walls-none'), m = g('mood', 'mood-night');
+    return { accent: a.c || null, walls: w.c ? { c: w.c, dark: !!w.dark } : null, mood: m.id };
+  }
+  // one graded picture kept: grading the 2752 px picture takes a moment, so trying moods back and forth reuses it
+  const grades = new Map(), urls = new WeakMap();
+  const urlOf = G => { if (!urls.has(G)) urls.set(G, new Promise(ok => G.toBlob(b => ok(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.93))); return urls.get(G); };
+  function gradeCached(P, tier, key, look) {
+    const k = tier + key + (P.naturalWidth || P.width);
+    if (!grades.has(k)) { if (grades.size > 2) { const old = grades.keys().next().value, G = grades.get(old); grades.delete(old); if (urls.has(G)) urls.get(G).then(u => u && URL.revokeObjectURL(u)); } grades.set(k, RA.grade(P, look)); }
+    return grades.get(k);
+  }
+
   // ------------------------------------------------------------------ the room
   function create(host, o = {}) {
     let opt = { tier: 1, equip: {}, earned: [], data: null, interactive: false, fit: 'cover', still: false, ...o };
@@ -233,11 +252,14 @@ window.RoomView = (() => {
     const itemIn = (slot, e) => { const id = e[slot.id] !== undefined ? e[slot.id] : RT.defaultFor(slot.id, slot.kind); return id ? RT.get(id) : null; };
 
     // the picture as plain pixels for the canvases (an <img> with srcset reports a scaled natural size)
-    let pix = null;
-    const pixels = () => (pix ||= new Promise(ok => { const go = () => loadImg(bg.currentSrc || bg.src).then(ok, () => ok(null)); if (bg.complete && bg.naturalWidth) go(); else bg.addEventListener('load', go, { once: true }); }));
+    let pix = null, graded = null, lookKey = '';
+    const raw = () => (pix ||= new Promise(ok => { const go = () => loadImg(bg.currentSrc || bg.src).then(ok, () => ok(null)); if (bg.complete && bg.naturalWidth) go(); else bg.addEventListener('load', go, { once: true }); }));
+    // the room's look (accent, walls, mood) is worked into the picture once; everything that copies
+    // the picture's pixels (LED zones, the window, rugs and mats) takes them from the graded one
+    const pixels = () => (lookKey ? (graded ||= raw().then(P => (P ? gradeCached(P, opt.tier, lookKey, lookOf(equipOf())) : null))) : raw());
 
     function build() {
-      room.innerHTML = ''; ticks = []; glassCv = null; pix = null;
+      room.innerHTML = ''; ticks = []; glassCv = null; pix = null; graded = null;
       T = RT.TIERS[opt.tier];
       room.style.width = T.w + 'px'; room.style.height = T.h + 'px';
       room.style.setProperty('--dim', T.dim);
@@ -248,8 +270,21 @@ window.RoomView = (() => {
       room.append(bg);
       const e = equipOf(), d = opt.data || {};
       const slots = RT.slots(opt.tier);
+      // the look: a graded copy of the picture over it, and a filter for the cut-outs to match
+      const look = lookOf(e);
+      lookKey = look.accent || look.walls || look.mood !== 'mood-night' ? JSON.stringify(look) : '';
+      room.style.setProperty('--mf', (RA && RA.MOOD_FILTER[look.mood]) || 'brightness(1)');
+      if (lookKey) gradeLayer(look);
+      // things that lie flat (rugs, the desk mat and keyboard) go down before anything stands on them
       for (const sl of slots) {
         const it = itemIn(sl, e);
+        if (sl.kind === 'rug' && it) rugOn(sl.at, it);
+        if (sl.kind === 'mat') deskSet(sl.at, it, itemIn(slots.find(x => x.kind === 'kb'), e));
+      }
+      for (const sl of slots) {
+        const it = itemIn(sl, e);
+        if (sl.kind === 'sign' && it) neonOn(sl.at, it);
+        if (sl.kind === 'plate' && it) plateOn(sl.at, it, d);
         if (sl.kind === 'view' && it && it.scene) windowView(it);
         if ((sl.kind === 'screen' || sl.kind === 'wall') && it) screen(sl, it, d);
         if (sl.kind === 'poster' && it) poster(sl.at, it);
@@ -333,7 +368,7 @@ window.RoomView = (() => {
     }
     function banner(b, it) {
       const B = BANNERS[it.id] || BANNERS['ban-ctrl'];
-      const w = el('rv-q rv-print' + (B.full ? ' full' : '') + (it.id === 'ban-ctrl' ? ' ink' : ''), B.svg());
+      const w = el('rv-q rv-print' + (B.full ? ' full' : '') + (B.tech ? ' tech' : '') + (it.id === 'ban-ctrl' ? ' ink' : ''), B.svg());
       const s0 = w.firstChild; s0.setAttribute('width', 200); s0.setAttribute('height', 200);
       quad(w, 200, 200, B.full ? sub(b.q, [0.04, 0.03, 0.96, 0.97]) : sub(b.q, b.u));
     }
@@ -351,7 +386,7 @@ window.RoomView = (() => {
         room.append(c);
         const paint = P => {
           if (!P) return;
-          const f = P.naturalWidth / T.w, k = Math.min(1.5, f);
+          const f = (P.naturalWidth || P.width) / T.w, k = Math.min(1.5, f);
           const W = Math.round(w * k), H = Math.round(h * k);
           c.width = W; c.height = H;
           const g = c.getContext('2d');
@@ -380,7 +415,87 @@ window.RoomView = (() => {
     }
     function pet(at, it) {
       if (it.mode === 'hover') { const [x, y, ppm] = at.hover; cut(x, y, it.hm * ppm, it.art, 'hover'); }
-      else { const [x, y, ppm] = at.sit; cut(x, y, it.hm * ppm, it.art, 'pet'); }
+      else if (it.mode === 'bot' || it.mode === 'fish') roamer(at, it);
+      else if (it.mode === 'desk') { const [x, y, ppm, span] = at.desk || at.sit; const w = cut(x, y, it.hm * ppm, it.art, 'walker'); w.style.setProperty('--dx', (span * ppm).toFixed(1) + 'px'); }
+      else if (it.mode === 'swarm') { const [x, y, ppm] = at.hover; for (let i = 0; i < 3; i++) { const w = cut(x + (i - 1) * 0.22 * ppm, y + (i % 2) * 0.12 * ppm, it.hm * ppm * (1 - i * 0.12), it.art, 'swarm'); w.style.animationDelay = `-${i * 2.3}s`; w.style.setProperty('--r', (0.16 * ppm).toFixed(1) + 'px'); } }
+      else { const [x, y, ppm] = at.sit; cut(x, y, it.hm * ppm, it.art, 'pet' + (it.glow ? ' lit' : ''), it.glow); }
+    }
+    // a pet that moves between its hover spot and the room's other side (roam), keeping its size
+    // true to each spot; a bot blinks (its blink frame laid over it now and then)
+    function roamer(at, it) {
+      const [x, y, ppm] = at.hover, [rx, ry, rp] = at.roam || at.hover;
+      const w = el('rv-roam ' + it.mode, '', `left:${x}px;top:${y}px;--dx:${rx - x}px;--dy:${ry - y}px;--k:${(rp / ppm).toFixed(3)}`);
+      const inner = document.createElement('div'); inner.className = 'rv-prop bob'; inner.style.height = (it.hm * ppm).toFixed(1) + 'px';
+      inner.innerHTML = `<img src="${it.art}" alt="" decoding="async" draggable="false">` + (it.mode === 'bot' ? `<img class="blink" src="${it.art.replace('.webp', '-b.webp')}" alt="" decoding="async" draggable="false">` : '');
+      w.append(inner);
+      const seed = [...it.id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+      w.style.animationDelay = `-${seed % 11}s`; inner.style.animationDelay = `-${(seed % 7) / 3}s`;
+    }
+
+    // -------- My Room, more: the look, neon, nameplate, rug and the desk set (js/room/tier-art.js draws them)
+    // the graded picture replaces the room's own (no second full-size layer to composite every frame);
+    // Red alert keeps the original under it and breathes between the two
+    function gradeLayer(look) {
+      const alert = look.mood === 'mood-alert';
+      let c = null;
+      if (alert) { c = document.createElement('canvas'); c.className = 'rv-grade alert'; c.style.cssText = `left:0;top:0;width:${T.w}px;height:${T.h}px`; room.append(c); }
+      const me = bg;
+      pixels().then(G => {
+        if (!G || !me.isConnected) return;
+        if (c) { c.width = G.width; c.height = G.height; c.getContext('2d').drawImage(G, 0, 0); return; }
+        urlOf(G).then(u => { if (u && me.isConnected) { me.removeAttribute('srcset'); me.removeAttribute('sizes'); me.src = u; } });
+      });
+      if (look.mood === 'mood-storm') { const [bx, by, bw, bh] = T.glass; el('rv-storm', '', `left:${bx - bw * 0.6}px;top:${by - bh * 0.3}px;width:${bw * 2.2}px;height:${bh * 1.8}px`); }
+    }
+    const qbox = q => { const [x, y, w, h] = bbox(q); return { x, y, w, h }; };
+    // drawn once into a canvas (tubes, then their glow added on top), so a frame never repaints SVG filters
+    function neonOn(q, it) {
+      const { w, h } = qbox(q), W = Math.round(w * 3), H = Math.round(h * 3), c = document.createElement('canvas');
+      c.className = 'rv-q rv-neon'; c.width = W; c.height = H; room.append(c); quad(c, W, H, q);
+      RA.loadSvg(RA.neon(it, W, H)).then(im => {
+        if (!im || !c.isConnected) return;
+        const g = c.getContext('2d');
+        g.filter = `blur(${(Math.max(W, H) / 40).toFixed(1)}px)`; g.globalAlpha = 0.9; g.drawImage(im, 0, 0);
+        g.globalCompositeOperation = 'lighter'; g.filter = `blur(${(Math.max(W, H) / 140).toFixed(1)}px)`; g.globalAlpha = 0.8; g.drawImage(im, 0, 0);
+        g.filter = 'none'; g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(im, 0, 0);
+      });
+      const [x, y] = [bbox(q)[0] + w / 2, bbox(q)[1] + h / 2];
+      el('rv-spill neon', '', `left:${x - w * 1.1}px;top:${y - h * 1.0}px;width:${w * 2.2}px;height:${h * 2.0}px;background:radial-gradient(closest-side,${it.c || '#3ee6ff'}38,transparent)`);
+    }
+    function plateOn(q, it, d) {
+      const { w, h } = qbox(q), W = Math.round(w * 4), H = Math.round(h * 4);
+      const n = el('rv-q rv-plate' + (it.id === 'plate-neon' ? ' lit' : ''), RA.plate(it, d, W, H)); quad(n, W, H, q);
+    }
+    function flatOn(q, W, H, paint, cls, alb) {
+      const c = document.createElement('canvas'); c.className = 'rv-q rv-flat ' + cls; c.width = W; c.height = H; room.append(c); quad(c, W, H, q);
+      pixels().then(P => RA.litQuad(q, W, H, paint, P, T, alb)).then(src => { if (c.isConnected) c.getContext('2d').drawImage(src, 0, 0); });
+      return c;
+    }
+    function rugOn(q, it) {
+      const W = 640, H = 420;
+      flatOn(q, W, H, async g => { const im = await RA.loadSvg(RA.rug(it, W, H)); if (im) g.drawImage(im, 0, 0, W, H); }, 'rug', T.alb || 0.42);
+    }
+    // the desk mat covers the picture's own keyboard; a keyboard picked goes on it, with a mouse
+    function deskSet(m, mt, kb) {
+      if (!mt && !kb) return;
+      mt = mt || RT.get('mat-plain');
+      const W = 760, H = 220, [u0, v0, u1, v1] = m.kb;
+      const rgb = mt.id === 'mat-rgb';
+      const c = flatOn(m.q, W, H, async g => {
+        const im = await RA.loadSvg(RA.mat(mt, W, H)); if (im) g.drawImage(im, 0, 0, W, H);
+        // the keyboard, to scale: the picture's own keyboard (m.kb) is about 0.47 x 0.16 m
+        let kx0 = u0 * W, ky0 = v0 * H, kw = (u1 - u0) * W, kh = (v1 - v0) * H;
+        if (kb) {
+          const k = await loadImg(kb.art).catch(() => null);
+          if (k) { kw = (u1 - u0) * W * kb.L / 0.47; kh = (v1 - v0) * H * kb.L * (k.height / k.width) / 0.16; kx0 = W * (u0 + u1) / 2 - kw / 2; ky0 = H * (v0 + v1) / 2 - kh / 2;
+            g.save(); g.shadowColor = 'rgba(0,0,0,.7)'; g.shadowBlur = 10; g.shadowOffsetY = 6; g.drawImage(k, kx0, ky0, kw, kh); g.restore(); }
+        }
+        if (m.mouse) { const [mx, my] = [m.mouse[0] * W, m.mouse[1] * H]; g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 8; g.shadowOffsetY = 4;
+          const gr = g.createRadialGradient(mx - 6, my - 14, 2, mx, my, 34); gr.addColorStop(0, '#3a3f44'); gr.addColorStop(1, '#0d0f11'); g.fillStyle = gr;
+          g.beginPath(); g.ellipse(mx, my, 20, 34, 0, 0, Math.PI * 2); g.fill(); g.restore(); g.strokeStyle = 'rgba(255,255,255,.15)'; g.beginPath(); g.moveTo(mx, my - 32); g.lineTo(mx, my - 10); g.stroke(); }
+      }, 'mat', 0.6);
+      if (rgb) { const e2 = el('rv-q rv-rgbedge'); quad(e2, W, H, m.q); }
+      void c;
     }
     function caseItems() {
       const list = opt.earned.map(id => RT.TROPHIES.find(t => t.id === id)).filter(Boolean);
@@ -400,6 +515,9 @@ window.RoomView = (() => {
         const c = document.createElement('canvas'); c.width = c.height = 300; c.className = 'earth'; w.append(c);
         const cx = c.getContext('2d'); let el0 = -1; drawEarth(cx, 300, 300, 1); ticks.push(t => { if (t - el0 > 0.05) { el0 = t; drawEarth(cx, 300, 300, t); } });
       }
+      if (it.id === 'holo-wing') add(`<div class="emb wing">${svg(100, 100, RA.mark(4, 4, 92, 92, 'fill="#bff8ff"'))}</div>`);
+      if (it.id === 'holo-kb') add('<img class="fig kb" src="assets/room/items/top-kb-aula-f99.webp" alt="">');
+      if (it.id === 'holo-bots') add(['orbit', 'pixel', 'nova', 'kite', 'beep', 'raze'].map((f, i) => `<img class="fig rush" style="animation-delay:${i * 3}s" src="assets/room/items/pet-${f}.webp" alt="">`).join(''));
       add('<div class="lines"></div>');
     }
 
@@ -416,8 +534,11 @@ window.RoomView = (() => {
         else if (k === 'shelf' || k === 'desk') { const [x, y, ppm] = a, w = Math.max(30, ppm * 0.26), hh = Math.max(36, ppm * 0.38); h = el('rv-hit spot', '', `left:${x - w / 2}px;top:${y - hh}px;width:${w}px;height:${hh}px`); }
         else if (k === 'holo') h = el('rv-hit', '', `left:${a.x - a.w * 0.35}px;top:${a.y - a.h}px;width:${a.w * 0.7}px;height:${a.h}px`);
         else if (k === 'pet') { const [x, y, ppm] = a.sit, w = ppm * 0.5, hh = ppm * 0.32; h = el('rv-hit spot', '', `left:${x - w / 2}px;top:${y - hh}px;width:${w}px;height:${hh}px`); }
+        else if (k === 'sign' || k === 'plate' || k === 'rug') { h = el('rv-q rv-hit q'); quad(h, 300, 200, a); }
+        else if (k === 'mat' || k === 'kb') { if (k === 'kb') continue; h = el('rv-q rv-hit q'); quad(h, 300, 100, a.q); }
         if (!h) continue;
         h.dataset.slot = sl.id; h.dataset.kind = k;
+        if (k === 'mat') h.dataset.also = 'kb';
         h.setAttribute('role', 'button'); h.tabIndex = -1;
         h.setAttribute('aria-label', (sl.name || RT.kind(k).name) + '');
         h.addEventListener('click', ev => { ev.stopPropagation(); if (opt.onSlot) opt.onSlot(sl); });
@@ -432,7 +553,7 @@ window.RoomView = (() => {
     }
     function select(id) {
       sel = id;
-      room.querySelectorAll('.rv-hit').forEach(h => h.classList.toggle('on', !!id && (h.dataset.slot === id || h.dataset.kind === id)));
+      room.querySelectorAll('.rv-hit').forEach(h => h.classList.toggle('on', !!id && (h.dataset.slot === id || h.dataset.kind === id || h.dataset.also === id)));
     }
 
     // -------- fitting the picture to the host, and the mouse parallax
@@ -521,10 +642,15 @@ window.RoomView = (() => {
     }
     if (it.type === 'poster' && POSTERS[it.id]) return toUrl(await inline(svg(400, 300, `${STAGE}<rect x="137" y="22" width="126" height="256" fill="#15191b"/>${nest(POSTERS[it.id](), 145, 30, 110, 240, 300, 450)}`)));
     if (it.type === 'screen' && SCREENS[it.id]) return toUrl(svg(400, 300, `${STAGE}<rect x="34" y="52" width="332" height="196" rx="6" fill="#0b0d0e" stroke="#2a2f32" stroke-width="2"/>${nest(SCREENS[it.id](DEMO).replace(/class="[^"]*"/g, ''), 44, 62, 312, 176, 480, 270)}<rect x="186" y="248" width="28" height="22" fill="#15181a"/><rect x="150" y="268" width="100" height="6" rx="3" fill="#15181a"/>`));
+    if (it.type === 'sign' || it.type === 'plate' || it.type === 'rug' || it.type === 'mat') {
+      const [w, h] = { sign: [300, 140], plate: [300, 80], rug: [300, 200], mat: [360, 120] }[it.type], f = flatArt(it, DEMO).replace(/^<div[^>]*>|<\/div>$/g, '');
+      const glow = it.type === 'sign' ? `<filter id="tg"><feGaussianBlur stdDeviation="6"/></filter><g filter="url(#tg)" opacity=".8">${nest(f, 40, 80, 320, 140, w, h)}</g>` : '';
+      return toUrl(svg(400, 300, `${it.type === 'sign' ? '<rect width="400" height="300" fill="#0b0d0e"/>' : STAGE}${glow}${it.type === 'rug' || it.type === 'mat' ? `<g transform="translate(200 160) scale(1 .62) rotate(-8) translate(-160 -110)">${nest(f, 0, 0, 320, 220, w, h)}</g>` : nest(f, 40, 80, 320, 140, w, h)}`));
+    }
     if (it.type === 'banner') { const B = BANNERS[it.id]; return toUrl(svg(400, 300, `${STAGE}<path d="M140 30h120v240l-60-22-60 22z" fill="#1d2124"/>${B.full ? nest(B.svg(), 140, 30, 120, 200, 100, 100) : nest(B.svg(), 160, 70, 80, 80, 68, 68)}`)); }
     if (it.type === 'holo') {
-      const src = { 'holo-syntax': 'assets/boss/syntax-error.webp', 'holo-operator': 'assets/room/items/operator.webp', 'holo-rush': 'assets/room/items/fig-siege.webp' }[it.id];
-      const body = src ? img(src, 110, 40, 180, 210, 'preserveAspectRatio="xMidYMax meet" style="filter:url(#hf)"') : it.id === 'holo-ctrl' ? `<g transform="translate(144 70) scale(1.75)" color="#8ff4ff">${EMBLEM('currentColor', '#8ff4ff')}</g>` : `<circle cx="200" cy="140" r="78" fill="#3ee6ff" fill-opacity=".12" stroke="#8ff4ff" stroke-width="2"/><ellipse cx="200" cy="140" rx="32" ry="78" fill="none" stroke="#8ff4ff" stroke-opacity=".6"/><path d="M122 140H278M130 105H270M130 175H270" stroke="#8ff4ff" stroke-opacity=".5"/>`;
+      const src = { 'holo-syntax': 'assets/boss/syntax-error.webp', 'holo-operator': 'assets/room/items/operator.webp', 'holo-rush': 'assets/room/items/fig-siege.webp', 'holo-bots': 'assets/room/items/pet-orbit.webp', 'holo-kb': 'assets/room/items/top-kb-aula-f99.webp' }[it.id];
+      const body = src ? img(src, 110, 40, 180, 210, 'preserveAspectRatio="xMidYMax meet" style="filter:url(#hf)"') : it.id === 'holo-wing' ? RA.mark(130, 50, 140, 180, 'fill="#bff8ff"') : it.id === 'holo-ctrl' ? `<g transform="translate(144 70) scale(1.75)" color="#8ff4ff">${EMBLEM('currentColor', '#8ff4ff')}</g>` : `<circle cx="200" cy="140" r="78" fill="#3ee6ff" fill-opacity=".12" stroke="#8ff4ff" stroke-width="2"/><ellipse cx="200" cy="140" rx="32" ry="78" fill="none" stroke="#8ff4ff" stroke-opacity=".6"/><path d="M122 140H278M130 105H270M130 175H270" stroke="#8ff4ff" stroke-opacity=".5"/>`;
       return toUrl(await inline(svg(400, 300, `<defs><filter id="hf"><feColorMatrix type="matrix" values="0 0 0 0 .45  0 0 0 0 .95  0 0 0 0 1  .33 .33 .33 0 0"/></filter><linearGradient id="hc" x2="0" y2="1"><stop offset="0" stop-color="#3ee6ff" stop-opacity="0"/><stop offset="1" stop-color="#3ee6ff" stop-opacity=".35"/></linearGradient></defs><rect width="400" height="300" fill="#04121a"/><path d="M90 20h220l-60 250h-100z" fill="url(#hc)"/><ellipse cx="200" cy="272" rx="70" ry="10" fill="#3ee6ff" fill-opacity=".55"/>${body}`)));
     }
     const c = document.createElement('canvas'); c.width = 400; c.height = 300; const x = c.getContext('2d');
@@ -533,6 +659,11 @@ window.RoomView = (() => {
       // the room's own city: a piece of the Ops den's window, bars and all
       else { const im = await loadImg('assets/room/tiers/t3-m.webp'); x.drawImage(im, 512, 220, 196, 147, 0, 0, 400, 300); return c.toDataURL('image/webp', 0.86); }
       x.strokeStyle = '#1a1e1c'; x.lineWidth = 14; x.strokeRect(0, 0, 400, 300); x.lineWidth = 8; x.beginPath(); x.moveTo(200, 0); x.lineTo(200, 300); x.moveTo(0, 150); x.lineTo(400, 150); x.stroke();
+    } else if (it.type === 'accent' || it.type === 'walls' || it.type === 'mood') {
+      x.fillStyle = '#07100c'; x.fillRect(0, 0, 400, 300);
+      if (it.sw && !it.sw.startsWith('#')) { const lg = x.createLinearGradient(40, 0, 360, 0); const cs = it.sw.match(/#[0-9a-f]{6}/gi) || ['#222', '#444']; cs.forEach((cc, i) => lg.addColorStop(i / Math.max(1, cs.length - 1), cc)); x.fillStyle = lg; }
+      else x.fillStyle = it.c || it.sw || '#2fe0c0';
+      x.fillRect(40, 70, 320, 160);
     } else if (it.type === 'light') {
       x.fillStyle = '#07100c'; x.fillRect(0, 0, 400, 300);
       const col = it.sw && it.sw.startsWith('#') ? it.sw : it.c || '#2fe0c0';
@@ -544,8 +675,19 @@ window.RoomView = (() => {
   }
 
   // the shop bar's small live pictures (DOM, not images): an SVG string scaled into a box
+  // flat things and signs for a card, drawn small
+  function flatArt(it, data) {
+    if (!RA) return null;
+    if (it.type === 'sign') return `<div class="nsign" style="--c:${it.c}">${RA.neon(it, 300, 140)}</div>`;
+    if (it.type === 'plate') return RA.plate(it, data || DEMO, 300, 80);
+    if (it.type === 'rug') return RA.rug(it, 300, 200);
+    if (it.type === 'mat') return RA.mat(it, 360, 120);
+    return null;
+  }
   function art(it, data) {
+    if (it.type === 'kb') return `<img src="${it.art}" alt="" loading="lazy" draggable="false" class="kbtop">`;
     if (it.art) return `<img src="${it.art}" alt="" loading="lazy" draggable="false">`;
+    const f = flatArt(it, data); if (f) return f;
     if (it.type === 'poster' && POSTERS[it.id]) return POSTERS[it.id]();
     if (it.type === 'screen' && SCREENS[it.id]) return SCREENS[it.id](data || DEMO);
     if (it.type === 'banner') { const B = BANNERS[it.id]; return `<div class="ban${B.full ? ' full' : ''}">${B.svg()}</div>`; }

@@ -42,7 +42,12 @@
       banner: { q: [[122, 115], [283, 135], [285, 385], [128, 388]], u: [0.22, 0.3, 0.78, 0.62] },
       shelf: [], desk: [],
       pins: [[1042, 200], [1100, 196], [1158, 206]],
-      pet: { sit: [612, 503, 158], hover: [585, 300, 170] },
+      pet: { sit: [612, 503, 158], hover: [585, 300, 170], roam: [905, 318, 160], desk: [1150, 470, 200, 0.22] },
+      // added 28 Nov 2026 (My Room, more): neon sign, nameplate, rug, desk mat and keyboard
+      sign: [[1262, 112], [1360, 106], [1360, 286], [1262, 288]],
+      plate: [[16, 286], [80, 290], [80, 312], [16, 309]],
+      rug: [[505, 612], [772, 612], [806, 702], [468, 702]],
+      mat: { q: [[906, 442], [1108, 447], [1112, 473], [901, 469]], kb: [0.02, 0.06, 0.74, 0.94], mouse: [0.86, 0.55] },
     },
     2: { name: 'Field room', level: 10, w: 1376, h: 768, size: [3.5, 4], focus: 0.5, dim: 0.8,
       glass: [203, 101, 108.5, 342.5],
@@ -53,7 +58,10 @@
       shelf: row([892, 930, 968], 352, 112),
       desk: [[925, 461, 124], [1024, 459, 124]],
       case: row([1150, 1199, 1249, 1297], 572, 230),
-      pet: { sit: [606, 240, 112], hover: [470, 190, 120] },
+      pet: { sit: [606, 240, 112], hover: [470, 190, 120], roam: [610, 330, 118], desk: [930, 461, 124, 0.3] },
+      sign: [[872, 304], [1000, 304], [1000, 350], [872, 350]],
+      plate: [[716, 259], [800, 259], [800, 273], [716, 273]],
+      mat: { q: [[699, 446], [827, 446], [828, 465], [697, 465]], kb: [0.05, 0.1, 0.8, 0.9], mouse: [0.92, 0.5] },
     },
     3: { name: 'Ops den', level: 25, w: 1376, h: 768, size: [5, 4.5], focus: 0.45, dim: 0.85,
       glass: [506, 132, 222.5, 309.5],
@@ -71,7 +79,11 @@
       shelf: row([294, 343, 392, 441, 489], 301, 118),
       desk: [[252, 497, 130], [690, 474, 120]],
       case: [...row([829, 861, 892], 296, 150), ...row([829, 861, 892], 344, 150), ...row([829, 861, 892], 391, 150)],
-      pet: { sit: [1060, 500, 140], hover: [860, 160, 120] },
+      pet: { sit: [1060, 500, 140], hover: [860, 160, 120], roam: [640, 250, 112], desk: [655, 476, 120, 0.3] },
+      sign: [[996, 165], [1166, 158], [1166, 226], [996, 229]],
+      plate: [[1032, 403], [1130, 400], [1130, 421], [1032, 424]],
+      rug: [[905, 655], [1190, 650], [1240, 735], [865, 740]],
+      mat: { q: [[428, 474], [612, 466], [624, 485], [434, 501]], kb: [0.08, 0.1, 0.72, 0.85], mouse: [0.86, 0.45] },
     },
     4: { name: 'The loft', level: 45, w: 1380, h: 752, size: [7, 6], focus: 0.5, dim: 0.78,
       glass: [171, 0, 428.5, 527.5],
@@ -82,7 +94,10 @@
       shelf: [[77, 104, 140], [77, 189, 140], [77, 351, 140], [77, 438, 140], [77, 525, 140]],
       desk: [[815, 467, 110], [966, 471, 110]],
       case: [[694, 412, 165], [694, 452, 165], [694, 493, 165], [1052, 415, 175], [1052, 467, 175], [1052, 519, 175]],
-      pet: { sit: [226, 668, 175], hover: [640, 210, 120] },
+      pet: { sit: [226, 668, 175], hover: [640, 210, 120], roam: [990, 430, 118], desk: [905, 470, 110, 0.25] },
+      sign: [[946, 302], [1094, 296], [1094, 352], [946, 356]],
+      plate: [[670, 322], [780, 318], [780, 340], [670, 344]],
+      rug: [[625, 650], [990, 644], [1040, 728], [585, 734]],
     },
     5: { name: 'Command deck', level: 75, w: 1376, h: 768, size: [10, 8], focus: 0.55, dim: 0.85,
       glass: [94, 29, 733.5, 472.5],
@@ -98,7 +113,9 @@
       desk: [[205, 482, 120], [598, 459, 105]],
       case: [...row([1160, 1215, 1271, 1328], 383, 185), ...row([1160, 1215, 1271, 1328], 443, 185), ...row([1160, 1215, 1271, 1328], 503, 185)],
       holo: { x: 740, y: 608, w: 220, h: 300 },
-      pet: { sit: [212, 700, 190], hover: [880, 300, 130] },
+      pet: { sit: [212, 700, 190], hover: [880, 300, 130], roam: [600, 320, 122], desk: [480, 466, 110, 0.3] },
+      sign: [[880, 150], [1000, 146], [1000, 290], [880, 292]],
+      plate: [[1042, 478], [1120, 476], [1120, 496], [1042, 498]],
     },
   };
   const LEVELS = [1, 10, 25, 45, 75];
@@ -106,18 +123,28 @@
 
   // ------------------------------------------------------------------ what each slot takes
   // type: the catalogue type a slot takes. The tabs follow this order.
+  // group: the four shelves of the shop bar (Gid, 28 Nov: curated like a character creator)
   const KINDS = [
-    { id: 'view', name: 'Window', type: 'view' },
-    { id: 'screen', name: 'Monitors', type: 'screen' },
-    { id: 'wall', name: 'Wall screen', type: 'screen', from: 3 },
-    { id: 'poster', name: 'Posters', type: 'poster' },
-    { id: 'light', name: 'Lighting', type: 'light' },
-    { id: 'shelf', name: 'Shelf', type: 'prop', from: 2 },
-    { id: 'desk', name: 'Desk', type: 'prop', from: 2 },
-    { id: 'holo', name: 'Hologram', type: 'holo', from: 5 },
-    { id: 'pet', name: 'Pet', type: 'pet' },
-    { id: 'banner', name: 'Banner', type: 'banner' },
+    { id: 'view', name: 'Window', type: 'view', group: 'walls' },
+    { id: 'poster', name: 'Posters', type: 'poster', group: 'walls' },
+    { id: 'banner', name: 'Banner', type: 'banner', group: 'walls' },
+    { id: 'sign', name: 'Neon sign', type: 'sign', group: 'walls' },
+    { id: 'wall', name: 'Wall screen', type: 'screen', from: 3, group: 'walls' },
+    { id: 'plate', name: 'Nameplate', type: 'plate', group: 'walls' },
+    { id: 'screen', name: 'Monitors', type: 'screen', group: 'desk' },
+    { id: 'kb', name: 'Keyboard', type: 'kb', group: 'desk' },
+    { id: 'mat', name: 'Desk mat', type: 'mat', group: 'desk' },
+    { id: 'desk', name: 'Desk', type: 'prop', from: 2, group: 'desk' },
+    { id: 'accent', name: 'Accent', type: 'accent', group: 'light' },
+    { id: 'light', name: 'LED zones', type: 'light', group: 'light' },
+    { id: 'walls', name: 'Wall tint', type: 'walls', group: 'light' },
+    { id: 'mood', name: 'Mood', type: 'mood', group: 'light' },
+    { id: 'pet', name: 'Pet', type: 'pet', group: 'decor' },
+    { id: 'shelf', name: 'Shelf', type: 'prop', from: 2, group: 'decor' },
+    { id: 'rug', name: 'Rug', type: 'rug', group: 'decor' },
+    { id: 'holo', name: 'Hologram', type: 'holo', from: 5, group: 'decor' },
   ];
+  const GROUPS = [{ id: 'walls', name: 'Walls' }, { id: 'desk', name: 'Desk' }, { id: 'light', name: 'Lighting' }, { id: 'decor', name: 'Decor' }];
   // every slot of a tier, with an id that stays the same between visits
   function slots(n) {
     const T = TIERS[n], out = [];
@@ -130,6 +157,12 @@
     if (T.holo) out.push({ id: 'holo', kind: 'holo', at: T.holo });
     if (T.pet) out.push({ id: 'pet', kind: 'pet', at: T.pet });
     if (T.banner) out.push({ id: 'banner', kind: 'banner', at: T.banner });
+    if (T.sign) out.push({ id: 'sign', kind: 'sign', at: T.sign });
+    if (T.plate) out.push({ id: 'plate', kind: 'plate', at: T.plate });
+    if (T.rug) out.push({ id: 'rug', kind: 'rug', at: T.rug });
+    if (T.mat) out.push({ id: 'mat', kind: 'mat', at: T.mat }, { id: 'kb', kind: 'kb', at: T.mat });
+    // the whole room's look: every tier has these
+    out.push({ id: 'accent', kind: 'accent' }, { id: 'walls', kind: 'walls' }, { id: 'mood', kind: 'mood' });
     return out;
   }
 
@@ -243,10 +276,142 @@
     ['ban-syntax', 'Syntax Error mark', 600],
     ['gift-pennant', 'Streak flame', 0, { gift: true, desc: 'A flame for days in a row.' }],
   ]);
-  for (const it of I) it.art = it.type === 'prop' || it.type === 'pet' ? `assets/room/items/${it.id === 'pet-drone' ? 'drone' : it.id}.webp` : null;
+
+  // ------------------------------------------------------------------ more (Gid, 28 Nov 2026: "add more customization options:
+  // pets, designs, whatever else may be good to edit"). Prices against the list above and rewards-config.js.
+  // pets: bot: a CTRL bot that hovers, drifts to the room's other side and blinks (pic-b is the blink);
+  // sit: sits where the cat sits; desk: walks the desk; fish: swims between two spots; swarm: three drones
+  add('pet', [
+    ['pet-orbit', 'Orbit bot', 3200, { mode: 'bot', hm: 0.26, desc: 'The Sentinel bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-pixel', 'Pixel bot', 3200, { mode: 'bot', hm: 0.26, desc: 'The Precision bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-nova', 'Nova bot', 3200, { mode: 'bot', hm: 0.27, desc: 'The Striker bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-kite', 'Kite bot', 3200, { mode: 'bot', hm: 0.26, desc: 'The Ghost bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-beep', 'Beep bot', 3200, { mode: 'bot', hm: 0.29, desc: 'The Architect bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-raze', 'Raze bot', 3200, { mode: 'bot', hm: 0.19, desc: 'The Hunter bot, pocket size. Hovers, wanders and blinks.' }],
+    ['pet-cybercat', 'Cyber cat', 2800, { mode: 'sit', hm: 0.3, glow: '#3ee6ff', desc: 'A gunmetal cat with cyan eyes. Sits and watches.' }],
+    ['pet-crab', 'Desk crab', 2200, { mode: 'desk', hm: 0.1, desc: 'A small crab bot that walks up and down the desk.' }],
+    ['pet-fish', 'Holo koi', 4000, { mode: 'fish', hm: 0.22, desc: 'A koi made of light, swimming laps across the room.' }],
+    ['pet-swarm', 'Drone swarm', 4500, { mode: 'swarm', hm: 0.12, pic: 'drone', desc: 'Three small drones flying a loose loop.' }],
+  ]);
+  add('prop', [
+    ['ctrl-can', 'CTRL energy can', 150, { hm: 0.13 }],
+    ['ctrl-mug', 'CTRL mug', 200, { hm: 0.1 }],
+    ['succulents', 'Succulent bowl', 300, { hm: 0.1 }],
+    ['desk-lamp', 'Desk lamp', 400, { hm: 0.42, desk: true, glow: '#ffc070' }],
+    ['switch-tester', 'Switch tester', 450, { hm: 0.045, desc: 'Nine switches to press: linear, tactile and clicky.' }],
+    ['flip-clock', 'Flip clock', 500, { hm: 0.075 }],
+    ['artisan-key', 'Artisan keycap', 750, { hm: 0.085, glow: '#7ff4ff', desc: 'A resin keycap with the wing mark set inside.' }],
+    ['ctrl-plaque', 'CTRL plaque', 900, { hm: 0.14, desc: 'The CTRL lockup on black glass.' }],
+    ['studio-speaker', 'Studio speaker', 900, { hm: 0.21 }],
+    ['bonsai', 'Bonsai', 1100, { hm: 0.24 }],
+    ['ctrl-lightbox', 'CTRL light box', 1400, { hm: 0.16, glow: '#3ee6ff', desc: 'The wing mark lit from behind.' }],
+    ['bot-squad', 'Bot squad figures', 1800, { hm: 0.11, desc: 'The six CTRL bots on one stand.' }],
+  ]);
+  // keyboards for the desk, laid on the desk mat (the picture's own stays until you pick one); L: length in metres
+  add('kb', [
+    ['desk-kb-black', 'Black 75%', 300, { pic: 'top-kb-basic', L: 0.33 }],
+    ['desk-kb-shark', 'Attack Shark X68 HE', 1200, { pic: 'top-kb-attackshark-x68he', L: 0.31 }],
+    ['desk-kb-aula', 'AULA F99 Pro', 1400, { pic: 'top-kb-aula-f99', L: 0.39, desc: 'The board Art types on.' }],
+    ['desk-kb-womier', 'Womier SK61 HE', 1500, { pic: 'top-kb-womier-sk61he', L: 0.29, desc: 'From Art\'s collab.' }],
+    ['desk-kb-loga', 'LOGA Yaksa Pro 75', 1800, { pic: 'top-kb-loga-yaksa', L: 0.33 }],
+    ['desk-kb-chilkey', 'Chilkey SF60 Diamond', 2200, { pic: 'top-kb-chilkey-sf60', L: 0.29 }],
+    ['desk-kb-corsair', 'Corsair Vanguard 96', 2400, { pic: 'top-kb-corsair-vanguard96', L: 0.39 }],
+  ]);
+  add('mat', [
+    ['mat-plain', 'Black mat', 0, { desc: 'Plain black cloth.' }],
+    ['mat-grid', 'Grid mat', 400],
+    ['mat-camo', 'Urban camo', 450],
+    ['mat-sunset', 'Sunset', 450],
+    ['mat-topo', 'Contour map', 500],
+    ['mat-keys', 'Legend print', 500],
+    ['mat-ctrl', 'CTRL mat', 600, { desc: 'Matte black with the wing mark and a cyan edge.' }],
+    ['mat-rgb', 'RGB edge mat', 1200, { desc: 'A lit edge that runs through every colour.' }],
+  ]);
+  add('sign', [
+    ['sign-gg', 'GG', 900, { c: '#ff3fb8' }],
+    ['sign-bolt', 'Lightning bolt', 1000, { c: '#ffd23d' }],
+    ['sign-esc', 'ESC key', 1200, { c: '#b45cff' }],
+    ['sign-type', 'Type faster', 1500, { c: '#ff7a2a' }],
+    ['sign-wpm', '10000WPM', 2000, { c: '#39ff88' }],
+    ['sign-wing', 'Wing mark', 2500, { c: '#3ee6ff' }],
+    ['sign-ctrl', 'CTRL, cyan', 4000, { c: '#3ee6ff', desc: 'The CTRL lockup in cyan neon.' }],
+    ['sign-ctrl-white', 'CTRL, white', 4000, { c: '#e9f6ff', desc: 'The CTRL lockup in white neon.' }],
+  ]);
+  add('plate', [
+    ['plate-black', 'Matte black', 0, { desc: 'Your name and division on matte black.' }],
+    ['plate-steel', 'Brushed steel', 300],
+    ['plate-neon', 'Neon', 800],
+    ['plate-gold', 'Gold', 1200],
+  ]);
+  add('rug', [
+    ['rug-hazard', 'Hazard mat', 700],
+    ['rug-round', 'Round sage', 800],
+    ['rug-shag', 'Cream shag', 900],
+    ['rug-camo', 'Urban camo', 1000],
+    ['rug-grid', 'Grid rug', 1100],
+    ['rug-keycap', 'Escape key', 1500, { desc: 'A rug shaped like the Esc key.' }],
+    ['rug-kilim', 'Red kilim', 1600],
+    ['rug-ctrl', 'CTRL rug', 1800, { desc: 'Black with the wing mark and a cyan border.' }],
+  ]);
+  // the whole room's look, worked out from the picture once (tier-view.js grade()):
+  // accent turns every teal LED in the picture; walls tints the grey surfaces; mood grades the light
+  add('accent', [
+    ['acc-teal', 'Teal', 0, { c: null, sw: '#2fe0c0' }],
+    ['acc-cyan', 'Cyan', 400, { c: '#3ee6ff' }],
+    ['acc-lime', 'Lime', 500, { c: '#8cff58' }],
+    ['acc-violet', 'Violet', 500, { c: '#9a5cff' }],
+    ['acc-blue', 'Deep blue', 500, { c: '#3a6bff' }],
+    ['acc-white', 'Ice white', 500, { c: '#e8f6ff', sw: '#e8f6ff' }],
+    ['acc-magenta', 'Magenta', 600, { c: '#ff3fb8' }],
+    ['acc-red', 'Red', 600, { c: '#ff3b4f' }],
+    ['acc-amber', 'Amber', 600, { c: '#ffb020' }],
+  ]);
+  add('walls', [
+    ['walls-none', 'As built', 0, { c: null, sw: '#5c615f' }],
+    ['walls-warm', 'Warm concrete', 500, { c: '#c08a5a' }],
+    ['walls-steel', 'Cold steel', 500, { c: '#6f8fa8' }],
+    ['walls-sand', 'Sandstone', 600, { c: '#c7b08a' }],
+    ['walls-olive', 'Olive drab', 600, { c: '#7f8a4c' }],
+    ['walls-graphite', 'Graphite', 700, { c: '#2a2c2e', dark: true }],
+    ['walls-midnight', 'Midnight', 700, { c: '#33468a' }],
+    ['walls-plum', 'Plum', 700, { c: '#80507e' }],
+  ]);
+  add('mood', [
+    ['mood-night', 'Night', 0, { sw: 'linear-gradient(90deg,#0b1220,#1d2a3a)' }],
+    ['mood-late', 'Late night', 600, { sw: 'linear-gradient(90deg,#020305,#0b1014 60%,#2fe0c0)', desc: 'Darker, so the lights carry the room.' }],
+    ['mood-dusk', 'Golden hour', 900, { sw: 'linear-gradient(90deg,#3a1d0c,#ff9a3d)', desc: 'Warm low sun across the walls.' }],
+    ['mood-blue', 'Blue hour', 900, { sw: 'linear-gradient(90deg,#0b1430,#4a7cff)', desc: 'Cold blue light after sunset.' }],
+    ['mood-haze', 'Neon haze', 1200, { sw: 'linear-gradient(90deg,#2a0a3a,#ff3fb8,#3ee6ff)', desc: 'A coloured haze that softens the dark.' }],
+    ['mood-alert', 'Red alert', 1500, { sw: 'linear-gradient(90deg,#2a0306,#ff3b4f)', desc: 'Emergency red that breathes.' }],
+    ['mood-storm', 'Thunderstorm', 2000, { sw: 'linear-gradient(90deg,#0a0e16,#c8d8ff)', desc: 'Dim and blue, with lightning outside now and then.' }],
+  ]);
+  add('poster', [
+    ['poster-switch', 'Linear switch', 500, { desc: 'A switch taken apart, drawn like a parts sheet.' }],
+    ['poster-ctrl-wing', 'CTRL wing', 600, { desc: 'The wing mark on matte black.' }],
+    ['poster-ctrl-drop', 'CTRL season 01', 700],
+    ['poster-ctrl-div', 'Six divisions', 800],
+    ['poster-bots', 'The six bots', 900],
+  ]);
+  add('banner', [
+    ['ban-ctrl-wing', 'CTRL lockup', 500, { desc: 'The CTRL wing and wordmark in white.' }],
+    ['ban-ctrl-tech', 'CTRL techwear', 900, { desc: 'The lockup with cyan panel lines, like the CTRL hoodie.' }],
+  ]);
+  add('screen', [
+    ['scr-ctrl', 'CTRL wing mark', 300, { desc: 'The wing mark with a slow cyan sweep.', glow: '#3ee6ff' }],
+    ['scr-clock', 'Clock', 350, { desc: 'The time, big.' }],
+    ['scr-type', 'Typing test', 450, { desc: 'A test running, with the wpm going up.' }],
+    ['scr-viz', 'Music visualiser', 700, { desc: 'Bars that move to a beat.', glow: '#ff3fb8' }],
+    ['scr-bot', 'Your bot', 800, { desc: 'Your division\'s bot and its stats.', glow: '#3ee6ff' }],
+  ]);
+  add('holo', [
+    ['holo-wing', 'CTRL wing mark', 8000],
+    ['holo-kb', 'Keyboard', 10000, { desc: 'Art\'s AULA F99, turning slowly.' }],
+    ['holo-bots', 'The six bots', 14000, { desc: 'The six CTRL bots, one after another.' }],
+  ]);
+  for (const it of I) it.art = it.type === 'prop' || it.type === 'pet' ? `assets/room/items/${it.id === 'pet-drone' ? 'drone' : it.pic || it.id}.webp` : it.type === 'kb' ? `assets/room/items/${it.pic}.webp` : null;
   const byId = new Map(I.map(it => [it.id, it]));
   const bonusColor = it => { try { const b = window.Progress && Progress.bonus(it.bonus); return b ? b.color : null; } catch (e) { return null; } };
-  const DEFAULT = { view: 'view-city', screen: 'scr-stats', wall: 'scr-card', light: 'led-teal', banner: 'ban-ctrl' };
+  const DEFAULT = { view: 'view-city', screen: 'scr-stats', wall: 'scr-card', light: 'led-teal', banner: 'ban-ctrl', accent: 'acc-teal', walls: 'walls-none', mood: 'mood-night' };
 
   // ------------------------------------------------------------------ the achievement case
   // Earned only. has(ctx) gets { ach(id), level, rush: { bosses, beat: Set of boss ids }, bossWins }.
@@ -290,7 +455,7 @@
   for (const it of I) for (const old of it.legacy || []) LEGACY[old] = it.id;
 
   window.RoomTiers = {
-    TIERS, LEVELS, KINDS, ITEMS: I, TEST, TROPHIES, PIN, DEFAULT, LEGACY,
+    TIERS, LEVELS, KINDS, GROUPS, ITEMS: I, TEST, TROPHIES, PIN, DEFAULT, LEGACY,
     get: id => byId.get(id) || null, slots, tierFor,
     // what an untouched slot shows: the first monitor your stats, the others the screensaver
     defaultFor: (slotId, kind) => (kind === 'screen' && slotId !== 'm1' ? 'scr-logo' : DEFAULT[kind] || null),
@@ -304,16 +469,23 @@
   // ------------------------------------------------------------------ RoomItems for #/shop and gifts
   // The shop page (js/app/shop.js), the gift crate (js/app/progress.js) and the gift reveal read
   // window.RoomItems. Free items stay out of the shop; gift-only ones come only from gifts.
-  const CAT = { view: 'Window views', screen: 'Monitor programs', poster: 'Posters', light: 'Lighting', prop: 'Shelf and desk', holo: 'Holograms', pet: 'Pets', banner: 'Banners' };
+  const CAT = { view: 'Window views', screen: 'Monitor programs', poster: 'Posters', light: 'Lighting', prop: 'Shelf and desk', holo: 'Holograms', pet: 'Pets', banner: 'Banners',
+    sign: 'Neon signs', kb: 'Desk keyboards', mat: 'Desk mats', rug: 'Rugs', plate: 'Nameplates', accent: 'Room colours', walls: 'Room colours', mood: 'Room colours' };
+  // the rooms whose slots take an item, for the shop card and the tab
+  const fits = it => [1, 2, 3, 4, 5].filter(n => slots(n).some(sl => { const k = KINDS.find(x => x.id === sl.kind); return k.type === it.type && !(sl.kind === 'shelf' && it.desk); }));
+  for (const it of I) it.tiers = fits(it);
+  const fitText = t => (t.length === 5 ? '' : t.length === 1 ? ` Room ${t[0]} only.` : t.every((v, i) => !i || v === t[i - 1] + 1) ? ` Rooms ${t[0]} to ${t[t.length - 1]}.` : ` Rooms ${t.slice(0, -1).join(', ')} and ${t[t.length - 1]}.`);
   const catalog = I.filter(it => (it.price > 0 || it.gift) && !it.bonus).map(it => {
     it.category = CAT[it.type];
-    it.desc ||= `${it.name}, for ${({ view: 'the window', screen: 'any monitor', poster: 'any poster frame', light: 'any lighting zone', prop: 'a shelf or the desk', holo: 'the Command deck pedestal', pet: 'your room', banner: 'the banner' })[it.type]}.`;
+    it.desc ||= `${it.name}, for ${({ view: 'the window', screen: 'any monitor', poster: 'any poster frame', light: 'any lighting zone', prop: 'a shelf or the desk', holo: 'the Command deck pedestal', pet: 'your room', banner: 'the banner',
+      sign: 'the neon sign spot', kb: 'the desk, on its mat', mat: 'the desk', rug: 'the floor', plate: 'the nameplate', accent: 'every LED in the room', walls: 'the walls', mood: 'the whole room' })[it.type]}.`;
     if (it.type === 'holo') it.desc += ' Shows from the Command deck (level 75).';
+    else if (!it.gift) it.desc += fitText(it.tiers);
     return it;
   });
   const thumbs = new Map();
   window.RoomItems = {
-    catalog, categories: Object.values(CAT).map(name => ({ id: name, name })),
+    catalog, categories: [...new Set(Object.values(CAT))].map(name => ({ id: name, name })),
     get: id => byId.get(id) || null,
     // a picture for the shop card: the cut-out, or one drawn by the room view (tier-view.js)
     thumbnail(id) {
