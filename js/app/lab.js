@@ -250,7 +250,7 @@ Router.register('lab', (() => {
       live = false; renderer.setAnimationLoop(null); ro.disconnect(); ctl.dispose();
       op.dispose(); op = null; if (ac) ac.close(); ac = null;
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-      renderer.dispose(); renderer.domElement.remove();
+      renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
       delete window._lab;
     };
   }

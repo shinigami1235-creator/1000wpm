@@ -353,7 +353,7 @@ Router.register('hangar', (() => {
       // trying a part on while the pointer is on its card
       preview: (k, v) => { if (preview && preview[k] === v) return; preview = { [k]: v }; build(preview); },
       unpreview: () => { if (!preview) return; preview = null; build(); },
-      stop() { renderer.setAnimationLoop(null); ro.disconnect(); evs.forEach(ev => el && el.removeEventListener(ev, touch)); bot && bot.dispose(); keep.forEach(x => x.dispose && x.dispose()); composer.dispose && composer.dispose(); pmrem.dispose(); renderer.dispose(); cv.remove(); },
+      stop() { renderer.setAnimationLoop(null); ro.disconnect(); evs.forEach(ev => el && el.removeEventListener(ev, touch)); bot && bot.dispose(); keep.forEach(x => x.dispose && x.dispose()); composer.dispose && composer.dispose(); pmrem.dispose(); renderer.dispose(); renderer.forceContextLoss(); cv.remove(); },   // free the GPU context now: Chrome keeps only 16 alive
     };
     el.querySelector('[data-spin]').classList.toggle('on', auto);
   }
