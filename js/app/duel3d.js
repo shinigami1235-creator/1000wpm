@@ -642,8 +642,9 @@ window.DuelScene = (() => {
       const ctrl = new V().lerpVectors(start, end, 0.5).add(tmp.set(0, (tier >= 3 ? 0.5 : 1) * rnd(1.4, 2.2), rnd(0, 1.2)));
       const n = word.length, step = Math.min(0.013, (T - 0.12) / Math.max(1, n));
       // the shooter's keyboard (js/app/combat/fx3d.js, keyboard signatures): Compact splits the word
-      // into three lanes, Split sends it from both halves, Arc rides a lightning bolt
-      const kb = f.kb || 'slab';
+      // into three lanes, Split sends it from both halves, Arc rides a lightning bolt, Grid packs it
+      // into a block; the newer boards' shots fly just under the word
+      const kb = f.kb || 'slab', kst = window.KbShots ? KbShots.resolve(kb).style : kb;
       const side = new V(0, 0, 1).cross(tmp2.subVectors(end, start)).normalize();
       for (let k = 0; k < n; k++) {
         const g = glyphs[gI = (gI + 1) % GN];
@@ -657,6 +658,7 @@ window.DuelScene = (() => {
         g.c.copy(ctrl);
         if (kb === 'compact') g.c.addScaledVector(side, ((k % 3) - 1) * 0.9).y += ((k % 3) - 1) * 0.5;
         else if (kb === 'split') { const s = k % 2 ? 1 : -1; g.a.addScaledVector(side, s * 0.45); g.c.addScaledVector(side, s * 1.6); }
+        else if (kst === 'grid') { g.c.addScaledVector(side, ((k % 3) - 1) * 0.45); g.b.y += ((k % 3) - 1) * 0.25; }
         const map = o.orb ? glowTex : glyph(word[k]);
         g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(o.orb ? 2.4 : 1.7);
         // the trails are soft dots; a long word stacks them, so each stays faint or they pile up to white
@@ -669,7 +671,14 @@ window.DuelScene = (() => {
       if (tier >= 2) flashLight(start, col, 1 + tier);
       snd('whoosh', Math.min(1, 0.2 + tier * 0.2 + (o.crit ? 0.3 : 0)));
       if (tier >= 3 || o.crit) snd('step');
-      if (kb !== 'slab' && fx) { const at = end.clone(); fx.shot(1, start, out => out.copy(at), null, { color: '#' + col.getHexString(), kb, w: 0.6, dur: Math.max(0.15, T - 0.04) }); }
+      // the board's shot leaves with the letters (after the bot's wind-up)
+      if (kb !== 'slab' && fx) {
+        const old = ['compact', 'split', 'arc'].includes(kst);   // the first three boards keep their size; the newer ones fly under the word
+        const at = end.clone(), from3 = start.clone(), hx = '#' + col.getHexString(), go = () => { if (alive) fx.shot(1, from3, out => out.copy(at), null, { color: hx, kb, w: old ? 0.6 : 0.9, lane: old ? 0 : -1.1, dur: Math.max(0.15, T - 0.04) }); };
+        if (rel > 0.02 && !warming) setTimeout(go, rel * 1000); else go();
+      }
+      // the board's own switch and shot sound (js/app/kb-shots.js); the other side's a little quieter
+      if (kb !== 'slab' && !warming && window.KbShots) setTimeout(() => { if (alive) KbShots.play(kb, { ctx: opts.audio && opts.audio.ctx, vol: opts.me < 0 || from === opts.me ? 0.9 : 0.55, pan: from ? 0.35 : -0.35, big: tier >= 3 || !!o.crit, gap: 25 }); }, rel * 1000);
       if (tier >= 2) {
         const grow = T - (n - 1) * step - 0.04, hold = (n - 1) * step + (tier >= 4 ? 0.55 : 0.4);
         const w = (tier === 2 ? 0.14 : tier === 3 ? 0.28 : 0.42) * (o.crit ? 1.3 : 1);
@@ -1017,7 +1026,7 @@ window.DuelScene = (() => {
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
-    let loopErr = 0, perfAcc = 0, perfN = 0, qLevel = 2;
+    let loopErr = 0, perfAcc = 0, perfN = 0, qLevel = 2, testHold = false, testStep = 0;
     renderer.setAnimationLoop(() => { try { frame(); } catch (e) { if (loopErr++ < 3) console.error('arena frame', e); } });
     function frame() {
       if (!alive || document.hidden || !visible) { last = performance.now(); return; }
@@ -1025,6 +1034,7 @@ window.DuelScene = (() => {
       const real = Math.min(0.05, (nowT - last) / 1000); last = nowT;
       rt = nowT / 1000;
       let dt = frozen ? 0 : real;
+      if (testHold) { dt = testStep; testStep = 0; }   // tests: time stands still except for _step
       if (nowT < stopUntil) dt *= 0.08;            // hit stop
       else if (nowT < slowUntil) dt *= slowK;      // slow motion from the director's shot
       t += dt; drift += real;
@@ -1295,6 +1305,7 @@ window.DuelScene = (() => {
     }
 
     return { shot, key, wpm, hold, strike, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
+      _kb: (i, kb) => { F[i].kb = kb; }, _hold: on => { testHold = !!on; }, _step: s => { testStep += s; },   // tests: a side's keyboard, stepping time by hand
       arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
   }
 

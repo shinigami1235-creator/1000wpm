@@ -139,6 +139,7 @@ Router.register('shop', (() => {
   }
   // Stand-in pictures for operator gear until the generated models have their own renders
   function gearIcon(kind) {
+    if (String(kind).startsWith('kb:') && window.KbShots) return KbShots.icon(kind.slice(3));   // keyboards from js/app/kb-shots.js
     if (String(kind).startsWith('bot:') && window.BotKit && BotKit.icon) { const it = (REWARDS.shop.bot || []).find(x => 'bot:' + x.id === kind); if (it) return BotKit.icon(it); }
     const c = (window.Theme && Theme.hex('accent')) || '#39ff88';
     const keys = (x, y, w, n, rows, gap = 4) => { let k = ''; for (let r = 0; r < rows; r++) for (let i = 0; i < n; i++) k += `<rect x="${x + i * (w + gap)}" y="${y + r * (w + gap)}" width="${w}" height="${w}" rx="2"/>`; return k; };
@@ -200,22 +201,35 @@ Router.register('shop', (() => {
       card.querySelector('.body').insertAdjacentHTML('afterbegin', `<span class="ltd">Limited: ${left ? `${left} ${left === 1 ? 'day' : 'days'} left` : 'last day'}</span>`);
     }
     const price = `<span class="price">${UI.coin()}${UI.fmt(item.price || 0)}</span>`;
+    // a keyboard can be tried first (js/app/kb-try.js), and one you own is put to use here
+    const tryBtn = item.kb && window.KbTry ? `<button class="btn out sm" type="button" data-try aria-label="Try the ${UI.esc(item.name || item.id)}">Try</button>` : '';
+    const wireTry = () => { const b = row.querySelector('[data-try]'); if (b) b.addEventListener('click', () => KbTry.open(item.kb, item.name)); };
     if (owned) {
-      // bot parts are worn in the hangar, gear on the operator, the rest goes in the room
-      const [href, where] = item.category === 'Bots' ? ['#/hangar', 'Hangar'] : item.kb || item.acc || item.category === 'Operator' ? ['#/lab', 'Operator'] : ['#/room', 'My Room'];
-      row.innerHTML = `<span class="owned">Owned</span><a class="btn out sm" href="${href}">${where}</a>`;
+      if (item.kb && window.KbShots) {
+        const inUse = KbShots.mine() === item.kb;
+        row.innerHTML = inUse ? `<span class="owned">In use</span>${tryBtn}<button class="btn out sm" type="button" data-use="slab">Use Slab</button>`
+          : `<span class="owned">Owned</span>${tryBtn}<button class="btn sm" type="button" data-use="${UI.esc(item.kb)}">Use</button>`;
+        row.querySelector('[data-use]').addEventListener('click', e => { KbShots.use(e.currentTarget.dataset.use); TT.click(true); paintItems(false); });
+        wireTry();
+      } else {
+        // bot parts are worn in the hangar, gear on the operator, the rest goes in the room
+        const [href, where] = item.category === 'Bots' ? ['#/hangar', 'Hangar'] : item.acc || item.category === 'Operator' ? ['#/lab', 'Operator'] : ['#/room', 'My Room'];
+        row.innerHTML = `<span class="owned">Owned</span><a class="btn out sm" href="${href}">${where}</a>`;
+      }
       card.querySelector('[data-msg]').textContent = '';
       return;
     }
     // a price you can't pay yet gets the quiet button, so the ones you can buy stand out
     const short = (item.price || 0) > WPM.coins();
-    row.innerHTML = `${price}<button class="btn sm${short ? ' out' : ''}" type="button" aria-label="Buy ${UI.esc(item.name || item.id)}">${UI.icon('cart')}Buy</button>`;
-    const btn = row.querySelector('button');
+    row.innerHTML = `${price}${tryBtn}<button class="btn sm${short ? ' out' : ''}" type="button" data-buy aria-label="Buy ${UI.esc(item.name || item.id)}">${UI.icon('cart')}Buy</button>`;
+    wireTry();
+    const btn = row.querySelector('[data-buy]');
     btn.querySelector('svg').style.cssText = 'width:16px;height:16px';
     btn.addEventListener('click', () => {
       const r = WPM.buy(item);
       const msg = card.querySelector('[data-msg]');
-      if (r.ok) { msg.textContent = ''; TT.click(true); paintCard(card); }
+      // a keyboard you buy goes into use at once
+      if (r.ok) { msg.textContent = ''; TT.click(true); if (item.kb && window.KbShots) { KbShots.use(item.kb); paintItems(false); } else paintCard(card); }
       else if (r.reason === 'coins') msg.textContent = `You need ${UI.fmt((item.price || 0) - WPM.coins())} more coins.`;
     });
   }

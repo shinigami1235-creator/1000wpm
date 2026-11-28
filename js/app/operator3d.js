@@ -26,7 +26,7 @@ window.Operator = (() => {
   // the virtual keyboard each operator types on: their weapon, so its shape and colour are theirs to pick
   const KB_STYLES = [['slab', 'Slab'], ['split', 'Split'], ['arc', 'Arc'], ['compact', 'Compact']];
   // what each board does to your shots (js/app/combat/fx3d.js, keyboard signatures); looks only
-  const KB_SIGS = {
+  const KB_SIGS = window.KbShots ? new Proxy({}, { get: (o, id) => KbShots.sig(id) }) : {
     slab: 'Standard bolt. Every board deals the same damage.',
     compact: 'Needles: your shots fly as three thin bolts at once.',
     split: 'Twin: your shots leave from both halves and cross on the target.',
@@ -63,7 +63,9 @@ window.Operator = (() => {
     for (const [z] of ZONES) colors[z] = hex(p && p.colors && p.colors[z]) || d.colors[z];
     for (const [a] of ACCESSORIES) acc[a] = p && p.acc && typeof p.acc[a] === 'boolean' ? p.acc[a] : d.acc[a];
     const k = (p && p.kb) || {};
-    const kb = { style: KB_STYLES.some(([id]) => id === k.style) ? k.style : d.kb.style, color: hex(k.color) || d.kb.color };
+    // any board in KbShots (js/app/kb-shots.js) is a valid pick; the Lab draws the four shapes, the rest as the Slab
+    const kbOk = KB_STYLES.some(([id]) => id === k.style) || (window.KbShots && KbShots.valid(k.style));
+    const kb = { style: kbOk ? k.style : d.kb.style, color: hex(k.color) || d.kb.color };
     const num = (v, lo, hi, dv) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : dv);
     const t = (p && p.tint) || {}, b = (p && p.body) || {};
     const tint = { color: hex(t.color) && t.color !== 'theme' ? t.color : d.tint.color, k: num(t.k, 0, 0.6, d.tint.k) };

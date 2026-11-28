@@ -8,7 +8,7 @@
 //   Showdown.start(el, { mode: 'quick' | 'art' | 'watch' | 'vs', opponent })   -> { stop() }
 //   Showdown.record()      this device's Showdown record: { rating, games, wins, losses, draws, bestStreak, vsArt, history }
 //   Showdown.botFor(player, mine)   the bot a player brings: { id, look }, Art's in his cyan
-//   Showdown.kbStyle()     the shot style of the keyboard you have equipped: 'slab' | 'compact' | 'split' | 'arc'
+//   Showdown.kbStyle()     the keyboard you fire with (an id in KbShots, js/app/kb-shots.js), 'slab' if you don't own it
 window.Showdown = (() => {
   const KEY = 'wpm-showdown-v1';
   const ART_COL = '#3ee6ff';
@@ -47,16 +47,9 @@ window.Showdown = (() => {
     if (bot && /^#[0-9a-f]{6}$/i.test(bot.look.color || '') && k === 0) return bot.look.color;
     return k ? '#f29d30' : Theme.hex('accent');
   }
-  const KB = ['slab', 'compact', 'split', 'arc'];
-  function kbStyle() {
-    let st = 'slab';
-    try { const p = TT.store.get('wpm-operator', null); if (p && p.kb && KB.includes(p.kb.style)) st = p.kb.style; } catch (err) {}
-    // a keyboard sold in the shop counts only once it's bought
-    const g = ((window.REWARDS && REWARDS.shop && REWARDS.shop.gear) || []).find(x => x.kb === st);
-    if (g && window.WPM && WPM.owns && !WPM.owns(g.id)) st = 'slab';
-    return st;
-  }
-  const kbOf = seed => { let h = 7; for (const c of String(seed)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return KB[h % KB.length]; };
+  // the keyboard you fire with and the one a simulated player fires with (js/app/kb-shots.js)
+  const kbStyle = () => (window.KbShots ? KbShots.mine() : 'slab');
+  const kbOf = seed => (window.KbShots ? KbShots.random(seed) : 'slab');
 
   async function opponent(mode, id, salt = '') {
     if (mode === 'art') return { id: 'art', name: 'Art', art: true, bot: true, rating: NetRating.ART, typing: { wpm: 204, acc: 0.985 } };

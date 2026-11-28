@@ -1,0 +1,13 @@
+/* the shop's keyboard preview (js/app/kb-try.js) */
+dialog.kbtry {
+  width: min(720px, calc(100% - 32px)); color: var(--ink); background: var(--bg-2);
+  border: 1px solid var(--accent-dim); padding: 18px; border-radius: var(--r);
+}
+dialog.kbtry::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+.kbtry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.kbtry-head h2 { font: 700 22px/1.2 var(--f-head); color: var(--ink-hi); margin: 0; }
+.kbtry-stage { position: relative; aspect-ratio: 2 / 1; background: #020604; border-radius: calc(var(--r) - 2px); overflow: hidden; }
+.kbtry-stage canvas { display: block; width: 100%; height: 100%; }
+.kbtry-load { position: absolute; inset: 0; display: grid; place-items: center; font: 400 12px var(--f-label); color: var(--ink-2); letter-spacing: .12em; text-transform: uppercase; }
+.kbtry-sig { margin: 12px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.item .row .btn[data-try] { margin-left: auto; }

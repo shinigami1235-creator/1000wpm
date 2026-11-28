@@ -312,7 +312,7 @@ window.TT = (() => {
       style = p && p.kb && p.kb.style;
       if (style && style !== 'slab' && window.WPM && !WPM.owns('kb-' + style)) style = 'slab';
     }
-    setProfile(KB_SOUND[style] || 'thock');
+    setProfile(KB_SOUND[style] || (window.KbShots && KbShots.valid(style) ? KbShots.keySound(style) : 'thock'));
   }
   function setSound(v) {
     on = v;

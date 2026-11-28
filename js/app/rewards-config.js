@@ -32,6 +32,21 @@ window.REWARDS = {
       { id: 'kb-compact', name: 'Compact keyboard', price: 1800, kb: 'compact', icon: 'kb-compact', desc: 'Needles: your shots fly as three thin bolts at once.' },
       { id: 'kb-split', name: 'Split keyboard', price: 2500, kb: 'split', icon: 'kb-split', desc: 'Twin: your shots leave from both halves and cross on the target.' },
       { id: 'kb-arc', name: 'Arc keyboard', price: 3500, kb: 'arc', icon: 'kb-arc', desc: 'Storm: your shots fly as forked lightning.' },
+      // 28 Nov 2026: bots no longer ride keyboards, so a keyboard only changes your shot and its sound
+      // (js/app/kb-shots.js). Six more shapes, then Art's own boards (js/keyboards.js) in their real
+      // colours, priced as premium. The id is always 'kb-' + kb.
+      { id: 'kb-ring', name: 'Clicky keyboard', price: 2000, kb: 'ring', icon: 'kb:ring', desc: 'Click: your shots fly as shockwave rings.' },
+      { id: 'kb-grid', name: 'Ortholinear keyboard', price: 2200, kb: 'grid', icon: 'kb:grid', desc: 'Grid: your shots fly as a block of small squares in formation.' },
+      { id: 'kb-laser', name: 'Low-profile keyboard', price: 2800, kb: 'laser', icon: 'kb:laser', desc: 'Pin: your shots are a hair-thin laser that bursts a beat after it hits.' },
+      { id: 'kb-type', name: 'Typewriter', price: 3000, kb: 'type', icon: 'kb:type', desc: 'Ink: your shots fly as inked type slugs and splat on the target.' },
+      { id: 'kb-mag', name: 'Hall-effect keyboard', price: 3200, kb: 'mag', icon: 'kb:mag', desc: 'Magnet: your shots swing wide and curve onto the target.' },
+      { id: 'kb-comet', name: 'RGB keyboard', price: 4000, kb: 'comet', icon: 'kb:comet', desc: 'Rainbow: your shots fly as a rainbow comet with a long tail.' },
+      { id: 'kb-attackshark-x68he', name: 'Attack Shark X68 HE', price: 25000, kb: 'attackshark-x68he', icon: 'kb:attackshark-x68he', board: true, desc: 'Click: orange and cream shockwave rings with the X68\'s clack.' },
+      { id: 'kb-aula-f99', name: 'AULA F99 Pro', price: 25000, kb: 'aula-f99', icon: 'kb:aula-f99', board: true, desc: 'Ink: red ink slugs with the F99\'s cream and yellow, and its creamy switches.' },
+      { id: 'kb-womier-sk61he', name: 'Womier SK61 HE', price: 25000, kb: 'womier-sk61he', icon: 'kb:womier-sk61he', board: true, desc: 'Magnet: Art\'s collab board. Shots curve in on ice blue field lines with a yellow tip.' },
+      { id: 'kb-loga-yaksa', name: 'LOGA Yaksa Pro 75 Clear', price: 30000, kb: 'loga-yaksa', icon: 'kb:loga-yaksa', board: true, desc: 'Rainbow: a gold comet with a lilac tail, from the Maiyarap edition\'s clear case.' },
+      { id: 'kb-chilkey-sf60', name: 'Chilkey SF60 Diamond', price: 30000, kb: 'chilkey-sf60', icon: 'kb:chilkey-sf60', board: true, desc: 'Pin: a teal laser that bursts into crystal shards, like its clear keycaps.' },
+      { id: 'kb-corsair-vanguard96', name: 'Corsair Vanguard 96', price: 30000, kb: 'corsair-vanguard96', icon: 'kb:corsair-vanguard96', board: true, desc: 'Grid: a block of white squares led by a yellow one, like its Esc key.' },
     ],
     // Bot parts for the hangar (Gid, 27 Nov 2026: "we definitely need more. and of course buyable").
     // part is the look key in BotKit (js/app/botkit.js) and v its value. Each one can be tried on in the
