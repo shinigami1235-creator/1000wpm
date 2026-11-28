@@ -259,6 +259,8 @@ window.RoomView = (() => {
         if (sl.kind === 'holo' && it) holo(sl.at, it);
         if (sl.kind === 'pet' && it) pet(sl.at, it);
       }
+      // parts of the picture that stand in front of a slot (a plant over a poster frame)
+      for (const [src, x, y, w, h] of T.front || []) el('rv-front', `<img src="assets/room/tiers/${src}.webp" alt="" decoding="async">`, `left:${x}px;top:${y}px;width:${w}px;height:${h}px`);
       caseItems();
       if (opt.interactive) hits(slots);
       if (sel) select(sel);

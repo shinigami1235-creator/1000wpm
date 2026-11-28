@@ -114,9 +114,10 @@ window.PartyScene = (() => {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    // threshold 0.38: only the lit edges, sparks and cores glow; at 0.16 every face bloomed and a hit or
-    // the open core washed the boss out to white
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 0.38);
+    // threshold 0.6: only the lit edges, sparks and cores glow; at 0.16 every face bloomed and a hit or
+    // the open core washed the boss out to white, and at 0.38 the bots' pale shells bloomed under the
+    // arena's lights (Kite's wide hat turned into a white ball, brightest as its spell lifts it)
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.4, 0.6);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -1446,7 +1447,7 @@ window.PartyScene = (() => {
     function typo(id) { const m = team.get(id); if (m && !m.down) m.f.typo(); }
     return { setFight, sync, shot, key, typo, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
       renderInfo: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures }),
-      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }) } };
+      test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }), dbg: () => ({ THREE, scene, camera, team, bloom }) } };
   }
 
   return { mount };
