@@ -7,6 +7,11 @@
 // About every other round one of the 10 words is a spell word in its spell's colour, the same for both sides
 // (ShowdownRules.spellFor); typed clean it casts in the exchange, a typo fizzles it. Each spell hit's share of
 // the damage shows as it lands. The rules can also pick the exchange to play as a beam struggle (ShowdownRules.beam).
+// Overdrive (Gid, 28 Nov 2026): a side done with its 10 words keeps typing an overdrive stream until the round
+// ends (the round never waits for it). Each clean word charges its bot up in the arena and adds a little to
+// its strike (ShowdownRules.odWord, capped); a fast clean run brings up one special spell word. The exchange
+// then plays bigger for the overdrive tier: extra hits, bigger trails, and at OD3 an overdrive finisher.
+// NetBots type the stream too, at their own pace, so the other side charges the same way.
 //
 //   Showdown.start(el, { mode: 'quick' | 'art' | 'watch' | 'vs', opponent })   -> { stop() }
 //   Showdown.record()      this device's Showdown record: { rating, games, wins, losses, draws, bestStreak, vsArt, history }
@@ -85,7 +90,7 @@ window.Showdown = (() => {
     Promise.all([pick, new Promise(r => setTimeout(r, 500))]).then(([P]) => { if (alive) fight(P); })
       .catch(err => { if (alive) el.innerHTML = `<div class="panel du-wait"><p>${e(err.message)}</p><a class="btn out" href="#/duel/showdown">Back to duels</a></div>`; });
 
-    let P = null, me = 0, words = [], spells = [], seed = '', rng = null, bots = [null, null], m = null;
+    let P = null, me = 0, words = [], spells = [], odWords = [], odSpells = [], seed = '', rng = null, bots = [null, null], m = null;
     function fight(players) {
       P = players; me = o.mode === 'watch' ? -1 : 0;
       seed = 'SD:' + Date.now();
@@ -96,10 +101,13 @@ window.Showdown = (() => {
       // about every other round one word is a spell, the same one in the same place for both (showdown-rules.js)
       spells = words.map((_, r) => { const sp = SR().spellFor(seed, r); return sp && window.Combat && Combat.spell(sp.id) ? sp : null; });
       spells.forEach((sp, r) => { if (sp) words[r][sp.slot] = Combat.spell(sp.id).word; });
+      // the overdrive stream: the same words for both sides, and the round's special spell
+      odWords = words.map((_, r) => (r ? pickWords(`${seed}:${r}:od`, difficulty, 40) : []));
+      odSpells = words.map((_, r) => { const id = r ? SR().odSpellFor(seed, r) : null; return id && window.Combat && Combat.spell(id) ? id : null; });
       bots = P.map((p, i) => (i === me ? null : NetBot.create(p.art ? { ...NetBot.ART, seed: seed + ':b' + i } : { wpm: p.typing.wpm, acc: p.typing.acc, seed: seed + ':b' + i, pause: 0.03 })));
-      const blankSide = () => ({ idx: 0, typed: '', good: 0, bad: 0, words: 0, wrong: 0, doneAt: null, lastAt: 0, clean: true, wclean: true, spell: null });
+      const blankSide = () => ({ idx: 0, typed: '', good: 0, bad: 0, words: 0, wrong: 0, doneAt: null, lastAt: 0, clean: true, wclean: true, spell: null, od: SR().odState(), oi: 0, sw: false, odTier: 0 });
       m = { phase: 'load', round: 0, hp: [C.hp, C.hp], wins: [0, 0], at: 0, clock: 0, sides: [blankSide(), blankSide()], blankSide, rounds: [], beams: [],
-        tot: [0, 1].map(() => ({ good: 0, bad: 0, words: 0, dmg: 0, taken: 0, crits: 0, dodges: 0, fin: 0, ms: 0, spells: 0 })), ended: false };
+        tot: [0, 1].map(() => ({ good: 0, bad: 0, words: 0, dmg: 0, taken: 0, crits: 0, dodges: 0, fin: 0, ms: 0, spells: 0, od: 0, odDmg: 0 })), ended: false };
       const bot = P.map((p, i) => botFor(p, i === me, p.art ? ART_COL : i ? '#f29d30' : Theme.hex('accent')));
       const cols = P.map((p, i) => sideColor(p, i, bot[i]));
       const side = (k, cls) => `<div class="du-side ${cls}">
@@ -114,7 +122,8 @@ window.Showdown = (() => {
             ${side(1, 'r')}</header>
           <section class="du-stage" data-stage aria-label="Arena">
             <div class="du-nums" data-nums aria-hidden="true"></div>
-            ${[0, 1].map(k => `<div class="du-acc sd-prog ${k ? 'r' : 'l'}" data-prog="${k}">${MultiUI.ring(0, { color: cols[k], label: 'Words' })}<span>of ${N} words</span><em class="num" data-wa="${k}">100%</em></div>`).join('')}
+            ${[0, 1].map(k => `<div class="du-acc sd-prog ${k ? 'r' : 'l'}" data-prog="${k}">${MultiUI.ring(0, { color: cols[k], label: 'Words' })}<span>of ${N} words</span><em class="num" data-wa="${k}">100%</em>
+              <div class="sd-od" data-od="${k}" data-t="0" aria-label="Overdrive"><b>Overdrive</b><span class="sd-od-bar"><i></i><i></i><i></i></span><em class="num" data-odn="${k}">0</em></div></div>`).join('')}
             <div class="du-banner" data-banner aria-live="polite"></div>
             <div class="du-load" data-load role="status"><p class="label">Loading the arena</p>
               <ul>${[0, 1].map(k => `<li><span>${MultiUI.name(P[k])}</span><em>${e(BotKit.BOTS[bot[k].id].name)}</em></li>`).join('')}</ul></div>
@@ -138,7 +147,7 @@ window.Showdown = (() => {
       snd = window.ArenaAudio ? ArenaAudio.create() : null;
       const stage = el.querySelector('[data-stage]');
       scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ color: cols[k], bot: bot[k], kb: k === me ? kbStyle() : kbOf(P[k].id), name: P[k].name })) });
-      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], spell: () => spells[m.round], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; }, ctl };   // tests
+      window._sd = { scene: () => scene, m: () => m, words: () => words[m.round] || [], spell: () => spells[m.round], cur: i => cur(i), odSpell: () => odSpells[m.round], key: k => key(k), skip: () => { if (m.phase === 'type') m.at = m.clock - C.roundMs; }, ctl };   // tests
       const chars = [...new Set(words.flat().join(''))].join('');
       Promise.race([scene.warm(chars), new Promise(r => setTimeout(r, 12000))]).then(() => { if (alive) countIn(1); });
       el.querySelector('[data-leave]').addEventListener('click', () => { if (me < 0) { location.hash = '#/duel/showdown'; return; } GameGuard.confirm(); });
@@ -173,11 +182,20 @@ window.Showdown = (() => {
       raf = requestAnimationFrame(tick);
     }
 
-    function pickWords(s, difficulty) {
+    function pickWords(s, difficulty, n = N) {
       let list = [];
-      if (window.WordBank) list = WordBank.pick({ count: N, difficulty, theme: 'common', seed: s, minLen: 2, maxLen: 8 }).map(w => (typeof w === 'string' ? w : w.text || w.word || String(w)));
-      if (list.length < N) { const r = NetCore.rng(s); while (list.length < N) list.push(NetCore.pick(r, ['type', 'fast', 'word', 'key', 'storm', 'spark', 'orb', 'bolt'])); }
-      return list.slice(0, N);
+      if (window.WordBank) list = WordBank.pick({ count: n, difficulty, theme: 'common', seed: s, minLen: 2, maxLen: 8 }).map(w => (typeof w === 'string' ? w : w.text || w.word || String(w)));
+      if (list.length < n) { const r = NetCore.rng(s); while (list.length < n) list.push(NetCore.pick(r, ['type', 'fast', 'word', 'key', 'storm', 'spark', 'orb', 'bolt', 'surge', 'volt', 'flux', 'core'])); }
+      return list.slice(0, n);
+    }
+    // the word a side has on screen: one of the round's 10, or past them the overdrive stream (the special when due)
+    function cur(i) {
+      const s = m.sides[i];
+      if (s.idx < N) return words[m.round][s.idx];
+      const list = odWords[m.round];
+      if (!list || !list.length) return null;
+      if (s.sw && odSpells[m.round]) return Combat.spell(odSpells[m.round]).word;
+      return list[s.oi % list.length];
     }
 
     // ---------- phases: count, type, clash, result ----------
@@ -208,7 +226,7 @@ window.Showdown = (() => {
         bots.forEach((b, i) => {
           if (!b) return;
           const s = m.sides[i];
-          for (let g = 0; g < 8; g++) { const ks = b.step(m.clock, { phase: 'fight', stream: words[m.round][s.idx] || '', typed: s.typed }); if (!ks.length) break; ks.forEach(k => sideKey(i, k.k)); }
+          for (let g = 0; g < 8; g++) { const ks = b.step(m.clock, { phase: 'fight', stream: cur(i) || '', typed: s.typed }); if (!ks.length) break; ks.forEach(k => sideKey(i, k.k)); }
         });
         [0, 1].forEach(i => { const s = m.sides[i]; scene.wpm(i, t > 800 ? Math.round(s.good / 5 / (t / 60000)) : 0); });
         if (t >= C.roundMs || m.sides.every(s => s.idx >= N)) clash();
@@ -224,7 +242,7 @@ window.Showdown = (() => {
     // one key from either side; returns 'good' | 'bad' | 'word' | 'miss' | null
     function sideKey(i, k) {
       if (m.phase !== 'type') return null;
-      const s = m.sides[i], w = words[m.round][s.idx], t = m.clock - m.at;
+      const s = m.sides[i], w = cur(i), t = m.clock - m.at, od = s.idx >= N;
       if (w == null) return null;
       if (k === 'Backspace') { s.typed = s.typed.slice(0, -1); return null; }
       if (k === 'CtrlBackspace') { s.typed = ''; return null; }
@@ -232,14 +250,20 @@ window.Showdown = (() => {
       if (k === ' ' && !(w.includes(' ') && s.typed.length < w.length && w[s.typed.length] === ' ')) return s.typed ? submit(i, t) : null;
       s.typed += k;
       const good = s.typed.length <= w.length && k === w[s.typed.length - 1];
+      if (od) {
+        // an overdrive key: its own accuracy, and a typo breaks the chain but never touches the round's 10
+        if (good) { s.od.good++; scene.key(i, s.typed.length / w.length); } else { s.od.bad++; s.wclean = false; scene.react(i, 'typo'); }
+        return good ? 'good' : 'bad';
+      }
       if (good) s.good++;
       else { s.bad++; s.clean = false; s.wclean = false; scene.react(i, 'typo'); }
       if (s.typed === w && s.idx === N - 1) return submit(i, t);   // the last word needs no space
       return good ? 'good' : 'bad';
     }
     function submit(i, t) {
-      const s = m.sides[i], w = words[m.round][s.idx], sp = spells[m.round];
+      const s = m.sides[i], w = cur(i), sp = spells[m.round];
       const ok = s.typed === w;
+      if (s.idx >= N) return odSubmit(i, t, ok);
       // the spell word: clean casts in the exchange, a wrong key in it (even fixed) fizzles
       if (sp && s.idx === sp.slot) {
         s.spell = { id: sp.id, ok: ok && s.wclean };
@@ -248,9 +272,33 @@ window.Showdown = (() => {
       s.idx++; s.typed = ''; s.wclean = true;
       if (ok) { s.words++; s.lastAt = t; scene.hold(i, s.words / N); }
       else { (s.miss ||= []).push(s.idx - 1); s.wrong++; s.clean = false; scene.react(i, 'miss'); num(i, 'Miss', 'miss'); }
-      if (s.idx >= N) { s.doneAt = t; num(i, `Done, ${(t / 1000).toFixed(1)} s`, 'buff'); if (snd) snd.combat('tierUp', 2); }
+      if (s.idx >= N) {
+        s.doneAt = t; s.lastAt = t; num(i, `Done, ${(t / 1000).toFixed(1)} s`, 'buff'); if (snd) snd.combat('tierUp', 2);
+        // the other side is still typing: overdrive starts, and the bot begins to charge
+        if (m.sides[1 - i].idx < N && odWords[m.round].length) { scene.overdrive(i, { start: true }); if (i === me) banner('Overdrive', 'od', 1100); }
+      }
       if (i === me) paintWords();
       return ok ? 'word' : 'miss';
+    }
+    // an overdrive word: a clean one charges the bot and adds a step, the special casts or fizzles
+    function odSubmit(i, t, ok) {
+      const s = m.sides[i], clean = ok && s.wclean, R = SR();
+      if (s.sw) {
+        const id = odSpells[m.round];
+        R.odSpecial(s.od, clean, id); s.sw = false;
+        if (clean) { scene.spellReady(i, id); num(i, MultiUI.spellName(id), 'spell od'); } else num(i, 'Fizzled', 'miss');
+      } else {
+        R.odWord(s.od, clean, t - s.lastAt); s.oi++;
+        if (!clean) num(i, 'Chain broken', 'miss');
+      }
+      s.lastAt = t; s.typed = ''; s.wclean = true;
+      if (s.od.due && odSpells[m.round]) { s.sw = true; if (i === me) banner(`Special: ${Combat.spell(odSpells[m.round]).word}`, 'od', 1100); }
+      const tier = R.odTier(s.od), up = tier > s.odTier;
+      s.odTier = tier;
+      scene.overdrive(i, { n: s.od.clean + (s.od.special && s.od.special.ok ? 1 : 0), tier, up, clean, chain: s.od.chain, acc: R.odAcc(s.od) });
+      if (up) num(i, `Overdrive ${tier}`, 'od');
+      if (i === me) paintWords();
+      return clean ? 'word' : 'miss';
     }
     const accOf = s => (s.good + s.bad ? s.good / (s.good + s.bad) : 0);
 
@@ -259,14 +307,14 @@ window.Showdown = (() => {
       m.phase = 'clash'; m.at = m.clock;
       if (snd) snd.play('bell');
       banner('Time', 'round', 800);
-      const sides = m.sides.map((s, i) => ({ words: s.words, acc: accOf(s), clean: s.clean && s.words > 0, doneAt: s.doneAt, lastAt: s.lastAt, hp: m.hp[i], spell: s.spell }));
+      const sides = m.sides.map((s, i) => ({ words: s.words, acc: accOf(s), clean: s.clean && s.words > 0, doneAt: s.doneAt, lastAt: s.lastAt, hp: m.hp[i], spell: s.spell, od: s.idx >= N && s.od.words ? s.od : null }));
       const res = SR().resolve(sides, rng);
       // the beam struggle: chosen from the result, at most one exchange in four (it never changes damage)
       const beam = SR().beam(res, sides, rng, m.beams);
       m.beams.push(!!beam);
-      const row = { round: m.round, sides: m.sides.map((s, i) => ({ words: s.words, acc: Math.round(accOf(s) * 100), dmg: res.dealt[i], doneAt: s.doneAt })), winner: res.winner };
+      const row = { round: m.round, sides: m.sides.map((s, i) => ({ words: s.words, acc: Math.round(accOf(s) * 100), dmg: res.dealt[i], doneAt: s.doneAt, od: s.od.clean, odTier: SR().odTier(s.od) })), winner: res.winner };
       m.rounds.push(row);
-      m.sides.forEach((s, i) => { const T = m.tot[i]; T.good += s.good; T.bad += s.bad; T.words += s.words; T.ms += s.doneAt != null ? s.doneAt : C.roundMs; });
+      m.sides.forEach((s, i) => { const T = m.tot[i]; T.good += s.good; T.bad += s.bad; T.words += s.words; T.ms += s.doneAt != null ? s.doneAt : C.roundMs; T.od += s.od.clean; });
       // the attacks play as one directed scene (duel3d.js exchange), in the order the rules gave;
       // the result shows once it's over
       const close = (() => { const [a, b] = m.sides; if (a.doneAt != null && b.doneAt != null) return Math.abs(a.doneAt - b.doneAt) < 2000; if (a.doneAt == null && b.doneAt == null) return Math.abs((a.lastAt || 0) - (b.lastAt || 0)) < 1500; return false; })();
@@ -274,6 +322,7 @@ window.Showdown = (() => {
       const result = () => {
         if (shown || !alive) return;
         shown = true;
+        res.attacks.forEach(a => landOd(a));   // the HP always ends where the rules put it
         if (res.ko >= 0) scene.ko(res.ko);
         if (res.winner >= 0) m.wins[res.winner]++;
         paintPips();
@@ -288,9 +337,10 @@ window.Showdown = (() => {
         if (!res.attacks.length) num(0, 'No attack', 'miss');
         const secs = scene.exchange(res.attacks, {
           acc: m.sides.map(s => accOf(s)), close, beam, ko: res.ko,
-          onStart: a => (a.kind === 'spell' ? num(a.from, a.fizzled ? 'Fizzled' : MultiUI.spellName(a.spell), a.fizzled ? 'miss' : 'spell')
-            : num(a.from, a === res.attacks[0] && res.attacks.length > 1 && !beam ? `${SR().TIERS[a.tier]}, first` : SR().TIERS[a.tier], a.tier >= 4 ? 'tier' : 'buff')),
+          onStart: a => (a.kind === 'spell' ? num(a.from, a.fizzled ? 'Fizzled' : (a.od ? 'Overdrive ' : '') + MultiUI.spellName(a.spell), a.fizzled ? 'miss' : a.od ? 'spell od' : 'spell')
+            : num(a.from, (a === res.attacks[0] && res.attacks.length > 1 && !beam ? `${SR().TIERS[a.tier]}, first` : SR().TIERS[a.tier]) + (a.od ? `, OD${a.od}` : ''), a.od ? 'tier od' : a.tier >= 4 ? 'tier' : 'buff')),
           onLand: (a, hit) => land(a, hit),
+          onOd: a => landOd(a),
           onDone: () => later(res.ko >= 0 ? 200 : 0, result),
         }) || 1;
         // slow motion stretches the scene; this only catches a tab that stopped drawing
@@ -308,9 +358,22 @@ window.Showdown = (() => {
         return;
       }
       if (a.dodged) { num(a.to, 'Dodged', 'block'); m.tot[a.to].dodges++; return; }
-      m.hp[a.to] = Math.max(0, m.hp[a.to] - a.dmg);
-      T.dmg += a.dmg; m.tot[a.to].taken += a.dmg; if (a.crit) T.crits++; if (a.tier >= 4) T.fin++;
-      num(a.to, (a.crit ? 'Crit ' : '') + a.dmg, `${a.to === me ? 'in' : 'out'}${a.crit ? ' crit' : ''}`);
+      // the strike lands without its overdrive part; that comes with the overdrive hits (landOd)
+      const d = a.dmg - (a.odDmg || 0);
+      m.hp[a.to] = Math.max(0, m.hp[a.to] - d);
+      T.dmg += d; m.tot[a.to].taken += d; if (a.crit) T.crits++; if (a.tier >= 4) T.fin++;
+      num(a.to, (a.crit ? 'Crit ' : '') + d, `${a.to === me ? 'in' : 'out'}${a.crit ? ' crit' : ''}`);
+      hpTo(a.to, m.hp[a.to]);
+      if (a.odDmg) a.odDue = true;
+    }
+    // the overdrive part of a strike, as the overdrive hits land (once, however it is called)
+    function landOd(a) {
+      if (!a.odDue) return;
+      a.odDue = false;
+      const T = m.tot[a.from];
+      m.hp[a.to] = Math.max(0, m.hp[a.to] - a.odDmg);
+      T.dmg += a.odDmg; T.odDmg += a.odDmg; m.tot[a.to].taken += a.odDmg;
+      num(a.to, `+${a.odDmg}`, `${a.to === me ? 'in' : 'out'} od`);
       hpTo(a.to, m.hp[a.to]);
     }
 
@@ -372,9 +435,10 @@ window.Showdown = (() => {
         <div class="du-tw"><table class="du-sum"><thead><tr><th></th>${[0, 1].map(k => `<th scope="col">${MultiUI.name(P[k])}</th>`).join('')}</tr></thead><tbody>
           ${row('Words', k => T[k].words)}${row('Accuracy', k => accT(k) + '%')}${row('Damage', k => T[k].dmg)}${row('HP left', k => m.hp[k])}
           ${row('Crits', k => T[k].crits)}${row('Finishers', k => T[k].fin)}${row('Spells', k => T[k].spells)}${row('Dodges', k => T[k].dodges)}
+          ${T.some(x => x.od) ? row('Overdrive words', k => T[k].od) + row('Overdrive damage', k => T[k].odDmg) : ''}
         </tbody></table></div>
         ${m.rounds.length ? `<div class="du-tw"><table class="du-rounds"><thead><tr><th scope="col">Round</th><th scope="col">Winner</th>${[0, 1].map(k => `<th scope="col" class="r">${e(P[k].name)}</th>`).join('')}</tr></thead>
-          <tbody>${m.rounds.map(x => `<tr><td class="num">${x.round}</td><td>${x.winner >= 0 ? e(x.winner === me ? 'You' : P[x.winner].name) : 'Draw'}</td>${[0, 1].map(k => `<td class="num r">${x.sides[k].words} words, ${x.sides[k].acc}%, ${x.sides[k].dmg} dmg</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+          <tbody>${m.rounds.map(x => `<tr><td class="num">${x.round}</td><td>${x.winner >= 0 ? e(x.winner === me ? 'You' : P[x.winner].name) : 'Draw'}</td>${[0, 1].map(k => `<td class="num r">${x.sides[k].words} words${x.sides[k].od ? ` +${x.sides[k].od} OD` : ''}, ${x.sides[k].acc}%, ${x.sides[k].dmg} dmg</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
         ${share ? GameGuard.shareHtml(share) : ''}
         <div class="row">
           ${me >= 0 ? `<a class="btn" href="#/duel/showdown/${o.mode === 'art' ? 'art' : o.mode === 'vs' ? 'vs/' + encodeURIComponent(P[1].id) : 'quick'}" data-again>${o.mode === 'art' ? 'Challenge Art again' : o.mode === 'vs' ? 'Rematch' : 'Next match'}</a>` : '<a class="btn" href="#/duel/showdown/watch" data-again>Watch another</a>'}
@@ -423,6 +487,14 @@ window.Showdown = (() => {
         svg.querySelector('.mu-ring-t').textContent = s.words; svg.setAttribute('aria-label', `${s.words} of ${N} words`);
         a.querySelector(`[data-wa="${k}"]`).textContent = s.good + s.bad ? Math.round(accOf(s) * 100) + '%' : '';
         a.classList.toggle('done', s.idx >= N);
+        // the overdrive meter: three steps for OD1 to OD3, the clean words, dimmed under 90% accuracy
+        const od = a.querySelector(`[data-od="${k}"]`), on = s.idx >= N && (m.phase === 'type' || s.od.words > 0) && m.phase !== 'count';
+        a.classList.toggle('od', on);
+        if (on) {
+          const n = s.od.clean + (s.od.special && s.od.special.ok ? 1 : 0), low = s.od.good + s.od.bad > 4 && SR().odAcc(s.od) < SR().OD.minAcc;
+          od.dataset.t = String(SR().odTier(s.od)); od.classList.toggle('low', low);
+          od.querySelector(`[data-odn="${k}"]`).textContent = low ? 'under 90%' : n;
+        }
       });
       const k = me >= 0 ? me : 0, s = m.sides[k];
       el.querySelector('[data-s="words"]').textContent = m.tot[k].words + (m.phase === 'type' ? s.words : 0);
@@ -447,6 +519,19 @@ window.Showdown = (() => {
       if (!line || !m) return;
       const k = me >= 0 ? me : 0, s = m.sides[k], list = words[m.round] || [];
       const live = m.phase === 'type';
+      // done with the 10 while the other side types: the overdrive stream, one word at a time
+      if (live && s.idx >= N && odWords[m.round].length) {
+        const w = cur(k), ol = odWords[m.round], sp = s.sw ? Combat.spell(odSpells[m.round]) : null;
+        const next = [1, 2].map(d => ol[(s.oi + d - (s.sw ? 1 : 0)) % ol.length]);
+        const n = s.od.clean + (s.od.special && s.od.special.ok ? 1 : 0);
+        const html = `<span class="sd-odtag" data-t="${SR().odTier(s.od)}">Overdrive <b class="num">${n}</b></span>`
+          + `<span class="sd-w cur od${sp ? ' spell' : ''}"${sp ? ` style="--sc:${sp.color}"` : ''}>${letters(w, s.typed)}</span>`
+          + next.map((x, d) => `<span class="sd-w od next n${d + 1}">${e(x)}</span>`).join('');
+        if (html !== lineHtml) { lineHtml = html; line.innerHTML = html; }
+        line.classList.remove('locked'); line.classList.add('od');
+        return;
+      }
+      line.classList.remove('od');
       const sp = spells[m.round], spc = sp && window.Combat ? Combat.spell(sp.id).color : '';
       const html = list.map((w, n) => {
         const isSp = sp && n === sp.slot, cls = isSp ? ` spell${n < s.idx && s.spell && !s.spell.ok ? ' fizzled' : ''}` : '', st = isSp ? ` style="--sc:${spc}"` : '';

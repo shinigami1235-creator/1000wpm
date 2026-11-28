@@ -1,6 +1,8 @@
 // Sounds for the duel's choreography (28 Nov 2026): the dash slash, the uppercut, the spin, the slam,
 // the dive, the pass, the volley, a shot batted back, a ricochet, two shots meeting, a graze, a
-// fizzled spell, the knockbacks and the heavy crit. Made in code with Web Audio like arena-audio.js,
+// fizzled spell, the knockbacks and the heavy crit; and Showdown's overdrive (28 Nov 2026): its start, a note
+// per clean word that climbs a pentatonic scale, a stab per tier, the stutter of a broken chain, the release
+// into the strike, the extra hits, the zaps at OD3 and the overdrive finisher's rise and drop. Made in code with Web Audio like arena-audio.js,
 // on the duel's own context (ArenaAudio.ctx), through one compressor so stacked hits never clip.
 // It follows the site's sound switch (TT.soundOn and the 'wpm-sound' event).
 //
@@ -14,8 +16,10 @@ window.DuelSfx = (() => {
   // levels set from offline renders (DuelSfx.render): hits peak about 0.25 to 0.45, small moves about 0.1 to 0.2
   const LEVEL = { slash: 0.75, uppercut: 0.7, spin: 2.0, slam: 0.95, dive: 1.6, pass: 1.6, volley: 2.6, clang: 1.0, ricochet: 1.8, fizzleShield: 2.4,
     clash: 0.9, graze: 2.4, sputter: 1.6, dodge: 2.4, thump: 0.9, launch: 0.85, counter: 1.4, pull: 0.7, crit: 0.95, rise: 1.2,
-    beamCharge: 1.3, beamFire: 0.85, beamRelease: 0.7, heart: 0.75, beamRiser: 0.6, beamCrackle: 0.3 };
-  const GAP = { volley: 40, dodge: 60, thump: 50, graze: 60 };
+    beamCharge: 1.3, beamFire: 0.85, beamRelease: 0.7, heart: 0.75, beamRiser: 0.6, beamCrackle: 0.3,
+    odStart: 0.9, odTick: 0.7, odTier: 0.8, odBreak: 1.2, odRelease: 0.9, odHit: 1.1, odZap: 0.5, odRise: 1.0, odSlam: 0.8 };
+  const GAP = { volley: 40, dodge: 60, thump: 50, graze: 60, odZap: 90, odTick: 30, odHit: 40 };
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36];
 
   function kit(c, out) {
     const nb = {};
@@ -98,6 +102,41 @@ window.DuelSfx = (() => {
       heart(d, t, k) { tone(d, t, 'sine', 62, 40, 0.16, 0.9 * k, 0.006); tone(d, t + 0.17, 'sine', 55, 36, 0.2, 0.65 * k, 0.006); },
       // a slow sub riser under the whole struggle
       beamRiser(d, t, k) { const L = 2.3 * Math.max(0.3, k); tone(d, t, 'sine', 45, 110, L, 0.4, L * 0.9); tone(d, t, 'triangle', 90, 220, L, 0.08, L * 0.9); },
+      // ---------- overdrive ----------
+      // it begins: a quick swell from low to bright, a shimmer on top
+      odStart(d, t, k) { tone(d, t, 'sawtooth', 110, 440, 0.45, 0.07 * k, 0.25); tone(d, t, 'sine', 220, 880, 0.45, 0.12 * k, 0.25); hiss(d, t, 0.45, 2000, 1.5, 0.12 * k, 'bandpass', 0.3, 7000); tone(d, t + 0.42, 'sine', 1320, 1320, 0.25, 0.08 * k); },
+      // a clean word: a bright pluck one step up the scale for each word (k: 0.1 + 0.09 a word)
+      odTick(d, t, k) {
+        const n = Math.max(0, Math.round((k - 0.1) / 0.09)), f = 392 * Math.pow(2, PENTA[Math.min(PENTA.length - 1, n)] / 12);
+        tone(d, t, 'triangle', f, f, 0.16, 0.22, 0.003); tone(d, t, 'sine', f * 2, f * 2, 0.1, 0.07, 0.002); hiss(d, t, 0.05, 6000, 2, 0.05);
+      },
+      // a tier up: a stab chord on a root that climbs with the tier, a sub thump under it and a shimmer
+      odTier(d, t, k) {
+        const root = [392, 523.25, 659.25, 783.99][Math.max(0, Math.min(3, Math.round(k * 3)))];
+        for (const m of [1, 1.5, 2]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(root * m, t);
+          const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(4000, t); f.frequency.exponentialRampToValueAtTime(600, t + 0.45); f.Q.value = 2;
+          const g = c.createGain(); env(g, t, 0.006, 0.07, 0.45); o.connect(f).connect(g).connect(d); o.start(t); o.stop(t + 0.55); }
+        tone(d, t, 'sine', 90, 45, 0.25, 0.6); hiss(d, t + 0.02, 0.5, 7000, 1.5, 0.1, 'bandpass', 0.05, 9000);
+      },
+      // a typo breaks the chain: the charge stutters down
+      odBreak(d, t, k) { for (let i = 0; i < 4; i++) tone(d, t + i * 0.04, 'square', 520 - i * 90, 300 - i * 60, 0.035, 0.06 * k); hiss(d, t, 0.12, 1200, 1, 0.12 * k, 'lowpass', 0.003, 300); },
+      // the charge goes into the strike: a rush that drops into a punch
+      odRelease(d, t, k) { hiss(d, t, 0.3, 3000, 0.8, 0.35 * k, 'bandpass', 0.01, 500); tone(d, t, 'sine', 160, 50, 0.35, 0.7 * k); tone(d, t, 'sawtooth', 880, 220, 0.2, 0.06 * k); },
+      // an overdrive hit: a hard electric snap
+      odHit(d, t, k) { tone(d, t, 'square', 1800, 400, 0.07, 0.12 * k, 0.001); hiss(d, t, 0.06, 4500, 1.2, 0.35 * k); tone(d, t, 'sine', 140, 60, 0.12, 0.45 * k); },
+      // the OD3 lightning: a short crackle
+      odZap(d, t, k) { for (let i = 0; i < 3; i++) hiss(d, t + i * 0.018 + Math.random() * 0.01, 0.02, 3000 + Math.random() * 4000, 4, 0.18 * k); },
+      // the overdrive finisher rising: a long climb with a choir-like fifth on top
+      odRise(d, t, k) {
+        for (const det of [1, 1.008, 1.5]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110 * det, t); o.frequency.exponentialRampToValueAtTime(440 * det, t + 0.9);
+          const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(5000, t + 0.9); f.Q.value = 3;
+          const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07 * k, t + 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.05);
+          o.connect(f).connect(g).connect(d); o.start(t); o.stop(t + 1.1); }
+        hiss(d, t, 0.9, 800, 1.2, 0.2 * k, 'bandpass', 0.7, 6000);
+      },
+      // the overdrive finisher landing: the crit's boom, a bright crack, a violet ring of bells and a long tail
+      odSlam(d, t, k) { tone(d, t, 'sine', 75, 24, 1.2, 1.0 * k); hiss(d, t, 0.06, 4200, 0.5, 0.9 * k); hiss(d, t + 0.02, 1.3, 600, 0.6, 0.45 * k, 'lowpass', 0.01, 80);
+        ring(d, t + 0.01, 659.25, 1.3, 0.12 * k); ring(d, t + 0.03, 987.77, 1.1, 0.08 * k); tone(d, t, 'triangle', 220, 55, 0.6, 0.35 * k); },
     };
     // the collision's crackle: a loop whose pitch follows the collision point. set(k, x): k loudness 0..1, x 0..1
     S.loop = {

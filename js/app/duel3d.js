@@ -38,6 +38,10 @@
 //   sc.ricochet(side, to)             Clash: packet storm sends a hit from side back to to
 //   sc.fizzle(side, spellId)          Clash: a spell word with a typo flies broken and is dodged or blocked
 //   sc.spellReady(side, spellId)      Showdown: a spell word typed clean, its circle lights under the bot
+//   sc.overdrive(side, o)             Showdown overdrive: the bot charges past full while the other side types.
+//                                     o: { start } as it begins, then per word { n, tier, up, clean, chain }
+//   sc.exchange(..., { onOd(attack) }) the overdrive part of a strike lands with the overdrive hits; strikes
+//                                     with attack.od 1-3 play bigger (OD2 extra hits, OD3 the overdrive finisher)
 //   sc.cast(..., { blocked })         a spell stopped by safe mode flies and is batted back
 //   sc.dispose()
 window.DuelScene = (() => {
@@ -80,6 +84,7 @@ window.DuelScene = (() => {
       ricochet: (side, to) => impl && impl.ricochet(side, to),
       fizzle: (side, id) => impl && impl.fizzle(side, id),
       spellReady: (side, id) => impl && impl.spellReady(side, id),
+      overdrive: (side, o) => impl && impl.overdrive(side, o || {}),
       react: (side, kind, p) => impl && impl.react(side, kind, p),
       aura: (side, name, on) => impl && impl.aura(side, name, on),
       setLook: (side, look) => { pend.looks[side] = look; if (impl) impl.setLook(side, look); },
@@ -783,6 +788,13 @@ window.DuelScene = (() => {
         xs('crit', 1, to);
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 170); shake = Math.max(shake, 0.55); punch = 1; }
       }
+      if (how.od) {
+        // an overdrive strike: violet shards over the side's own, a second ring in the overdrive colour
+        const oc = odColOf(1 - to, Math.max(1, how.od));
+        burst(at, 6 + how.od * 6, 8 + how.od * 2, oc, { shard: true, size: 0.3, life: 0.7, dir: away, up: 0.5, grav: 8, k: 1.5 });
+        flare(at, oc, 1.2 + how.od * 0.4, 0.1);
+        after(0.05, () => ringAt(to, oc, 3.5 + how.od * 1.3, 0.55));
+      }
       snd(p >= 3 ? 'heavy' : 'jab'); if (tier >= 1) csnd('shot' + Math.min(4, tier));
       if (p >= 3 || how.heavy) { snd('ooh'); if (opts.audio) opts.audio.swell(0.6); if (arena) arena.hype(1 - to, 0.8); }
       if (onLand) onLand();
@@ -1316,7 +1328,7 @@ window.DuelScene = (() => {
     function key(i, frac) { const f = F[i]; if (f.bf && !f.ko) { f.bf.key(frac); f.typeAt = t; STG.ph[i] += 0.12; } }
     function wpm(i, w) { if (F[i].bf) F[i].bf.setWpm(w); }
     function hold(i, frac) { const f = F[i]; if (f.bf && !f.ko) { f.bf.hold(frac); f.typeAt = t; STG.ph[i] += 0.5; stageWord(i, 0.5); if (!warming) csnd('blip'); } }
-    function clear() { F.forEach(f => { if (f.bf) f.bf.clear(); }); }
+    function clear() { F.forEach(f => { if (f.bf) f.bf.clear(); }); odClear(); }
     // Showdown: the round's attack. 1-3 words a shot, 4-6 a double, 7-9 the dash strike, all 10 the
     // finisher: the bot rises, flares and drives in under a cutaway, and a thick beam carries the hit
     function strike(from, words, o = {}) {
@@ -1358,10 +1370,13 @@ window.DuelScene = (() => {
     const MELEE = { slash: 1, uppercut: 1, spin: 1, pass: 1, dive: 1, slam: 1 };
     let lastScene = '';
     function exchange(attacks, o = {}) {
-      const onLand = o.onLand || (() => {}), st = o.onStart || (() => {}), done = () => { STG.xCloseT = 0; if (o.onDone) o.onDone(); };
-      const strikes = attacks.filter(a2 => a2.kind !== 'spell'), spells = attacks.filter(a2 => a2.kind === 'spell');
+      const onLand = o.onLand || (() => {}), st = o.onStart || (() => {});
+      // the overdrive part of each strike lands once, with its overdrive hits; whatever didn't show lands at the end
+      const odDone = new Set(), onOd = a2 => { if (odDone.has(a2)) return; odDone.add(a2); if (o.onOd) o.onOd(a2); };
+      const done = () => { STG.xCloseT = 0; attacks.forEach(a2 => { if (a2.kind !== 'spell' && !a2.dodged) onOd(a2); }); odClear(); if (o.onDone) o.onDone(); };
+      const strikes = attacks.filter(a2 => a2.kind !== 'spell'), spells = attacks.filter(a2 => a2.kind === 'spell' && !a2.od), odSpells = attacks.filter(a2 => a2.kind === 'spell' && a2.od);
       if (!BOTS || !attacks.length || F.some(f => !f.bf)) {
-        attacks.forEach((a2, k) => after(k * 1.1, () => { st(a2); if (a2.kind === 'spell') { onLand(a2, { part: a2.dmg, last: true }); return; } strike(a2.from, a2.words, { crit: a2.crit, dodge: a2.dodged, onLand: () => onLand(a2) }); }));
+        attacks.forEach((a2, k) => after(k * 1.1, () => { st(a2); if (a2.kind === 'spell') { onLand(a2, { part: a2.dmg, last: true }); return; } strike(a2.from, a2.words, { crit: a2.crit, dodge: a2.dodged, onLand: () => { onLand(a2); onOd(a2); } }); }));
         const d = attacks.length ? 1.2 * attacks.length : 0.3; after(d, done); return d;
       }
       const [A, B] = strikes;
@@ -1373,12 +1388,12 @@ window.DuelScene = (() => {
       if (A) lastScene = kind;
       STG.xCloseT = 1.2;   // they close in for the exchange
       const acc = o.acc || [1, 1];
-      const howOf = a2 => ({ graze: !a2.crit && acc[a2.from] < 0.9, heavy: !!a2.crit && a2.tier >= 2 });
+      const howOf = a2 => ({ graze: !a2.crit && acc[a2.from] < 0.9, heavy: !!a2.crit && a2.tier >= 2, od: a2.dodged ? 0 : a2.od || 0 });
       let end = 0;
       if (!A) end = 0;
       else if (kind === 'beam') {
         const w = o.beam.winner, l = 1 - w, Wa = strikes.find(a2 => a2.from === w), La = strikes.find(a2 => a2.from === l);
-        end = struggleScene(Wa, La, w, onLand, st, howOf, o.ko === l);
+        end = struggleScene(Wa, La, w, onLand, st, howOf, o.ko === l, onOd);
       } else if (kind === 'clash') {
         // both at once: the two shots meet in the middle, burst, and the leftovers land in the rules' order
         want('xclash', { pri: 3 }); st(A); st(B);
@@ -1394,20 +1409,22 @@ window.DuelScene = (() => {
         after(meet, () => clashBurst(m, C(opts.sides[0].color || '#8cff58'), C(opts.sides[1].color || '#f29d30')));
         [A, B].forEach((a2, k) => after(meet + 0.05 + k * 0.12, () => shot(a2.from, a2.tier, () => onLand(a2), { orb: true, noMove: true, plain: true, noCut: true, ms: 220, start: m, color: opts.sides[a2.from].color, size: 1.0, crit: a2.crit, how: howOf(a2) })));
         end = meet + 0.5 + 0.9;
+        for (const [a2, k] of [[A, 0], [B, 1]]) end = Math.max(end, odExtra(a2, meet + 0.05 + k * 0.12 + 0.34, onOd) + 0.6);
       } else {
         // the first attack
-        const r1 = attackBeat(A, 0, howOf(A), onLand, kind === 'trade' ? null : kind, st);
-        end = r1.contact + 0.9;
+        const r1 = attackBeat(A, 0, howOf(A), onLand, kind === 'trade' ? null : kind, st, onOd);
+        end = r1.odEnd + 0.9;
         if (B) {
-          // the answer: right off the dodge or the parry, or once the hit bot has recovered
-          const t2 = kind === 'trade' ? r1.contact + (A.tier >= 3 ? 0.75 : 0.6) : r1.contact + 0.28;
+          // the answer: right off the dodge or the parry, or once the hit bot has recovered (and A's overdrive is done)
+          const t2 = kind === 'trade' ? r1.odEnd + (A.tier >= 3 ? 0.75 : 0.6) : r1.contact + 0.28;
           if (kind !== 'trade') after(t2 - 0.05, () => xs('counter', 0.9, B.from));
-          const r2 = attackBeat(B, t2, howOf(B), onLand, B.dodged ? 'dodge' : null, st);
-          end = r2.contact + (B.tier >= 4 ? 1.2 : 0.9);
+          const r2 = attackBeat(B, t2, howOf(B), onLand, B.dodged ? 'dodge' : null, st, onOd);
+          end = r2.odEnd + (B.tier >= 4 ? 1.2 : 0.9);
         }
       }
-      // the round's spells, after both strikes, in the rules' order
+      // the round's spells, after both strikes, in the rules' order; then any overdrive special
       if (spells.length) end = spellBeat(spells, Math.max(0, end - 0.35), onLand, st);
+      if (odSpells.length) end = spellBeat(odSpells, Math.max(0, end - 0.35), onLand, st, true);
       after(end, done);
       return end;
     }
@@ -1419,8 +1436,10 @@ window.DuelScene = (() => {
     const sdQ = [[], []];   // spell hit parts waiting for their visible hit, per target: { a, part, last, cb }
     function sdHit(i) { const q = sdQ[i].shift(); if (q) q.cb(q.a, { part: q.part, last: q.last }); }
     function sdFlush(i, a2) { for (let k = 0; k < sdQ[i].length; k++) if (sdQ[i][k].a === a2) { const q = sdQ[i].splice(k--, 1)[0]; q.cb(q.a, { part: q.part, last: q.last }); } }
-    function spellBeat(list, t0, onLand, st) {
+    function spellBeat(list, t0, onLand, st, od = false) {
       const both = list.length > 1;
+      // an overdrive special: the caster's gauge flashes violet and a ring goes up as it casts
+      if (od) list.forEach(a2 => after(t0, () => { const at = chest(a2.from, new V()), col = odColOf(a2.from, 3); ringAt(a2.from, col, 5.5, 0.6); flare(at, col, 2.2, 0.16); burst(at, 18, 6, col, { size: 0.26, life: 0.7, grav: -3, up: 1 }); xs('odTier', 1, a2.from); }));
       let end = t0 + 1.2;
       if (both) after(t0, () => want('xspell2', { pri: 3 }));
       list.forEach((a2, k) => {
@@ -1453,11 +1472,292 @@ window.DuelScene = (() => {
       if (!warming) csnd('tierUp', 1);
     }
 
+    // ---------- Showdown: overdrive (28 Nov 2026) ----------
+    // Gid: "if I finish all my words fast, it gets boring waiting... more words mean better hits and better
+    // animation and effects." A side done with its 10 words charges while the other side types: a column of
+    // energy rises round its bot (its own colour inside, overdrive violet round it), sparks stream up off a
+    // gauge ring at its feet that lights a third for each overdrive tier, the bot itself runs hotter
+    // (BotFighter boost), and at OD3 lightning crawls over it. Every clean word pulses it brighter with a note
+    // that climbs; a typo dims it. In the exchange the charge goes into the strike (attackBeat, odExtra,
+    // odFinisher). One set of meshes per side, made once; nothing is created while it plays.
+    const OD_COL = new THREE.Color('#b77bff'), OD_HOT = new THREE.Color('#efe2ff');
+    const odCv = document.createElement('canvas'); odCv.width = 64; odCv.height = 256;
+    {
+      // streaks of rising energy, soft at both sides and fading out at the top and bottom
+      const c = odCv.getContext('2d');
+      for (let k = 0; k < 70; k++) {
+        const x = 32 + (Math.random() + Math.random() + Math.random() - 1.5) * 26, y = Math.random() * 256, h = 18 + Math.random() * 70, w = 1 + Math.random() * 3.5;
+        const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, `rgba(255,255,255,${0.25 + Math.random() * 0.6})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g; c.fillRect(x - w / 2, y, w, h); if (y + h > 256) c.fillRect(x - w / 2, y - 256, w, h);
+      }
+      const img = c.getImageData(0, 0, 64, 256), d = img.data;
+      for (let x = 0; x < 64; x++) { const u = (x - 31.5) / 32, k = Math.exp(-u * u * 4.5); for (let y = 0; y < 256; y++) d[(y * 64 + x) * 4 + 3] *= k; }
+      c.putImageData(img, 0, 0);
+    }
+    const odTexA = own(new THREE.CanvasTexture(odCv)); odTexA.wrapT = THREE.RepeatWrapping;
+    const odTexB = own(odTexA.clone()); odTexB.wrapT = THREE.RepeatWrapping; odTexB.repeat.set(1, 0.7);
+    // the column's soft top and bottom: a vertical alpha mask, so the strips never show an edge
+    const odMaskCv = document.createElement('canvas'); odMaskCv.width = 4; odMaskCv.height = 128;
+    { const c = odMaskCv.getContext('2d'), g = c.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.45, 'rgba(255,255,255,0.9)'); g.addColorStop(0.85, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 4, 128); }
+    const odMask = own(new THREE.CanvasTexture(odMaskCv));
+    // the gauge ring at the feet: three arcs, one per tier, with ticks between
+    const odRingCv = document.createElement('canvas'); odRingCv.width = odRingCv.height = 256;
+    const odRingTex = [0, 1, 2, 3].map(tier => {
+      const cv = tier ? document.createElement('canvas') : odRingCv; cv.width = cv.height = 256;
+      const c = cv.getContext('2d'); c.translate(128, 128); c.lineCap = 'round';
+      c.strokeStyle = 'rgba(255,255,255,0.35)'; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, 122, 0, Math.PI * 2); c.stroke();
+      for (let k = 0; k < 3; k++) {
+        const a0 = -Math.PI / 2 + k * Math.PI * 2 / 3 + 0.1, a1 = a0 + Math.PI * 2 / 3 - 0.2;
+        c.strokeStyle = k < tier ? '#ffffff' : 'rgba(255,255,255,0.22)'; c.lineWidth = k < tier ? 11 : 6;
+        c.beginPath(); c.arc(0, 0, 108, a0, a1); c.stroke();
+      }
+      c.strokeStyle = 'rgba(255,255,255,0.6)'; c.lineWidth = 2;
+      for (let k = 0; k < 36; k++) { const a = k / 36 * Math.PI * 2, r0 = k % 3 ? 88 : 80; c.beginPath(); c.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); c.lineTo(Math.cos(a) * 94, Math.sin(a) * 94); c.stroke(); }
+      return own(new THREE.CanvasTexture(cv));
+    });
+    const odMat = (map, order) => { const m = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map, alphaMap: odMask, color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false }))); m.visible = false; m.renderOrder = order; m.frustumCulled = false; scene.add(m); return m; };
+    const OD_ARCS = 5, OD_SEG = 7;
+    const OD = [0, 1].map(i => {
+      const ring = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: odRingTex[0], color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false })));
+      ring.rotation.x = -Math.PI / 2; ring.visible = false; ring.renderOrder = 3; scene.add(ring);
+      const ag = own(new THREE.BufferGeometry()); ag.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(OD_ARCS * OD_SEG * 6), 3));
+      const arcs = new THREE.LineSegments(ag, own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
+      arcs.visible = false; arcs.frustumCulled = false; arcs.renderOrder = 8; scene.add(arcs);
+      return { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0, ringTier: 0, sparkT: 0, arcT: 0, spin: 0,
+        outer: odMat(odTexA, 6), inner: odMat(odTexB, 6), halo: sprite(glowTex, 0, 6), ring, arcs, col: new THREE.Color(), mix: new THREE.Color() };
+    });
+    // the side's overdrive colour: its own colour pushed toward violet as the tiers climb, white-hot at OD3
+    const odColOf = (i, tier = OD[i].tier, out = new THREE.Color()) => out.copy(sideCol(i)).lerp(OD_COL, 0.35 + 0.12 * tier).lerp(WHITE, tier >= 3 ? 0.18 : 0);
+    const odHex = i => '#' + odColOf(i, Math.max(2, OD[i].tier)).getHexString();
+    function overdrive(i, o = {}) {
+      const S = OD[i], f = F[i];
+      if (!f || !f.bf || f.ko) return;
+      const at = chest(i, new V()), col = odColOf(i, o.tier ?? S.tier);
+      if (o.start) {
+        Object.assign(S, { on: true, n: 0, tier: 0, tgt: 0.28, pulse: 1, dim: 0, surge: 0, rel: 0 });
+        flare(at, col, 2.2, 0.2); ringAt(i, col, 4.5, 0.6);
+        burst(at, 22, 6, col, { size: 0.26, life: 0.7, grav: -3, up: 1.4 });
+        xs('odStart', 1, i);
+        if (arena && !warming) arena.hype(i, 0.35);
+        return;
+      }
+      if (!S.on) return;
+      S.n = o.n ?? S.n; S.tier = o.tier ?? S.tier;
+      S.tgt = Math.min(1, 0.28 + 0.09 * S.n);
+      if (o.clean === false) {
+        // a typo: the charge stutters and dims for a moment, and nothing is lost
+        S.dim = 1; xs('odBreak', 0.8, i);
+        burst(at, 8, 3, RED, { shard: true, size: 0.18, life: 0.4, grav: 6 });
+        return;
+      }
+      S.pulse = 1;
+      feetOf(i, tmp).setY((arena ? arena.PAD_TOP : 0.22) + 0.1);
+      burst(tmp, 8 + S.tier * 4, 4 + S.tier, col, { size: 0.22, life: 0.8, grav: -6, up: 3 });
+      flare(at, col, 1.1 + 0.25 * S.tier, 0.12);
+      xs('odTick', Math.min(1.4, 0.1 + S.n * 0.09), i);
+      if (o.up) {
+        // a tier up: the gauge lights another third, a shockwave and a stab that climbs with the tier
+        ringAt(i, col, 4 + S.tier * 1.4, 0.65); flare(at, WHITE, 2 + S.tier * 0.6, 0.18);
+        burst(at, 14 + S.tier * 8, 7 + S.tier * 2, col, { shard: true, size: 0.3, life: 0.8, grav: 2, up: 0.8 });
+        flashLight(at, col, 3 + S.tier);
+        xs('odTier', S.tier / 3, i);
+        if (!reduce) shake = Math.max(shake, 0.06 + S.tier * 0.03);
+        if (arena && !warming) arena.hype(i, 0.3 + S.tier * 0.15);
+      }
+    }
+    // the charge goes into the strike: the column collapses into the bot and bursts off it
+    function odRelease(i) {
+      const S = OD[i];
+      if (!S.on) return;
+      S.on = false; S.rel = 1;
+      const at = chest(i, new V()), col = odColOf(i);
+      flare(at, WHITE, 2.4 + S.tier * 0.4, 0.2);
+      burst(at, 16 + S.tier * 8, 8 + S.tier * 2, col, { shard: true, size: 0.3, life: 0.6, grav: 1 });
+      xs('odRelease', 0.6 + S.tier * 0.15, i);
+    }
+    function odClear() {
+      OD.forEach((S, i) => {
+        Object.assign(S, { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0 });
+        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = S.arcs.visible = false;
+        if (F[i].bf) F[i].bf.boost(0);
+      });
+    }
+    const _oc = new V(), _of = new V();
+    function drawOd(dt) {
+      OD.forEach((S, i) => {
+        const f = F[i];
+        if (!f.bf) return;
+        // the level eases up toward the charge, falls fast once released
+        const goal = S.on && !f.ko ? S.tgt + 0.35 * S.surge : 0;
+        S.lvl += (goal - S.lvl) * Math.min(1, dt * (goal > S.lvl ? 4 : 7));
+        S.pulse = Math.max(0, S.pulse - dt * 3.2); S.dim = Math.max(0, S.dim - dt * 2.5); S.rel = Math.max(0, S.rel - dt * 3);
+        const k = S.lvl * (1 - 0.6 * S.dim) + 0.25 * S.pulse, show = k > 0.02;
+        f.bf.boost(S.on ? Math.min(1, S.lvl * 1.1 + 0.3 * S.pulse) * (1 - 0.7 * S.dim) : 0);
+        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = show;
+        S.arcs.visible = show && S.tier >= 3 && !reduce;
+        if (!show) return;
+        odColOf(i, S.tier, S.col);
+        chest(i, _oc); feetOf(i, _of);
+        const floor = (arena ? arena.PAD_TOP : 0.22);
+        const flick = reduce ? 1 : 0.9 + 0.1 * Math.sin(t * 23 + i) + 0.06 * Math.sin(t * 61);
+        // the column: faces the camera round its own upright axis, from the floor to well over the bot
+        const H = 3.2 + 2.6 * k + 0.8 * S.surge, Wd = 2.0 + 1.3 * k;
+        const yaw = Math.atan2(camera.position.x - _oc.x, camera.position.z - _oc.z);
+        for (const [m, w, op, colK, hot] of [[S.outer, Wd * 1.25, 0.55, 1.1, 0], [S.inner, Wd * 0.7, 0.8, 1.6, 0.35]]) {
+          m.position.set(_oc.x, floor + H / 2 - 0.15, _oc.z); m.rotation.set(0, yaw, 0); m.scale.set(w, H, 1);
+          m.material.opacity = Math.min(1, op * k * flick);
+          m.material.color.copy(m === S.outer ? S.mix.copy(S.col).lerp(OD_COL, 0.3) : S.col).lerp(WHITE, hot * Math.min(1, k)).multiplyScalar(colK);
+        }
+        odTexA.offset.y = (odTexA.offset.y - dt * (0.55 + 0.9 * k)) % 1;
+        odTexB.offset.y = (odTexB.offset.y - dt * (0.95 + 1.3 * k)) % 1;
+        // a soft halo on the body
+        S.halo.position.copy(_oc); S.halo.scale.setScalar((2.6 + 2.2 * k) * (1 + 0.15 * S.pulse)); S.halo.material.color.copy(S.col).multiplyScalar(0.55 + 0.4 * k); S.halo.material.opacity = Math.min(0.9, 0.55 * k + 0.3 * S.pulse);
+        // the gauge ring at the feet: lights a third per tier and turns faster as it fills
+        if (S.ringTier !== S.tier) { S.ringTier = S.tier; S.ring.material.map = odRingTex[Math.min(3, S.tier)]; }
+        S.spin += dt * (0.4 + 0.8 * k) * (i ? -1 : 1);
+        S.ring.position.set(_of.x, floor + 0.03, _of.z); S.ring.rotation.z = S.spin;
+        S.ring.scale.setScalar(3.4 + 0.9 * k + 0.6 * S.pulse);
+        S.ring.material.color.copy(S.col).multiplyScalar(1.4 + S.pulse); S.ring.material.opacity = Math.min(1, 0.35 + 0.65 * k);
+        // sparks stream up off the ring, more of them the higher the charge
+        S.sparkT -= dt * (reduce ? 0.3 : 1);
+        while (S.sparkT <= 0 && S.on) {
+          S.sparkT += 1 / (8 + 34 * k);
+          const a = Math.random() * Math.PI * 2, r = (1.2 + 0.5 * k) * rnd(0.7, 1.05);
+          tmp.set(_of.x + Math.cos(a) * r, floor + 0.15, _of.z + Math.sin(a) * r);
+          burst(tmp, 1, 1.2, Math.random() < 0.25 ? OD_HOT : S.col, { size: rnd(0.1, 0.2) * (1 + k * 0.6), life: rnd(0.6, 1.1), grav: -(5 + 6 * k), up: 4, k: 1.6 });
+        }
+        // OD3: lightning crawls over the bot
+        if (S.arcs.visible) {
+          S.arcT -= dt;
+          if (S.arcT <= 0) {
+            S.arcT = rnd(0.04, 0.08);
+            const A = S.arcs.geometry.attributes.position.array, R0 = 1.25 * BS;
+            let q = 0;
+            for (let a = 0; a < OD_ARCS; a++) {
+              tmp.set(rnd(-1, 1), rnd(-0.6, 1), rnd(-1, 1)).normalize().multiplyScalar(R0 * rnd(0.8, 1.15));
+              tmp2.set(rnd(-1, 1), rnd(-0.8, 1), rnd(-1, 1)).normalize().multiplyScalar(R0 * rnd(0.8, 1.15));
+              let px = _oc.x + tmp.x, py = _oc.y + tmp.y, pz = _oc.z + tmp.z;
+              for (let s2 = 1; s2 <= OD_SEG; s2++) {
+                const u = s2 / OD_SEG, j = s2 === OD_SEG ? 0 : 0.28;
+                const bow = Math.sin(Math.PI * u) * 0.5;   // bow outward round the body
+                const nx = _oc.x + (tmp.x + (tmp2.x - tmp.x) * u) * (1 + bow) + rnd(-j, j), ny = _oc.y + (tmp.y + (tmp2.y - tmp.y) * u) * (1 + bow) + rnd(-j, j), nz = _oc.z + (tmp.z + (tmp2.z - tmp.z) * u) * (1 + bow) + rnd(-j, j);
+                A[q++] = px; A[q++] = py; A[q++] = pz; A[q++] = nx; A[q++] = ny; A[q++] = nz;
+                px = nx; py = ny; pz = nz;
+              }
+            }
+            S.arcs.geometry.attributes.position.needsUpdate = true;
+            if (Math.random() < 0.35) xs('odZap', 0.5, i);
+          }
+          S.arcs.material.color.copy(OD_HOT).lerp(S.col, 0.3).multiplyScalar(2.2);
+          S.arcs.material.opacity = Math.random() < 0.2 ? 0.25 : 0.95;
+        }
+      });
+    }
+
+    // ---------- Showdown: the overdrive in the exchange ----------
+    // OD1: a bigger strike (bigger shots and trails, a violet shockwave on the hit) and its overdrive damage
+    //      pops off the target a beat after the hit. OD2: two quick follow-up hits carry it. OD3: three, and
+    //      when the strike is a dash strike or the finisher, the overdrive finisher replaces it (odFinisher).
+    // Returns when the last of it lands (seconds from now). onOd(a2) lands the strike's overdrive damage.
+    function odExtra(a2, at, onOd) {
+      const i = a2.from, j = a2.to, od = a2.dodged ? 0 : a2.od || 0;
+      if (!od) { if (a2.odDmg) after(at, () => onOd(a2)); return at; }
+      if (od === 1) {
+        after(at + 0.12, () => { odHit(j, i, true, 1); onOd(a2); });
+        return at + 0.2;
+      }
+      const n = od >= 3 ? 3 : 2, gap = 0.13;
+      after(at, () => { odRelease(i); want('xtrack', { x: i, pri: 3 }); });
+      for (let k = 0; k < n; k++) {
+        const last = k === n - 1;
+        after(at + 0.05 + k * gap, () => {
+          if (!alive || F[i].ko) return;
+          if (F[i].bf) F[i].bf.move(k % 2 ? 'sidestep' : 'jab', { len: 0.26, strike: true, power: 0.5 + 0.2 * k, side: k % 2 ? 1 : -1 });
+          xs('odHit', 0.6 + 0.15 * k, i);
+          shot(i, 1, null, { orb: true, noMove: true, plain: true, noCut: true, ms: 230, color: odHex(i), size: 0.7 + 0.15 * k, arc: 0.4 + 0.3 * (k % 2), land: () => { odHit(j, i, last, od); if (last) onOd(a2); } });
+        });
+      }
+      return at + 0.05 + (n - 1) * gap + 0.3;
+    }
+    // an overdrive hit landing: violet shards, a flare and a small knock; the last one rings
+    function odHit(j, i, last, od) {
+      const at = centre(j, new V()).add(tmp.set(rnd(-0.3, 0.3), rnd(-0.2, 0.5), 0.3)), col = odColOf(i, Math.max(2, od));
+      burst(at, 6 + (last ? 10 : 0), 6, col, { shard: true, size: 0.24, life: 0.5, dir: j ? 0.6 : -0.6, grav: 7, k: 1.5 });
+      flare(at, last ? WHITE : col, last ? 1.6 : 0.9, last ? 0.12 : 0.07);
+      react(j, 'hit', last ? 0.6 : 0.3, last ? 1 : 0);
+      if (last) { ringAt(j, col, 3.5 + od, 0.5); flashLight(at, col, 3); if (F[j].bf) F[j].bf.hurt(od >= 3 ? 'knock' : 'jolt', { k: 0.8, side: (F[j].hurtSide = -(F[j].hurtSide || 1)) }); }
+      if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + (last ? 60 : 25)); shake = Math.max(shake, last ? 0.22 : 0.1); }
+    }
+    // OD3 on a dash strike or a finisher: the overdrive finisher. The bot rises inside its column and blazes,
+    // blinks in with two cuts from either side, then comes down on the other bot behind a thick beam: a
+    // white-violet pillar, two shockwaves, the longest hit stop in the duel. The camera: low on the rise in
+    // slow motion, the wide on the cuts, a hard cut low past the target as it lands.
+    // Returns { contact, odEnd } in seconds from now
+    function odFinisher(a2, t0, how, onLand, onOd) {
+      const i = a2.from, j = a2.to, f = F[i], col = odColOf(i, 3), sc = C(opts.sides[i].color || '#8cff58');
+      const side1 = (f.mvSide = -(f.mvSide || 1));
+      after(Math.max(0, t0 - 0.3), () => want('odfin', { x: i, pri: 3.6 }));
+      // the rise: the column surges, power is drawn in, the bot lifts and flares
+      after(t0, () => {
+        OD[i].on = true; OD[i].surge = 1; OD[i].tier = 3; OD[i].tgt = 1; OD[i].pulse = 1;
+        f.bf.move('cast', { len: 0.8 }); STG.lift[i] = 1.1;
+        xs('odRise', 1, i); csnd('ultimate');
+        if (arena) arena.hype(i, 1);
+      });
+      for (let k = 0; k < 4; k++) after(t0 + 0.05 + k * 0.16, () => { gather(muzzleOf(i, new V()), k % 2 ? OD_HOT : col, 10, 3.2); });
+      // two cuts: a dash slash and a spin, each a quick light hit
+      const cut = (tt, mv, len, sd, roll) => {
+        const hit = BotFighter.MOVES[mv].hit;
+        after(tt, () => { STG.lift[i] = 0.35; f.bf.move(mv, { len, strike: true, power: 1, side: sd }); xs(mv === 'spin' ? 'spin' : 'slash', 0.9, i); });
+        after(tt + len * hit, () => {
+          const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
+          slashArc(at, dirV, roll, 1.9, col, 0.36); slashArc(at, dirV, roll + 0.5, 1.5, WHITE, 0.16);
+          burst(at, 14, 9, col, { shard: true, size: 0.3, life: 0.55, dir: j ? 0.8 : -0.8, grav: 8, k: 1.5 });
+          flare(at, col, 1.4, 0.08); react(j, 'hit', 0.5, 1.2);
+          if (F[j].bf) F[j].bf.hurt(pick('ofh' + j, ['jolt', 'spinout']), { k: 0.7, side: sd });
+          xs('odHit', 1, j);
+          if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 55); shake = Math.max(shake, 0.25); }
+        });
+      };
+      cut(t0 + 0.72, 'slash', 0.46, side1, side1 * 0.8);
+      cut(t0 + 1.08, 'spin', 0.5, -side1, 0.15);
+      // the drop
+      const tf = t0 + 1.46, mv = pick('ofm' + i, ['slam', 'dive']), len = mv === 'slam' ? 0.78 : 0.72, contact = tf + len * BotFighter.MOVES[mv].hit;
+      after(tf, () => { STG.lift[i] = 0; OD[i].surge = 1.4; f.bf.move(mv, { len, strike: true, power: 1, side: side1 }); xs(mv, 1, i); snd('release'); });
+      after(contact - 0.14, () => {
+        const a3 = handOf(i, new V()), b3 = centre(j, new V());
+        beam(a3, b3, col, a2.crit ? 0.8 : 0.66, 0.1, 0.42, tmp2.set(0, 0, 0), true);
+        beam(a3, b3, WHITE, 0.22, 0.1, 0.42, tmp2.set(0, 0, 0), true);
+      });
+      after(contact, () => {
+        odRelease(i);
+        const at = centre(j, new V()), dirV = tmp.subVectors(at, centre(i, new V()));
+        slashArc(at, dirV, 1.2, 2.6, col, 0.5);
+        impact(j, Math.max(4, a2.tier), a2.crit, sc, null, { ...how, graze: false, heavy: true, od: 3, hurt: 'launch' });
+        odPillar(j, col);
+        xs('odSlam', 1, j);
+        if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 230); shake = Math.max(shake, 0.7); punch = 1; }
+        onLand(a2);
+      });
+      after(contact + 0.32, () => { odHit(j, i, true, 3); onOd(a2); });
+      return { contact, odEnd: contact + 0.45 };
+    }
+    // a pillar of light where the overdrive finisher lands, with a second shockwave after the first
+    function odPillar(j, col) {
+      const at = feetOf(j, new V()).setY(arena ? arena.PAD_TOP : 0.22), top = at.clone().setY(at.y + 9);
+      beam(at, top, col, 1.4, 0.06, 0.25, tmp2.set(0, 0, 0), true);
+      beam(at, top, WHITE, 0.45, 0.05, 0.22, tmp2.set(0, 0, 0), false);
+      ringAt(j, col, 8.5, 0.8); after(0.12, () => ringAt(j, WHITE, 6, 0.6));
+      smoke(at.clone().setY(at.y + 0.3), 14, 3, { size: 1.9, life: 1.4, op: 0.5 });
+      burst(at.clone().setY(at.y + 1), 30, 12, col, { shard: true, size: 0.4, life: 1, up: 1.5, grav: 9, k: 1.6 });
+      flashLight(at, col, 6);
+    }
+
     // ---------- Showdown: the beam struggle ----------
     // win's strike (Wa) breaks through and lands; the loser's (La) comes back as a late counter, or as the
     // backlash off the collision when the loser is knocked out (the rules' damage either way).
     const BEAM_T = { charge: 1.35, fire: 0.2, fight: 2.3, through: 0.3 };
-    function struggleScene(Wa, La, win, onLand, st, howOf, loserKo) {
+    function struggleScene(Wa, La, win, onLand, st, howOf, loserKo, onOd = () => {}) {
       const lose = 1 - win, hero = opts.me >= 0 ? opts.me : 0, T = BEAM_T;
       const cols = [0, 1].map(i => C(opts.sides[i].color || (i ? '#f29d30' : '#8cff58')));
       stBegin('sd', [orbCol(0), orbCol(1)], cols);
@@ -1507,7 +1807,7 @@ window.DuelScene = (() => {
         if (!reduce) { stopUntil = Math.max(stopUntil, clockMs() + 110); shake = Math.max(shake, 0.5); punch = 1; }
         if (loserKo) {
           // the loser's strike is real too: the collision lashes back onto the winner as it breaks
-          shot(lose, La.tier, () => onLand(La), { orb: true, noMove: true, plain: true, noCut: true, ms: 220, start: struggle.J.clone(), color: '#' + cols[lose].getHexString(), size: 0.9, crit: La.crit, how: howOf(La) });
+          shot(lose, La.tier, () => { onLand(La); onOd(La); }, { orb: true, noMove: true, plain: true, noCut: true, ms: 220, start: struggle.J.clone(), color: '#' + cols[lose].getHexString(), size: 0.9, crit: La.crit, how: howOf(La) });
         }
       });
       after(tb + T.through, () => {
@@ -1516,6 +1816,7 @@ window.DuelScene = (() => {
         ringAt(lose, cols[win], 7.5, 0.75); smoke(feetOf(lose, new V()).setY(0.4), 12, 2.6, { size: 1.7, life: 1.3, op: 0.5 });
         xs('launch', 1, lose);
         onLand(Wa);
+        odExtra(Wa, 0.2, onOd);
         after(0.3, () => { struggle.fireT[win] = 0; struggle.coreT = [0, 0]; });
         after(0.55, stEnd);
       });
@@ -1525,7 +1826,7 @@ window.DuelScene = (() => {
         const tc = tb + T.through + 1.0;
         after(tc, () => { if (F[lose].ko) return; F[lose].bf.move('jab', { len: 0.4, strike: true, power: La.tier / 4 }); xs('counter', 0.9, lose); });
         after(tc + 0.1, () => shot(lose, La.tier, () => onLand(La), { orb: true, noMove: true, plain: true, noCut: true, ms: 320, color: opts.sides[lose].color, crit: La.crit, size: 1.1, how: { ...howOf(La), heavy: false } }));
-        end = tc + 0.1 + 0.32 + 0.9;
+        end = odExtra(La, tc + 0.1 + 0.37, onOd) + 0.9;
       }
       return end;
     }
@@ -1537,9 +1838,13 @@ window.DuelScene = (() => {
     }
     // one attack starting at t0 (seconds from now); returns { contact } in seconds from now.
     // out: null when it lands, 'dodge' or 'reflect' when the rules said it was dodged
-    function attackBeat(a2, t0, how, onLand, out, st) {
+    function attackBeat(a2, t0, how, onLand, out, st, onOd = () => {}) {
       const i = a2.from, j = a2.to, f = F[i], col = C(opts.sides[i].color || (i ? '#f29d30' : '#8cff58'));
-      const v = attackVariant(i, a2.tier), land = () => onLand(a2);
+      const od = out ? 0 : a2.od || 0;
+      // OD3 on a dash strike or the finisher: the overdrive finisher instead
+      if (od >= 3 && a2.tier >= 3) { after(t0, () => st && st(a2)); return odFinisher(a2, t0, how, onLand, onOd); }
+      const v = attackVariant(i, a2.tier), land = () => onLand(a2), big = 1 + 0.15 * od;
+      if (od) after(t0 + 0.05, () => { OD[i].surge = 0.6; OD[i].pulse = 1; });
       const sideS = (f.mvSide = -(f.mvSide || 1));
       const camAt = Math.max(0, t0 - 0.3);
       after(t0, () => st && st(a2));
@@ -1554,7 +1859,7 @@ window.DuelScene = (() => {
         const mv = v, len = mv === 'slam' ? 0.85 : 0.8, hit = BotFighter.MOVES[mv].hit;
         contact = t0 + 0.8 + len * hit;
         after(t0 + 0.8, () => { STG.lift[i] = 0; f.bf.move(mv, { len, strike: true, power: 1, side: sideS }); xs(mv, 1, i); snd('release'); });
-        after(contact - 0.12, () => { const a3 = handOf(i, new V()), b3 = centre(j, new V()); beam(a3, b3, col, a2.crit ? 0.55 : 0.42, 0.1, 0.35, tmp2.set(0, 0, 0), true); });
+        after(contact - 0.12, () => { const a3 = handOf(i, new V()), b3 = centre(j, new V()); beam(a3, b3, col, (a2.crit ? 0.55 : 0.42) * big, 0.1, 0.35, tmp2.set(0, 0, 0), true); if (od) beam(a3, b3, odColOf(i), 0.2 * big, 0.1, 0.3, tmp2.set(0, 0, 0), false); });
       } else if (MELEE[v]) {
         const len = v === 'pass' ? 0.9 : v === 'slam' ? 0.8 : v === 'dive' ? 0.75 : 0.6;
         contact = t0 + len * BotFighter.MOVES[v].hit;
@@ -1565,7 +1870,7 @@ window.DuelScene = (() => {
         const rel = blen * BotFighter.MOVES[body].hit, T = v === 'lob' ? 0.6 : 0.42;
         contact = t0 + rel + T;
         after(t0, () => f.bf.move(body, { len: blen, strike: true, power: a2.tier / 4, side: sideS }));
-        const fire = (dt2, cb, extra) => after(t0 + dt2, () => shot(i, a2.tier, cb, { orb: true, noMove: true, plain: true, noCut: true, ms: T * 1000, color: opts.sides[i].color, crit: a2.crit, arc: v === 'lob' ? 2.2 : 1, ...extra }));
+        const fire = (dt2, cb, extra) => after(t0 + dt2, () => shot(i, a2.tier, cb, { orb: true, noMove: true, plain: true, noCut: true, ms: T * 1000, color: opts.sides[i].color, crit: a2.crit, arc: v === 'lob' ? 2.2 : 1, ...extra, size: (extra && extra.size || 1) * big }));
         const final = out === 'dodge' ? { dodge: true } : out === 'reflect' ? { how: { deflect: true } } : { how };
         if (out === 'reflect') after(contact - 0.15, () => F[j].bf.move('parry', { len: 0.45, side: j ? -1 : 1 }));
         if (v === 'volley') {
@@ -1577,7 +1882,7 @@ window.DuelScene = (() => {
           contact += 0.12;
         } else fire(rel, out ? null : land, final);
         if (out) after(contact, land);
-        return { contact };
+        return { contact, odEnd: out ? contact : odExtra(a2, contact + 0.05, onOd) };
       }
       // a melee strike connecting (or the finisher arriving)
       after(contact, () => {
@@ -1590,7 +1895,8 @@ window.DuelScene = (() => {
           slashArc(at.clone().addScaledVector(STG.a, -F[j].dir * 0.8), dirV, sideS * 0.6, 1.4, C('#7dffc4'), 0.24);
           deflectAtMelee(j, i);
         } else {
-          slashArc(at, dirV, v === 'uppercut' ? 1.45 : v === 'spin' ? 0.1 : v === 'slam' || v === 'dive' ? 1.2 : sideS * 0.7, a2.tier >= 4 ? 2.2 : 1.6, col, a2.tier >= 4 ? 0.4 : 0.28);
+          slashArc(at, dirV, v === 'uppercut' ? 1.45 : v === 'spin' ? 0.1 : v === 'slam' || v === 'dive' ? 1.2 : sideS * 0.7, (a2.tier >= 4 ? 2.2 : 1.6) * big, col, (a2.tier >= 4 ? 0.4 : 0.28) * big);
+          if (od) slashArc(at, dirV, (v === 'uppercut' ? 1.45 : sideS * 0.7) + 0.4, 1.7 * big, odColOf(i), 0.2);
           if (a2.tier >= 4) { ringAt(j, col, 7, 0.7); smoke(feetOf(j, new V()).setY(0.4), 10, 2.4, { size: 1.6, life: 1.2, op: 0.5 }); }
           impact(j, a2.tier, a2.crit, col, null, { ...how, hurt: how.graze ? null : v === 'uppercut' || (v === 'slam' && !how.heavy) ? 'launch' : v === 'spin' ? 'spinout' : undefined });
         }
@@ -1599,7 +1905,7 @@ window.DuelScene = (() => {
       // the defender's dodge or parry, timed to the strike
       if (out === 'dodge') after(contact - 0.2, () => { const dv = pick('d' + j, ['roll', 'duck', 'leap']); if (dv === 'roll') F[j].bf.dodge((F[j].mvSide = -(F[j].mvSide || 1))); else F[j].bf.move(dv, { len: 0.45 }); xs('dodge', 0.8, j); csnd('op-dodge'); });
       if (out === 'reflect') after(contact - 0.15, () => { F[j].bf.move('parry', { len: 0.45, side: j ? -1 : 1 }); });
-      return { contact };
+      return { contact, odEnd: out ? contact : odExtra(a2, contact + 0.05, onOd) };
     }
     // a melee strike stopped by the shield: a clang and the attacker knocked back off it
     function deflectAtMelee(j, i) {
@@ -1883,6 +2189,13 @@ window.DuelScene = (() => {
         { len: 0.8, cut: 1, slow: 0.5, fov: 36, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, -(3.4 + c.u * 0.6), fc[i].y + 0.6 + c.u * 0.3, 11.5); fr(out.look, MID, i, 0.3, 2.8 + Math.max(0, fc[i].y - 3.6) * 0.6, 0); } },
         { len: 1.1, cut: 1, slow: 0.7, fov: 40, omega: 3, pose(c, out) { const i = c.x, hi = Math.max(0, fc[i].y - 3.6); fr(out.pos, MID, i, -1.5, 1.6 + c.u * 0.4 + hi * 0.5, 12.5 + hi); fr(out.look, MID, i, 1.5, 2.4 + hi * 0.75, 0); } },
       ] },
+      // the overdrive finisher (Showdown OD3): low in front of the bot as it rises inside its column, in slow
+      // motion; the wide from the side on the two cuts; then a hard cut low past the target as the drop lands
+      odfin: { pri: 3.6, parts: [
+        { len: 1.15, cut: 1, slow: 0.6, fov: 34, pose(c, out) { const i = c.x, hi = Math.max(0, fc[i].y - 3.4); fr(out.pos, fp[i], i, 3.0 + c.u * 0.4, 1.0 + hi * 0.3, 8.2 - c.u * 0.6); fr(out.look, fc[i], i, 0.2, fc[i].y + 0.9 + c.u * 0.4, 0); } },
+        { len: 0.95, cut: 1, slow: 0.85, fov: 38, omega: 5, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, MID, i, -0.6 + c.u * 0.8, 1.9, 12.2); out.look.lerpVectors(MID, fc[j], 0.35).setY(2.6 + Math.max(0, Math.max(fc[0].y, fc[1].y) - 3.6) * 0.5); } },
+        { len: 1.35, cut: 1, slow: 0.5, fov: 40, omega: 3, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, fp[j], j, -3.4 - c.u * 0.6, 1.15 + c.u * 0.5, 8.6 + c.u * 1.2); out.look.lerpVectors(fc[j], fc[i], 0.3).setY(2.4); } },
+      ] },
       // an exchange in Showdown: low and wide from the side, centred between them, slowly tracking the attacker
       xtrack: { pri: 3, len: 1.4, fov: 34, omega: 4, pose(c, out) { const i = c.x; const m = out.look.lerpVectors(fc[0], fc[1], 0.5); m.lerp(fc[i], 0.15); fr(out.pos, m, i, -1.2 + c.u * 1.6, 1.7, 11.5); out.look.y = 2.6 + Math.max(0, Math.max(fc[0].y, fc[1].y) - 3.6) * 0.5; } },
       // the dodge and the counter: close on the defender in slow motion as the attack goes past
@@ -2124,6 +2437,7 @@ window.DuelScene = (() => {
       drawStruggle(dt);
       drawArcs(dt);
       drawStatus(dt);
+      drawOd(dt);
       hitLightK = Math.max(0, hitLightK - creal * 14);
       if (arena) arena.update(t, dt, camera);
       // steady slow frames step the detail down (beams and haze, then the crowd lights, dust and pixel ratio)
@@ -2176,7 +2490,7 @@ window.DuelScene = (() => {
       fontOk = true;
       const set = new Set(('abcdefghijklmnopqrstuvwxyz0123456789-\'.,>' + chars).replace(/\s/g, ''));
       for (const ch of set) renderer.initTexture(glyph(ch));
-      for (const x of [blank, glowTex, shardTex, beamTex, frostTex, flareTex, runeTex, hexTex, shadowTex]) renderer.initTexture(x);
+      for (const x of [blank, glowTex, shardTex, beamTex, frostTex, flareTex, runeTex, hexTex, shadowTex, odTexA, odTexB, odMask, ...odRingTex]) renderer.initTexture(x);
       await Promise.race([Promise.all(F.map(f => f.looked)), new Promise(r => setTimeout(r, 8000))]);
       if (!alive) return false;
       F.forEach(f => { if (f.tex) renderer.initTexture(f.tex); });
@@ -2189,6 +2503,8 @@ window.DuelScene = (() => {
       // the beam struggle's meshes, once
       stBegin('sd', [orbCol(0), orbCol(1)]); struggle.fire = struggle.fireT = [1, 1]; struggle.core = struggle.coreT = [1, 1];
       stRing(centre(0, new V()), STG.a, WHITE, 2, 0.4);
+      // overdrive's column, gauge ring and lightning, once on each side
+      if (BOTS) for (const side of [0, 1]) { overdrive(side, { start: true }); overdrive(side, { n: 7, tier: 3, up: true, clean: true }); }
       F.forEach((f, i) => { ['typo', 'block', 'poison', 'poisonTick', 'flash'].forEach(k => react(i, k)); react(i, i ? 'freeze' : 'stun', 1); react(1 - i, 'fog', 1); });
       if (fx) {
         for (const name of ['ward', 'hyper', 'root', 'split']) aura(0, name, true);
@@ -2206,7 +2522,7 @@ window.DuelScene = (() => {
       for (const f of flares) f.s.visible = false;
       for (const w of rings) w.m.visible = false;
       for (const B of beams) { B.on = false; B.core.visible = B.glow.visible = false; }
-      stEnd(); stRings.forEach(R => { R.m.visible = false; }); lockAt = -99; sdQ[0].length = sdQ[1].length = 0;
+      stEnd(); stRings.forEach(R => { R.m.visible = false; }); lockAt = -99; sdQ[0].length = sdQ[1].length = 0; odClear();
       revive();
       F.forEach(f => { f.drop = 0; f.kick = f.recoil = f.flash = f.glitch = f.lt = 0; f.lt = 9; f.ice = 0; f.frost.visible = false; f.arcs.visible = false; });
       stopUntil = slowUntil = 0; shake = punch = 0; hitLightK = 0;
@@ -2237,7 +2553,7 @@ window.DuelScene = (() => {
       renderer.domElement.remove();
     }
 
-    return { spellReady, struggle: () => struggle, shot, key, wpm, hold, strike, exchange, deflect, ricochet, fizzle, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
+    return { spellReady, overdrive, struggle: () => struggle, _od: () => OD, shot, key, wpm, hold, strike, exchange, deflect, ricochet, fizzle, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
       _kb: (i, kb) => { F[i].kb = kb; }, _scene: () => scene, _cam: () => camera, _hold: on => { if (on && !testHold) testClock = performance.now() / 1000; testHold = !!on; }, _step: s => { testStep += s; }, _frames: () => frameN, _stg: () => STG,   // tests: a side's keyboard, stepping time by hand
       arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')), at: F.map(f => (f.bf ? +f.bf.group.position.x.toFixed(2) : 0)), hurt: F.map(f => (f.bf ? f.bf.motion().hurt + ':' + f.bf.motion().push.toFixed(2) : '')) }) };
   }

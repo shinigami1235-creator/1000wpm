@@ -82,14 +82,14 @@
   // overdrive: the share of the strike each clean word in a row adds (the last step repeats), the accuracy
   // it needs, and the special word's terms; the cap is CONFIG.OVERDRIVE_CAP. Tuned with
   // node tools/bots/showdown-sim.js od 3000 so no pairing's win rate moves more than about 5 points (Gid's
-  // rule: fast typists must not run away with it). Even a +1 decides tied rounds, so the steps are small;
-  // overdrive's real payoff is the bigger exchange it buys (duel3d.js)
+  // rule: fast typists must not run away with it). Even a +1 decides a tied round, so in damage overdrive
+  // is worth +1 to +3 a round; its real payoff is the bigger exchange it buys (duel3d.js)
   const OD = {
-    steps: [0.015, 0.012, 0.009, 0.007, 0.0055, 0.0045, 0.003],
+    steps: [0.0075, 0.006, 0.0045, 0.0035, 0.00275, 0.00225, 0.0015],
     minAcc: 0.9,         // overdrive keys under 90% accurate add nothing
     specialAfter: 4,     // clean words in a row before the special word comes up
     specialMs: 1200,     // each of them typed within this long
-    specialK: 0.35,      // the special's damage, as a share of the same spell cast from the main words
+    specialK: 0.2,       // the special's damage, as a share of the same spell cast from the main words (at least 1)
     tiers: [2, 4, 6],    // OD1, OD2, OD3 by clean overdrive words
   };
   const TIERS = ['No attack', 'Shot', 'Double shot', 'Dash strike', 'Finisher'];
@@ -162,7 +162,7 @@
   // what a side's overdrive adds to its strike (the word bonus) and its special spell, both inside the cap
   function odDamage(s, base) {
     const st = s.od;
-    if (!st || s.words < CONFIG.words || !base || odAcc(st) < OD.minAcc) return { word: 0, spell: 0 };
+    if (!st || !base || odAcc(st) < OD.minAcc) return { word: 0, spell: 0 };
     const cap = Math.round(base * CONFIG.OVERDRIVE_CAP);
     const spell = st.special && st.special.ok && st.special.id ? Math.min(cap, Math.max(1, Math.round(spellDamage(st.special.id, odAcc(st)) * OD.specialK))) : 0;
     const word = Math.max(0, Math.min(Math.round(Math.min(st.frac, CONFIG.OVERDRIVE_CAP) * base), cap - spell));
