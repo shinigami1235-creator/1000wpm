@@ -241,7 +241,9 @@ window.DuelScene = (() => {
       F.forEach((f, i) => {
         const s = opts.sides[i];
         f.dir = i ? -1 : 1;
-        const bf = BotFighter.create(TH, s.bot.id, s.bot.look || {}, { gap, scale: BS, lite: phone });
+        // the orb's sounds: yours full, the other side's softer, both even when watching; none while warming up
+        const sound = opts.audio ? { ctx: opts.audio.ctx, vol: opts.me < 0 ? 0.7 : i === opts.me ? 0.9 : 0.45, pan: i ? 0.35 : -0.35, on: () => !warming && alive } : null;
+        const bf = BotFighter.create(TH, s.bot.id, s.bot.look || {}, { gap, scale: BS, lite: phone, sound });
         bf.group.position.set(POS[i].x, arena ? arena.PAD_TOP : 0.22, POS[i].z);
         bf.group.rotation.y = f.dir * Math.PI / 2;
         bf.group.children[0].rotation.y = -f.dir * TURN;
@@ -587,11 +589,13 @@ window.DuelScene = (() => {
       f.recoil = Math.min(1.4, 0.5 + p * 0.22);
       const at = centre(to, new V()).add(tmp.set(0, 0.2, 0.3));
       const away = to ? 1 : -1;
-      burst(at, 8 + p * 5, 6 + p * 1.5, col, { shard: true, size: 0.32, life: 0.7, dir: away * 0.8, up: 0.4, grav: 9 });
-      burst(at, 3 + p, 2.5 + p * 0.6, WHITE, { size: 0.24, life: 0.16, grav: 0, k: 0.7 });
+      const board = F[1 - to].kb && F[1 - to].kb !== 'slab';
+      burst(at, 8 + p * 5, 6 + p * 1.5, col, { shard: true, size: 0.32, life: 0.7, dir: away * 0.8, up: 0.4, grav: 9, k: board ? 1.1 : 1.4 });
+      // a short, small white flash for feel; a bought keyboard's own landing carries the rest (polish 28 Nov)
+      burst(at, board ? 2 : 3 + p, 2.5 + p * 0.6, WHITE, { size: board ? 0.16 : 0.2, life: 0.1, grav: 0, k: 0.5 });
       if (p >= 2) smoke(at, 3 + p, 1.4, { size: 1.3, life: 0.9, op: 0.35 });
       ringAt(to, col, 2.6 + p * 0.6, 0.45 + p * 0.05);
-      flare(at, col, 1.2 + p * 0.4, 0.12 + p * 0.025);
+      flare(at, col, (board ? 0.6 : 0.9) + p * 0.2, 0.08 + p * 0.015);
       flashLight(at, col, 2 + p * 2.5);
       if (!reduce) {
         stopUntil = Math.max(stopUntil, performance.now() + (crit ? 110 : 20 + tier * 18));
@@ -674,7 +678,7 @@ window.DuelScene = (() => {
       // the board's shot leaves with the letters (after the bot's wind-up)
       if (kb !== 'slab' && fx) {
         const old = ['compact', 'split', 'arc'].includes(kst);   // the first three boards keep their size; the newer ones fly under the word
-        const at = end.clone(), from3 = start.clone(), hx = '#' + col.getHexString(), go = () => { if (alive) fx.shot(1, from3, out => out.copy(at), null, { color: hx, kb, w: old ? 0.6 : 0.9, lane: old ? 0 : -1.1, dur: Math.max(0.15, T - 0.04) }); };
+        const at = end.clone(), from3 = start.clone(), hx = '#' + col.getHexString(), go = () => { if (alive) fx.shot(1, from3, out => out.copy(at), null, { color: hx, kb, w: old ? 0.6 : 0.9, lane: old ? 0 : -1.1, dur: Math.max(0.15, T - 0.04), flash: 0.35 }); };
         if (rel > 0.02 && !warming) setTimeout(go, rel * 1000); else go();
       }
       // the board's own switch and shot sound (js/app/kb-shots.js); the other side's a little quieter
@@ -1305,7 +1309,7 @@ window.DuelScene = (() => {
     }
 
     return { shot, key, wpm, hold, strike, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
-      _kb: (i, kb) => { F[i].kb = kb; }, _hold: on => { testHold = !!on; }, _step: s => { testStep += s; },   // tests: a side's keyboard, stepping time by hand
+      _kb: (i, kb) => { F[i].kb = kb; }, _scene: () => scene, _cam: () => camera, _hold: on => { testHold = !!on; }, _step: s => { testStep += s; },   // tests: a side's keyboard, stepping time by hand
       arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
   }
 

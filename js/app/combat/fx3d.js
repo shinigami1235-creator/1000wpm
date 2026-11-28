@@ -547,7 +547,9 @@ Combat.FX = (() => {
           e.landed = true;
           const c = col || (tier >= 3 ? WHITE : GREEN);
           burst(t0, 10 + tier * 10, 8 + tier * 2, c, 0.3 + tier * 0.06, 0.5, tier >= 3 ? G.star : G.dot, { drag: 2 });
-          flare(t0, c, 2.5 + tier * 1.6, 0.2, 1.1);
+          // opt.flash scales the landing flash (the duel keeps it small so the board's own landing reads)
+          const fk = opt.flash == null ? 1 : opt.flash;
+          flare(t0, c, (2.5 + tier * 1.6) * fk, 0.2 * Math.max(0.5, fk), 1.1 * Math.min(1, 0.4 + fk));
           if (tier >= 3) { juice('shake', tier >= 4 ? 0.5 : 0.3); juice('stop', tier >= 4 ? 60 : 40); light(t0, c, tier >= 4 ? 1.2 : 0.7, 0.2); }
           if (tier >= 4) burst(t0, 30, 16, col || GREEN, 0.5, 0.8, G.dot, { drag: 1.5 });
           if (kb) sigHit(kb, t0, e.from, col || GREEN, tier <= 1 ? sw : (1 + 0.25 * tier) * sw);
@@ -730,11 +732,12 @@ Combat.FX = (() => {
         // forked lightning, redrawn every frame so it crackles; held still under reduced motion
         _sa.lerpVectors(a, b, ease(clamp(u, 0, 1)));
         const pts = jag(a, _sa, 10, reduce ? 0 : 0.09, sigPts);
-        line(pts, 0.3 * w, col, 0.8 * k); line(pts, 0.09 * w, WHITE, 1.7 * k);
+        // brightness capped (polish 28 Nov): the white core and its forks used to bloom over the target's side of the screen
+        line(pts, 0.3 * w, col, 0.7 * k); line(pts, 0.08 * w, WHITE, 1.25 * k);
         if (!reduce && pts.length > 5) {
           const j = 3 + Math.floor(Math.random() * (pts.length - 5));
           _sb.copy(pts[j]).add(_sv.set(rnd(-1, 1), rnd(-0.4, 1), rnd(-0.6, 0.6)).multiplyScalar(1.3 * w));
-          line(jag(pts[j], _sb, 4, 0.25, sigPts2), 0.07 * w, WHITE, 1.2 * k);
+          line(jag(pts[j], _sb, 4, 0.25, sigPts2), 0.07 * w, col, 1.0 * k);
         }
       } else if (kb === 'type') {
         // three slugs one behind the other, like letters struck in a row, each a wet black drop
@@ -844,10 +847,10 @@ Combat.FX = (() => {
       if (kb === 'compact') for (let i = 0; i < 3; i++) circle(_sa.copy(at).add(_sd.set((i - 1) * 0.5 * w, (i === 1 ? 0.4 : -0.2) * w, 0)), _sv, (0.3 + (1 - k) * 1.2) * w, 0.07, i === 1 ? WHITE : col, 1.3 * k, 6, i);
       else if (kb === 'split') for (const sd of [-1, 1]) { _sb.copy(_sv).add(_sd.set(sd * 0.5, 0, 0)).normalize(); circle(at, _sb, (0.8 + (1 - k) * 2.4) * w, 0.1, sd > 0 ? WHITE : col, 1.2 * k, 22); }
       else if (kb === 'arc') {
-        circle(at, _sv, (0.7 + (1 - k) * 1.8) * w, 0.08, col, k, 20);
+        circle(at, _sv, (0.7 + (1 - k) * 1.8) * w, 0.08, col, 0.85 * k, 20);
         if (!reduce && k > 0.35) for (let i = 0; i < 4; i++) {
           _sb.copy(at).add(_sd.set(rnd(-1, 1), rnd(-1, 1), rnd(-0.5, 0.5)).normalize().multiplyScalar(rnd(1.2, 2.2) * w));
-          line(jag(at, _sb, 4, 0.3, sigPts2), 0.07 * w, i % 2 ? WHITE : col, 1.3 * k);
+          line(jag(at, _sb, 4, 0.3, sigPts2), 0.06 * w, i === 1 ? WHITE : col, 0.9 * k);
         }
       } else if (kb === 'type') circle(at, _sv, (0.5 + (1 - k) * 1.6) * w, 0.06 * w, pc(S, S.pal ? 1 : 0, col), 1.1 * k, 24);
       else if (kb === 'comet') {
@@ -903,20 +906,21 @@ Combat.FX = (() => {
         smoke(at, 3, ink, 1.3 * w, 0.8, { speed: 2 * w, alpha: 0.55, tint: 0.9 });
       } else if (kb === 'comet') {
         if (!reduce) for (let i = 0; i < 22; i++) { _pv.set(rnd(-1, 1), rnd(-0.6, 1.2), rnd(-1, 1)).normalize().multiplyScalar(rnd(3, 8) * w); spawn(at, _pv, S.pal ? S.pal[i % 3] : rainbow(i / 22, _c3), rnd(0.25, 0.45) * w, rnd(0.4, 0.8), G.star, { drag: 2.4, grav: 3 }); }
-        flare(at, WHITE, 2.4 * w, 0.14, 1.4, 0.4);
+        flare(at, WHITE, 1.8 * w, 0.12, 1.0, 0.4);
       } else if (kb === 'laser') {
         // a beat after the pin lands: the burst, a lens star across it, and crystal shards on the Diamond
         const c1 = pc(S, 0, col).clone(), crys = S.crystal;
         const e = add({ at: at.clone(), n: _sv.clone(), boom: false, sh: [] });
         e.update = dt => {
           const D = 0.09;
-          if (e.t < D) { flare(e.at, WHITE, (0.4 + e.t / D * 0.5) * w, 0.05, 1.5, 0.1); return true; }
+          if (e.t < D) { flare(e.at, WHITE, (0.4 + e.t / D * 0.5) * w, 0.05, 1.2, 0.1); return true; }
           if (!e.boom) {
             e.boom = true;
-            flare(e.at, WHITE, 3 * w, 0.12, 1.5, 0.3); flare(e.at, c1, 5 * w, 0.3, 0.9, 0.7);
+            // kept small (polish 28 Nov): a 5-unit flare washed the whole target side of the screen
+            flare(e.at, WHITE, 1.6 * w, 0.1, 1.1, 0.3); flare(e.at, c1, 3 * w, 0.24, 0.55, 0.6);
             shock(e.at, c1, 0.3 * w, 3 * w, 0.3, 0.07 * w, null, 1.4);
             if (!reduce) burst(e.at, 18, 9 * w, c1, 0.26 * w, 0.4, crys ? G.shard : G.star, { drag: 3 });
-            light(e.at, c1, 0.6, 0.18);
+            light(_sa.copy(e.at).addScaledVector(e.n, 3), c1, 0.12, 0.16);   // a step back toward the shooter: right on the target it lit the whole body white
             juice('shake', 0.12);
             if (crys) for (let i = 0; i < 7; i++) e.sh.push({ p: e.at.clone(), v: _sd.set(rnd(-1, 1), rnd(-0.5, 1.2), rnd(-1, 1)).normalize().multiplyScalar(rnd(4, 7) * w).clone(), s: rnd(0, 6) });
           }
@@ -930,11 +934,11 @@ Combat.FX = (() => {
         };
       } else if (kb === 'grid') {
         if (!reduce) burst(at, 16, 6 * w, pc(S, 0, col), 0.34 * w, 0.5, G.box, { drag: 2.2 });
-        flare(at, S.pal ? S.pal[1] : WHITE, 2 * w, 0.12, 1.2, 0.3);
+        flare(at, S.pal ? S.pal[1] : WHITE, 1.6 * w, 0.1, 0.9, 0.3);
       } else if (kb === 'ring') {
         const c1 = pc(S, 0, col);
         shock(at, c1, 0.4 * w, 4 * w, 0.4, 0.12 * w, null, 1.6);
-        flare(at, WHITE, 2.2 * w, 0.1, 1.3, 0.2);
+        flare(at, WHITE, 1.6 * w, 0.08, 1.0, 0.2);
         juice('shake', 0.1);
       } else if (kb === 'mag') {
         // sparks pulled in from all round, then a pop
@@ -943,7 +947,7 @@ Combat.FX = (() => {
           _sd.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(2.2 * w);
           spawn(_sa.copy(at).add(_sd), _pv.copy(_sd).multiplyScalar(-4.2), i % 2 ? c2 : c3, 0.26 * w, 0.24, G.dot, { drag: 0.5 });
         }
-        flare(at, pc(S, 0, col), 2.6 * w, 0.2, 1.2, 0.5);
+        flare(at, pc(S, 0, col), 2 * w, 0.16, 0.85, 0.5);
         shock(at, pc(S, 0, col), 2.2 * w, 0.2 * w, 0.22, 0.06 * w, null, 1.3);   // the field closes in
       }
     }
@@ -964,7 +968,7 @@ Combat.FX = (() => {
         for (const sd of [-1, 1]) { halfOf(a, sd, w * 1.4, _sa); seg(_sa, b, 0.14 * w, sd > 0 ? WHITE : col, 0.9 * k); }
       } else if (kb === 'arc') {
         // lightning crawling along the beam
-        line(jag(a, b, 14, reduce ? 0 : 0.05, sigPts), 0.08 * w, WHITE, 1.3 * k);
+        line(jag(a, b, 14, reduce ? 0 : 0.05, sigPts), 0.07 * w, WHITE, 0.95 * k);
       } else if (kb === 'type') {
         // ink dripping off the beam
         const ink = S.pal ? _c3.copy(S.pal[0]).multiplyScalar(0.55) : INK;

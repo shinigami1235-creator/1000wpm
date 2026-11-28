@@ -39,14 +39,14 @@ window.Lazy = (() => {
     'page:boss': { need: ['boss'], js: ['js/app/boss.js'], pre: ['three', 'gltf'] },   // the raid is bots now, so the operator models (about 520 KB) aren't preloaded
     'page:superboss': { need: ['words', 'combat'], css: ['css/superboss.css'],
       js: ['js/app/wordflow.js', 'js/app/sb-data.js', 'js/app/sb-fight.js', 'js/app/sb-bot.js', 'js/app/sb-stream.js', 'js/app/sb-audio.js', 'js/room/aq.js', 'js/app/camdir.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/sb-kit.js', 'js/app/sb-hydra.js', 'js/app/sb-compiler.js', 'js/app/sb-leviathan.js', 'js/app/sb-support.js', 'js/app/sb-cam.js', 'js/app/sb-scene.js', 'js/app/superboss.js'] },
-    'page:duel': { need: ['net'], js: ['js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/wordflow.js', 'js/app/camdir.js', 'js/app/arena-audio.js', 'js/app/duel-arena.js', 'js/app/duel3d.js', 'js/app/showdown-rules.js', 'js/app/showdown.js', 'js/app/duel.js'], pre: ['three'] },
-    'page:party': { need: ['net'], js: ['js/room/aq.js', 'js/app/wordflow.js', 'js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/camdir.js', 'js/app/arena-audio.js', 'js/app/party-arena.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three'] },
+    'page:duel': { need: ['net'], js: ['js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/orb-audio.js', 'js/app/wordflow.js', 'js/app/camdir.js', 'js/app/arena-audio.js', 'js/app/duel-arena.js', 'js/app/duel3d.js', 'js/app/showdown-rules.js', 'js/app/showdown.js', 'js/app/duel.js'], pre: ['three'] },
+    'page:party': { need: ['net'], js: ['js/room/aq.js', 'js/app/wordflow.js', 'js/app/boss-audio.js', 'js/app/rush/audio.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/orb-audio.js', 'js/app/camdir.js', 'js/app/arena-audio.js', 'js/app/party-arena.js', 'js/app/party3d.js', 'js/app/party.js'], pre: ['three'] },
     'page:u': { need: ['net'], js: ['js/app/players.js'] },
     'page:commons': { need: ['net'], css: ['css/commons.css'], js: ['js/app/player-card.js', 'js/app/commons.js'] },
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
     'page:shop': { css: ['css/kbtry.css'], js: ['js/app/botkit.js', 'js/app/kb-shots.js', 'js/app/kb-try.js', 'js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
-    'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/hangar.js'], pre: ['three'] },
+    'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/bot-fighter.js', 'js/app/orb-audio.js', 'js/app/hangar.js'], pre: ['three'] },
     'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/combat/sfx.js', 'js/app/kb-shots.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };

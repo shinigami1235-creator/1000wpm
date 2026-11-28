@@ -274,7 +274,7 @@ Router.register('hangar', (() => {
       if (demo) { demo.dispose(); demo = null; }
       if (tab !== 'Orb' || !bot || !window.BotFighter || !BotFighter.orbDemo) return;
       const L = { ...look(), ...(preview || {}) };
-      demo = BotFighter.orbDemo(THREE, bot, L.orb || 'core', BotKit.FX[L.color] ? BotKit.FX[L.color].base : glowOf(L));
+      demo = BotFighter.orbDemo(THREE, bot, L.orb || 'core', BotKit.FX[L.color] ? BotKit.FX[L.color].base : glowOf(L), { sound: { vol: 0.7 } });
     }
     function build(over) {
       if (demo) { demo.dispose(); demo = null; }

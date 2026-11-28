@@ -125,14 +125,15 @@ window.KbShots = (() => {
     return b;
   }
   function kit(c, dest) {
-    const env = (g, t, a, peak, dec) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec); };
+    // gains start silent: at the default 1 a source that starts on the same frame clicks
+    const env = (g, t, a, peak, dec) => { g.gain.value = 0.0001; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec); };
     const tone = (t, type, f0, f1, len, vol, a = 0.003, d = dest) => {
       const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + a + len);
       const g = c.createGain(); env(g, t, a, vol, len); o.connect(g).connect(d); o.start(t); o.stop(t + a + len + 0.04); return o;
     };
     const hiss = (t, len, f0, q, vol, type = 'bandpass', a = 0.002, f1, d = dest) => {
       const n = c.createBufferSource(); n.buffer = noise(c); const f = c.createBiquadFilter(); f.type = type; f.Q.value = q;
-      f.frequency.setValueAtTime(f0, t); if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + a + len);
+      f.frequency.value = f0; f.frequency.setValueAtTime(f0, t); if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + a + len);
       const g = c.createGain(); env(g, t, a, vol, len); n.connect(f).connect(g).connect(d); n.start(t, Math.random() * 0.4); n.stop(t + a + len + 0.05);
     };
     // one key going down in a switch: a filtered click with a knock under it
@@ -200,6 +201,11 @@ window.KbShots = (() => {
   const keys = (x, y, w, n, rows, gap = 4, stag = 0) => { let k = ''; for (let r = 0; r < rows; r++) for (let i = 0; i < n; i++) k += `<rect x="${x + i * (w + gap) + r * stag}" y="${y + r * (w + gap)}" width="${w}" height="${w}" rx="2"/>`; return k; };
   function shapeIcon(id, c) {
     switch (id) {
+      // the first four boards, drawn as in the shop (js/app/shop.js), so the Lab can list them too
+      case 'slab': return `<rect x="30" y="70" width="140" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(39, 79, 10, 9, 3, 4.7)}</g>`;
+      case 'compact': return `<rect x="40" y="70" width="120" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(50, 80, 10, 8, 3)}</g>`;
+      case 'split': return `<g transform="rotate(-10 60 100)"><rect x="18" y="70" width="80" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(27, 80, 10, 5, 3)}</g></g><g transform="rotate(10 140 100)"><rect x="102" y="70" width="80" height="60" rx="6" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${keys(111, 80, 10, 5, 3)}</g></g>`;
+      case 'arc': return `<path d="M24 120c40-50 112-50 152 0l-14 14c-34-38-90-38-124 0z" fill="none" stroke="${c}" stroke-width="4"/><g fill="${c}" opacity=".8">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => { const a = Math.PI * (0.84 - i * 0.097), x = 100 + Math.cos(a) * 62, y = 140 - Math.sin(a) * 50; return `<rect x="${(x - 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" width="12" height="12" rx="2" transform="rotate(${(90 - a * 180 / Math.PI).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`; }).join('')}</g>`;
       case 'type': return `<path d="M52 86h96l20 52H32z" fill="none" stroke="${c}" stroke-width="4" stroke-linejoin="round"/><rect x="46" y="62" width="108" height="16" rx="8" fill="none" stroke="${c}" stroke-width="4"/><path d="M40 70h-8M168 70h-8" stroke="${c}" stroke-width="4" stroke-linecap="round"/><g fill="${c}" opacity=".85">${[0, 1, 2].map(r => [0, 1, 2, 3, 4, 5, 6].map(i => `<circle cx="${62 + i * 13 - r * 3 + (r === 2 ? 6 : 0)}" cy="${98 + r * 13}" r="4.5"/>`).join('')).join('')}</g><path d="M100 78v10" stroke="${c}" stroke-width="3"/>`;
       case 'comet': {
         const st = ['#ff4d5e', '#ffb84f', '#f2e94e', '#39ff88', '#3ee6ff', '#6f7bff', '#d36bff'];

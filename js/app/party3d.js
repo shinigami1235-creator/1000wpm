@@ -371,7 +371,9 @@ window.PartyScene = (() => {
       for (const p of players) if (!team.has(p.id)) {
         const L = lookFor(p);
         // gap: how far a fast typist's bot presses in toward the boss, kept short so it stays over its card
-        const f = BotFighter.create(TB, L.id, L.look, { gap: 6, lite: p.id !== 'me' });
+        // the orb's sounds: yours full, everyone else's soft
+        const sound = opts.audio ? { ctx: opts.audio.ctx, vol: p.id === 'me' ? 0.85 : 0.35 } : null;
+        const f = BotFighter.create(TB, L.id, L.look, { gap: 6, lite: p.id !== 'me', sound });
         f.group.rotation.order = 'YXZ'; f.group.rotation.y = Math.PI;
         shine(f.group); soften(f.group); scene.add(f.group);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));

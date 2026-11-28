@@ -40,3 +40,14 @@
 .lab-slider input { width: 100%; accent-color: var(--accent); }
 .lab-sliders { display: grid; gap: 8px; }
 .lab-sig { margin: 6px 0 2px; font-size: 12px; color: var(--ink-2); }
+
+/* the keyboards you own: the shop's icon, the name, the one in use marked */
+.lab-kbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+.lab-kb { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; padding: 8px 6px 7px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg-0); color: var(--ink-2); cursor: pointer; text-transform: none; font: 400 12px/1.2 var(--f-label); text-align: center; }
+.lab-kb:hover { color: var(--ink); border-color: var(--line); }
+.lab-kb[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.lab-kb img, .lab-kb-ic { width: 44px; height: 44px; border-radius: calc(var(--r) - 2px); }
+.lab-kb-n { overflow-wrap: anywhere; }
+.lab-kb-use { font: 500 10px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.lab-kb .lab-lock { margin: 0; }
+.lab-kb-more { display: grid; place-content: center; min-height: 86px; text-decoration: none; border-style: dashed; }
