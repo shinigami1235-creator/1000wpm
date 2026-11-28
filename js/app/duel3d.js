@@ -872,6 +872,9 @@ window.DuelScene = (() => {
     const stBeams = [0, 1].map(() => ({ core: beamMesh(), glow: beamMesh(), haze: beamMesh(), hot: beamMesh() }));
     const stCore = [0, 1].map(() => ({ a: sprite(glowTex, 1, 9), b: sprite(flareTex, 1, 9) }));
     const stJ = { a: sprite(flareTex, 1, 10), b: sprite(glowTex, 1, 10), c: sprite(glowTex, 1, 9) };
+    // electric arcs crackling off the collision: three short zigzags of four segments, redrawn every few frames
+    const stArc = Array.from({ length: 12 }, () => beamMesh()), stArcP = Array.from({ length: 15 }, () => new V());
+    let stArcT = 0;
     const stPulse = Array.from({ length: 18 }, (_, k) => ({ s: sprite(glowTex, 1, 8), side: k % 2, u: Math.random() }));
     const stRings = Array.from({ length: 5 }, () => {
       const m = new THREE.Mesh(own(new THREE.RingGeometry(0.86, 1, 48)), own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
@@ -923,6 +926,7 @@ window.DuelScene = (() => {
       stCore.forEach(c => { c.a.visible = c.b.visible = false; });
       stJ.a.visible = stJ.b.visible = stJ.c.visible = false;
       stPulse.forEach(P => { P.s.visible = false; });
+      stArc.forEach(m => { m.visible = false; });
     }
     function drawStruggle(dt) {
       if (!ST.on) return;
@@ -975,11 +979,12 @@ window.DuelScene = (() => {
         if (P.u > 1) P.u -= 1;
         const M = i ? ST.B : ST.A, lim = ST.through === i ? 1 : 1;
         P.s.position.copy(M).lerp(ST.J, P.u * lim);
-        P.s.scale.setScalar(ST.w[i] * (1.1 + Math.sin(P.u * Math.PI) * 0.9));
-        P.s.material.opacity = Math.sin(P.u * Math.PI) * 0.5;
+        P.s.scale.setScalar(ST.w[i] * (0.7 + Math.sin(P.u * Math.PI) * 0.6));
+        P.s.material.opacity = Math.sin(P.u * Math.PI) * 0.45;
       }
       // the collision: a white-hot knot in both colours, sparks pouring off it, rings rolling out along the beams
       stJ.a.visible = stJ.b.visible = stJ.c.visible = both;
+      if (!both) stArc.forEach(m => { m.visible = false; });
       if (both) {
         const pulse = reduce ? 1 : 1 + Math.sin(t * 38) * 0.12 + Math.random() * 0.12;
         const S0 = (1.0 + ST.heat * 0.7) * pulse * (ST.mode === 'lock' ? 0.75 : 1);
@@ -993,6 +998,22 @@ window.DuelScene = (() => {
           // each side's sparks blow back along the other's beam, the fan wider as it heats up
           for (let i = 0; i < 2; i++) burst(ST.J, 2, 6 + ST.heat * 6, ST.sc[i], { shard: Math.random() < 0.5, size: 0.2, life: 0.45, dir: (i ? 1 : -1) * -0.6, up: 0.5, grav: 7, k: 1.6 });
           if (Math.random() < 0.3) burst(ST.J, 1, 3, WHITE, { size: 0.5, life: 0.1, grav: 0, k: 0.7 });
+        }
+        // arcs: new zigzags every few frames, longer and more of them as it heats up
+        stArcT -= dt;
+        if (stArcT <= 0 && !reduce) {
+          stArcT = 0.05;
+          const nb = 1 + Math.round(ST.heat * 2), L = 0.5 + ST.heat * 1.1;
+          for (let a = 0; a < 3; a++) {
+            const live = a < nb, dir = tmp2.set(rnd(-0.4, 0.4), rnd(-1, 1), rnd(-1, 1)).normalize();
+            let p = stArcP[a * 5].copy(ST.J);
+            for (let k = 1; k < 5; k++) {
+              const q = stArcP[a * 5 + k].copy(p).addScaledVector(dir, L / 4).add(tmp.set(rnd(-0.2, 0.2), rnd(-0.2, 0.2), rnd(-0.2, 0.2)));
+              const m = stArc[a * 4 + k - 1];
+              if (live) { strip(m, p, q, 0.05 * (1.2 - k * 0.2), 0.9); m.material.color.copy(ST.cols[a % 2]).lerp(WHITE, 0.6).multiplyScalar(1.6); } else m.visible = false;
+              p = q;
+            }
+          }
         }
         // the floor under the collision: dust blown out from under it, more as it heats up
         ST.dustT = (ST.dustT || 0) - dt;
