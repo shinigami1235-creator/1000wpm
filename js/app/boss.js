@@ -109,6 +109,7 @@ Router.register('boss', (() => {
       now, demo: d, raiders: d && d.raiders ? d.raiders() : [],
       me: { name: WPM.profile().name, division: div ? div.id : null, recruit: !!(window.Ops && Ops.clearance().i === 0) },
       dodgeWord: () => TT.wordOfLength(...DODGE[tier]),
+      hold: (a, b) => !!(st && R.faceoffsNear(st, a).some(f => f.start < b && f.end > a)),
       reach: () => reachMs(),
     });
     if (words && tier < 3) words.set({ maxLen: [5, 6, 7][tier] });
@@ -137,7 +138,7 @@ Router.register('boss', (() => {
     coveredMe = {}; myCovers = {}; tags = []; inLine = new Set(); runs = {}; assistN = {};
     newSession();
     feed = []; hist = []; trace = []; typed = ''; target = null; combo = 0; best = 0; clean = true; lastStage = -1; lastPhase = -1;
-    flow = null;
+    flow = null; foE = null; foSaved = null; foShown = null; foPow = 0; if (foHud) foHud.hide();
     mech = []; mechKey = ''; sent = new Set(); done = new Set(); mine = new Set(); warned = {};
     soon = []; soonAt = 0; armed = new Map(); liveCps = 0; lastWordAt = 0; spared = new Set();
     setCount = 0; threatOn = false; threatId = null; boomWant = false; livesKey = ''; livesHp = -1;
@@ -481,6 +482,7 @@ Router.register('boss', (() => {
   }
   function submit() {
     if (!typed || !st || st.defeatedAt) return;
+    if (foSaved) { foSubmit(); return; }
     sess.keys++;                      // the space
     const t = now();
     syncTags();
@@ -500,6 +502,76 @@ Router.register('boss', (() => {
       misses.push({ typed, word });
     }
     after(word, ok, null);
+  }
+  // ---------- the beam face-off (WorldBossRules.FACEOFF, Gid 28 Nov 2026) ----------
+  // The boss breaks off and charges; through the charge and the clash your word line becomes the resistance
+  // words (the same twelve for everyone, in order), each right one adding power to the raid's beam and each
+  // wrong one taking half a word off. The power is counted and the result decided by the server
+  // (WorldBossNet.sendResist, state.fo, the 'faceoff' event), so every raider sees the same clash.
+  let foE = null, foHud = null, foSaved = null, foShown = null, foPow = 0, foMine = { ok: 0, bad: 0 }, foNext = 0;
+  function foWords(e, n) { const out = []; for (let i = 0; i < n; i++) out.push(e.words[(foNext + i) % e.words.length]); foNext += n; return out; }
+  function foTag(i) { return { kind: 'resist', src: foE.id, color: '#5ce8ff', label: i === 0 ? 'RESIST' : '', part: 0, of: 1 }; }
+  function foSwap(on) {
+    if (on) { foSaved = { stack, tags }; foNext = 0; stack = foWords(foE, 30); tags = stack.map((w, i) => foTag(i)); }
+    else { stack = foSaved.stack; tags = foSaved.tags; foSaved = null; }
+    typed = ''; target = null; clean = true;
+    const box = q('queue'); if (box) box.innerHTML = '';
+    flow = null; renderQueue();
+  }
+  function foSubmit() {
+    const word = stack.shift(); tags.shift();
+    const ok = typed === word, e = foE;
+    sess.keys++;
+    if (ok) { foMine.ok++; sess.good++; sess.letters += word.length; sess.words++; TT.click(true); cSfx('blip'); if (scene) { scene.act('you', 'type'); scene.faceoffPower(foPow / Math.max(1, (st.fo && st.fo.need) || 1), true); } sfx('foWord', Math.min(1.4, foPow / Math.max(1, (st.fo && st.fo.need) || 1))); }
+    else { foMine.bad++; sess.missed++; misses.push({ typed, word }); TT.click(false); }
+    if (e) WorldBossNet.sendResist(e.id, typed).then(r => { if (r && r.power != null && foE === e) foPow = Math.max(foPow, r.power); }).catch(() => {});
+    if (flow) flow.push(word, typed, ok, 'resist');
+    typed = ''; target = null; clean = true;
+    if (stack.length < 16) { const more = foWords(e, 20); stack.push(...more); more.forEach(() => tags.push(foTag(1))); }
+    renderQueue(); paintYou();
+  }
+  function foTick(t, isDown) {
+    const e = st && !st.defeatedAt ? R.faceoffAt(st, t) : null;
+    if (e && foShown !== e.id) {
+      foShown = e.id; foE = e; foPow = 0; foMine = { ok: 0, bad: 0 };
+      if (!foHud && window.FaceoffHud) foHud = FaceoffHud.create(q('stage'));
+      if (foHud) foHud.show();
+      A.faceoff('start', (e.end - t) / 1000);
+      pushFeed({ sys: true, text: `${NAME} broke off and is charging its cannon. Type the resistance words` });
+    }
+    if (!foE) return;
+    const live = st.fo && st.fo.id === foE.id ? st.fo : null;
+    if (live) foPow = live.win !== null ? live.power : Math.max(foPow, live.power);
+    const need = (live && live.need) || R.resistNeed(st.raiders.length, st.phase);
+    const ph = t < foE.charge ? 'gather' : t < foE.clash ? 'charge' : t < foE.resolve ? 'clash' : t < foE.end ? 'resolve' : null;
+    // your line is the resistance words from the charge until it resolves
+    if (!foSaved && (ph === 'charge' || ph === 'clash')) foSwap(true);
+    if (foSaved && ph !== 'charge' && ph !== 'clash') foSwap(false);
+    if (scene) scene.faceoffPower(foPow / need);
+    const u = ph === 'charge' ? (t - foE.charge) / (foE.clash - foE.charge) : ph === 'clash' ? (t - foE.clash) / (foE.resolve - foE.clash) : ph === 'resolve' ? (t - foE.resolve) / (foE.end - foE.resolve) : 0;
+    if (foHud) foHud.update({ phase: ph, u, power: foPow, need, left: (foE.clash - t) / 1000, you: foMine.ok, raiders: live ? live.raiders : 0 });
+    A.faceoffSet(ph, foPow / need, u);
+    if (!ph) { foE = null; if (foHud) foHud.hide(); A.faceoff('end'); }
+  }
+  function foResult(e) {
+    if (scene) scene.faceoffResult(e.win, e.margin);
+    if (foHud) foHud.result(e.win, { dmg: e.dmg, margin: e.margin });
+    A.faceoff('resolve', e.win);
+    const pct = Math.round(e.power / Math.max(0.1, e.need) * 100);
+    if (e.win) {
+      pushFeed({ text: `The raid broke ${NAME}'s beam at ${pct}% power. ${fmt(e.dmg)} damage, kernel open for ${R.WEAK_MS / 1000}s`, cls: 'shield' });
+      card({ who: 'The raid', what: `broke the beam (${pct}%)`, color: '#3ee6ff' });
+    } else {
+      // everyone takes a hit, the way a raid attack that wasn't blocked does
+      pushFeed({ text: `${NAME}'s beam overpowered the raid at ${pct}% power`, cls: 'alert' });
+      const t = now(), isDown = !!(squad && squad.down()), dmg = Math.round(R.FACEOFF.LOSE_DMG * R.teamGuard(st, t));
+      if (squad) squad.raidHit(dmg, t);
+      if (active() && !isDown) {
+        const r = me ? me.hurt('slam') : { blocked: false };
+        if (r.blocked) { sfx('impact', true); pop('BLOCKED', 'cyan'); }
+        else { sess.fails++; if (squad) squad.hitMe(dmg, t); flashTint(); pop('HIT', 'red'); }
+      }
+    }
   }
   // a word typed right: its damage, the combo and the knock-back every set of words
   function hitWord(word, clean, t) {
@@ -639,6 +711,7 @@ Router.register('boss', (() => {
   const GAP_S = 3.5;
   const gapWords = () => Math.max(4, Math.round(GAP_S * speed() / 6));
   function place(n, tag, from = NEAR, gap = 0) {
+    if (foSaved) return -1;          // the face-off's words own the line
     if (stack.length < 40) stack.push(...moreWords(60));
     syncTags();
     for (let i = Math.max(NEAR, from); i + n <= stack.length; i++) {
@@ -1052,7 +1125,8 @@ Router.register('boss', (() => {
     list.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.due - b.due);
     if (gone.size > 40) gone.clear();
     mech = list;
-    syncLine(t, isDown);
+    if (!foSaved) syncLine(t, isDown);
+    foTick(t, isDown);
     renderShield(t);
     if (st.brk) { const n = q('brkt'); if (n) { const left = Math.max(0, (st.brk.hit - t) / 1000); n.textContent = left.toFixed(1) + 's'; } }
     const th = mech.find(m => THREAT.has(m.kind));
@@ -1571,6 +1645,7 @@ Router.register('boss', (() => {
       if (myCovers[e.id]) pushFeed({ text: `You covered ${myCovers[e.id]} ${myCovers[e.id] === 1 ? 'teammate' : 'teammates'}`, cls: 'you' });
     }
     if (e.type === 'covered') pushFeed({ text: `${e.by} covered you`, cls: 'shield' });
+    if (e.type === 'faceoff') foResult(e);
     if (e.type === 'team' && e.up) {
       const tr = R.TEAM.tiers.find(x => x.id === e.tier);
       if (tr) {
@@ -2052,6 +2127,10 @@ Router.register('boss', (() => {
       spells: () => Combat.SPELLS().map(x => x.id),
       fx: () => { const i = scene && scene.info(); return i && i.fx; },
       pause: on => scene && scene.pause(on),
+      // the beam face-off: start one in ms, and what it's doing
+      faceoff: (ms, focus) => { const d = WorldBossNet.demo(); return d && d.faceoffIn ? d.faceoffIn(ms || 0, focus) : null; },
+      fo: () => ({ e: foE && { id: foE.id, start: foE.start - now(), charge: foE.charge - now(), clash: foE.clash - now(), resolve: foE.resolve - now(), end: foE.end - now(), words: foE.words },
+        power: foPow, mine: { ...foMine }, swapped: !!foSaved, live: st && st.fo, scene: scene && scene.foInfo && scene.foInfo(), line: stack.slice(0, 6) }),
     };
   }
 

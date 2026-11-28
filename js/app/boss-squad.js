@@ -107,6 +107,8 @@ window.BossSquad = (() => {
       // reboots
       for (const m of M) if (m.down && t >= m.downUntil) up(m, REBOOT_HP, null);
       // a new lock-on
+      // no lock-on that would land in a beam face-off (opts.hold(from, to), boss-rules.js FACEOFF)
+      if (t >= nextLock && o.hold && o.hold(t, t + LOCK_WIND + 6000)) nextLock = t + 1500;
       if (t >= nextLock) {
         const alive = M.filter(m => !m.down && !m.lockUntil);
         if (alive.length) {

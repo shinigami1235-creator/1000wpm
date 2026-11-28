@@ -81,6 +81,9 @@ window.BossScene = (() => {
       lock: (who, ms) => impl && impl.lock(who, ms),
       sideAttack: (k, kind, outcome) => impl && impl.sideAttack(k, kind, outcome),   // test hook
       press: (k, s) => impl && impl.press(k, s),   // test hook: hold the boss close to your squad
+      faceoffPower: (k, word) => impl && impl.faceoffPower(k, word),   // the raid's power over what it needs, live
+      faceoffResult: (win, margin) => impl && impl.faceoffResult(win, margin),   // the server's result
+      foInfo: () => impl && impl.foInfo(),   // tests
       orbitInfo: () => impl && impl.orbitInfo(),
       director: () => impl && impl.director && impl.director(),
       dbg: () => impl && impl.dbg(),
@@ -1088,7 +1091,7 @@ window.BossScene = (() => {
     function orbitTick(t, dt) {
       if (reduce || !BOT) { orbit.w = 0; orbit.k = 0; return; }
       const sl = own(t), lk = locks.find(l => l.slot === RAID && t > l.h - 1.0 && t < l.h + 0.4);
-      const hold = !!(sl && !sl.cut && t > sl.h - 1.0 && t < sl.h + 0.4) || !!lk || dead;
+      const hold = !!(sl && !sl.cut && t > sl.h - 1.0 && t < sl.h + 0.4) || !!lk || dead || foOn(t);
       const prev = orbit.phi;
       if (orbit.sw) {
         const u = (t - orbit.sw.t0) / orbit.sw.dur;
@@ -1498,6 +1501,7 @@ window.BossScene = (() => {
     function event(ev, netNow) {
       if (dead || evs.some(x => x.id === ev.id)) return;
       const t = nowS(), off = ms => t + (ms - netNow) / 1000;
+      if (ev.type === 'faceoff') { faceoffEvent(ev, off); return; }
       const x = { id: ev.id, type: ev.type === 'charge' ? 'slam' : ev.type, kind: ev.kind, s: off(ev.start), e: off(ev.end), started: false, hitDone: false };
       if (ev.type === 'slam' || ev.type === 'charge') { x.h = off(ev.hit); x.warned = 0; }
       if (ev.type === 'volley') x.shots = ev.shots.map(s => ({ id: s.id, l: off(s.launch), a: off(s.arrive), lane: s.lane, fired: false }));
@@ -1561,7 +1565,7 @@ window.BossScene = (() => {
     function sideTick(t) {
       if (!flight || reduce || dead || SHOWN < ONSCREEN || t < side.next) return;
       const busy = evs.some(x => x.type === 'slam' && (x.side ? t < x.e : x.e > t - 0.5 && x.s < t + 4.5)) ||
-        current(t, 'adds') || current(t, 'shield') || current(t, 'volley') || locks.some(l => t < l.h + 0.5) || t - roarAt < 2.6;
+        current(t, 'adds') || current(t, 'shield') || current(t, 'volley') || locks.some(l => t < l.h + 0.5) || t - roarAt < 2.6 || (fo && t < fo.e + 1.5);
       if (busy) { side.next = t + 0.8; return; }
       side.k = side.k === 1 ? 2 : 1;
       const r = Math.random();
@@ -1773,6 +1777,138 @@ window.BossScene = (() => {
     //   grab   memory grab: it rears back with the claw thrown wide and red lines run from its talons to the
     //                       squad; then it lunges in and the claw closes on them, crushing, crackling red
     const MOVE_KINDS = new Set(['quake', 'scan', 'rain', 'grab']);
+    // ---------- the beam face-off (js/app/boss-rules.js FACEOFF; Gid, 28 Nov 2026) ----------
+    // "The boss can suddenly disengage and begin the charge. The bots follow suit on the opposite side, and then
+    // cinematic shots from the camera add drama." The boss dashes back across the arena and raises the arm
+    // cannon; every squad flies into one wedge facing it (js/app/raid-flight.js ctx.form) and feeds a strand of
+    // light into the raid's orb (js/app/faceoff3d.js), which grows with the power the raid types in. Both fire,
+    // the beams meet, and the meeting point slides toward the weaker side for the struggle, shaking harder as it
+    // goes; then the winner's beam pushes through: the boss is thrown back and staggers, or the squads are
+    // blown out of the wedge. boss.js feeds the live power (faceoffPower) and the result (faceoffResult), both
+    // decided once by the server; the camera plays one directed sequence over the whole thing (shots.faceoff).
+    let fo = null;
+    const foOn = t => !!(fo && t >= fo.s && t < fo.e);
+    const FO_Z = -13, foAt = new V(), foOrb = new V(), foPt = new V(), foBoss = new V(), foMuz = new V(), foDir = new V(), foTo = new V(), foSide = new V();
+    let foS = 0.5, foLastWord = -9, foBots = [];
+    const foFx = window.Faceoff3D ? Faceoff3D.create(THREE, scene, { burst, flare, arc: (a, b) => { if (kit && kit.arcs) kit.arcs.add(a, b, 0.07, 0.2, 8); }, reduce }) : null;
+    function faceoffEvent(ev, off) {
+      if (fo && fo.id === ev.id) return;
+      const t = nowS();
+      fo = { x0: mv.x, z0: mv.z, id: ev.id, s: off(ev.start), c: off(ev.charge), x: off(ev.clash), r: off(ev.resolve), e: off(ev.end), power: 0, win: null, margin: 0, hit: false, fired: false };
+      foS = 0.5;
+      mv.dashUntil = t + 1.1; adv = 0;
+      // whatever it was doing to a flank squad stops: it breaks off from everything
+      for (const z of evs) if (z.side && !z.cut) z.cut = t;
+      // it breaks off: a roar of steam, blocks thrown, and the director's sequence
+      scatter(24, 1.1); wave(root.position, 1, 16, 0.9, RED, 0.7);
+      if (director && !reduce) director.want('faceoff', { pri: 5 });
+      snd('foStart');
+    }
+    function faceoffPower(k, word) { if (fo) fo.power = Math.max(0, k || 0); if (word) foLastWord = nowS(); }
+    function faceoffResult(win, margin) { if (fo && fo.win === null) { fo.win = !!win; fo.margin = margin || 0; } }
+    // phase and progress: gather (the wedge forms), charge, clash, resolve
+    function foPhase(t) {
+      if (!fo || t < fo.s || t >= fo.e) return null;
+      if (t < fo.c) return ['gather', (t - fo.s) / (fo.c - fo.s)];
+      if (t < fo.x) return ['charge', (t - fo.c) / (fo.x - fo.c)];
+      if (t < fo.r) return ['clash', (t - fo.x) / (fo.r - fo.x)];
+      return ['resolve', (t - fo.r) / (fo.e - fo.r)];
+    }
+    // the wedge's spot and the team's orb, along the line to the boss
+    function foGeometry() {
+      foAt.copy(homePos[RAID]).setY(0);
+      foTo.copy(root.position).sub(foAt).setY(0).normalize();
+      foOrb.copy(foAt).addScaledVector(foTo, 3.4); foOrb.y = (BOT ? BotKit.HOVER : 1.6) + 2.1;
+      foSide.crossVectors(dY, foTo).normalize();
+    }
+    function faceoffTick(t, dt) {
+      const ph = foPhase(t);
+      if (!ph) { if (fo && t >= fo.e) { fo = null; if (foFx) foFx.update(null); } return; }
+      const [name, u] = ph;
+      foGeometry();
+      // the boss's muzzle: the arm cannon raised at the wedge
+      kit && kit.bones.handR.localToWorld(foMuz.set(0, -BossKit.BOSSES.syntax.fist * 1.25, 0));
+      if (kit) { kit.bones.foreR.getWorldPosition(foBoss); foDir.copy(foMuz).sub(foBoss).normalize(); }
+      // where the beams meet: s 0 at the raid's orb, 1 at the boss's muzzle; the weaker side is pushed back
+      const ratio = fo.power, lean = Math.tanh((ratio - 1) * 2.4);
+      if (name === 'clash') {
+        const target = 0.5 + 0.3 * lean * smooth(u * 1.6) + Math.sin(t * 8.5) * 0.025 * (1 - Math.abs(lean)) + Math.sin(t * 3.1) * 0.02;
+        foS += (target - foS) * Math.min(1, dt * 3);
+      } else if (name === 'resolve' && fo.win !== null) {
+        const push = smooth(u / 0.22);
+        foS += ((fo.win ? 1 : 0) - foS) * Math.min(1, dt * (2 + 14 * push));
+      } else if (name !== 'resolve') foS = 0.5;
+      foPt.copy(foOrb).lerp(foMuz, foS);
+      // on a win the raid's beam drives past the cannon into its chest
+      if (name === 'resolve' && fo.win === true) foPt.lerp(anchorCore, smooth(u / 0.3));
+      // the boss's cannon: it gathers through the charge and fires at the clash
+      if (cfx) {
+        if (name === 'gather') cfx.update({ phase: 'spark', u, t, at: foMuz, dir: foDir, target: foOrb, reduce: calm });
+        else if (name === 'charge') cfx.update({ phase: 'grow', u: Math.min(0.97, u), t, at: foMuz, dir: foDir, target: foOrb, mark: foAt, reduce: calm });
+        else if (name === 'clash') cfx.update({ phase: u < 0.05 ? 'fire' : 'beam', u: u < 0.05 ? u / 0.05 : 0.04 + 0.05 * Math.sin(t * 29 + 1), t, at: foMuz, dir: foDir, target: foPt, reduce: calm });
+        else cfx.update(fo.win === false ? { phase: 'beam', u: Math.min(0.95, 0.05 + u * 0.9), t, at: foMuz, dir: foDir, target: foPt, reduce: calm }
+          : u < 0.3 ? { phase: 'beam', u: 0.35 + u * 2, t, at: foMuz, dir: foDir, target: foPt, reduce: calm } : null);
+        cannonK = name === 'charge' ? u : name === 'clash' ? 1 : 0;
+      }
+      // the raid's side: the strands, the orb and its beam
+      foBots.length = 0; foBots.push(raidPos[RAID]);
+      for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) if (!(flight && flight.isDown(i))) foBots.push(raidPos[i]);
+      if (foFx) foFx.update({ t, phase: name, u, power: ratio, bots: foBots, orb: foOrb, point: name === 'clash' || name === 'resolve' ? foPt : null, bossAt: anchorCore, win: fo.win, side: -lean, you: t - foLastWord, reduce: calm });
+      // the feel: slow motion as the beams meet, a shake that grows through the struggle, the impact
+      if (name === 'clash') {
+        if (!fo.fired) { fo.fired = true; snd('foClash'); if (!reduce) slowUntil = Math.max(slowUntil, performance.now() + 420); shake = Math.max(shake, 0.6); stopUntil = Math.max(stopUntil, performance.now() + 60); }
+        shake = Math.max(shake, 0.12 + 0.38 * u);
+        tremble2 = 0.4 + 0.9 * u;
+      } else tremble2 = name === 'charge' ? 0.5 * u : 0;
+      if (name === 'resolve' && fo.win !== null && !fo.hit && u > 0.12) {
+        fo.hit = true;
+        if (fo.win) {
+          // its own beam thrown back into it: the arm and the chest take it, it's thrown back and staggers
+          v1.copy(anchorCore); burst(v1, 120, 20, CYAN, 1.3, 6); burst(v1, 60, 14, WHITE, 1.4, 8); flare(v1, CYAN, 12, 0.4, canFlash() ? 1.4 : 0.6);
+          if (kit) { kit.group.updateMatrixWorld(true); kit.fists[1].at.getWorldPosition(vF); burst(vF, 50, 14, WHITE, 1.2, 6); }
+          for (let k = 0; k < 16; k++) { const j = pickBlock(true); if (j >= 0) knock(blocks[j], false, 1.6); }
+          stagger(); recoilV -= 2.4; hitGlow = calm ? 0.5 : 1; shake = Math.max(shake, 1.3);
+          stopUntil = Math.max(stopUntil, performance.now() + 160); if (!reduce) slowUntil = performance.now() + 520;
+          lightPulse(anchorCore, CYAN, 1.4); decal(v2.copy(root.position).setY(0), 7, rnd(0, 6.28), 1, 10);
+        } else {
+          // it overwhelms the raid's beam: the wedge is blown apart, bots flipped and some knocked down
+          v1.copy(foOrb); burst(v1, 120, 18, RED, 1.2, 8); burst(v1, 50, 12, WHITE, 1.2, 10); flare(v1, RED, 11, 0.4, canFlash() ? 1.3 : 0.6);
+          wave(v2.copy(foAt).setY(0.2), 0.5, 20, 1.0, RED, 0.95);
+          if (flight) for (let i = 0; i < Math.min(ONSCREEN, SHOWN); i++) { knockAt[i] = t + Math.random() * 0.08; flight.knock(i, t, true); }
+          if (flight) flight.knock(RAID, t, true);
+          shake = Math.max(shake, 1.5); stopUntil = Math.max(stopUntil, performance.now() + 140); if (!reduce) slowUntil = performance.now() + 480;
+          lightPulse(foOrb, RED, 1.4); decal(v2.copy(foAt).setY(0), 6, rnd(0, 6.28), 1, 10);
+          act('you', 'hit');
+        }
+        snd('foEnd', !!fo.win);
+      }
+    }
+    let tremble2 = 0;
+    // the face-off's camera, one sequence timed to the phases (it starts 0.25 s in, the director's beat):
+    //   1.55 s  wide and high off the raid's shoulder: the boss breaking off and the bots regrouping
+    //   2.2 s   on the arm cannon as the light gathers into it, pushing in
+    //   2.4 s   behind the wedge, low: the strands running into the raid's orb, the boss far off
+    //   2.4 s   high behind the raid, looking down the line at both orbs
+    //   0.9 s   side on as both beams fire and meet, in slow motion
+    //   1.9 s   the struggle: side on, pushing in on the meeting point as the shake grows
+    //   1.5 s   the loser: the boss thrown back by its own beam, or the wedge blown apart
+    // The words and the power meter are in the page under and over the strip, so every shot keeps the beams in
+    // the middle of the frame; nothing else can cut in (priority 5, and no attack can start during it).
+    if (dirShots) {
+      const fp = (pose, more) => P((u, o, l) => { foGeometry(); pose(u, o, l); }, { cut: 1, free: true, duringThreat: true, ...more });
+      dirShots.faceoff = { pri: 5, free: true, duringThreat: true, parts: [
+        fp((u, o, l) => { const H = bossH(); l.copy(root.position).lerp(foAt, 0.45); l.y = H * 0.3; o.copy(l).addScaledVector(foTo, -24 - 3 * u).addScaledVector(foSide, 9); o.y = H * 0.75 + 1.5 * u; }, { len: 1.55, fov: 44, omega: 7 }),
+        fp((u, o, l) => { l.copy(foMuz); o.copy(foMuz).addScaledVector(foTo, -(9 - 2.5 * smooth(u))).addScaledVector(foSide, 3.5); o.y = foMuz.y + 1.2; }, { len: 2.2, fov: 38, omega: 8, face: 1, slow: 0 }),
+        fp((u, o, l) => { o.copy(foAt).addScaledVector(foTo, -14 + 1.5 * u).addScaledVector(foSide, -4.5); o.y = (BOT ? BotKit.HOVER : 1.6) + 4.6; l.copy(foOrb).lerp(root.position, 0.45); l.y = foOrb.y + 2.4; }, { len: 2.4, fov: 46, omega: 7, face: 1 }),
+        fp((u, o, l) => { const H = bossH(); l.copy(foOrb).lerp(root.position, 0.6); l.y = H * 0.32; o.copy(foAt).addScaledVector(foTo, -17 - 1.5 * u).addScaledVector(foSide, 6); o.y = 14 + 1.5 * u; }, { len: 2.4, fov: 42, omega: 6 }),
+        fp((u, o, l) => { l.copy(foOrb).lerp(foMuz, 0.5); o.copy(l).addScaledVector(foSide, 21); o.y = l.y + 1.5; }, { len: 0.9, fov: 44, omega: 10, face: 1, slow: 0.35 }),
+        fp((u, o, l) => { l.copy(foPt); o.copy(foPt).addScaledVector(foSide, 19 - 6 * smooth(u)); o.y = foPt.y + 1.2 + 0.6 * u; }, { len: 1.9, fov: 42, omega: 5, face: 1 }),
+        fp((u, o, l) => {
+          if (fo && fo.win === false) { l.copy(foAt); l.y = (BOT ? BotKit.HOVER : 1.6) + 0.8; o.copy(foAt).addScaledVector(foTo, 9).addScaledVector(foSide, 6); o.y = 5.5 - u; }
+          else { const H = bossH(), d = fitD(H, 0.72, 40) * (1 + 0.06 * u); l.copy(anchorCore); l.y -= H * 0.05; o.copy(root.position).addScaledVector(foTo, -d * 0.55).addScaledVector(foSide, -d * 0.8); o.y = H * 0.42; }
+        }, { len: 1.5, fov: 40, omega: 8, slow: 0.4 }),
+      ] };
+    }
     const snd = (n, a) => { if (opts.onSfx) opts.onSfx(n, a); };
     // ---------- the arm cannon (js/app/cannonfx.js) ----------
     // Gid, 28 Nov 2026: "it seems to lose the special glow it had when charging the arm cannon, like the light
@@ -1803,7 +1939,7 @@ window.BossScene = (() => {
     }
     function cannonTick(t) {
       cannonK = 0;
-      if (!cfx) return;
+      if (!cfx || foOn(t)) return;   // the face-off drives the cannon itself
       let x = null;
       for (const z of evs) if (z.type === 'slam' && (z.kind === 'laser' || z.kind === 'beam') && t >= z.s && t < z.h + 0.6 && !z.cut && (!x || (x.side && !z.side))) x = z;
       if (!x || dead) { cfx.update(null); return; }
@@ -2273,7 +2409,7 @@ window.BossScene = (() => {
     }
     function menaceTick(t, dt) {
       const quiet = dead || Math.abs(bossTurn) > 0.8 || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
-        t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5 || t - kneelAt < 2.9;
+        t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5 || t - kneelAt < 2.9 || foOn(t);
       if (!dead) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
       if (nowS() < pressUntil) adv = Math.max(adv, pressK);
       if (quiet) { men.next = Math.max(men.next, t + 0.6); return; }
@@ -2596,6 +2732,14 @@ window.BossScene = (() => {
         tremble = 0.6 + Math.min(1.4, deadT * 0.7);
         kneelW = smooth(clamp((deadT - 0.45) / 0.5, 0, 1));
       } else if (dead) { L.push(['reel', clamp(deadT / 0.4, 0, 1)]); L.push(['fall', ease((deadT - 0.25) / 0.9)]); tremble = 1; }
+      // the face-off: the cannon comes up as it lands from the dash back and holds firing through the struggle
+      if (fo && !dead && t >= fo.s && t < fo.e) {
+        const upK = smooth((t - fo.s - 0.4) / 1.2) * (fo.win === true && t >= fo.r ? Math.max(0, 1 - (t - fo.r) / 0.25) : 1) * (1 - smooth((t - fo.e + 1.1) / 1.0));
+        const fireK = t >= fo.x ? Math.min(1, (t - fo.x) / 0.1) * upK : 0;
+        if (upK > 0.01) { L.push(['cannon', upK]); L.push(['cannon_body', upK]); busy = Math.max(busy, upK); }
+        if (fireK > 0.01) L.push(['cannonFire', fireK]);
+        tremble = Math.max(tremble, tremble2);
+      }
       // the arm cannon's recoil: the shot kicks the cannon up and the elbow folds before the arm drops
       if (sl && sl.kind === 'laser' && cfx && !sl.cut) { const a = t - sl.h; if (a > 0.04 && a < 1.3) L.push(['cannonPull', Math.sin(clamp((a - 0.04) / 1.26, 0, 1) * Math.PI) * 0.85]); }
       kit.mix(L);
@@ -2799,10 +2943,14 @@ window.BossScene = (() => {
       if (!slK || (slK.kind !== 'laser' && !(slK.kind in { quake: 1, scan: 1, rain: 1 }))) tz += (front + 1 - tz) * tk * still;   // every attack but the laser comes right up to the raid
       // and rears back through the wind-up first
       if (slK && !slK.side && !slK.cut && slK.kind !== 'laser' && slK.kind !== 'beam' && slK.kind !== 'scan' && slK.kind !== 'quake' && nowS() < slK.h - 0.12) tz -= 2.4 * ease(clamp((nowS() - slK.s) / Math.max(0.3, slK.h - 0.5 - slK.s), 0, 1)) * still;
+      // the face-off: back across the arena, square to the raid, until it's over
+      if (fo && t >= fo.s && t < fo.e - 0.9) { tx = 0; tz = FO_Z + (fo.win === true && t > fo.r ? -2.5 * smooth((t - fo.r) / 0.4) : 0); }
       const dash = t < mv.dashUntil ? 7 : 0;            // a dash to a new spot takes about half a second
       const hold = orbit.sw && !own(t) ? 0.08 : 1;   // it stays put while the party swings round it
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash) * hold);
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash) * hold);
+      // the face-off's break: a fixed 0.7 s leap back across the arena, whatever the frame rate
+      if (fo && t >= fo.s && t < fo.s + 0.75) { const k = ease((t - fo.s) / 0.7); mv.x = fo.x0 * (1 - k); mv.z = fo.z0 + (FO_Z - fo.z0) * k; pose.y += Math.sin(k * Math.PI) * 1.6; }
       // phase 2: a full turn now and then
       const su = t - mv.spin;
       mv.face = su < 1.3 && M.spin ? smooth(su / 1.3) * Math.PI * 2 : 0;
@@ -2888,6 +3036,7 @@ window.BossScene = (() => {
         else if (lk) { const p = raidPos[lk.slot]; want = Math.atan2(p.x - root.position.x, p.z - root.position.z); rate = 4; }
         else if (flight && !reduce && !orbit.sw) { const f = flight.focus(t); if (f) { want = Math.atan2(f.x - root.position.x, f.z - root.position.z); rate = 1.8; } }
         if (orbit.sw && sl && sl.side) want = null;
+        if (foOn(t)) { want = Math.atan2(homePos[RAID].x - root.position.x, homePos[RAID].z - root.position.z); rate = 5; }
         if (reduce || !BOT) bossYaw = orbit.phi;
         else if (want !== null) { const d = want + orbit.phi - bossYaw; bossYaw += Math.atan2(Math.sin(d), Math.cos(d)) * Math.min(1, dt * rate); }
         const r = bossYaw - orbit.phi; bossTurn = Math.atan2(Math.sin(r), Math.cos(r));
@@ -2912,7 +3061,8 @@ window.BossScene = (() => {
       if (flight) {
         const sl = dead ? null : own(t), sx = dead ? null : evs.find(z => z.side && !z.cut && t >= z.s && t <= z.e);
         const calm = !dead && !evs.some(z => !z.side && z.type === 'slam' && z.e > t && z.s < t + 3) && !locks.some(l => t < l.h + 0.4) && !current(t, 'volley');
-        flight.update(t, adt, { boss: root.position, aim, spin: orbit.w, lag: orbit.lag, calm: calm && !orbit.sw,
+        const fk = fo ? smooth((t - fo.s - 0.15) / 1.3) * (1 - smooth((t - fo.e + 1.2) / 1.2)) : 0;
+        flight.update(t, adt, { boss: root.position, aim, spin: orbit.w, lag: orbit.lag, calm: calm && !orbit.sw && !fk, form: fk > 0 ? { at: foAt.copy(homePos[RAID]).setY(0), toward: root.position, k: fk } : null,
           threat: sl && !sl.cut ? { id: sl.id, kind: sl.kind, h: sl.h, blocked: !!sl.blocked } : null,
           side: sx ? { id: sx.id, k: sx.side, kind: sx.kind, h: sx.h, at: sx.at, outcome: sx.outcome } : null }, raidPos);
         youRing.position.set(raidPos[RAID].x, 0.04, raidPos[RAID].z);
@@ -2928,6 +3078,7 @@ window.BossScene = (() => {
         kit.core.getWorldPosition(anchorCore);
         core.position.copy(anchorCore); hip.worldToLocal(core.position);
         cannonTick(t);
+        faceoffTick(t, adt);
       } else {
         anchorHead.set(0, 4.6, 0).applyMatrix4(headG.matrixWorld);
         anchorCore.copy(CORE).sub(HIP).applyMatrix4(hip.matrixWorld);
@@ -3365,6 +3516,7 @@ window.BossScene = (() => {
       if (crowd) crowd.dispose();
       if (fx) fx.dispose();
       if (cfx) cfx.dispose();
+      if (foFx) foFx.dispose();
       ro.disconnect(); io.disconnect();
       scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => m.dispose()); });
       disposables.forEach(d => d.dispose && d.dispose());
@@ -3424,7 +3576,7 @@ window.BossScene = (() => {
     applyPal(1);
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
-    return { press, raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, fizzle, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
+    return { faceoffPower, faceoffResult, foInfo: () => (fo ? { s: fo.s, c: fo.c, x: fo.x, r: fo.r, e: fo.e, power: fo.power, win: fo.win, point: foS, now: nowS() } : null), press, raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, fizzle, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
       aq: () => (aq ? aq.state() : null),
       dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }

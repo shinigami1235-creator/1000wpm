@@ -178,10 +178,9 @@ window.WorldBossRules = (() => {
   }
   function base(s, p) { return phaseStart(s, p) + (p ? PHASES[p].lead || LEAD : FIRST_LEAD); }
 
-  // every attack whose time span includes now
-  function eventsAt(s, now, slack = 0) {
-    if (!s || s.defeatedAt) return [];
-    const p = s.phase || 0, P = PHASES[p], b = base(s, p);
+  // every attack of phase p whose time span includes now, before the face-offs are taken out
+  function rawAt(s, p, now, slack = 0) {
+    const P = PHASES[p], b = base(s, p);
     if (now < b) return [];
     const k1 = Math.floor((now - b) / P.cycle);
     const back = Math.ceil((ADD_LIFE + 4000) / P.cycle);
@@ -190,6 +189,92 @@ window.WorldBossRules = (() => {
       for (const e of cycle(s, p, k, b)) if (e.start <= now && e.end + slack >= now) out.push(e);
     }
     return out;
+  }
+  // every attack whose time span includes now; attacks that would start during a face-off don't happen
+  function eventsAt(s, now, slack = 0) {
+    if (!s || s.defeatedAt) return [];
+    const p = s.phase || 0;
+    const fs = faceoffsNear(s, now);
+    const out = rawAt(s, p, now, slack).filter(e => !fs.some(f => e.start >= f.start && e.start <= f.end + FACEOFF.CLEAR));
+    for (const f of fs) if (f.start <= now && f.end + slack >= now) out.push(f);
+    return out;
+  }
+
+  // ---------- the beam face-off (Gid, 28 Nov 2026) ----------
+  // "Power face off. All the bots gather together and charge a beam. The boss also charges a beam and whoever
+  // wins, either it's blocked and the boss is damaged, or the whole team takes a hit if not enough resistance
+  // words are typed. The boss can suddenly disengage and begin the charge."
+  // It comes on the fight's clock, not the phase (Gid, 28 Nov 20:05: the HP pool is big, so a phase trigger
+  // means many players never see it): about every 3 minutes of fight time, with a seeded jitter of 20 s either
+  // way so it isn't predictable, the first one about 3 minutes in (1 minute in the training raid, which is
+  // short). It never starts on top of another special: if an attack is running at its time it waits until that
+  // one ends, and attacks that would start during it don't happen. The times come from the fight's seed and
+  // start time, so every raider sees the same face-off at the same moment with nothing extra sent.
+  //   disengage  the boss breaks off and backs away across the arena; the squads regroup on the other side
+  //   charge     both sides charge; every raider types the resistance words, each correct one adds power
+  //   clash      both beams fire and meet; the meeting point slides toward the weaker side; typing goes on
+  //   resolve    the result, decided once by the server (LocalDemo here) and sent to everyone as an event
+  // Power: each correct resistance word is 1, the first FULL words a raider types count fully, the next HALF
+  // count half and more count nothing, so a fast typist alone can't carry it; a wrong word takes TYPO off.
+  // The raid needs PER_RAIDER x raiders x DIFF[phase], so a squad of slow typists who all type wins and a fast
+  // typist with idle teammates loses. A win throws the boss's beam back into it: WIN_DMG of its HP (more for a
+  // bigger margin), a stagger and the kernel open. A loss hits every raider for LOSE_DMG integrity.
+  const FACEOFF = {
+    EVERY: 180000, JITTER: 20000, FIRST: 180000, FIRST_TRAINING: 60000,
+    DISENGAGE: 1800, CHARGE: 7000, CLASH: 2800, AFTER: 2000, CLEAR: 1500,
+    FULL: 7, HALF: 4, TYPO: 0.5, PER_RAIDER: 3.5, DIFF: [0.9, 0.95, 1.0, 1.08, 1.15],
+    WIN_DMG: 0.03, LOSE_DMG: 25,
+  };
+  // short, plain words of holding on and pushing back
+  const RESIST = ['hold', 'brace', 'push', 'surge', 'focus', 'guard', 'stand', 'patch', 'pulse', 'sync', 'link', 'lock', 'drive', 'force',
+    'ward', 'core', 'boost', 'power', 'grip', 'steady', 'resist', 'anchor', 'shield', 'steel', 'spark', 'blaze', 'rally', 'grit'];
+  // a raider's power from their correct and wrong words
+  function resistPower(ok, bad) {
+    const F = FACEOFF, full = Math.min(ok, F.FULL), half = Math.min(Math.max(0, ok - F.FULL), F.HALF);
+    return Math.max(0, full + half * 0.5 - bad * F.TYPO);
+  }
+  const resistNeed = (raiders, phase) => FACEOFF.PER_RAIDER * Math.max(1, raiders) * FACEOFF.DIFF[Math.max(0, Math.min(4, phase || 0))];
+  const fcache = new Map();
+  // the phase in force at time t (phaseAt is shared, so every raider gets the same)
+  function phaseAtTime(s, t) { let p = 0; (s.phaseAt || []).forEach((at, i) => { if (at != null && at <= t) p = i; }); return Math.min(p, s.phase || 0); }
+  // face-off k (1, 2, ...), or one asked for by the server (s.foAt, a test hook here)
+  function faceoff(s, k, at) {
+    const key = `${s.bossId}|${s.startedAt}|${(s.phaseAt || []).join(",")}|${k}|${at || ''}`;
+    if (fcache.has(key)) return fcache.get(key);
+    const F = FACEOFF, r = rng(`${s.bossId}|fo|${k}`);
+    let c = at || s.startedAt + (s.training ? F.FIRST_TRAINING : F.FIRST) + (k - 1) * F.EVERY + Math.round((r() * 2 - 1) * F.JITTER);
+    // wait for a special that's running to end
+    for (let i = 0; i < 6; i++) {
+      const p = phaseAtTime(s, c), busy = rawAt(s, p, c).filter(e => e.type !== 'adds' || c < e.start + 4000);
+      if (!busy.length) break;
+      c = Math.max(...busy.map(e => (e.type === 'adds' ? e.start + 4000 : e.end))) + F.CLEAR;
+    }
+    const used = new Set(), words = [];
+    for (let i = 0; i < 12; i++) { let w = RESIST[Math.floor(r() * RESIST.length)]; for (let j = 0; j < 20 && (used.has(w) || (words.length && words[words.length - 1][0] === w[0])); j++) w = RESIST[Math.floor(r() * RESIST.length)]; used.add(w); words.push(w); }
+    const f = { id: 'fo' + k + (at ? '@' + at : ''), type: 'faceoff', kind: 'faceoff', k, start: c, charge: c + F.DISENGAGE, clash: c + F.DISENGAGE + F.CHARGE,
+      resolve: c + F.DISENGAGE + F.CHARGE + F.CLASH, end: c + F.DISENGAGE + F.CHARGE + F.CLASH + F.AFTER, words };
+    if (fcache.size > 400) fcache.clear();
+    fcache.set(key, f);
+    return f;
+  }
+  // the face-offs that could touch now: the ones either side of it on the clock, plus any asked for
+  function faceoffsNear(s, now) {
+    if (!s || !s.startedAt || s.defeatedAt) return [];
+    const F = FACEOFF, first = s.startedAt + (s.training ? F.FIRST_TRAINING : F.FIRST);
+    const out = [];
+    const k0 = Math.max(1, Math.floor((now - first) / F.EVERY));
+    for (let k = k0; k <= k0 + 2; k++) { const f = faceoff(s, k); if (f.start - 40000 <= now && f.end + 40000 >= now) out.push(f); }
+    for (const at of s.foAt || []) { const f = faceoff(s, 0, at); if (f.start - 40000 <= now && f.end + 40000 >= now) out.push(f); }
+    return out;
+  }
+  // the face-off running at now, if any
+  const faceoffAt = (s, now) => faceoffsNear(s, now).find(f => f.start <= now && now <= f.end) || null;
+  // when the next one starts
+  function nextFaceoffAt(s, now) {
+    const fs = faceoffsNear(s, now).filter(f => f.start > now).sort((a, b) => a.start - b.start);
+    if (fs.length) return fs[0].start;
+    const F = FACEOFF, first = s.startedAt + (s.training ? F.FIRST_TRAINING : F.FIRST);
+    return now < first ? faceoff(s, 1).start : null;
   }
   function nextEventAt(s, now) {
     if (!s || s.defeatedAt) return null;
@@ -255,5 +340,6 @@ window.WorldBossRules = (() => {
     phaseOf, ceiling, phaseStart, shieldMax, rng, hash, eventsAt, nextEventAt, multiplier, weakMult,
     TEAM, teamMult, teamGuard, teamRoot,
     TIERS, tierOf, blockWord, pickWords, coverWord, COVER_AFTER,
+    FACEOFF, RESIST, resistPower, resistNeed, faceoffAt, faceoffsNear, nextFaceoffAt,
   };
 })();

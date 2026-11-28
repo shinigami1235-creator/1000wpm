@@ -30,6 +30,8 @@
 //   f.roll(i, t, dir) / f.guard(i, target, until)
 //   f.spinOf(i, t) -> [x, z]       the flip and roll to add to the bot's rotation
 //   f.centre(k, out)               where squad k is now
+//   ctx.form: { at: V3, toward: V3, k: 0..1 } the beam face-off (boss-rules.js FACEOFF): every squad regroups
+//                                  into one wedge at `at` facing `toward` (the boss), you at its point; knocks still land
 //   ctx also takes spin (the orbit's turn rate), calm (true when your squad is free to sortie) and
 //   side: { id, k, kind, h, at, outcome: 'block'|'dodge'|'hit' } for an attack on another squad
 //   f.isDown(i), f.vel(i), f.dispose()
@@ -140,13 +142,14 @@ window.RaidFlight = (() => {
     }
 
     let lastT = 0;
+    const formIdx = {};   // each bot's place in the face-off wedge, kept from the first one
     function update(t, dt, ctx, out) {
       lastT = t;
       const boss = ctx.boss, aim = ctx.aim, th = ctx.threat, sd = ctx.side;
       const lead = th ? th.h - t : 99, slead = sd ? sd.h - t : 99;
       const sdodge = sd && slead < 1.0 && slead > -0.5;
       // the squads take turns diving in; yours only while nothing is coming at it
-      if (t > nextSortie) {
+      if (t > nextSortie && !ctx.form) {
         turnK = (turnK + 1) % 3;
         let k = turnK;
         if ((k === 0 && !ctx.calm) || (sd && sd.k === k)) k = (k + 1) % 3;
@@ -234,6 +237,15 @@ window.RaidFlight = (() => {
         if (s.guard) {
           if (t > s.guard.until || !S[s.guard.target]) s.guard = null;
           else { const g = S[s.guard.target].pos; tgt.copy(g).lerp(boss, 0.18); tgt.y = g.y + 0.3; stiff = 120; }
+        }
+        // the beam face-off: one wedge across the arena from the boss, every bot feeding the team's beam
+        if (ctx.form && ctx.form.k > 0 && s.downAt < 0 && s.repairOf < 0) {
+          const F = ctx.form, slot = i === YOU ? 0 : 1 + (formIdx[i] ?? (formIdx[i] = Object.keys(formIdx).length)), row = Math.ceil(slot / 2), side = slot % 2 ? -1 : 1;
+          tmp2.copy(F.toward).sub(F.at).setY(0).normalize();                    // toward the boss
+          const lx = -tmp2.z, lz = tmp2.x;                                       // across
+          tgt.lerp(tmp.set(F.at.x + lx * side * row * 1.55 - tmp2.x * row * 0.85, HOVER + 0.6 + (row % 2) * 0.9 + Math.sin(t * 2.1 + i) * 0.12,
+            F.at.z + lz * side * row * 1.55 - tmp2.z * row * 0.85), F.k);
+          stiff = Math.max(stiff, 55);
         }
         // a barrel roll throws it sideways
         { const ru = (t - s.rollAt) / 0.5; if (ru >= 0 && ru < 1) { tgt.x += s.rollDir * 3.2 * Math.sin(Math.min(1, ru * 1.4) * Math.PI / 2); stiff = Math.max(stiff, 140); } }

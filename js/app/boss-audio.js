@@ -29,6 +29,8 @@ window.BossAudio = (() => {
     kneel: 0.6, transform: 0.8, glitchRoar: 1.8, deathBuild: 1.0, implode: 0.9, plates: 1.0,
     // the arm cannon (28 Nov 2026): the charge rises under the music, the shot is a short hard crack
     cannonWind: 0.55, cannonFire: 0.9,
+    // the beam face-off's one-shots (the drones and the struggle are in faceoff() below)
+    foStart: 0.8, foClash: 0.8, foEnd: 0.85, foWord: 0.5,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
@@ -251,6 +253,31 @@ window.BossAudio = (() => {
         tone(t, 'sine', 95, 28, 0.6, 0.6 * v, 0.003);
         hiss(t + 0.02, 0.7, 900, 0.6, 0.32 * v, 'lowpass', 0.004, 180);
       },
+      // the face-off: it breaks off (a deep sweep down and a two-note alarm), the beams meet (a crack and a boom),
+      // it resolves (the raid's release climbs bright on a win, falls heavy on a loss), and each resistance word
+      // you type ticks a little higher as the raid's power goes up
+      foStart(t) {
+        hiss(t, 0.9, 1800, 0.7, 0.4, 'bandpass', 0.02, 160);
+        tone(t, 'sawtooth', 180, 40, 0.9, 0.22, 0.01);
+        tone(t + 0.25, 'square', 392, 380, 0.16, 0.08); tone(t + 0.45, 'square', 311, 300, 0.22, 0.08);
+      },
+      foClash(t) {
+        hiss(t, 0.12, 4000, 0.6, 0.6, 'highpass', 0.001);
+        tone(t, 'sawtooth', 900, 120, 0.35, 0.3, 0.002);
+        tone(t, 'sine', 70, 30, 1.1, 0.7, 0.004);
+        hiss(t + 0.03, 1.0, 700, 0.5, 0.35, 'lowpass', 0.005, 150);
+      },
+      foEnd(t, win) {
+        if (win) { tone(t, 'sawtooth', 160, 1300, 0.5, 0.2, 0.01); tone(t, 'triangle', 320, 2400, 0.45, 0.12, 0.01); }
+        else { tone(t, 'sawtooth', 300, 45, 0.9, 0.24, 0.005); tone(t, 'square', 150, 40, 0.7, 0.08, 0.005); }
+        tone(t, 'sine', 85, 26, 1.6, 0.75, 0.004);
+        hiss(t, 1.4, 1200, 0.5, 0.42, 'lowpass', 0.004, 120);
+        hiss(t, 0.1, 5000, 0.8, 0.4, 'highpass', 0.001);
+      },
+      foWord(t, k = 0) {
+        const f = 520 * Math.pow(2, Math.min(1.4, k) * 0.9);
+        tone(t, 'triangle', f, f * 1.5, 0.08, 0.16); tone(t + 0.02, 'sine', f * 2, f * 2.2, 0.1, 0.06);
+      },
       windup(t, len = 2) {
         tone(t, 'sawtooth', 70, 140, len, 0.12, Math.min(1, len * 0.8));
         tone(t, 'sawtooth', 73, 146, len, 0.1, Math.min(1, len * 0.8));
@@ -434,15 +461,111 @@ window.BossAudio = (() => {
     return Array.from(buf.getChannelData(0));
   }
 
+  // ---------- the beam face-off's live layers ----------
+  // Two charge drones that rise through the charge: the boss's low saws, and the raid's voices that thicken as
+  // power goes in (a third voice and a brighter filter as it nears what it needs). Through the struggle a
+  // heartbeat speeds up and a crackle loop follows the meeting point, higher the further the raid pushes. The
+  // music ducks for the whole of it. Built on any context, so a test can render it offline (renderFaceoff).
+  function foLayers(c, out) {
+    const g = c.createGain(); g.gain.value = 0.0001; g.connect(out);
+    const osc = (type, f, dest, vol) => { const o = c.createOscillator(), v = c.createGain(); o.type = type; o.frequency.value = f; v.gain.value = vol; o.connect(v).connect(dest); o.start(); return { o, v }; };
+    const bf = c.createBiquadFilter(); bf.type = 'lowpass'; bf.frequency.value = 260; bf.Q.value = 2; bf.connect(g);
+    const boss = [osc('sawtooth', 55, bf, 0.0001), osc('sawtooth', 55.8, bf, 0.0001)];
+    const tf = c.createBiquadFilter(); tf.type = 'lowpass'; tf.frequency.value = 500; tf.Q.value = 1.5; tf.connect(g);
+    const team = [osc('triangle', 110, tf, 0.0001), osc('sawtooth', 110.7, tf, 0.0001), osc('square', 165, tf, 0.0001)];
+    // crackle: noise through a band that follows the meeting point, gated by a fast flutter
+    const nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = nb.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (Math.random() < 0.12 ? 1 : 0.25);
+    const ns = c.createBufferSource(); ns.buffer = nb; ns.loop = true;
+    const cb = c.createBiquadFilter(); cb.type = 'bandpass'; cb.frequency.value = 1200; cb.Q.value = 1.2;
+    const cg = c.createGain(); cg.gain.value = 0.0001;
+    ns.connect(cb).connect(cg).connect(g); ns.start();
+    let beatAt = 0, phase = null;
+    const ramp = (p, v, k = 0.08) => p.setTargetAtTime(v, c.currentTime, k);
+    function thump(t, k) {
+      const o = c.createOscillator(), v = c.createGain(); o.type = 'sine';
+      o.frequency.setValueAtTime(68, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.22);
+      v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(0.5 + 0.3 * k, t + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+      o.connect(v).connect(g); o.start(t); o.stop(t + 0.3);
+    }
+    return {
+      set(ph, ratio = 0, u = 0) {
+        const r = Math.max(0, Math.min(1.5, ratio || 0)), t = c.currentTime;
+        if (ph !== phase) { phase = ph; if (ph === 'gather') ramp(g.gain, 1, 0.15); if (ph === 'clash') beatAt = t; }
+        if (ph === 'gather' || ph === 'charge') {
+          const k = ph === 'gather' ? 0.15 * u : 0.15 + 0.85 * u;
+          boss.forEach((b, i) => { ramp(b.v.gain, 0.05 + 0.11 * k); ramp(b.o.frequency, (55 + 55 * k) * (i ? 1.014 : 1), 0.2); });
+          ramp(bf.frequency, 260 + 1500 * k, 0.2);
+          const tk = Math.min(1, r);
+          team.forEach((x, i) => { ramp(x.v.gain, ph === 'gather' ? 0.0001 : [0.06 + 0.06 * tk, 0.05 * tk, 0.05 * Math.max(0, tk - 0.45) / 0.55][i]); ramp(x.o.frequency, [110, 110.7, 165][i] * (1 + 0.5 * tk), 0.25); });
+          ramp(tf.frequency, 500 + 2600 * tk, 0.2);
+          ramp(cg.gain, 0.0001);
+        } else if (ph === 'clash') {
+          const p = 0.5 + 0.3 * Math.tanh((r - 1) * 2.4);
+          ramp(cb.frequency, 500 + 2400 * p, 0.06);
+          ramp(cg.gain, (0.18 + 0.2 * u) * (0.8 + 0.2 * Math.random()), 0.02);
+          boss.forEach(b => ramp(b.v.gain, 0.12)); team.forEach((x, i) => ramp(x.v.gain, [0.1, 0.07, 0.06][i]));
+          // the heartbeat, from about 85 to 150 a minute
+          if (t >= beatAt) { thump(t + 0.01, u); thump(t + 0.2, u * 0.7); beatAt = t + 60 / (85 + 65 * u); }
+        } else if (ph === 'resolve' || !ph) {
+          ramp(g.gain, 0.0001, ph ? 0.12 : 0.05);
+        }
+      },
+      stop() { const t = c.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0.0001, t, 0.05); [...boss, ...team].forEach(x => x.o.stop(t + 0.4)); ns.stop(t + 0.4); setTimeout(() => { try { g.disconnect(); } catch (e) {} }, 600); },
+    };
+  }
+  let foL = null;
+  function faceoff(kind, arg) {
+    if (!on) return;
+    try {
+      ctx();
+      if (kind === 'start') { if (foL) foL.stop(); foL = foLayers(ac, sfxBus); duck(0.3, Math.max(2, arg || 13)); play('foStart'); }
+      else if (kind === 'resolve') play('foEnd', !!arg);
+      else if (kind === 'end') { if (foL) { foL.stop(); foL = null; } }
+    } catch (e) {}
+  }
+  function faceoffSet(ph, ratio, u) {
+    if (!foL || !on) return;
+    if (ph === 'clash' && foL.clashed !== true) { foL.clashed = true; play('foClash'); }
+    foL.set(ph, ratio, u);
+  }
+  // the whole face-off rendered offline with the raid's power going in as `ratio` says, for the loudness check
+  async function renderFaceoff(ratio = 1.1, win = true) {
+    const sr = 44100, F = { gather: 1.8, charge: 7, clash: 2.8, resolve: 2 }, secs = 14;
+    const c = new OfflineAudioContext(1, sr * secs, sr);
+    const g = c.createGain(); g.gain.value = SFX_VOL;
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+    g.connect(comp).connect(c.destination);
+    const L = foLayers(c, g), k = kit(c, g);
+    const shot = (name, at, a) => { const kk = kit(c, g); kk.to(g, name); kk[name](at, a); };
+    shot('foStart', 0.05);
+    const marks = []; let t0 = 0;
+    for (const [ph, len] of Object.entries(F)) { marks.push([ph, t0, len]); t0 += len; }
+    shot('foClash', F.gather + F.charge + 0.01);
+    shot('foEnd', F.gather + F.charge + F.clash + 0.01, win);
+    for (let i = 0; i < 12; i++) shot('foWord', F.gather + 0.4 + i * 0.6, ratio * i / 12);
+    for (let x = 0.05; x < secs - 0.1; x += 0.05) {
+      c.suspend(x).then(() => {
+        const m = marks.find(([, a, l]) => x >= a && x < a + l);
+        if (m) L.set(m[0], m[0] === 'charge' ? ratio * (x - m[1]) / m[2] : ratio, (x - m[1]) / m[2]); else L.set(null);
+        c.resume();
+      });
+    }
+    const buf = await c.startRendering();
+    return Array.from(buf.getChannelData(0));
+  }
+
   function setOn(v) {
     on = v;
+    if (!v && foL) { foL.stop(); foL = null; }
     if (!v) { stopMusic(0.3); if (ac && ac.state === 'running') ac.suspend().catch(() => {}); }
     else { try { ctx(); } catch (e) {} if (want >= 0) start(want); }
   }
-  function stop() { want = -1; stopMusic(0.25); }
+  function stop() { want = -1; stopMusic(0.25); if (foL) { foL.stop(); foL = null; } }
 
   try { on = TT.soundOn(); } catch (e) {}
   const state = () => ({ ctx: ac ? ac.state : 'none', track: cur ? cur.name : fallback ? 'element' : '', on, want });
   function out() { ctx(); return { ac, bus: sfxBus }; }
-  return { phase, victory, play, setOn, stop, unlock, renderFx, duck, state, out, cut, uncut, threat, silence, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
+  return { phase, victory, play, setOn, stop, unlock, renderFx, renderFaceoff, faceoff, faceoffSet, duck, state, out, cut, uncut, threat, silence, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
 })();

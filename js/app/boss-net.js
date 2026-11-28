@@ -17,6 +17,8 @@
 //                                                             opt.grace: ms past the hit still allowed (cryo lock, up to 6000)
 //   WorldBossNet.sendReturn(shotId, word)   -> Promise<{ ok }> a thrown word sent back
 //   WorldBossNet.sendAddKill(addId, word)   -> Promise<{ ok }> an add destroyed
+//   WorldBossNet.sendResist(faceoffId, word) -> Promise<{ ok, power, need, mine }> a resistance word in a beam face-off;
+//                                                the words come in the order of e.words, each raider from the start
 //   WorldBossNet.onState(fn)              -> unsubscribe      fn(state), a few times a second
 //   WorldBossNet.onHit(fn)                -> unsubscribe      fn(hit) for every hit on the boss
 //   WorldBossNet.onEvent(fn)              -> unsubscribe      fn(event) for raid events
@@ -29,7 +31,9 @@
 //          weak: { until, mult } | null, blocks: { [attackId]: count }, addsDown: { [addId]: name },
 //          raiders: [{ id, name, damage, blocks, you }] }   raiders sorted by damage, highest first
 // hit:   { id, name, letters, dmg, kind: 'word' | 'return' | 'block' | 'add' | 'spell', crit, weak, shield, at, you, tier, spell, color }
-// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'chargeUp' | 'broken' | 'adds' | 'addDown' | 'impact' | 'team' | 'defeat', ... }
+// event: { type: 'phase' | 'shieldUp' | 'shieldBreak' | 'chargeUp' | 'broken' | 'adds' | 'addDown' | 'impact' | 'team' | 'defeat'
+//          | 'faceoffStart' | 'faceoff', ... }
+//   faceoff: { id, win, power, need, margin, dmg, you } once, when a beam face-off resolves (state.fo carries the live power)
 //   team: { tier: 'hardened' | 'overclock' | 'root', up, by } when the team firewall crosses 50, 75 or 100
 //
 // The phase is WorldBossRules.phaseOf(hp / maxHp) and the attacks come from
@@ -97,6 +101,10 @@ window.WorldBossNet = (() => {
         // who has locked each raider's segment of the shield, for the block attacks still to land
         locked: Object.fromEntries(Object.entries(st.locked || {}).map(([k, v]) => [k, { ...v }])),
         team: { ...(st.team || { fw: 0, rootUntil: 0 }) },
+        // the beam face-off going on: the raid's power against what it needs, live, and the result once decided
+        fo: st.fo ? { id: st.fo.id, power: foPower(), need: st.fo.need, you: st.fo.by.you ? { ...st.fo.by.you } : { ok: 0, bad: 0 }, raiders: Object.keys(st.fo.by).length,
+          win: st.fo.win, margin: st.fo.margin, dmg: st.fo.dmg, over: !!st.fo.over } : null,
+        foAt: (st.foAt || []).slice(),
       };
     }
     const fan = (subs, x) => subs.forEach(f => { try { f(x); } catch (e) { console.error(e); } });
@@ -107,6 +115,7 @@ window.WorldBossNet = (() => {
     function setPhase(t) {
       const p = phaseOf(st.hp / st.maxHp);
       if (p <= st.phase || st.defeatedAt) return;
+      if (st.fo && !st.fo.over) return;   // a face-off finishes first; the phase changes as it ends
       st.phase = p; st.phaseAt[p] = t;
       // a phase change ends the shield, the weak point and the attacks in flight
       st.shield = null; st.brk = null; st.weak = null; st.blocks = {}; st.addsDown = {}; st.done = {}; st.locked = {}; plans = {};
@@ -170,6 +179,51 @@ window.WorldBossNet = (() => {
       if (T.fw >= 100) { T.rootUntil = t + R.TEAM.root; T.fw = R.TEAM.after; }
     }
 
+    // ---------- the beam face-off (WorldBossRules.FACEOFF): the power is counted and the result decided here ----------
+    const foPower = () => st.fo ? Object.values(st.fo.by).reduce((a, b) => a + R.resistPower(b.ok, b.bad), 0) : 0;
+    function faceoffTick(e, t) {
+      if (!st.fo || st.fo.id !== e.id) {
+        // the raid that's here when it starts is the raid it's measured against
+        st.fo = { id: e.id, need: R.resistNeed(st.raiders.length, st.phase), by: {}, win: null, over: false };
+        // how much of the raid is on it this time varies (some are mid-word, some away), so a big raid can lose too
+        const focus = foFocus != null ? foFocus : cfg.fresh ? 1 : rnd(0.32, 0.9);
+        foPlan = sims.filter(() => Math.random() < focus).map(s => ({ s, next: e.charge + rnd(500, 1600) * 80 / Math.max(25, s.r.wpm || 80) + (Math.random() < 0.08 ? rnd(2000, 5000) : 0) }));
+        emitEvent({ type: 'faceoffStart', id: e.id, need: st.fo.need, at: t });
+      }
+      const F = st.fo;
+      if (!F.over && t >= e.charge && t < e.resolve) {
+        // the simulated raiders type the resistance words at their own speed and miss one now and then
+        for (const p of foPlan) {
+          if (p.s.r.down || t < p.next) continue;
+          const b = (F.by[p.s.r.id] ||= { ok: 0, bad: 0 }), w = e.words[(b.ok + b.bad) % e.words.length];
+          if (Math.random() < (p.s.r.acc || 0.95)) b.ok++; else b.bad++;
+          p.next += (w.length + 1) * 12000 / Math.max(20, p.s.r.wpm || 80) * rnd(0.85, 1.25);
+        }
+      }
+      if (!F.over && F.win === null && t >= e.resolve) {
+        const power = foPower(), margin = (power - F.need) / F.need;
+        F.win = power >= F.need; F.margin = +margin.toFixed(3); F.power = power;
+        if (F.win) {
+          // the boss's own beam thrown back into it: a share of its HP, more for a bigger margin, credited to
+          // each raider by the power they put in, then the kernel opens
+          const dmg = Math.min(st.hp, Math.round(st.maxHp * R.FACEOFF.WIN_DMG * Math.max(0.85, Math.min(1.3, 0.85 + margin * 0.6))));
+          F.dmg = dmg;
+          let left = dmg;
+          const ids = Object.keys(F.by);
+          ids.forEach((id, i) => { const r = st.raiders.find(x => x.id === id); if (!r) return; const d = i === ids.length - 1 ? left : Math.round(dmg * R.resistPower(F.by[id].ok, F.by[id].bad) / Math.max(1, power)); r.damage += d; left -= d; });
+          st.hp -= dmg;
+          st.weak = { until: t + R.WEAK_MS, mult: R.PHASES[st.phase].weakMult };
+          team(R.TEAM.stun, t);
+          emitHit({ id: 'raid', name: 'The raid', letters: 0, dmg, kind: 'faceoff', crit: false, weak: false, shield: false, at: t, you: false, tier: 0, spell: null, color: null });
+        } else { F.dmg = 0; team(-R.TEAM.miss, t); }
+        emitEvent({ type: 'faceoff', id: e.id, win: F.win, power: +power.toFixed(1), need: +F.need.toFixed(1), margin: F.margin, dmg: F.dmg, you: F.by.you ? R.resistPower(F.by.you.ok, F.by.you.bad) : 0, at: e.resolve });
+        if (st.hp <= 0) { st.hp = 0; st.defeatedAt = t; st.lastHit = 'The raid'; emitEvent({ type: 'defeat', by: st.lastHit, you: false, at: t }); }
+        save(); emit();
+      }
+      if (t >= e.end && !F.over) { F.over = true; setPhase(t); emit(); }
+    }
+    let foPlan = [], foFocus = null;
+
     // ---------- attacks: the schedule is shared, the outcomes are kept here ----------
     function liveAdd(e, a, t) { return t >= a.spawn && t < a.until && !st.addsDown[a.id]; }
     function runEvents(t, dt) {
@@ -231,6 +285,8 @@ window.WorldBossNet = (() => {
             team(-R.TEAM.miss, t);
             emitEvent({ type: 'impact', id: e.id, kind: 'charge', blocks: 0, of: st.raiders.length, stun: false, at: e.hit });
           }
+        } else if (e.type === 'faceoff') {
+          faceoffTick(e, t);
         } else if (e.type === 'shield') {
           if (t >= e.up && !st.done['s:' + e.id] && !st.done[e.id]) {
             st.done[e.id] = 1;
@@ -306,8 +362,10 @@ window.WorldBossNet = (() => {
       const dt = lastTick ? Math.min(0.5, (t - lastTick) / 1000) : 0.05;
       lastTick = t;
       if (st.defeatedAt) return;
+      // through a face-off's charge and clash the raid types resistance words instead of hitting the boss
+      const fo = st.fo && st.fo.win === null ? R.faceoffAt(st, t) : null, foBusy = !!(fo && t >= fo.charge);
       for (const s of sims) {
-        if (pn < s.next || s.r.down) continue;
+        if (pn < s.next || s.r.down || foBusy) continue;
         // each simulated raider keeps a combo so its shots show in its tier's colour; the
         // tier only changes the picture, never the damage, so the raid's numbers stay as tuned
         if (s.len && Math.random() < s.r.acc) { s.combo = (s.combo || 0) + 1; damage(s.r.id, s.len * simScale, 'word', { tier: simTier(s.combo) }); }
@@ -318,6 +376,7 @@ window.WorldBossNet = (() => {
         s.next = pn + (s.len + 1) * perChar * rnd(0.7, 1.35) + (Math.random() < 0.04 ? rnd(1500, 5000) : 0);
       }
       runEvents(t, dt);
+      if (st.fo && !st.fo.over && !R.eventsAt(st, t, 600).some(e => e.id === st.fo.id)) { st.fo.over = true; setPhase(t); }
       if (st.team && st.team.fw > 0) team(-R.TEAM.drain * dt, t);
       if (st.blocked && Object.keys(st.blocked).length > 600) st.blocked = {};
       if (pn - last > 250) { last = pn; emit(); }
@@ -364,6 +423,15 @@ window.WorldBossNet = (() => {
         damage('you', word.length, 'return');
         return { ok: true };
       },
+      // a resistance word typed in a face-off: right ones add to the raid's power, wrong ones take some off
+      async sendResist(id, word) {
+        const t = now(), e = st && R.eventsAt(st, t, 0).find(x => x.type === 'faceoff' && x.id === id);
+        if (!e || !st.fo || st.fo.id !== id || st.fo.win !== null || t < e.charge || t >= e.resolve) return { ok: false };
+        const b = (st.fo.by.you ||= { ok: 0, bad: 0 }), want = e.words[(b.ok + b.bad) % e.words.length];
+        const ok = word === want;
+        if (ok) b.ok++; else b.bad++;
+        return { ok, power: foPower(), need: st.fo.need, mine: R.resistPower(b.ok, b.bad) };
+      },
       async sendAddKill(id, word) {
         const t = now();
         const e = st && findEvent(t, x => x.type === 'adds' && x.adds.some(a => a.id === id));
@@ -407,6 +475,9 @@ window.WorldBossNet = (() => {
           setPhase(now()); save(); emit();
         },
         simScale(x) { simScale = x; },
+        // a face-off in ms from now, as a server would schedule an extra one (tests)
+        // focus (tests): the share of the simulated raid that types in it, else random
+        faceoffIn(ms, focus) { if (!st) return null; foFocus = focus == null ? null : focus; st.foAt = [now() + (ms || 0)]; emit(); return st.foAt[0]; },
         // a squadmate who is down stops dealing damage until they're back (js/app/boss-squad.js)
         setDown(id, on) { const r = st && st.raiders.find(x => x.id === id); if (r) r.down = !!on; },
         // the simulated raiders, for picking squadmates
@@ -432,6 +503,7 @@ window.WorldBossNet = (() => {
     sendCover: (id, k, text) => impl.sendCover(id, k, text),
     sendReturn: (id, word) => impl.sendReturn(id, word),
     sendAddKill: (id, word) => impl.sendAddKill(id, word),
+    sendResist: (id, word) => (impl.sendResist ? impl.sendResist(id, word) : Promise.resolve({ ok: false })),
     onState: fn => impl.onState(fn),
     onHit: fn => impl.onHit(fn),
     onEvent: fn => impl.onEvent(fn),
