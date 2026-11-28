@@ -26,6 +26,12 @@ JOBS = {
   'key-gold': {}, 'key-silver': {}, 'drone': {'dir': [0.25, 0.3, 1]},
   'fig-siege': {}, 'fig-warden': {}, 'fig-colossus': {}, 'fig-king': {}, 'fig-half': {}, 'fig-brute': {}, 'fig-syntax': {},
   'operator': {'dir': [0, 0.05, 1], 'key': 2.0, 'env': 0.6},
+  # My Room, more (28 Nov 2026): pets, props and keyboards seen from above for the desk
+  'pet-crab': {'dir': [0.15, 0.35, 1]}, 'pet-cybercat': {'dir': [0.1, 0.15, 1]}, 'pet-fish': {'dir': [0, 0.1, 1], 'env': 0.6},
+  **{f'pet-{b}{f}': {'dir': [0.2, 0.08, 1], 'env': 0.5} for b in ['orbit', 'pixel', 'nova', 'kite', 'beep', 'raze'] for f in ['', '-b']},
+  'ctrl-plaque': {'dir': [0.15, 0.1, 1]}, 'ctrl-lightbox': {'dir': [0.15, 0.08, 1]}, 'bot-squad': {'dir': [0.1, 0.15, 1], 'env': 0.5}, 'studio-speaker': {},
+  'bonsai': {}, 'succulents': {'dir': [0.1, 0.4, 1]}, 'flip-clock': {}, 'ctrl-mug': {}, 'ctrl-can': {}, 'artisan-key': {'dir': [0.2, 0.2, 1]}, 'switch-tester': {'dir': [0.2, 0.6, 1]},
+  **{f'top-kb-{k}': {'dir': [0, 1, 0.0001], 'top': 640, 'key': 2.0, 'env': 0.5} for k in ['basic', 'aula-f99', 'womier-sk61he', 'loga-yaksa', 'attackshark-x68he', 'corsair-vanguard96', 'chilkey-sf60']},
 }
 
 os.makedirs(OUT, exist_ok=True)
@@ -44,9 +50,13 @@ with sync_playwright() as p:
         a = im.getchannel('A').point(lambda v: 255 if v > 8 else 0)
         bb = a.getbbox()
         im = im.crop((max(0, bb[0] - 2), max(0, bb[1] - 2), min(im.width, bb[2] + 2), bb[3]))
-        if im.height > 360: im = im.resize((round(im.width * 360 / im.height), 360), Image.LANCZOS)
+        if o.get('top'):   # seen from above: trimmed on all sides, the long side capped
+            im = im.crop(im.getchannel('A').point(lambda v: 255 if v > 8 else 0).getbbox())
+            k = o['top'] / max(im.size)
+            if k < 1: im = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        elif im.height > 360: im = im.resize((round(im.width * 360 / im.height), 360), Image.LANCZOS)
         im.save(os.path.join(OUT, id + '.webp'), 'WEBP', quality=90, method=6)
         sizes[id] = round(im.width / im.height, 3)
-        print(id, im.size, os.path.getsize(os.path.join(OUT, id + '.webp')) // 1024, 'KB')
+        print(id, im.size, 'h', round(r['h'], 3), os.path.getsize(os.path.join(OUT, id + '.webp')) // 1024, 'KB')
     b.close()
 json.dump(sizes, open(sp, 'w'), indent=0, sort_keys=True)

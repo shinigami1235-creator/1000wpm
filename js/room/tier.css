@@ -9,7 +9,7 @@
 .rv-q > svg { display: block; }
 .rv-glass { display: block; pointer-events: none; }
 /* everything that moves gets its own layer, so a frame repaints it alone and not the whole room */
-.rv-glass, .rv-holo, .rv-holo > *, .rv-prop.lava, .rv-prop.hover, .rv-prop.pet, .rv-prop.plasma, .rv-tint.rainbow, .rv-dark, .rv-core { will-change: transform; }
+.rv-glass, .rv-holo, .rv-holo > *, .rv-prop.walker, .rv-prop.swarm, .rv-prop.lava, .rv-prop.hover, .rv-prop.pet, .rv-prop.plasma, .rv-tint.rainbow, .rv-dark, .rv-core { will-change: transform; }
 .rv-spill, .rv-glow, .rv-halo { pointer-events: none; }
 
 /* posters sit in the room's light: darker, a little flat, with a sheen on the glass */
@@ -49,8 +49,8 @@
 
 /* cut-outs stand on their spot by the bottom centre */
 .rv-prop { transform: translate(-50%, -100%); pointer-events: none; }
-.rv-prop img { display: block; height: 100%; width: auto; filter: brightness(calc(var(--dim) * 1.0)) saturate(.86) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)); }
-.rv-prop.lit img { filter: brightness(calc(var(--dim) * 1.08)) saturate(.95) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)) drop-shadow(0 0 5px color-mix(in srgb, var(--gl) 45%, transparent)); }
+.rv-prop img { display: block; height: 100%; width: auto; filter: brightness(calc(var(--dim) * 1.0)) saturate(.86) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)) var(--mf); }
+.rv-prop.lit img { filter: brightness(calc(var(--dim) * 1.08)) saturate(.95) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)) drop-shadow(0 0 5px color-mix(in srgb, var(--gl) 45%, transparent)) var(--mf); }
 .rv-prop::after { content: ''; position: absolute; left: 8%; right: 8%; bottom: -1px; height: 4px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.65), transparent); z-index: -1; }
 .rv-prop.trophy img { filter: brightness(calc(var(--dim) * 1.1)) saturate(.95) drop-shadow(0 1px 1.5px rgba(0,0,0,.6)); }
 .rv-prop.hover { animation: rv-hover 3.6s ease-in-out infinite; }
@@ -58,7 +58,7 @@
 @keyframes rv-hover { 50% { transform: translate(-50%, calc(-100% - 6px)) rotate(1.5deg); } }
 .rv-floor-shadow { border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.45), transparent); pointer-events: none; animation: rv-shadow 3.6s ease-in-out infinite; }
 @keyframes rv-shadow { 50% { transform: scale(.8); opacity: .7; } }
-.rv-prop.pet img { transform-origin: 50% 100%; animation: rv-breath 4s ease-in-out infinite; filter: brightness(calc(var(--dim) * .82)) saturate(.75) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)); }
+.rv-prop.pet img { transform-origin: 50% 100%; animation: rv-breath 4s ease-in-out infinite; filter: brightness(calc(var(--dim) * .82)) saturate(.75) drop-shadow(0 1px 1.5px rgba(0,0,0,.7)) var(--mf); }
 @keyframes rv-breath { 50% { transform: scaleY(1.025); } }
 /* lava lamp: warm blobs rising and sinking in the glass */
 .rv-prop.lava i { position: absolute; left: 50%; width: 22%; aspect-ratio: 1 / 1.3; margin-left: -11%; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffc08a, #ff6a3d 60%, transparent 72%); filter: blur(.4px); opacity: .7; top: 60%; animation: rv-lava 9s ease-in-out infinite; }
@@ -68,13 +68,65 @@
 .rv-prop.plasma img { animation: rv-plasma 2.4s steps(6) infinite; }
 @keyframes rv-plasma { 50% { filter: brightness(calc(var(--dim) * 1.25)) saturate(1.1) drop-shadow(0 0 7px #b45cff); } }
 
+/* ---------------------------------------------------------------- My Room, more (28 Nov 2026) */
+/* the look: the graded picture over the original; cut-outs take the mood's filter (--mf) */
+.rv-grade { display: block; pointer-events: none; }
+.rv-grade.alert { animation: rv-alert 3.2s ease-in-out infinite; }
+@keyframes rv-alert { 50% { opacity: .55; } }
+.rv-room { --mf: brightness(1); }
+.rv-storm { pointer-events: none; opacity: 0; background: radial-gradient(closest-side, rgba(210,225,255,.4), transparent); animation: rv-storm 11s infinite; }
+@keyframes rv-storm { 0%, 61%, 63.5%, 64.5%, 100% { opacity: 0; } 62% { opacity: .9; } 63% { opacity: .2; } 64% { opacity: .7; } }
+/* neon: the tubes glow and flicker now and then, the wall around takes their light */
+.rv-neon { display: block; animation: rv-neonf 9s infinite; pointer-events: none; will-change: opacity; }
+@keyframes rv-neonf { 0%, 70%, 72%, 73.5%, 100% { opacity: 1; } 71% { opacity: .55; } 73% { opacity: .8; } }
+.rv-spill.neon { opacity: .9; }
+.rv-plate { pointer-events: none; filter: brightness(calc(var(--dim) * .62)) saturate(.85) drop-shadow(1px 2px 2px rgba(0,0,0,.6)) var(--mf); }
+.rv-plate.lit { filter: drop-shadow(0 0 4px #3ee6ff) brightness(.95); }
+.rv-flat { display: block; pointer-events: none; }
+.rv-flat.mat { filter: drop-shadow(0 1.5px 1px rgba(0,0,0,.6)) contrast(.92) saturate(.85) var(--mf); }
+.rv-flat.rug { filter: contrast(.9) saturate(.85) blur(.3px) var(--mf); }
+.rv-rgbedge { pointer-events: none; box-shadow: inset 0 0 0 5px #ff3b4f, 0 0 14px 2px #ff3b4f; border-radius: 8px; opacity: .8; animation: rv-rainbow 8s linear infinite; }
+/* pets that move: drift between two spots (--dx, --dy, scale --k), bob, and blink */
+.rv-roam { pointer-events: none; width: 0; height: 0; animation: rv-roam 22s ease-in-out infinite; will-change: transform; }
+@keyframes rv-roam { 0%, 28% { transform: translate(0, 0) scale(1); } 46%, 74% { transform: translate(var(--dx), var(--dy)) scale(var(--k)); } 92%, 100% { transform: translate(0, 0) scale(1); } }
+.rv-roam .rv-prop { position: absolute; left: 0; top: 0; width: max-content; animation: rv-hover 3.2s ease-in-out infinite; }
+.rv-roam .rv-prop::after { display: none; }
+.rv-roam .rv-prop img { position: relative; filter: brightness(calc(var(--dim) * 1.12)) saturate(.95) drop-shadow(0 4px 6px rgba(0,0,0,.55)) var(--mf); }
+.rv-roam .blink { position: absolute; left: 0; top: 0; opacity: 0; animation: rv-blinkf 4.3s steps(1) infinite; }
+@keyframes rv-blinkf { 0%, 93% { opacity: 0; } 94%, 97% { opacity: 1; } 98% { opacity: 0; } }
+/* the koi: a hologram, faces the way it swims */
+.rv-roam.fish { animation-duration: 16s; animation-timing-function: ease-in-out; }
+.rv-roam.fish .rv-prop { animation: rv-swim 16s ease-in-out infinite; }
+@keyframes rv-swim { 0%, 37% { transform: translate(-50%, -100%) rotate(-2deg); } 39%, 87% { transform: translate(-50%, -100%) scaleX(-1) rotate(2deg); } 89%, 100% { transform: translate(-50%, -100%) rotate(-2deg); } }
+.rv-roam.fish .rv-prop img { opacity: .78; filter: grayscale(1) brightness(1.4) sepia(1) hue-rotate(140deg) saturate(3) drop-shadow(0 0 6px rgba(62,230,255,.8));
+  -webkit-mask: repeating-linear-gradient(0deg, #000 0 2px, rgba(0,0,0,.55) 2px 3px); mask: repeating-linear-gradient(0deg, #000 0 2px, rgba(0,0,0,.55) 2px 3px); }
+/* the crab walks the desk and back */
+.rv-prop.walker { animation: rv-walk 14s ease-in-out infinite; }
+@keyframes rv-walk { 0%, 12% { transform: translate(-50%, -100%); } 42%, 56% { transform: translate(calc(-50% - var(--dx)), -100%); } 86%, 100% { transform: translate(-50%, -100%); } }
+.rv-prop.walker img { animation: rv-skitter .22s steps(2) infinite; }
+@keyframes rv-skitter { 50% { transform: translateY(-1px) rotate(-1deg); } }
+/* the drone swarm: three small drones on loose loops */
+.rv-prop.swarm { animation: rv-swarm 7s ease-in-out infinite; }
+.rv-prop.swarm::after { display: none; }
+@keyframes rv-swarm { 0%, 100% { transform: translate(-50%, -100%); } 25% { transform: translate(calc(-50% + var(--r)), calc(-100% - var(--r) * .4)); } 50% { transform: translate(-50%, calc(-100% - var(--r) * .7)); } 75% { transform: translate(calc(-50% - var(--r)), calc(-100% - var(--r) * .3)); } }
+/* screens */
+.rv-scr .rv-sweepx { animation: rv-sweepx 6s linear infinite; }
+@keyframes rv-sweepx { to { transform: translateX(640px); } }
+.rv-scr .rv-typebar { transform-origin: 26px 0; animation: rv-typebar 8s linear infinite; }
+@keyframes rv-typebar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.rv-scr .rv-eq { transform-box: fill-box; transform-origin: 50% 100%; animation: rv-eq 1s ease-in-out infinite alternate; }
+@keyframes rv-eq { from { transform: scaleY(.15); } to { transform: scaleY(.95); } }
+.rv-print.tech { opacity: .62; }
+
 .rv-pin { width: 32px; filter: drop-shadow(0 3px 3px rgba(0,0,0,.6)) brightness(.9); pointer-events: none; }
 .rv-pin svg { display: block; width: 100%; height: auto; }
 
 /* banner print on the fabric */
 .rv-print { pointer-events: none; opacity: .45; filter: blur(.35px); }
-.rv-print.ink { opacity: .26; }
+.rv-print.ink { opacity: .38; }
+.rv-cloth { display: block; pointer-events: none; }
 .rv-print.full { opacity: .4; }
+.rv-print.full.tech { opacity: .6; }
 
 /* the hologram */
 .rv-holo { pointer-events: none; }
@@ -83,6 +135,9 @@
   filter: grayscale(1) brightness(1.35) sepia(1) hue-rotate(140deg) saturate(3.2) drop-shadow(0 0 6px rgba(62,230,255,.6));
   -webkit-mask: linear-gradient(0deg, transparent, #000 14%, #000 86%, transparent); mask: linear-gradient(0deg, transparent, #000 14%, #000 86%, transparent); animation: rv-hflick 3.4s infinite; }
 .rv-holo .fig.op { left: 28%; width: 44%; }
+.rv-holo .emb.wing svg { width: 62%; }
+.rv-holo .fig.kb { left: 10%; width: 80%; bottom: 32%; height: 40%; animation: rv-hflick 3.4s infinite, rv-tilt 10s ease-in-out infinite alternate; }
+@keyframes rv-tilt { from { transform: perspective(300px) rotateX(48deg) rotateZ(-14deg); } to { transform: perspective(300px) rotateX(48deg) rotateZ(14deg); } }
 .rv-holo .earth { left: 15%; width: 70%; height: auto; bottom: 30%; filter: drop-shadow(0 0 6px rgba(62,230,255,.7)); }
 .rv-holo .emb { display: grid; place-items: center; filter: drop-shadow(0 0 8px rgba(62,230,255,.8)); }
 .rv-holo .emb svg { width: 70%; height: auto; animation: rv-turn 8s linear infinite; }
@@ -173,6 +228,25 @@ html.rm-on footer, html.rm-on .foot, html.rm-on .site-foot { display: none; }
 .rm-tabs button.lock svg { width: 11px; height: 11px; margin-left: 2px; }
 .rm-tabs button:focus-visible { outline: 2px solid var(--accent); }
 .rm-slots { display: flex; gap: 6px; margin: -2px 0 10px; flex-wrap: wrap; }
+/* shelves, then the tabs of the shelf picked and its slots on one line */
+.rm-groups button[role="tab"] { font-size: 13px; padding: 8px 14px; }
+.rm-sub { display: flex; align-items: center; gap: 14px; margin: -4px 0 10px; flex-wrap: wrap; }
+.rm-sub .rm-slots { margin: 0; padding-left: 14px; border-left: 1px solid var(--line-2); }
+.rm-kinds { display: flex; gap: 4px; flex-wrap: wrap; }
+.rm-kinds button { all: unset; cursor: pointer; padding: 6px 10px; font: 400 12px/1 var(--f-label); letter-spacing: .06em; color: var(--ink-2); border-bottom: 2px solid transparent; }
+.rm-kinds button:hover { color: var(--ink-hi); }
+.rm-kinds button[aria-selected="true"] { color: var(--ink-hi); border-bottom-color: var(--accent); }
+.rm-kinds button:focus-visible { outline: 2px solid var(--accent); }
+.rm-kinds button.lock { color: var(--ink-3); cursor: default; display: inline-flex; align-items: center; gap: 4px; }
+.rm-kinds button.lock svg { width: 11px; height: 11px; }
+.rm-kinds button.jump small { font-size: 10px; color: var(--gold); margin-left: 3px; }
+.rm-test { margin-left: 10px; font: 400 11px/1 var(--f-label); letter-spacing: .06em; color: var(--gold); border: 1px dashed rgba(242,194,48,.5); padding: 5px 8px; text-transform: uppercase; }
+.rm-it .th .nsign { width: 100%; height: 100%; display: grid; place-items: center; filter: drop-shadow(0 0 3px var(--c)) drop-shadow(0 0 8px var(--c)); }
+.rm-it .th .nsign svg { width: 90%; height: auto; }
+.rm-it .th > svg[viewBox$=" 80"] { height: 60%; }
+.rm-it .th img.kbtop { max-width: 94%; }
+.rm-it .th .sw.walls { height: 36px; width: 60%; box-shadow: none; border-radius: 0; }
+.rm-it .th .sw.mood { height: 36px; width: 80%; box-shadow: none; }
 .rm-slots button { all: unset; cursor: pointer; padding: 5px 9px; font: 400 11px/1 var(--f-label); letter-spacing: .06em; color: var(--ink-2); border: 1px solid var(--line-2); }
 .rm-slots button[aria-pressed="true"] { color: var(--ink-hi); border-color: var(--accent); }
 .rm-items { -webkit-mask: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask: linear-gradient(90deg, #000 calc(100% - 36px), transparent); padding-right: 24px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 50px) / 6); gap: 10px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; scroll-snap-type: x proximity; }
@@ -284,6 +358,10 @@ html.rm-on footer, html.rm-on .foot, html.rm-on .site-foot { display: none; }
   .rm-items { grid-auto-columns: 30%; }
   .rm-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 10px; padding: 0 12px; }
   .rm-tabs button { white-space: nowrap; }
+  .rm-sub { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 10px; padding: 0 12px; }
+  .rm-kinds { flex-wrap: nowrap; } .rm-kinds button { white-space: nowrap; }
+  .rm-sub .rm-slots { flex-wrap: nowrap; } .rm-sub .rm-slots button { white-space: nowrap; }
+  .rm-test { display: none; }
   .rm-visitbar { order: 1; width: auto; }
   .rm-tiers, .rm-visit { grid-template-columns: 1fr 1fr; gap: 8px; }
   .rm-tier .cap, .rm-v .cap { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px; font-size: 13px; }
