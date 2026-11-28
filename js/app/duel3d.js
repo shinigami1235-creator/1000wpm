@@ -1,5 +1,8 @@
-// The duel arena in three.js: two operators on hex pedestals in a night stadium (duel-arena.js),
-// fighting like a fighting game broadcast. Each finished word flies over as its own letters; the
+// The duel arena in three.js: two bots (BotKit, driven by bot-fighter.js) over hex pedestals in a
+// night stadium (duel-arena.js), fighting like a fighting game broadcast (Gid, 28 Nov 2026: duels are
+// bot vs bot; operators stay on the profile page). Every key a side types sends a spark into its bot's
+// orb, a finished word is a strike, a word finished while the other side's shot is coming is a dodge.
+// The older operator and portrait-card fighters below still work for a side without a bot. Each finished word flies over as its own letters; the
 // operator throws it with a move that grows with the combo tier (fight-moves.js): a flick, a jab,
 // a two-hand blast, a dashing smash. Spells are cast with both arms and a circle at the feet, a
 // block raises a hex shield, heavy hits stagger, the KO blows the loser off their feet in slow
@@ -7,7 +10,9 @@
 // when no spell is on its way to you: the face-off before a round, big strikes, casts, the KO and
 // the winner. Without operators each side is a portrait card (the older 2.5D look).
 //
-//   const sc = DuelScene.mount(host, { sides: [{ look, color, preset, name }, ...], me, audio });
+//   const sc = DuelScene.mount(host, { sides: [{ look, color, bot: { id, look }, kb, name }, ...], me, audio });
+//     bot: a BotKit bot (BotKit.mine() or BotKit.random(seed)); kb: the shooter's keyboard style
+//     ('slab' | 'compact' | 'split' | 'arc'), which only changes how its shots fly
 //     me: the side you play (-1 when watching), audio: an ArenaAudio for the sounds
 //   sc.ready                          Promise, true once three.js loaded
 //   sc.shot(from, tier, onLand, { color, crit, word, combo, ms })   a word's shot from side `from`:
@@ -20,6 +25,12 @@
 //   sc.warm(chars) -> Promise<bool>     before the countdown: letters, portraits, shaders, one frame of every effect
 //   sc.phase(name, round)             'count' | 'fight' | 'break': the face-off, the bell, the pause between rounds
 //   sc.result(winner)                 the match is over: the winner celebrates, the camera circles them
+//   sc.key(side, frac)                a correct key: a spark into the orb, frac = share of the word typed
+//   sc.wpm(side, w)                   live wpm, which sets the bot's stance
+//   sc.hold(side, frac)               Showdown: a finished word, the spark stays and the orb holds at frac
+//   sc.strike(from, words, o)         Showdown: the round's attack from `words` finished words
+//                                     o: { crit, dodge, onLand }; 1-3 a shot, 4-6 a double, 7-9 the dash, 10 the finisher
+//   sc.clear()                        Showdown: both orbs empty for a new round
 //   sc.dispose()
 window.DuelScene = (() => {
   let libs = null;
@@ -48,6 +59,11 @@ window.DuelScene = (() => {
         return true;
       }).catch(e => { console.warn('Duel arena did not load', e); return false; }),
       shot: (from, tier, onLand, o) => { if (impl) impl.shot(from, tier, onLand, o); else if (onLand) onLand(); },
+      key: (side, frac) => impl && impl.key(side, frac),
+      wpm: (side, w) => impl && impl.wpm(side, w),
+      hold: (side, frac) => impl && impl.hold(side, frac),
+      strike: (from, words, o = {}) => { if (impl) impl.strike(from, words, o); else if (o.onLand) o.onLand(); },
+      clear: () => impl && impl.clear(),
       cast: (from, id, hits, effect) => impl && impl.cast(from, id, hits, effect),
       react: (side, kind, p) => impl && impl.react(side, kind, p),
       aura: (side, name, on) => impl && impl.aura(side, name, on),
@@ -99,8 +115,9 @@ window.DuelScene = (() => {
     composer.addPass(new OutputPass());
 
     // ---------- the arena (js/app/duel-arena.js), or the old ring floor without it ----------
-    const OPS = !!(window.Operator && window.FightMoves && opts.sides.every(s => s.preset));
-    const POS = OPS ? [new V(-5.2, 0, 0.4), new V(5.2, 0, 0.4)] : [new V(-6.2, 0, 0.6), new V(6.2, 0, 0.6)];
+    const BOTS = !!(window.BotFighter && window.BotKit && opts.sides.every(s => s.bot));
+    const OPS = !BOTS && !!(window.Operator && window.FightMoves && opts.sides.every(s => s.preset));
+    const POS = OPS || BOTS ? [new V(-5.2, 0, 0.4), new V(5.2, 0, 0.4)] : [new V(-6.2, 0, 0.6), new V(6.2, 0, 0.6)];
     const sideCol = i => C(opts.sides[i].color || (i ? '#f29d30' : Theme.hex('accent')));
     let arena = null;
     if (window.DuelArena) {
@@ -210,16 +227,49 @@ window.DuelScene = (() => {
         sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2; scene.add(sh); f.shadow = sh;
       });
     }
+    // ---------- bots (js/app/botkit.js, moved by js/app/bot-fighter.js) ----------
+    // Each bot hovers over its pedestal, its group turned so local +z points at the other bot and
+    // the bot itself a little toward the camera, so its face and orb read from the broadcast side.
+    const BS = 1.3, TURN = 0.55;
+    if (BOTS) {
+      const TH = { ...THREE, RoundedBoxGeometry: opts.RoundedBoxGeometry };
+      if (!arena) {
+        scene.add(new THREE.HemisphereLight('#c9d3da', '#08090a', 0.9));
+        const key = new THREE.DirectionalLight('#ffffff', 2.2); key.position.set(0, 8, 10); scene.add(key);
+      }
+      const gap = POS[1].x - POS[0].x;
+      F.forEach((f, i) => {
+        const s = opts.sides[i];
+        f.dir = i ? -1 : 1;
+        const bf = BotFighter.create(TH, s.bot.id, s.bot.look || {}, { gap, scale: BS, lite: phone });
+        bf.group.position.set(POS[i].x, arena ? arena.PAD_TOP : 0.22, POS[i].z);
+        bf.group.rotation.y = f.dir * Math.PI / 2;
+        bf.group.children[0].rotation.y = -f.dir * TURN;
+        scene.add(bf.group);
+        f.bf = bf; f.yaw = f.dir * (Math.PI / 2 - TURN); f.typeAt = -9; f.won = false; f.dodgeAt = -9; f.koLand = 0;
+        f.kb = s.kb || 'slab';
+        // the card (hidden) rides with the bot in world space, so frost, arcs and stars sit on it
+        scene.add(f.card); f.card.rotation.set(0, 0, 0);
+        f.card.children.forEach(ch => { ch.visible = false; });
+        f.card.scale.set(0.8, 0.72, 1);
+        // a soft shadow on the floor under the hovering bot
+        const sh = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), own(new THREE.MeshBasicMaterial({ map: shadowTex, color: '#000000', transparent: true, opacity: 0.6, depthWrite: false, toneMapped: false })));
+        sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2; scene.add(sh); f.shadow = sh;
+      });
+    }
+    const inbound = [[], []];   // when each shot in flight at a side lands (scene time)
+
     // where a fighter's chest, head and hands are this frame
     const _cb = new V();
     function chest(i, out) {
       const f = F[i];
+      if (f.bf) return f.bf.bot.body.getWorldPosition(out);
       if (f.op) { const B = f.op.bones; if (B && B.Spine2) return B.Spine2.getWorldPosition(out); return f.rig.getWorldPosition(out).setY(2.8); }
       return f.card.getWorldPosition(out);
     }
-    function headOf(i, out) { const f = F[i]; if (f.op && f.op.bones && f.op.bones.Head) return f.op.bones.Head.getWorldPosition(out); return chest(i, out).setY(f.base.y + CARD_H / 2 + 0.2); }
-    function handOf(i, out) { const f = F[i]; if (f.op && f.op.bones && f.op.bones.RightHand) return f.op.bones.RightHand.getWorldPosition(out); return chest(i, out).add(_cb.set(i ? -1.8 : 1.8, 0.1, 0.5)); }
-    function feetOf(i, out) { const f = F[i]; if (f.rig) return out.copy(f.rig.position).add(_cb.set(f.dir * f.root.x * OS, 0, 0)); return out.copy(POS[i]); }
+    function headOf(i, out) { const f = F[i]; if (f.bf) return chest(i, out).add(_cb.set(0, 1.15 * BS, 0)); if (f.op && f.op.bones && f.op.bones.Head) return f.op.bones.Head.getWorldPosition(out); return chest(i, out).setY(f.base.y + CARD_H / 2 + 0.2); }
+    function handOf(i, out) { const f = F[i]; if (f.bf) return f.bf.muzzle(out); if (f.op && f.op.bones && f.op.bones.RightHand) return f.op.bones.RightHand.getWorldPosition(out); return chest(i, out).add(_cb.set(i ? -1.8 : 1.8, 0.1, 0.5)); }
+    function feetOf(i, out) { const f = F[i]; if (f.bf) return chest(i, out).setY(0); if (f.rig) return out.copy(f.rig.position).add(_cb.set(f.dir * f.root.x * OS, 0, 0)); return out.copy(POS[i]); }
 
     // ---------- combat effects ----------
 
@@ -232,14 +282,14 @@ window.DuelScene = (() => {
     const tmp = new V(), tmp2 = new V();
     const centre = (i, out) => chest(i, out);
     const adapters = F.map((f, i) => ({
-      size: f.op ? 1.9 : 1.6,
+      size: f.op ? 1.9 : f.bf ? 1.5 : 1.6,
       pos: out => centre(i, out),
-      top: out => (f.op ? headOf(i, out).add(tmp2.set(0, 0.7, 0)) : centre(i, out).setY(f.base.y + CARD_H / 2 + 0.4)),
+      top: out => (f.op || f.bf ? headOf(i, out).add(tmp2.set(0, 0.7, 0)) : centre(i, out).setY(f.base.y + CARD_H / 2 + 0.4)),
       base: out => feetOf(i, out).setY(0.36),
       react: (kind, power) => react(i, kind === 'stun' ? 'stun' : kind === 'freeze' ? 'freeze' : 'hit', power),
     }));
     // shots and spells leave from the thrower's hand (the card's edge without operators)
-    const casterOf = i => ({ pos: out => (F[i].op ? handOf(i, out).add(tmp2.set(F[i].dir * 0.3, 0.1, 0.2)) : centre(i, out).add(tmp2.set(i ? -1.8 : 1.8, 0.1, 0.5))) });
+    const casterOf = i => ({ pos: out => (F[i].bf ? handOf(i, out) : F[i].op ? handOf(i, out).add(tmp2.set(F[i].dir * 0.3, 0.1, 0.2)) : centre(i, out).add(tmp2.set(i ? -1.8 : 1.8, 0.1, 0.5))) });
     // sounds go through opts.audio (an ArenaAudio); none while warming up
     let warming = false;
     const snd = (name, arg) => { if (!warming && opts.audio) opts.audio.play(name, arg); };
@@ -552,6 +602,14 @@ window.DuelScene = (() => {
       if (p >= 3) { snd('ooh'); if (opts.audio) opts.audio.swell(0.6); if (arena) arena.hype(1 - to, 0.8); }
       if (onLand) onLand();
     }
+    // a dodged shot flies on through where the bot was and bursts on the far side
+    function whiff(to, col, onLand) {
+      const at = centre(to, new V()).add(tmp.set(-F[to].dir * 1.6, -0.6, -0.6));
+      burst(at, 8, 4, col, { size: 0.22, life: 0.35, grav: 2 });
+      flare(at, col, 0.9, 0.1);
+      snd('whoosh', 0.5);
+      if (onLand) onLand();
+    }
     const TIER_COL = [null, null, '#3ee6ff', '#f2c230', '#ff5ce1'];
     const lastTier = [0, 0];   // the tier of the last shot thrown at each side
 
@@ -559,11 +617,21 @@ window.DuelScene = (() => {
       const to = 1 - from, f = F[from];
       tier = Math.max(0, Math.min(4, tier | 0));
       if (f.op) { f.typeAt = t; if (tier === 1 && !o.crit) f.mv.play('attack'); else f.mv.act(o.crit && tier < 4 ? (tier >= 2 ? 'smash' : 'jab') : MOVE[tier]); }
+      // a bot strikes at once (the wind-up happened while the word was typed): tiers 0 and 1 a shot,
+      // 2 a dash, 3 and up the dash with a flurry. Its word finished while a shot comes at it is a dodge.
+      let rel = 0;
+      if (f.bf && !o.noMove && !f.ko) {
+        f.typeAt = t;
+        rel = f.bf.attack(Math.min(3, tier >= 3 ? 3 : tier + (o.crit ? 1 : 0))) / 1000;
+        if (!warming && inbound[from].some(x => x > t + 0.09) && t - f.dodgeAt > 0.9) { f.dodgeAt = t; f.bf.dodge(Math.random() < 0.5 ? -1 : 1); csnd('op-dodge'); }
+        csnd('op-attack');
+      }
       lastTier[to] = tier + (o.crit ? 1 : 0);
-      const word = String(o.word || '').replace(/\s+/g, '').slice(0, 16) || '>>>';
+      const word = o.orb ? '*' : String(o.word || '').replace(/\s+/g, '').slice(0, 16) || '>>>';
       const T = Math.max(0.16, Math.min(0.7, (o.ms || 260) / 1000));
+      inbound[to] = inbound[to].filter(x => x > t); inbound[to].push(t + rel + T);
       const base = new THREE.Color(o.color || (from ? '#f29d30' : Theme.hex('accent')));
-      const col = TIER_COL[tier] ? new THREE.Color(TIER_COL[tier]) : base.clone().lerp(WHITE, tier ? 0.25 : 0);
+      const col = TIER_COL[tier] && !o.orb ? new THREE.Color(TIER_COL[tier]) : base.clone().lerp(WHITE, tier ? 0.25 : 0);
       // the attacker winds up and lunges; the letters leave on the lunge
       f.lt = 0; f.lp = 0.6 + tier * 0.12 + (o.crit ? 0.25 : 0);
       const start = casterOf(from).pos(new V());
@@ -581,20 +649,22 @@ window.DuelScene = (() => {
         const g = glyphs[gI = (gI + 1) % GN];
         if (g.on && g.cb) { const cb = g.cb; g.cb = null; cb(); }   // pool wrapped: land the oldest now
         const order = from === 0 ? n - 1 - k : k;                   // 0 leads
-        g.delay = 0.04 + order * step;
+        g.delay = 0.04 + rel + order * step;
+        g.to = F[to].bf && !o.dodge ? to : -1;   // bots move, so the shot follows the one it was thrown at
         g.dur = Math.max(0.08, T - (n - 1) * step - 0.04);
         g.a.copy(start);
         g.b.copy(end).add(tmp.set(rnd(-0.12, 0.12), rnd(-0.12, 0.12), 0));
         g.c.copy(ctrl);
         if (kb === 'compact') g.c.addScaledVector(side, ((k % 3) - 1) * 0.9).y += ((k % 3) - 1) * 0.5;
         else if (kb === 'split') { const s = k % 2 ? 1 : -1; g.a.addScaledVector(side, s * 0.45); g.c.addScaledVector(side, s * 1.6); }
-        const map = glyph(word[k]);
-        g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(1.7);
+        const map = o.orb ? glowTex : glyph(word[k]);
+        g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(o.orb ? 2.4 : 1.7);
         // the trails are soft dots; a long word stacks them, so each stays faint or they pile up to white
         g.tr.forEach(x => { x.material.color.copy(col).multiplyScalar(n > 8 ? 0.45 : 0.7); });
-        g.size = size; g.spin = 0; g.t = 0; g.on = true;
-        g.cb = order === n - 1 ? () => impact(to, tier, o.crit, col, onLand) : () => tick(to, col);
+        g.size = o.orb ? size * (1.1 + tier * 0.25) : size; g.spin = 0; g.t = 0; g.on = true;
+        g.cb = order === n - 1 ? (o.dodge ? () => whiff(to, col, onLand) : () => impact(to, tier, o.crit, col, onLand)) : () => tick(to, col);
       }
+      if (o.dodge && F[to].bf) setTimeout(() => { if (alive && !F[to].ko) { F[to].bf.dodge(Math.random() < 0.5 ? -1 : 1); csnd('op-dodge'); } }, Math.max(0, (rel + T) * 1000 - 300));
       burst(start, 4 + tier * 2, 3, col, { size: 0.3, life: 0.3, grav: 0 });
       if (tier >= 2) flashLight(start, col, 1 + tier);
       snd('whoosh', Math.min(1, 0.2 + tier * 0.2 + (o.crit ? 0.3 : 0)));
@@ -627,6 +697,7 @@ window.DuelScene = (() => {
       const f = F[from], sp = window.Combat && Combat.spell ? Combat.spell(id) : null;
       const col = new THREE.Color(sp && sp.color ? sp.color : '#9ff5ff');
       if (f.op) f.mv.act('cast');
+      if (f.bf && !f.ko) f.bf.spell();
       const R = runes[from]; R.t = 0; R.col.copy(col); R.m.visible = true;
       snd('charge', 0.55); csnd(id);
       const now = performance.now();
@@ -644,6 +715,35 @@ window.DuelScene = (() => {
       setTimeout(() => { if (alive) { snd('release'); flashLight(casterOf(from).pos(new V()), col, 4); } }, reduce ? 0 : 520);
     }
     const threats = [];
+
+    // ---------- typing on the bots ----------
+    function key(i, frac) { const f = F[i]; if (f.bf && !f.ko) { f.bf.key(frac); f.typeAt = t; } }
+    function wpm(i, w) { if (F[i].bf) F[i].bf.setWpm(w); }
+    function hold(i, frac) { const f = F[i]; if (f.bf && !f.ko) { f.bf.hold(frac); f.typeAt = t; if (!warming) csnd('blip'); } }
+    function clear() { F.forEach(f => { if (f.bf) f.bf.clear(); }); }
+    // Showdown: the round's attack. 1-3 words a shot, 4-6 a double, 7-9 the dash strike, all 10 the
+    // finisher: the bot rises, flares and drives in under a cutaway, and a thick beam carries the hit
+    function strike(from, words, o = {}) {
+      const f = F[from], to = 1 - from;
+      if (!f.bf || words <= 0) { if (o.onLand) o.onLand(); return; }
+      const col = opts.sides[from].color;
+      const fire = (tier, land, extra = {}) => shot(from, tier, land, { orb: true, color: col, ms: 360, crit: o.crit, dodge: o.dodge, noMove: true, ...extra });
+      if (words >= 10) {
+        f.bf.spell(); csnd('ultimate'); snd('charge', 0.7);
+        if (!warming) want('finisher', { x: from, pri: 3 });
+        setTimeout(() => { if (!alive) return; snd('release'); fire(4, o.onLand, { ms: 420 }); }, reduce ? 0 : 620);
+      } else if (words >= 7) {
+        const rel = f.bf.attack(3); csnd('op-attack');
+        setTimeout(() => { if (alive) fire(3, o.onLand); }, rel);
+      } else if (words >= 4) {
+        const rel = f.bf.attack(1); csnd('op-attack');
+        setTimeout(() => { if (!alive) return; fire(1, null, { ms: 330 }); }, rel);
+        setTimeout(() => { if (!alive) return; f.bf.attack(1); fire(1, o.onLand); }, rel + 200);
+      } else {
+        const rel = f.bf.attack(0); csnd('op-attack');
+        setTimeout(() => { if (alive) fire(0, o.onLand); }, rel);
+      }
+    }
 
     // a block: the hex shield flares between the blocker and the hit
     const hexCv = document.createElement('canvas'); hexCv.width = hexCv.height = 256;
@@ -666,11 +766,17 @@ window.DuelScene = (() => {
         if (kind === 'block') { if (lastTier[i] >= 3 || !f.mv.play('dodge')) f.mv.act('block'); }
         if (kind === 'cleanse') f.mv.play('heal');
       }
+      if (f.bf && !f.ko) {
+        if (kind === 'hit') { f.bf.hit(new V((Math.random() - 0.5) * 0.8, 0, -1), Math.min(1.5, power + p * 0.12)); csnd('op-hit'); }
+        if (kind === 'block') f.bf.block();
+        if (kind === 'typo') f.bf.typo();
+        if (kind === 'miss') f.bf.miss();
+      }
       if (kind === 'hit') { f.kick = Math.min(1, f.kick + 0.35 + power * 0.4); f.flash = Math.max(f.flash, 0.5); f.flashCol.set('#ffffff'); }
       if (kind === 'typo') { f.flash = Math.max(f.flash, 0.6); f.flashCol.set('#ff4d5e'); f.glitch = 0.35; burst(casterOf(i).pos(new V()), 7, 3.5, RED, { shard: true, size: 0.2, life: 0.45, grav: 7 }); if (i === opts.me) csnd('fizzle'); }
       if (kind === 'block') {
         f.flash = Math.max(f.flash, 0.5); f.flashCol.set('#7dffc4');
-        const S = shields[i]; S.t = 0; S.m.visible = true;
+        const S = shields[i]; if (!f.bf) { S.t = 0; S.m.visible = true; }
         snd('block'); flashLight(centre(i, new V()), C('#7dffc4'), 3);
         burst(centre(i, new V()).add(tmp2.set(f.dir ? f.dir * 1.2 : 0, 0, 0.4)), 12, 5, C('#7dffc4'), { size: 0.22, life: 0.4, grav: 2 });
         if (fx && !f.op) fx.event('ward', { caster: adapters[i] });
@@ -749,6 +855,7 @@ window.DuelScene = (() => {
         if (reduce) slowUntil = 0;
       }
       if (f.op) { f.mv.act('knock'); f.landT = 0; if (w.op) { w.won = true; w.mv.release(); } return; }
+      if (f.bf) { f.bf.ko(); f.koLand = t + 0.8; csnd('op-down'); return; }
       if (!reduce && !warming) { slowUntil = performance.now() + 1500; slowK = 0.3; }
       if (f.broken) return;
       const cols = 6, rows = 7, cw = CARD_W / cols, ch = CARD_H / rows;
@@ -771,12 +878,16 @@ window.DuelScene = (() => {
       f.broken = { grp, list, t: 0 };
     }
     // a knocked fighter gets up before the next round starts
-    function rise() { F.forEach(f => { if (f.op && f.mv.down() && !f.lost) { f.mv.act('getup'); snd('getup'); } }); }
+    function rise() { F.forEach((f, i) => {
+      if (f.op && f.mv.down() && !f.lost) { f.mv.act('getup'); snd('getup'); }
+      if (f.bf && f.ko && !f.lost) { f.bf.rise(); f.ko = 0; snd('getup'); ringAt(i, f.col, 3, 0.5); }
+    }); }
     // a new round: knocked fighters get up, cards come back together and drop onto their pads
     function revive() {
       F.forEach((f, i) => {
         if (f.broken) { f.card.remove(f.broken.grp); f.broken = null; f.card.children.forEach(ch => { ch.visible = true; }); }
         if (f.op) { if (f.mv.down()) { f.mv.act('getup'); snd('getup'); } }
+        else if (f.bf) { if (f.ko) snd('getup'); f.bf.rise(); f.bf.clear(); f.koLand = 0; f.lost = false; }
         else { f.drop = reduce ? 0 : 1; if (reduce) ringAt(i, f.col, 3, 0.5); }
         f.ko = 0; f.koT = 0; f.stun = 0; f.freeze = 0; f.recoil = 0; f.poison = 0; f.fog = 0; f.ice = 0; f.wasFrozen = false; f.won = false;
       });
@@ -805,6 +916,8 @@ window.DuelScene = (() => {
       if (win < 0) { F.forEach(f => { if (f.op && !f.mv.down()) f.mv.release(); }); return; }
       const w = F[win], l = F[1 - win];
       w.won = true; if (w.op) { w.mv.release(); if (w.mv.down()) w.mv.act('getup'); }
+      if (w.bf) { w.bf.rise(); w.bf.victory(); csnd('op-victory'); }
+      if (l.bf) l.lost = true;
       if (l.op && !l.mv.down()) l.lost = true;
       if (arena) { arena.board({ text: 'WINNER', hot: win, sub: (opts.sides[win].name || '').toUpperCase() }); arena.hype(win, 1.4); }
       snd(win === opts.me || opts.me < 0 ? 'fanfare' : 'lose');
@@ -814,7 +927,7 @@ window.DuelScene = (() => {
 
     const _s = new V();
     function screen(i, out = {}) {
-      if (F[i].op) headOf(i, _s).add(tmp2.set(0, 0.9, 0)); else centre(i, _s).setY(F[i].base.y + CARD_H / 2 + 0.2);
+      if (F[i].op || F[i].bf) headOf(i, _s).add(tmp2.set(0, F[i].bf ? 0.5 : 0.9, 0)); else centre(i, _s).setY(F[i].base.y + CARD_H / 2 + 0.2);
       _s.project(camera);
       out.x = (_s.x * 0.5 + 0.5) * host.clientWidth; out.y = (-_s.y * 0.5 + 0.5) * host.clientHeight;
       return out;
@@ -875,6 +988,12 @@ window.DuelScene = (() => {
         { len: 0.8, cut: 1, slow: 0.55, fov: 32, pose(c, out) { const i = c.x, f = F[i], yaw = f.yaw - f.dir * 0.2; out.pos.set(fp[i].x + Math.sin(yaw) * 6.5, 1.3 + c.u * 0.4, fp[i].z + Math.cos(yaw) * 6.5); out.look.set(fc[i].x, fc[i].y + 0.9, fc[i].z); } },
         { len: 0.8, cut: 1, fov: 40, omega: 3, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set(fp[i].x - d * 5, 4.6, 13); out.look.set(fp[1 - i].x * 0.6, 2.4, 0); } },
       ] },
+      // Showdown's finisher: low in front of the bot as it rises and flares, then wide as it drives in
+      finisher: { pri: 3, parts: [
+        // over the attacker's shoulder, low, onto the target as the orb swells; then wide from the side as it drives in
+        { len: 0.8, cut: 1, slow: 0.5, fov: 34, pose(c, out) { const i = c.x, j = 1 - i, d = F[i].dir; out.pos.set(fp[i].x - d * (3.6 + c.u * 0.6), 2.2 + c.u * 0.5, fp[i].z + 4.6); out.look.set(fc[j].x - d * 1.2, fc[j].y + 0.2, fc[j].z); } },
+        { len: 1.1, cut: 1, slow: 0.7, fov: 40, omega: 3, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set((fp[0].x + fp[1].x) / 2 - d * 1.5, 1.6 + c.u * 0.4, 12.5); out.look.set((fc[0].x + fc[1].x) / 2 + d * 1.5, 2.4, 0.4); } },
+      ] },
       ko: { pri: 4, free: true, parts: [
         { len: 1.5, cut: 1, slow: 0.28, fov: 44, pose(c, out) { const i = c.x, d = F[i].dir; out.pos.set(fp[i].x + d * 4.2, 1.5, fp[i].z + 6.6); out.look.set(fp[i].x - d * 1.4, 2.0, fp[i].z); } },
         { len: 1.7, cut: 1, slow: 0.7, fov: 40, omega: 2.5, pose(c, out) { const i = c.x, j = 1 - i, d = F[j].dir; out.pos.set(fp[j].x - d * 3.2, 3.2 + c.u * 0.6, fp[j].z + 6.5 - c.u * 1.2); out.look.set((fp[i].x + fp[j].x) / 2, 1.8, 0); } },
@@ -917,7 +1036,21 @@ window.DuelScene = (() => {
         f.stun = Math.max(0, f.stun - dt); f.freeze = Math.max(0, f.freeze - dt); f.fog = Math.max(0, f.fog - dt);
         f.glitch = Math.max(0, f.glitch - dt);
         f.lt += dt;
-        if (f.op) {
+        if (f.bf) {
+          // the bot: its fighter moves on the typing events; freeze and lock slow it to a crawl
+          const odt = f.freeze > 0 ? dt * 0.15 : f.stun > 0 ? dt * 0.05 : dt;
+          f.bf.update(odt);
+          if (f.stun > 0 || f.glitch > 0) f.bf.bot.group.position.x += reduce ? 0 : (Math.random() - 0.5) * 0.08;
+          // the KO landing: a thud of dust where it hits the floor
+          if (f.koLand && t >= f.koLand) { f.koLand = 0; chest(i, tmp).setY(0.4); smoke(tmp, 14, 2.6, { size: 1.6, life: 1.4, op: 0.6 }); ringAt(i, SMOKE, 3.5, 0.7); snd('knock'); shake = Math.max(shake, reduce ? 0 : 0.45); }
+          chest(i, f.card.position);
+          // the shadow under it, smaller and fainter the higher it hovers
+          const over = Math.hypot(f.card.position.x - POS[i].x, f.card.position.z - POS[i].z) < (arena ? arena.PAD_R : 1.8);
+          const fy = over ? (arena ? arena.PAD_TOP : 0.22) : 0.02, hgt = Math.max(0, f.card.position.y - fy);
+          f.shadow.position.set(f.card.position.x, fy + 0.012, f.card.position.z);
+          f.shadow.scale.setScalar(Math.max(1.4, 3.4 - hgt * 0.45));
+          f.shadow.material.opacity = Math.max(0.18, 0.75 - hgt * 0.12);
+        } else if (f.op) {
           // the operator: its own animation underneath, the fight move on top, the root motion on the rig
           f.op.play(f.won ? 'victory' : f.lost ? 'defeat' : t - f.typeAt < 2.5 ? 'type' : 'idle');
           const odt = f.freeze > 0 ? dt * 0.15 : f.stun > 0 ? dt * 0.05 : dt;
@@ -993,6 +1126,7 @@ window.DuelScene = (() => {
         const u0 = (g.t - g.delay) / g.dur;
         if (u0 < 0) continue;
         const u = Math.min(1, u0), e = Math.pow(u, 1.35);
+        if (g.to >= 0) { centre(g.to, tmp).add(tmp2.set(0, 0.1, 0.2)); g.b.lerp(tmp, Math.min(1, dt * 14)); }
         bez(g.s.position, g, e); g.s.visible = true;
         const sc = g.size * (0.5 + 0.5 * Math.min(1, u * 5));
         g.s.scale.setScalar(sc); g.s.material.rotation = g.spin * (g.t - g.delay) * 0.3;
@@ -1115,6 +1249,7 @@ window.DuelScene = (() => {
       // the rehearsal: every shot tier from both sides, the reactions, statuses, spells and a KO
       const word = [...set].join('').slice(0, 16);
       for (let tier = 0; tier <= 4; tier++) for (const side of [0, 1]) shot(side, tier, null, { word, crit: tier === 4, ms: 300 });
+      for (const side of [0, 1]) { shot(side, 2, null, { orb: true, ms: 300, noMove: true }); key(side, 0.5); hold(side, 0.5); }
       F.forEach((f, i) => { ['typo', 'block', 'poison', 'poisonTick', 'flash'].forEach(k => react(i, k)); react(i, i ? 'freeze' : 'stun', 1); react(1 - i, 'fog', 1); });
       if (fx) {
         for (const name of ['ward', 'hyper', 'root', 'split']) aura(0, name, true);
@@ -1135,7 +1270,8 @@ window.DuelScene = (() => {
       revive();
       F.forEach(f => { f.drop = 0; f.kick = f.recoil = f.flash = f.glitch = f.lt = 0; f.lt = 9; f.ice = 0; f.frost.visible = false; f.arcs.visible = false; });
       stopUntil = slowUntil = 0; shake = punch = 0; hitLightK = 0;
-      F.forEach(f => { if (f.mv) f.mv.reset(); f.won = false; f.lost = false; });
+      F.forEach(f => { if (f.mv) f.mv.reset(); if (f.bf) { f.bf.rise(); f.bf.clear(); f.koLand = 0; f.ko = 0; } f.won = false; f.lost = false; });
+      inbound[0].length = inbound[1].length = 0;
       runes.forEach(R => { R.m.visible = false; }); shields.forEach(S => { S.m.visible = false; });
       threats.length = 0;
       if (dir) dir.reset();
@@ -1145,7 +1281,7 @@ window.DuelScene = (() => {
 
     function dispose() {
       alive = false;
-      F.forEach(f => { if (f.op) f.op.dispose(); });
+      F.forEach(f => { if (f.op) f.op.dispose(); if (f.bf) f.bf.dispose(); });
       renderer.setAnimationLoop(null);
       if (arena) arena.dispose();
       ro.disconnect(); io.disconnect();
@@ -1158,7 +1294,7 @@ window.DuelScene = (() => {
       renderer.domElement.remove();
     }
 
-    return { shot, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
+    return { shot, key, wpm, hold, strike, clear, cast, react, aura, setLook, setHp, ko, revive, rise, phase, result, screen, warm, dispose, director: () => dir, debugPose,
       arena: () => arena, renderer: () => renderer, bloom: () => bloom, info: () => ({ warming, quality: qLevel, fx: fx ? fx.info() : null, letters: glyphs.filter(g => g.on).length, shot: dir ? dir.shot() : 'game', log: dir ? dir.log().slice(-12) : [], moves: F.map(f => (f.mv ? f.mv.name() : '')) }) };
   }
 

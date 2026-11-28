@@ -18,6 +18,8 @@
 //   scene.add(f.group)   place f.group at the bot's spot, turned so local +z points at the other bot
 //   f.update(dt)         every frame
 //   f.muzzle(out)        where a shot leaves from (world)
+//   f.hold(frac)         Showdown: a finished word adds a spark that stays, the orb holds at frac until attack()
+//   f.clear()            drops the charge and every spark (a new round)
 //   f.pose(name, u)      a frozen frame for stills: 'ready' | 'charge' | 'attack' | 'combo' | 'dodge' | 'block' | 'typo' | 'spell' | 'ko'
 window.BotFighter = (() => {
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -77,7 +79,7 @@ window.BotFighter = (() => {
     const HOVER = BotKit.HOVER, gap = o.gap || 12, V = THREE.Vector3, parts = bot.parts || {};
     const strike = STRIKE[id] || STRIKE.orbit;
     let t = Math.random() * 10, lastKey = -9, charge = 0, chargeTo = 0, kick = 0;
-    let act = null, react = null, hitAt = -9, hitPow = 0, koAt = null, winAt = null, wpm = 0, stance = 0, sNow = 0;
+    let act = null, react = null, hitAt = -9, hitPow = 0, koAt = null, winAt = null, wpm = 0, stance = 0, sNow = 0, held = 0;
     const P = {}, S = {}, KEYS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'sx', 'sy', 'glow', 'halo', 'ant', 'hat', 'ears', 'legs', 'spinZ', 'orb', 'flash', 'shield'];
     const zero = () => KEYS.forEach(k => { P[k] = 0; });
     zero(); KEYS.forEach(k => { S[k] = 0; });
@@ -161,16 +163,20 @@ window.BotFighter = (() => {
       group, bot, id,
       // a correct key: frac is how much of the word is typed
       key(frac = 0) { chargeTo = clamp(frac, 0, 1); kick = 1; lastKey = t; launch(t); },
+      // Showdown: a finished word adds a spark that stays, and the orb holds at frac (0..1) until attack()
+      hold(frac = 0, spark = true) { held = clamp(frac, 0, 1); kick = 1; lastKey = t; if (spark) launch(t); },
       // the word is done: strike now. Returns the ms until the shot leaves
-      attack(tier = 0) { const combo = tier >= 2; start(combo ? 'combo' : 'attack', { A: [1, 1.2, 1.45, 1.7][clamp(tier, 0, 3)], dash: combo }); chargeTo = 0; charge *= 0.3; lastKey = t; bot.fire(t + LEN.attack * RELEASE); releaseSparks(); return Math.round(LEN.attack * RELEASE * 1000); },
+      attack(tier = 0) { const combo = tier >= 2; start(combo ? 'combo' : 'attack', { A: [1, 1.2, 1.45, 1.7][clamp(tier, 0, 3)], dash: combo }); chargeTo = 0; held = 0; charge *= 0.3; lastKey = t; bot.fire(t + LEN.attack * RELEASE); releaseSparks(); return Math.round(LEN.attack * RELEASE * 1000); },
       dodge(side = Math.random() < 0.5 ? -1 : 1) { start('dodge', { side }); },
       block() { start('block'); },
       miss() { start('miss'); },
-      spell() { start('spell'); chargeTo = 0; charge = 0; releaseSparks(); },
+      spell() { start('spell'); chargeTo = 0; held = 0; charge = 0; releaseSparks(); },
       typo() { react = { kind: 'typo', at: t, len: 0.36 }; chargeTo *= 0.6; fizzle(); },
       hit(dir, power = 0.5) { bot.hit(dir || new V(0, 0, -1), t); hitAt = t; hitPow = clamp(power, 0.2, 1.5); },
       ko() { koAt = t; act = null; react = null; },
       rise() { koAt = null; winAt = null; },
+      // drops the charge and every spark at once (a new round)
+      clear() { held = 0; chargeTo = 0; charge = 0; act = null; react = null; sparks.forEach(sp => { sp.st = 0; sp.m.visible = false; }); nLive = 0; },
       victory() { winAt = t; },
       setWpm(w) { wpm = w || 0; },
       get stance() { return stance; },
@@ -193,6 +199,7 @@ window.BotFighter = (() => {
       // the charge: the word being typed winds the bot up
       charge += (chargeTo - charge) * Math.min(1, dt * 18); kick = Math.max(0, kick - dt * 9);
       if (t - lastKey > 1.2) chargeTo = 0;
+      if (held > chargeTo) chargeTo = held;
       const c = charge;
       P.z += -0.45 * c + 0.08 * kick; P.rx += -0.22 * c; P.y += 0.12 * c; P.glow += 1.4 * c + 0.4 * kick;
       P.orb += c; P.halo += 0.35 * c; P.ant += 0.6 * c; P.hat += 0.15 * c; P.ears += 0.7 * c; P.legs += -0.55 * c;

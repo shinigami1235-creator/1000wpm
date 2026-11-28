@@ -39,7 +39,7 @@ window.UI = (() => {
     'world-boss': 'World boss', 'breach-endless': 'Breach endless', 'breach-daily': 'Breach daily',
     rush: 'Boss rush',
     superboss: 'Superboss',
-    duel: 'Duel', 'duel-art': 'Duel vs Art', party: 'Party run',
+    duel: 'Duel', 'duel-art': 'Duel vs Art', showdown: 'Showdown', 'showdown-art': 'Showdown vs Art', party: 'Party run',
     pvp: 'PvP', reel: 'Reel', free: 'Free typing', placement: 'Placement test',
   };
   const DIFF = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
