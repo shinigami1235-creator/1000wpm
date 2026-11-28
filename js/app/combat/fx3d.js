@@ -1321,8 +1321,11 @@ Combat.FX = (() => {
       const col = C('#5dff9e'), hi = C('#d9ffe9'), end = 2.4;
       sigil(cs, col, 0.4, 1.8);
       e.cols = Array.from({ length: 12 }, () => ({ x: rnd(-1.6, 1.6), z: rnd(-1, 1), next: 0 }));
+      const ro = { t: 0, ending: 0 };
       e.update = () => {
         P(cs, 'pos', t1);
+        ro.t = e.t; if (e.t > end && !ro.ending) ro.ending = e.t;
+        if (e.t < end + 0.4) readout('rain', ro, t5.copy(t1), col, e.t > end ? 1 - (e.t - end) / 0.4 : Math.min(1, e.t / 0.3), 0, 1);
         const open = ease(e.t / 0.35), close = e.t > end ? 1 - (e.t - end) / 0.4 : 1;
         const on = e.t > 0.15 && e.t < end;
         // the portal the rain falls from
@@ -2229,12 +2232,62 @@ Combat.FX = (() => {
       auras[name] = a;
     }
     const AU = { ward: C('#7dffc4'), cshield: C('#7dd8ff'), split: C('#d6b8ff'), root: C('#ffc46b'), hyper: C('#ffb066'), frenzy: C('#ff6a2a') };
+    // ---------- buff read-outs (World Boss, 28 Nov 2026: "hard to see at the raid's camera distance") ----------
+    // Each buff on your bot also gets a ring facing the camera in the buff's colour, an icon above the bot that
+    // matches its chip in the HUD (a shield for safe mode, a shield with a chevron for combo shield, chevrons
+    // for hyper thread, a flame for frenzy, two diamonds for quantum split, a plus for binary rain), a flare as
+    // it starts and a collapse as it ends. All of it grows with the camera's distance, so it reads as well from
+    // the raid's view (about 22 units back) as from a duel's, and stacked buffs take the next ring out.
+    const ICON = {
+      ward: [[[-0.6, 0.6], [0.6, 0.6], [0.6, 0], [0, -0.75], [-0.6, 0], [-0.6, 0.6]]],
+      cshield: [[[-0.6, 0.6], [0.6, 0.6], [0.6, 0], [0, -0.75], [-0.6, 0], [-0.6, 0.6]], [[-0.3, 0.25], [0, -0.1], [0.3, 0.25]]],
+      hyper: [[[-0.5, 0], [0, 0.5], [0.5, 0]], [[-0.5, -0.45], [0, 0.05], [0.5, -0.45]]],
+      frenzy: [[[0, 0.75], [0.45, 0.05], [0.3, -0.55], [0, -0.7], [-0.3, -0.55], [-0.45, 0.05], [0, 0.75]], [[0, 0.15], [0.18, -0.25], [0, -0.45], [-0.18, -0.25], [0, 0.15]]],
+      split: [[[-0.6, 0], [-0.3, 0.45], [0, 0], [-0.3, -0.45], [-0.6, 0]], [[0, 0], [0.3, 0.45], [0.6, 0], [0.3, -0.45], [0, 0]]],
+      rain: [[[0, 0.6], [0, -0.6]], [[-0.6, 0], [0.6, 0]]],
+    };
+    const camR = new V(), camU = new V(), _ia = new V(), _ib = new V(), _ic = new V();
+    const viewScale = at => Math.max(1, Math.min(2.4, at.distanceTo(camera.position) / 13));
+    function icon(name, at, size, col, k) {
+      camR.setFromMatrixColumn(camera.matrixWorld, 0); camU.setFromMatrixColumn(camera.matrixWorld, 1);
+      for (const line of ICON[name]) for (let i = 1; i < line.length; i++) {
+        _ia.copy(at).addScaledVector(camR, line[i - 1][0] * size).addScaledVector(camU, line[i - 1][1] * size);
+        _ib.copy(at).addScaledVector(camR, line[i][0] * size).addScaledVector(camU, line[i][1] * size);
+        // each stroke runs a little past its corners so the outline closes
+        _ic.subVectors(_ib, _ia).setLength(0.06 * size); _ia.sub(_ic); _ib.add(_ic);
+        seg(_ia, _ib, 0.13 * size, col, k);
+      }
+    }
+    // slot: which ring this buff takes (stacked buffs go out a ring each); called after the buff's own drawing
+    function readout(name, a, at, col, k, slot, slots) {
+      const S = viewScale(at), R = (1.45 + 0.3 * slot) * S;
+      _ic.subVectors(camera.position, at).normalize();
+      // the ring, with a brighter arc running round it
+      circle(at, _ic, R, 0.05 * S, col, 0.95 * k, 40, a.t * (slot % 2 ? -0.8 : 0.8));
+      circle(at, _ic, R, 0.09 * S, WHITE, 0.7 * k, 40, a.t * (slot % 2 ? -2.2 : 2.2), 0.18);
+      // the start: a ring thrown out and a flash; the end: the ring pulled in
+      const st = 1 - Math.min(1, a.t / 0.45);
+      if (st > 0) { circle(at, _ic, R * (1 + 1.6 * (1 - st)), 0.12 * S * st, col, 1.8 * st, 40); if (!a.flared) { a.flared = 1; bigFlash(at, col, 3.2 * S, 0.7); } }
+      if (a.ending) {
+        const u = Math.min(1, (a.t - a.ending) / 0.4);
+        circle(at, _ic, R * (1 - 0.7 * u), 0.1 * S * (1 - u), WHITE, 1.6 * (1 - u), 40);
+        if (!a.dimmed) { a.dimmed = 1; burst(at, 18, 5 * S, col, 0.3 * S, 0.5, G.dot, { drag: 2 }); }
+      }
+      // the icon over the bot, side by side when there are several
+      camR.setFromMatrixColumn(camera.matrixWorld, 0);
+      _ib.copy(at).addScaledVector(camR, (slot - (slots - 1) / 2) * 1.05 * S); _ib.y += 1.85 * S + Math.sin(a.t * 3) * 0.05 * S;
+      icon(name, _ib, 0.5 * S, col, (1.3 + 0.25 * Math.sin(a.t * 5)) * k + st * 1.2);
+    }
     function drawAura(a, dt) {
       a.t += dt;
       if (a.until && a.t > a.until && !a.ending) a.ending = a.t;
       const k = a.ending ? 1 - (a.t - a.ending) / 0.4 : Math.min(1, a.t / 0.3);
       if (k <= 0) return false;
       const cs = a.ctx.caster, tg = a.ctx.target;
+      if (a.name !== 'root' && ICON[a.name] && cs) {
+        const mine = Object.keys(auras).filter(n => n !== 'root' && ICON[n]);
+        P(cs, 'pos', t1); readout(a.name, a, t1, AU[a.name], k, Math.max(0, mine.indexOf(a.name)), mine.length);
+      }
       if (a.name === 'ward') {
         // a hex cage round your bot, centred on it (the bots hover), with a slow bright band running over it
         P(cs, 'pos', t1);

@@ -80,6 +80,7 @@ window.BossScene = (() => {
       act: (who, kind, by) => impl && impl.act(who, kind, by),
       lock: (who, ms) => impl && impl.lock(who, ms),
       sideAttack: (k, kind, outcome) => impl && impl.sideAttack(k, kind, outcome),   // test hook
+      press: (k, s) => impl && impl.press(k, s),   // test hook: hold the boss close to your squad
       orbitInfo: () => impl && impl.orbitInfo(),
       director: () => impl && impl.director && impl.director(),
       dbg: () => impl && impl.dbg(),
@@ -1212,7 +1213,7 @@ window.BossScene = (() => {
     const CLASH = P((u, o, l) => {                                     // low behind your barrier as the blow smashes into it
       o.copy(aim); o.x += 6; o.y = 2 + 0.8 * u; o.z += 9 - 1.5 * u; l.copy(aim); l.y = 5; l.z -= 5; },
       { len: 0.7, slow: 0.5, cut: 1, omega: 12 });
-    let dirShots = null;
+    let dirShots = null; const fzB = new V();
     const director = window.CamDirector ? CamDirector.create(THREE, camera, {
       reduce: reduce || !BOT, lockBefore: 3.5,   // the punch and the lock-on wind up for 3 to 4.5 s
       onPart: (name, i, p) => { if (p.slow && !reduce) slowUntil = Math.max(slowUntil, performance.now() + p.slow * 1000); },
@@ -1230,6 +1231,16 @@ window.BossScene = (() => {
           if (u < 0.05 || !dodgeSide) dodgeSide = clearSide(y);
           o.copy(y).addScaledVector(tB, -2.6 - 0.6 * u); o.x += tB.z * 3.6 * dodgeSide; o.z -= tB.x * 3.6 * dodgeSide; o.y = y.y + 1.7; l.copy(y).lerp(anchorCore, 0.18); },
           { len: 0.8, slow: 0.8, cut: 1, omega: 12, fov: 40, frame: ['face', 0.3, 0], face: 1 })] },
+        // a fizzled spell dodged up close: high and wide off your bot's shoulder, three-quarters on, so the
+        // boss's step back and to the side and the bolt sailing past are both in frame (28 Nov 2026)
+        fizzDodge: { pri: 2, parts: [P((u, o, l) => {
+          // the framing is set where the boss stood as the shot began, so the camera doesn't follow the step away
+          if (u < 0.05 || !fzB.lengthSq()) fzB.copy(root.position);
+          const y = raidPos[RAID], b = fzB, H = bossH(); tB.copy(b).sub(y).setY(0).normalize(); dD.crossVectors(dY, tB);
+          const sd = (tB.z * (gamePos.x - y.x) - tB.x * (gamePos.z - y.z)) > 0 ? 1 : -1, d = fitD(H, 0.7, 44) * (1 + 0.04 * u);
+          l.set((b.x + y.x) / 2, H * 0.36, (b.z + y.z) / 2);
+          o.copy(l).addScaledVector(tB, -d * 0.78).addScaledVector(dD, sd * d * 0.62); o.y = H * 0.42 + 0.6 * u; },
+          { len: 1.35, slow: 0.55, cut: 1, omega: 9, fov: 44 })] },
         // from the floor in front of it, craning up and back
         scale: { pri: 3, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H, 1.5, 40) + (fitD(H, 0.85, 40) - fitD(H, 1.5, 40)) * smooth(u);
@@ -1370,7 +1381,7 @@ window.BossScene = (() => {
     let shake = 0, hitGlow = 0, stopUntil = 0, slowUntil = 0, tintAmt = 0, glitch = 0;
     let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
     // a fizzled spell (28 Nov 2026): it guards or swats it away (guardAt) or sidesteps it (dodgeAt, dodgeV in the arena)
-    let guardAt = -9, guardHow = 'shield', dodgeAt = -9; const dodgeV = new V(), dgA = new V(), dgB = new V();
+    let guardAt = -9, guardHow = 'shield', dodgeAt = -9, dodgeLean = 0, dodgeNear = 0, fzN = 0; const dodgeV = new V(), dgA = new V(), dgB = new V();
     // jolt: a short reel from your hits; reelAt: the big reel after a stagger or a blocked attack
     let jolt = 0, reelAt = -9;
     const cutK = (x, t) => x.cut ? 1 - smooth(clamp((t - x.cut) / 0.3, 0, 1)) : 1;
@@ -1398,7 +1409,9 @@ window.BossScene = (() => {
       ? [['swipe', 'jab', 'lean', 'stomp', 'taunt'], ['swipe', 'jab', 'stomp', 'claw', 'taunt'], ['jab', 'swipe', 'stomp', 'claw', 'taunt'], ['jab', 'swipe', 'stomp', 'claw', 'swipe'], ['jab', 'swipe', 'claw', 'jab', 'swipe', 'taunt']]
       : [['swipe', 'jab', 'lean', 'stomp'], ['swipe', 'jab', 'stomp', 'lean'], ['jab', 'swipe', 'stomp', 'jab'], ['jab', 'swipe', 'stomp', 'jab', 'swipe'], ['jab', 'swipe', 'stomp', 'jab', 'swipe']];
     const men = { at: -9, kind: 'swipe', next: 2, fired: false };
-    let adv = 0, prevX = 0, leanZ = 0;
+    let adv = 0, prevX = 0, leanZ = 0, pressK = 0, pressUntil = 0;
+    // tests: hold the boss's pressure on your squad at k (0..1) for s seconds, so a close-range moment can be captured
+    function press(k, s = 10) { pressK = k; pressUntil = nowS() + s; }
 
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new V(), sc = new V(), e3 = new THREE.Euler();
     const v1 = new V(), v2 = new V(), v3 = new V(), v4 = new V();
@@ -2159,10 +2172,15 @@ window.BossScene = (() => {
         recoilV -= 0.35; hitGlow = Math.max(hitGlow, calm ? 0.2 : 0.35);
         if (opts.onGuard) opts.onGuard('block', guardHow);
       } else if (kind === 'dodge') {
-        // a quick sidestep across the line from your bot, the way the bolt's miss was thrown
+        // a quick sidestep across the line from your bot, the way the bolt's miss was thrown. Up close (it's
+        // pressing your squad) a small step was lost behind its own bulk, so the closer it is the further it
+        // goes: a longer step to the side and a step back, a lean into it, dust kicked up where it stood
         dodgeAt = t; caster.pos(dgA); dgB.copy(anchorCore).sub(dgA).setY(0).normalize();
-        dodgeV.crossVectors(dgB, dgA.set(0, 1, 0)).normalize().multiplyScalar(((extra && extra.side) || 1) * 4.5);
+        const near = clamp((13 - Math.hypot(root.position.x - dgA.x, root.position.z - dgA.z)) / 6, 0, 1), sd = (extra && extra.side) || 1;
+        dodgeV.crossVectors(dgB, dgA.set(0, 1, 0)).normalize().multiplyScalar(sd * (4.5 + 3.5 * near)).addScaledVector(dgB, 3.2 * near);
+        dodgeLean = -sd * (0.12 + 0.18 * near); dodgeNear = near;
         mv.dashUntil = t + 0.45;
+        if (near > 0.2) { wave(v1.copy(root.position).setY(0.15), 0.6, 9, 0.6, WHITE, 0.5); if (dress) dress.puff(v1.setY(0.5), 10, 1.2); }
         if (opts.onGuard) opts.onGuard('dodge');
       } else if (kind === 'pull' && extra) {
         // blocks torn off toward the black hole, then they fly back into place
@@ -2257,6 +2275,7 @@ window.BossScene = (() => {
       const quiet = dead || Math.abs(bossTurn) > 0.8 || current(t, 'slam') || current(t, 'adds') || current(t, 'shield') || current(t, 'volley') ||
         t - roarAt < 2.6 || t - reelAt < 1.0 || t < stunUntil || t - breakAt < 1.5 || t - kneelAt < 2.9;
       if (!dead) adv = Math.min(1, adv + dt * (0.055 + 0.012 * phase));
+      if (nowS() < pressUntil) adv = Math.max(adv, pressK);
       if (quiet) { men.next = Math.max(men.next, t + 0.6); return; }
       if (t > men.next) {
         const list = MEN_BY_PHASE[phase] || MEN_BY_PHASE[0];
@@ -2759,7 +2778,7 @@ window.BossScene = (() => {
       }
       // a fizzled spell dodged: a quick step out of the bolt's way and back
       const du = t - dodgeAt;
-      if (du < 1.3) { const w = (du < 0.25 ? ease(du / 0.25) : 1 - smooth((du - 0.5) / 0.8)) * still; tx += dodgeV.x * w; tz += dodgeV.z * w; }
+      if (du < 1.3) { const w = (du < 0.25 ? ease(du / 0.25) : 1 - smooth((du - 0.5) / 0.8)) * still; tx += dodgeV.x * w; tz += dodgeV.z * w; pose.hz += dodgeLean * w; pose.hy += dodgeLean * 0.8 * w; }
       // roar after a phase change
       const ru = t - roarAt;
       if (ru < 2.6) {
@@ -3357,7 +3376,16 @@ window.BossScene = (() => {
     }
     function live() { return visible && !document.hidden; }
     function cast(id, c = {}) { if (fx && !dead) { fx.cast(id, { caster, target: bossTarget, hits: c.hits, effect: c.effect }); spellCam(id, c.hits, false); } }
-    function fizzle(id, how) { if (fx && !dead) { fx.fizzle(id, { caster, target: bossTarget, how }); spellCam(id, null, true); } }
+    function fizzle(id, how) {
+      if (!fx || dead) return;
+      const sp = window.Combat && Combat.spell(id);
+      if (!how && sp && sp.strike) how = ['shield', 'swat', 'dodge'][fzN++ % 3];
+      fx.fizzle(id, { caster, target: bossTarget, how });
+      // up close, the dodge plays wide and to one side so the step and the bolt going past both show
+      const y = raidPos[RAID], near = Math.hypot(root.position.x - y.x, root.position.z - y.z) < 11;
+      if (how === 'dodge' && near && director && !reduce) { if (play('fizzDodge', null, 3)) spellCamAt = nowS(); }
+      else spellCam(id, null, true);
+    }
     function aura(name, on) { if (fx) fx.aura(name, on, { caster, target: bossTarget }); }
     function fxEvent(kind) { if (fx) fx.event(kind, { caster }); }
     function freezeAttack(id) { frozen.add(id); }
@@ -3396,7 +3424,7 @@ window.BossScene = (() => {
     applyPal(1);
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
-    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, fizzle, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
+    return { press, raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, fizzle, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
       aq: () => (aq ? aq.state() : null),
       dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }
