@@ -88,6 +88,7 @@ Router.register('duel', (() => {
             <li>Accuracy sets the damage. A round with no wrong key is a crit, 1.5 times the damage.</li>
             <li>Whoever finishes first strikes first. Finish all ${C.words} early and you may dodge the other attack.</li>
             <li>About every other round one word is a spell, the same one for both of you. Type it with no wrong key and it casts after the strikes. A typo in it fizzles.</li>
+            <li>Finish your ${C.words} words early and overdrive words keep coming until the round ends. Each clean one charges your bot for a bigger attack and adds a little damage, at most ${Math.round((C.OVERDRIVE_CAP || 0.15) * 100)}% more. ${window.ShowdownRules ? ShowdownRules.OD.specialAfter : 4} fast clean ones in a row bring up a special spell word.</li>
             <li>Each side has ${C.hp} HP for the whole match. First to ${C.winRounds} rounds wins, or empty the other bot's HP.</li>
             <li>Showdown has its own MMR, separate from Clash.</li>
           </ul>
