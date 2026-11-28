@@ -531,6 +531,8 @@ Router.register('boss', (() => {
     renderQueue(); paintYou();
   }
   function foTick(t, isDown) {
+    // the scene hears of it 0.6 s early, so the camera's first shot is up as the boss breaks off
+    if (scene && st && !st.defeatedAt) { const soon = R.faceoffsNear(st, t).find(f => f.start > t && f.start - t < 600); if (soon) scene.event(soon, t); }
     const e = st && !st.defeatedAt ? R.faceoffAt(st, t) : null;
     if (e && foShown !== e.id) {
       foShown = e.id; foE = e; foPow = 0; foMine = { ok: 0, bad: 0 };
@@ -1138,7 +1140,7 @@ Router.register('boss', (() => {
     if (weak !== weakWas) {
       weakWas = weak;
       if (scene) scene.setWeak(weak);
-      if (weak) { sfx('weakOpen'); pop(`KERNEL OPEN x${st.weak.mult}`, 'amber'); tip(st.weak.mult > 2 ? 'weak3' : 'weak'); }
+      if (weak) { sfx('weakOpen'); if (!foE) pop(`KERNEL OPEN x${st.weak.mult}`, 'amber'); tip(st.weak.mult > 2 ? 'weak3' : 'weak'); }   // a face-off's result line says it
     }
     const wf = q('weak');
     wf.hidden = !weak;

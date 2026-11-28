@@ -1794,7 +1794,7 @@ window.BossScene = (() => {
     function faceoffEvent(ev, off) {
       if (fo && fo.id === ev.id) return;
       const t = nowS();
-      fo = { x0: mv.x, z0: mv.z, id: ev.id, s: off(ev.start), c: off(ev.charge), x: off(ev.clash), r: off(ev.resolve), e: off(ev.end), power: 0, win: null, margin: 0, hit: false, fired: false };
+      fo = { x0: null, z0: null, id: ev.id, s: off(ev.start), c: off(ev.charge), x: off(ev.clash), r: off(ev.resolve), e: off(ev.end), power: 0, win: null, margin: 0, hit: false, fired: false };
       foS = 0.5;
       mv.dashUntil = t + 1.1; adv = 0;
       // whatever it was doing to a flank squad stops: it breaks off from everything
@@ -1897,14 +1897,14 @@ window.BossScene = (() => {
     if (dirShots) {
       const fp = (pose, more) => P((u, o, l) => { foGeometry(); pose(u, o, l); }, { cut: 1, free: true, duringThreat: true, ...more });
       dirShots.faceoff = { pri: 5, free: true, duringThreat: true, parts: [
-        fp((u, o, l) => { const H = bossH(); l.copy(root.position).lerp(foAt, 0.45); l.y = H * 0.3; o.copy(l).addScaledVector(foTo, -24 - 3 * u).addScaledVector(foSide, 9); o.y = H * 0.75 + 1.5 * u; }, { len: 1.55, fov: 44, omega: 7 }),
+        fp((u, o, l) => { const H = bossH(); l.copy(foAt).addScaledVector(foTo, 9); l.y = H * 0.3; o.copy(l).addScaledVector(foSide, 31 - 3 * u).addScaledVector(foTo, -4); o.y = H * 0.55 + 2 * u; }, { len: 2.15, fov: 46, omega: 7 }),
         fp((u, o, l) => { l.copy(foMuz); o.copy(foMuz).addScaledVector(foTo, -(9 - 2.5 * smooth(u))).addScaledVector(foSide, 3.5); o.y = foMuz.y + 1.2; }, { len: 2.2, fov: 38, omega: 8, face: 1, slow: 0 }),
         fp((u, o, l) => { o.copy(foAt).addScaledVector(foTo, -14 + 1.5 * u).addScaledVector(foSide, -4.5); o.y = (BOT ? BotKit.HOVER : 1.6) + 4.6; l.copy(foOrb).lerp(root.position, 0.45); l.y = foOrb.y + 2.4; }, { len: 2.4, fov: 46, omega: 7, face: 1 }),
         fp((u, o, l) => { const H = bossH(); l.copy(foOrb).lerp(root.position, 0.6); l.y = H * 0.32; o.copy(foAt).addScaledVector(foTo, -17 - 1.5 * u).addScaledVector(foSide, 6); o.y = 14 + 1.5 * u; }, { len: 2.4, fov: 42, omega: 6 }),
         fp((u, o, l) => { l.copy(foOrb).lerp(foMuz, 0.5); o.copy(l).addScaledVector(foSide, 21); o.y = l.y + 1.5; }, { len: 0.9, fov: 44, omega: 10, face: 1, slow: 0.35 }),
         fp((u, o, l) => { l.copy(foPt); o.copy(foPt).addScaledVector(foSide, 19 - 6 * smooth(u)); o.y = foPt.y + 1.2 + 0.6 * u; }, { len: 1.9, fov: 42, omega: 5, face: 1 }),
         fp((u, o, l) => {
-          if (fo && fo.win === false) { l.copy(foAt); l.y = (BOT ? BotKit.HOVER : 1.6) + 0.8; o.copy(foAt).addScaledVector(foTo, 9).addScaledVector(foSide, 6); o.y = 5.5 - u; }
+          if (fo && fo.win === false) { l.copy(foAt).addScaledVector(foTo, 2.5); l.y = (BOT ? BotKit.HOVER : 1.6) + 1.2; o.copy(foAt).addScaledVector(foSide, 10 - 1.5 * u).addScaledVector(foTo, 5); o.y = 3.6 + 0.6 * u; }
           else { const H = bossH(), d = fitD(H, 0.72, 40) * (1 + 0.06 * u); l.copy(anchorCore); l.y -= H * 0.05; o.copy(root.position).addScaledVector(foTo, -d * 0.55).addScaledVector(foSide, -d * 0.8); o.y = H * 0.42; }
         }, { len: 1.5, fov: 40, omega: 8, slow: 0.4 }),
       ] };
@@ -2950,7 +2950,7 @@ window.BossScene = (() => {
       mv.x += (tx - mv.x) * Math.min(1, dt * (rate + dash) * hold);
       mv.z += (tz - mv.z) * Math.min(1, dt * (strike ? 12 : rate + dash) * hold);
       // the face-off's break: a fixed 0.7 s leap back across the arena, whatever the frame rate
-      if (fo && t >= fo.s && t < fo.s + 0.75) { const k = ease((t - fo.s) / 0.7); mv.x = fo.x0 * (1 - k); mv.z = fo.z0 + (FO_Z - fo.z0) * k; pose.y += Math.sin(k * Math.PI) * 1.6; }
+      if (fo && t >= fo.s && t < fo.s + 0.75) { if (fo.x0 === null) { fo.x0 = mv.x; fo.z0 = mv.z; } const k = ease((t - fo.s) / 0.7); mv.x = fo.x0 * (1 - k); mv.z = fo.z0 + (FO_Z - fo.z0) * k; pose.y += Math.sin(k * Math.PI) * 1.6; }
       // phase 2: a full turn now and then
       const su = t - mv.spin;
       mv.face = su < 1.3 && M.spin ? smooth(su / 1.3) * Math.PI * 2 : 0;
