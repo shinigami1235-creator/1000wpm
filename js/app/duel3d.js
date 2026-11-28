@@ -1481,7 +1481,7 @@ window.DuelScene = (() => {
         { len: 1.05, cut: 1, fov: 28, omega: 4, pose(c, out) { fr(out.pos, fp[1], 1, 0.54 * 7.6, 3.4, 0.84 * 7.6); fr(out.look, fc[1], 1, 1.9, fc[1].y + 0.3 + c.u * 0.15, 0); } },
       ] },
       strike: { pri: 2, parts: [
-        { len: 0.5, cut: 1, slow: 0.3, fov: 34, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, fp[i], i, -3.4, 4.3 + Math.max(0, fc[i].y - 3.4), 3.2); out.look.copy(fc[j]); } },
+        { len: 0.5, cut: 1, slow: 0.3, fov: 34, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, fp[i], i, -3.2, 4.4 + Math.max(0, fc[i].y - 3.4), 6.2); out.look.lerpVectors(fc[i], fc[j], 0.65); } },
         { len: 0.75, cut: 1, slow: 0.65, fov: 38, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, MID, i, 2, 1.5, 12.5); out.look.lerpVectors(MID, fc[j], 0.7).setY(2.4 + Math.max(0, fc[j].y - 3.4) * 0.5); } },
       ] },
       // a spell from the caster to where it lands (Gid, 28 Nov 2026: "not just a close-up of the caster"):
