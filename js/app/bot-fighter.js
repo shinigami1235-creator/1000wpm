@@ -128,6 +128,16 @@ window.BotFighter = (() => {
       body(u, P) { const d = snap(u, 0, 0.28, 1); P.y -= 0.9 * d; P.rx += 0.4 * d; P.sy -= 0.15 * snap(u, 0.2, 0.3, 0.6); P.legs += 0.6 * d; } },
     leap: { len: 0.48, hit: 0.3, reach: u => -0.04 * env(u, 0, 0.3, 1),
       body(u, P) { const d = Math.sin(Math.PI * ramp(u, 0, 0.9)); P.y += 1.7 * d; P.rx -= 0.8 * d; P.legs -= 0.7 * d; P.ears += d; } },
+    // the beam struggle (Showdown, 28 Nov 2026): charge rises, pulls back and swells the orb into a beam core;
+    // beam fires and holds the beam against the other one, straining harder as it goes (the scene sets both lens)
+    charge: { len: 1.2, hit: 1, reach: u => -0.12 * sm(ramp(u, 0, 0.6)),
+      body(u, P) { const g = sm(ramp(u, 0, 0.7)); P.y += 0.9 * sm(ramp(u, 0, 0.5)); P.z -= 0.35 * g; P.rx -= 0.35 * g; P.orb += 1.4 * g;
+        P.glow += 2.4 * g; P.halo += 1.4 * g; P.ears += g; P.legs -= 0.8 * g; P.ant += g; P.sx += 0.1 * g; P.sy += 0.1 * g;
+        const strain = 0.035 * g * g; P.x += Math.sin(u * 300) * strain; P.y += Math.sin(u * 260) * strain; } },
+    beam: { len: 2.2, hit: 0, reach: u => (-0.12 + 0.06 * snap(u, 0, 0.04, 0.3)) * (1 - sm(ramp(u, 0.88, 1))),
+      body(u, P) { const k = 1 - 0.25 * snap(u, 0, 0.04, 0.3), strain = 0.03 + 0.05 * u;
+        P.y += 0.9; P.z += 0.15 * k - 0.4 * snap(u, 0, 0.03, 0.25); P.rx += 0.2; P.orb += 0.8; P.glow += 3 * k; P.halo += 1.2; P.ears += 1; P.legs -= 0.8; P.ant += 1;
+        P.flash += 1.4 * snap(u, 0, 0.03, 0.15); P.x += Math.sin(u * 520) * strain; P.y += Math.sin(u * 470) * strain; P.rz += Math.sin(u * 37) * 0.04; } },
   };
   // reactions to a hit: push is world units of knockback per unit of power
   const HURTS = {
@@ -139,6 +149,13 @@ window.BotFighter = (() => {
     graze: { len: 0.4, push: u => 0.25 * snap(u, 0, 0.15, 1), body(u, P, o) { const k = snap(u, 0, 0.12, 1); P.ry += 0.9 * o.side * k; P.x += 0.6 * o.side * k; P.rz += 0.3 * o.side * k; } },
     pulled: { len: 0.9, push: u => -1.3 * env(u, 0, 0.7, 1), body(u, P) { const k = env(u, 0, 0.7, 1); P.rx += 0.5 * k; P.sx -= 0.15 * k; P.sy += 0.18 * k; P.z += 0.3 * k; P.glow += 0.6 * k; } },
     stiff: { len: 0.5, push: u => 0.3 * snap(u, 0, 0.1, 1), body(u, P) { const k = snap(u, 0, 0.08, 1); P.rx -= 0.2 * k; P.sx -= 0.06 * k; } },
+    // Clash's late dodge (28 Nov 2026): a slip to the side that starts too late; the shot still clips it
+    slip: { len: 0.38, push: () => 0, body(u, P, o) { const s = snap(u, 0, 0.35, 1); P.x += 0.7 * o.side * s; P.rz -= 0.45 * o.side * s; P.ry += 0.35 * o.side * s; P.y -= 0.2 * s; } },
+    // the beam struggle's loser: shoved back across the arena by the beam, tumbling, then catching itself
+    shove: { len: 1.3, push: u => 3.6 * Math.pow(sm(ramp(u, 0, 0.55)), 0.7) - 0.6 * sm(ramp(u, 0.7, 1)),
+      body(u, P, o) { const k = snap(u, 0, 0.1, 1), tumble = sm(ramp(u, 0.02, 0.6)); P.rx -= 0.9 * k + 0.6 * env(u, 0.05, 0.3, 0.8); P.rz += 0.5 * o.side * env(u, 0, 0.25, 0.9);
+        P.spinZ += o.side * TAU * tumble; P.y += 0.6 * Math.sin(Math.PI * ramp(u, 0, 0.55)) - 0.3 * env(u, 0.55, 0.65, 0.9); P.glow -= 1.1 * env(u, 0, 0.1, 1);
+        P.sx += 0.14 * env(u, 0, 0.04, 0.15); P.sy -= 0.14 * env(u, 0, 0.04, 0.15); } },
   };
 
   // the core: white in the middle through the glow colour to clear
@@ -815,7 +832,7 @@ window.BotFighter = (() => {
 
     const start = (kind, extra = {}) => { act = { kind, at: t, len: LEN[kind] || 0.3, ...extra }; };
     const api = {
-      group, bot, id, orb,
+      group, bot, id, orb, colour: fxc,   // colour: the orb's own glow (the beam struggle's beam takes it)
       // a correct key: frac is how much of the word is typed
       key(frac = 0) { chargeTo = clamp(frac, 0, 1); kick = 1; lastKey = t; orb.launch(t); if (snd) snd.key(orb.style, frac); },
       // Showdown: a finished word adds a spark that stays, and the orb holds at frac (0..1) until attack()
