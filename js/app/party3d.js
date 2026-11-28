@@ -53,7 +53,7 @@ window.PartyScene = (() => {
       down: id => impl && impl.down(id),
       heal: (id, by) => impl && impl.heal(id, by),
       shield: (id, by) => impl && impl.shield(id, by),
-      up: id => impl && impl.up(id),
+      up: (id, by) => impl && impl.up(id, by),
       director: () => (impl ? impl.director() : null),
       _impl: () => impl,   // tests
       clear: () => impl && impl.clear(),
@@ -96,7 +96,9 @@ window.PartyScene = (() => {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 0.16);
+    // threshold 0.38: only the lit edges, sparks and cores glow; at 0.16 every face bloomed and a hit or
+    // the open core washed the boss out to white
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 0.38);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -132,9 +134,10 @@ window.PartyScene = (() => {
         vec3 n = normalize(vN);
         float lit = 0.35 + 0.65 * max(dot(n, normalize(vec3(0.3, 1.0, 0.55))), 0.0);
         float rim = pow(1.0 - abs(dot(n, normalize(vV))), 2.2);
-        vec3 col = mix(uCol, vec3(1.0), uHit * 0.4);
-        vec3 c = vec3(0.012, 0.016, 0.02) * lit + col * uFill * (0.05 + 0.05 * scan) * lit + col * edge * (0.95 + uHit * 0.9)
-          + col * panel * 0.16 * uFill + col * rim * 0.42 * uFill + vec3(uHit * 0.12);
+        float hk = min(uHit, 1.0);
+        vec3 col = mix(uCol, vec3(1.0), hk * 0.22);
+        vec3 c = vec3(0.012, 0.016, 0.02) * lit + col * uFill * (0.05 + 0.05 * scan) * lit + col * edge * (0.95 + hk * 0.45)
+          + col * panel * 0.16 * uFill + col * rim * 0.42 * uFill + vec3(hk * 0.04);
         c = mix(c, vec3(0.0), smoothstep(45.0, 85.0, vD) * 0.7);
         gl_FragColor = vec4(c, uOp);
       }`;
@@ -320,6 +323,8 @@ window.PartyScene = (() => {
     // your keyboard's look on your shots (js/app/combat/fx3d.js, keyboard signatures)
     const myKb = window.Operator ? Operator.mine().kb.style : null;
     const OPS = 1.9;
+    // other players get a base with a made model (the procedural one read dark and blocky on the stage)
+    const others = seed => { const p = Operator.random(seed); if (!(Operator.MODELS || {})[p.base]) p.base = 'male'; return p; };
     function teamSync(players) {
       if (!TH || !players) return;
       if (!teamLit) {
@@ -330,7 +335,7 @@ window.PartyScene = (() => {
         }
       }
       for (const p of players) if (!team.has(p.id)) {
-        const op = Operator.create(TH, p.id === 'me' ? Operator.mine() : Operator.random(p.name || p.id), { lite: p.id !== 'me' });   // full detail for you only
+        const op = Operator.create(TH, p.id === 'me' ? Operator.mine() : others(p.name || p.id), { lite: p.id !== 'me', onAct: k => { if (k !== 'cast' && opts.audio) opts.audio.combat('op-' + k); } });   // full detail for you only
         op.group.scale.setScalar(OPS); op.group.rotation.order = 'YXZ'; op.group.rotation.y = Math.PI;
         scene.add(op.group);
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.25, 48), new THREE.MeshBasicMaterial({ color: colorOf(p.id).multiplyScalar(1.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
@@ -361,9 +366,13 @@ window.PartyScene = (() => {
         m.ring.material.opacity = down ? 0.3 : 0.85;
       }
     }
+    const OP_ONCE = new Set(['heal', 'cover', 'revive', 'attack', 'dodge']);
     function teamAct(id, kind) {
       const m = team.get(id); if (!m) return;
       if (kind === 'type') { m.typeAt = nowS(); return; }
+      // the operator's own one-shots (operator3d.js): a heal, a cover behind the hex plate, a revive,
+      // the keyboard slammed for a plain shot; the fight moves stand aside while they play
+      if (OP_ONCE.has(kind)) { if (!m.down || kind === 'revive') { if (m.mv) m.mv.play(kind); else m.op.once(kind); } return; }
       if (m.mv && !m.down) m.mv.act(kind === 'hit' ? 'stagger' : kind);
       else if (kind === 'cast' || kind === 'hit') m.op.once(kind === 'hit' ? 'hit' : 'cast');
     }
@@ -687,9 +696,9 @@ window.PartyScene = (() => {
             A.fore.rotation.x = -0.3 - charge * 0.8;
           }
           plates.forEach((p, k) => { p.position.x = (k ? 1 : -1) * (0.52 + weakK * 0.95); });
-          core.scale.setScalar(1 + weakK * (0.5 + Math.sin(t * 10) * 0.12));
+          core.scale.setScalar(1 + weakK * (0.35 + Math.sin(t * 10) * 0.08));
           core.rotation.y += dt * (1 + weakK * 5);
-          core.material.color.copy(C(pal.c, 1.6)).lerp(GOLD, weakK);
+          core.material.color.copy(C(pal.c, 1.3)).lerp(GOLD, weakK * 0.8);
           head.rotation.y = Math.sin(t * 1.1) * 0.35 * still;
           visor.material.color.copy(C(pal.eye, 1.6)).lerp(RED, charge);
           stacks.forEach(gt => { gt.material.color.copy(C(pal.c, 1.4)).lerp(RED, charge); gt.scale.y = 1 + charge * 3; });
@@ -1001,7 +1010,7 @@ window.PartyScene = (() => {
     // ---------- events ----------
     const hitAt = new V();
     function shot(h) {
-      teamAct(h.id, 'type'); teamAct(h.id, h.crit || h.tier >= 3 ? 'blast' : h.tier >= 2 ? 'jab' : 'flick');
+      teamAct(h.id, 'type'); teamAct(h.id, h.crit || h.tier >= 3 ? 'blast' : h.tier >= 2 ? 'jab' : h.tier >= 1 ? 'attack' : 'flick');
       if (!cre) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const from = handAt(h.id, new V());
       const foe = h.foe;
@@ -1061,7 +1070,7 @@ window.PartyScene = (() => {
       if (!cre || !atk) return;
       cre.hitPos(atk.from, v1);
       const by = b.by === 'firewall' ? (atk.target === 'team' ? 'me' : atk.target) : b.by;
-      if (b.by !== 'firewall') teamAct(by, 'block');
+      if (b.by !== 'firewall') teamAct(by, 'cover');
       laneAt(by, v2);
       bolt(v2.clone().add(v4.set(0, 2.2, -2.4)), orb.visible ? orb.position.clone() : v1, SHIELD, 0.45, 0.7);
       burst(v1, 24, 7, SHIELD, {});
@@ -1095,9 +1104,9 @@ window.PartyScene = (() => {
     }
     function regrow(id) { if (cre) cre.regrow(id); const f = foes.get(id); if (f && cre) { cre.hitPos(id, v1); burst(v1, 26, 6, C(pal.c), { up: 0.8 }); ring(v3.copy(v1).setY(0.05), C(pal.c), 5, 0.6); snd('bossRoar'); } }
     function down(id) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1.5), 24, 8, RED, { up: 1 }); ring(v1, RED, 3, 0.6); smoke(v1, 5, 2, { size: 1.8, op: 0.4 }); snd('knock'); }
-    function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); if (by && by !== id) teamAct(by, 'cast'); snd('heal'); }
-    function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.5), 16, 3, SHIELD, { up: 1, grav: -1 }); if (by && by !== id) teamAct(by, 'cast'); snd('shield'); }
-    function up(id) { const m = team.get(id); if (m && m.mv) m.mv.act('cast'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
+    function heal(id, by) { laneAt(id, v1); v1.z -= 2.4; burst(v1.clone().setY(1), 22, 4, HEAL, { up: 1.4, grav: -2, life: 0.9 }); ring(v1, HEAL, 2.2, 0.5); teamAct(by || id, 'heal'); snd('heal'); }
+    function shield(id, by) { laneAt(id, v1); v1.z -= 2.4; ring(v1, SHIELD, 2.6, 0.6); burst(v1.clone().setY(1.5), 16, 3, SHIELD, { up: 1, grav: -1 }); if (by && by !== id) teamAct(by, 'cast'); teamAct(id, 'cover'); snd('shield'); }
+    function up(id, by) { const m = team.get(id); if (by && by !== id && team.has(by)) teamAct(by, 'revive'); else if (m && m.mv) m.mv.act('cast'); laneAt(id, v1); v1.z -= 2.4; ring(v1, HEAL, 3, 0.6); burst(v1.clone().setY(1), 20, 5, HEAL, { up: 1.6, grav: -2 }); snd('revive'); }
     // the boss dies: it bursts into pieces, slow motion, and the camera circles where it stood
     function clear() {
       teamWon = true; deadAt = nowS(); atk = null;

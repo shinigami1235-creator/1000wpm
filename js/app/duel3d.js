@@ -78,6 +78,7 @@ window.DuelScene = (() => {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const phone = matchMedia('(max-width: 720px)').matches;
+    const FAR = 0.5;   // the stadium behind the fighters is drawn at half the canvas size (see drawFar)
 
     const renderer = new THREE.WebGLRenderer({ antialias: !phone, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, phone ? 1.5 : 1.75));
@@ -103,8 +104,18 @@ window.DuelScene = (() => {
     const sideCol = i => C(opts.sides[i].color || (i ? '#f29d30' : Theme.hex('accent')));
     let arena = null;
     if (window.DuelArena) {
-      try { arena = DuelArena.build(THREE, scene, { cols: [0, 1].map(i => '#' + sideCol(i).getHexString()), names: opts.sides.map(x => x.name || ''), pos: POS, lite: phone, pixelHeight: () => renderer.domElement.height }); }
+      try { arena = DuelArena.build(THREE, scene, { cols: [0, 1].map(i => '#' + sideCol(i).getHexString()), names: opts.sides.map(x => x.name || ''), pos: POS, lite: phone, farScale: FAR, pixelHeight: () => renderer.domElement.height }); }
       catch (e) { console.warn('Duel arena', e); arena = null; }
+    }
+    // the far set (arena layer 1) is drawn at FAR of the canvas size into a picture that becomes the
+    // background of the main pass, where only the fighters, their pedestals and the effects are drawn
+    const farRT = arena ? own(new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType })) : null;
+    const bgCol = scene.background;
+    function drawFar() {
+      if (!farRT) return;
+      scene.background = bgCol; camera.layers.set(1);
+      renderer.setRenderTarget(farRT); renderer.render(scene, camera);
+      renderer.setRenderTarget(null); camera.layers.set(0); scene.background = farRT.texture;
     }
     if (!arena) {
       const floorMat = own(new THREE.LineBasicMaterial({ color: C(Theme.hex('accent'), 0.55), transparent: true, opacity: 0.55 }));
@@ -182,7 +193,8 @@ window.DuelScene = (() => {
       }
       F.forEach((f, i) => {
         if (!arena) { const rim = new THREE.DirectionalLight(f.col, 1.2); rim.position.set(f.g.position.x * 1.4, 4, -6); scene.add(rim); }
-        const op = Operator.create(TH, opts.sides[i].preset, {});
+        // the operator's own one-shots (dodge, cover, heal, attack) sound through the combat bank
+        const op = Operator.create(TH, opts.sides[i].preset, { onAct: k => { if (k !== 'cast') csnd('op-' + k); } });
         const rig = new THREE.Group(); rig.position.copy(POS[i]).setY(arena ? arena.PAD_TOP : 0.22); scene.add(rig);
         op.group.scale.setScalar(OS);
         op.group.rotation.order = 'YXZ';
@@ -316,7 +328,7 @@ window.DuelScene = (() => {
     const flareTex = own(new THREE.CanvasTexture(flCv));
     const flares = Array.from({ length: 6 }, () => ({ s: sprite(flareTex, 1, 9), t: 9, life: 0.2, size: 2 }));
     let flI = 0;
-    function flare(at, col, size = 2, life = 0.2) { const f = flares[flI = (flI + 1) % flares.length]; f.s.position.copy(at); f.s.material.color.copy(col).lerp(WHITE, 0.4).multiplyScalar(2); f.t = 0; f.life = life; f.size = size; f.s.visible = true; f.s.material.rotation = rnd(0, 0.6); }
+    function flare(at, col, size = 2, life = 0.2) { const f = flares[flI = (flI + 1) % flares.length]; f.s.position.copy(at); f.s.material.color.copy(col).lerp(WHITE, 0.3).multiplyScalar(1.1); f.t = 0; f.life = life; f.size = size; f.s.visible = true; f.s.material.rotation = rnd(0, 0.6); }
     // shockwave rings on the floor under a fighter
     const rings = Array.from({ length: 6 }, () => {
       const m = new THREE.Mesh(own(new THREE.RingGeometry(0.92, 1, 64)), own(new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
@@ -348,8 +360,9 @@ window.DuelScene = (() => {
       const B = beams[bI = (bI + 1) % beams.length];
       B.a.copy(a); B.b.copy(b); B.off.copy(off); B.col.copy(col); B.w = w; B.grow = grow; B.hold = hold; B.pulse = pulse;
       B.t = -0.04; B.on = true;
-      B.core.material.color.copy(col).lerp(WHITE, 0.55).multiplyScalar(2.2);
-      B.glow.material.color.copy(col).multiplyScalar(1.5);
+      // a bright core and a coloured glow round it, kept below white so the beam never fills the frame
+      B.core.material.color.copy(col).lerp(WHITE, 0.4).multiplyScalar(1.35);
+      B.glow.material.color.copy(col).multiplyScalar(0.55);
     }
     const _bx = new V(), _by = new V(), _bz = new V(), _bm = new THREE.Matrix4(), _mid = new V();
     // a flat strip from a to b, turned to face the camera
@@ -378,7 +391,7 @@ window.DuelScene = (() => {
         _bb.copy(B.a).lerp(B.b, Math.pow(u, 1.35)).add(B.off);
         const fl = B.pulse ? 1 + Math.sin(B.t * 42) * 0.18 : 1 + Math.sin(B.t * 25) * 0.06;
         strip(B.core, _ba, _bb, B.w * 0.4 * fl * (0.5 + 0.5 * k), Math.min(1, k * 1.5));
-        strip(B.glow, _ba, _bb, B.w * 1.7 * fl * k, 0.5 * k);
+        strip(B.glow, _ba, _bb, B.w * 1.05 * fl * k, 0.4 * k);
         // sparks peel off the beam while it holds
         if (u >= 1 && k > 0.3 && Math.random() < dt * (B.pulse ? 60 : 30)) {
           const at = tmp.copy(_ba).lerp(_bb, Math.random());
@@ -525,10 +538,10 @@ window.DuelScene = (() => {
       const at = centre(to, new V()).add(tmp.set(0, 0.2, 0.3));
       const away = to ? 1 : -1;
       burst(at, 8 + p * 5, 6 + p * 1.5, col, { shard: true, size: 0.32, life: 0.7, dir: away * 0.8, up: 0.4, grav: 9 });
-      burst(at, 3 + p, 2.5 + p * 0.6, WHITE, { size: 0.3, life: 0.18, grav: 0, k: 1 });
+      burst(at, 3 + p, 2.5 + p * 0.6, WHITE, { size: 0.24, life: 0.16, grav: 0, k: 0.7 });
       if (p >= 2) smoke(at, 3 + p, 1.4, { size: 1.3, life: 0.9, op: 0.35 });
       ringAt(to, col, 2.6 + p * 0.6, 0.45 + p * 0.05);
-      flare(at, col, 1.6 + p * 0.7, 0.14 + p * 0.03);
+      flare(at, col, 1.2 + p * 0.4, 0.12 + p * 0.025);
       flashLight(at, col, 2 + p * 2.5);
       if (!reduce) {
         stopUntil = Math.max(stopUntil, performance.now() + (crit ? 110 : 20 + tier * 18));
@@ -540,11 +553,13 @@ window.DuelScene = (() => {
       if (onLand) onLand();
     }
     const TIER_COL = [null, null, '#3ee6ff', '#f2c230', '#ff5ce1'];
+    const lastTier = [0, 0];   // the tier of the last shot thrown at each side
 
     function shot(from, tier, onLand, o = {}) {
       const to = 1 - from, f = F[from];
       tier = Math.max(0, Math.min(4, tier | 0));
-      if (f.op) { f.typeAt = t; f.mv.act(o.crit && tier < 4 ? (tier >= 2 ? 'smash' : 'jab') : MOVE[tier]); }
+      if (f.op) { f.typeAt = t; if (tier === 1 && !o.crit) f.mv.play('attack'); else f.mv.act(o.crit && tier < 4 ? (tier >= 2 ? 'smash' : 'jab') : MOVE[tier]); }
+      lastTier[to] = tier + (o.crit ? 1 : 0);
       const word = String(o.word || '').replace(/\s+/g, '').slice(0, 16) || '>>>';
       const T = Math.max(0.16, Math.min(0.7, (o.ms || 260) / 1000));
       const base = new THREE.Color(o.color || (from ? '#f29d30' : Theme.hex('accent')));
@@ -574,8 +589,9 @@ window.DuelScene = (() => {
         if (kb === 'compact') g.c.addScaledVector(side, ((k % 3) - 1) * 0.9).y += ((k % 3) - 1) * 0.5;
         else if (kb === 'split') { const s = k % 2 ? 1 : -1; g.a.addScaledVector(side, s * 0.45); g.c.addScaledVector(side, s * 1.6); }
         const map = glyph(word[k]);
-        g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(2.2);
-        g.tr.forEach(x => { x.material.color.copy(col).multiplyScalar(1.2); });
+        g.s.material.map = map; g.s.material.color.copy(col).multiplyScalar(1.7);
+        // the trails are soft dots; a long word stacks them, so each stays faint or they pile up to white
+        g.tr.forEach(x => { x.material.color.copy(col).multiplyScalar(n > 8 ? 0.45 : 0.7); });
         g.size = size; g.spin = 0; g.t = 0; g.on = true;
         g.cb = order === n - 1 ? () => impact(to, tier, o.crit, col, onLand) : () => tick(to, col);
       }
@@ -586,7 +602,7 @@ window.DuelScene = (() => {
       if (kb !== 'slab' && fx) { const at = end.clone(); fx.shot(1, start, out => out.copy(at), null, { color: '#' + col.getHexString(), kb, w: 0.6, dur: Math.max(0.15, T - 0.04) }); }
       if (tier >= 2) {
         const grow = T - (n - 1) * step - 0.04, hold = (n - 1) * step + (tier >= 4 ? 0.55 : 0.4);
-        const w = (tier === 2 ? 0.16 : tier === 3 ? 0.34 : 0.55) * (o.crit ? 1.3 : 1);
+        const w = (tier === 2 ? 0.14 : tier === 3 ? 0.28 : 0.42) * (o.crit ? 1.3 : 1);
         if (tier === 2) for (const dy of [-0.24, 0.24]) beam(start, end, col, w, grow, hold, tmp2.set(0, dy, 0), false);
         else beam(start, end, col, w, grow, hold, tmp2.set(0, 0, 0), tier >= 4);
       }
@@ -617,6 +633,9 @@ window.DuelScene = (() => {
       const self = id === 'binary-rain';
       // hits on you from the other side are the threat the camera must not cut away from
       if (!self && 1 - from === opts.me) for (const h of hits) threats.push(h.at / 1000);
+      // the target raises its guard behind the hex plate just before the first hit arrives
+      const tgt = F[1 - from];
+      if (!self && tgt.op && hits.length && !warming) setTimeout(() => { if (alive && !tgt.ko && !tgt.mv.down()) tgt.mv.play('cover'); }, Math.max(0, hits[0].at - now - 650));
       if (!warming) want('spell', { x: from, pri: 2 });
       if (!fx) return;
       // a self spell (Binary rain's heal) centres on the caster, not in front of them
@@ -643,7 +662,9 @@ window.DuelScene = (() => {
       if (f.op && !f.ko) {
         if (kind === 'hit') f.mv.act(p >= 3 || power > 0.9 ? 'stagger' : 'flinch');
         if (kind === 'stun') f.mv.act('flinch');
-        if (kind === 'block') f.mv.act('block');
+        // a light word is side-stepped, a heavy one taken behind crossed arms
+        if (kind === 'block') { if (lastTier[i] >= 3 || !f.mv.play('dodge')) f.mv.act('block'); }
+        if (kind === 'cleanse') f.mv.play('heal');
       }
       if (kind === 'hit') { f.kick = Math.min(1, f.kick + 0.35 + power * 0.4); f.flash = Math.max(f.flash, 0.5); f.flashCol.set('#ffffff'); }
       if (kind === 'typo') { f.flash = Math.max(f.flash, 0.6); f.flashCol.set('#ff4d5e'); f.glitch = 0.35; burst(casterOf(i).pos(new V()), 7, 3.5, RED, { shard: true, size: 0.2, life: 0.45, grav: 7 }); if (i === opts.me) csnd('fizzle'); }
@@ -805,7 +826,11 @@ window.DuelScene = (() => {
       const w = host.clientWidth || 600, h = host.clientHeight || 360;
       W = w; H = h;
       renderer.setSize(w, h, false); composer.setSize(w, h);
-      bloom.resolution.set(w / 2, h / 2);
+      const pr = renderer.getPixelRatio();
+      if (farRT) farRT.setSize(Math.max(2, Math.round(w * pr * FAR)), Math.max(2, Math.round(h * pr * FAR)));
+      // the glow is worked out from a quarter-size picture (the pass's own default is half): it is
+      // soft anyway, and this halves what the bloom costs
+      bloom.setSize(Math.round(w * pr / 2), Math.round(h * pr / 2));
       camera.aspect = w / h; camera.updateProjectionMatrix();
     }
     const ro = new ResizeObserver(fit); ro.observe(host);
@@ -836,10 +861,11 @@ window.DuelScene = (() => {
         out.look.set(cx, 2.35, 0.4);
       } },
       faceoff: { pri: 3, parts: [
-        // a crane down over the stage, then each fighter in a close three-quarter shot
+        // a crane down over the stage, then each fighter in a close three-quarter shot, set off to their
+        // own side of the frame so the countdown in the middle never sits on a face
         { len: 1.0, cut: 1, fov: 40, omega: 3, pose(c, out) { const u = c.u; out.pos.set(0, 11 - 6 * u, 21 - 4 * u); out.look.set(0, 2 + u * 0.4, 0); } },
-        { len: 1.05, cut: 1, fov: 28, omega: 4, pose(c, out) { const f = F[0]; const yaw = f.yaw - 0.45; out.pos.set(fp[0].x + Math.sin(yaw) * 7.6, 3.4, fp[0].z + Math.cos(yaw) * 7.6); out.look.set(fc[0].x + 0.4, fc[0].y + 0.3 + c.u * 0.15, fc[0].z); } },
-        { len: 1.05, cut: 1, fov: 28, omega: 4, pose(c, out) { const f = F[1]; const yaw = f.yaw + 0.45; out.pos.set(fp[1].x + Math.sin(yaw) * 7.6, 3.4, fp[1].z + Math.cos(yaw) * 7.6); out.look.set(fc[1].x - 0.4, fc[1].y + 0.3 + c.u * 0.15, fc[1].z); } },
+        { len: 1.05, cut: 1, fov: 28, omega: 4, pose(c, out) { const f = F[0]; const yaw = f.yaw - 0.45; out.pos.set(fp[0].x + Math.sin(yaw) * 7.6, 3.4, fp[0].z + Math.cos(yaw) * 7.6); out.look.set(fc[0].x + 1.9, fc[0].y + 0.3 + c.u * 0.15, fc[0].z); } },
+        { len: 1.05, cut: 1, fov: 28, omega: 4, pose(c, out) { const f = F[1]; const yaw = f.yaw + 0.45; out.pos.set(fp[1].x + Math.sin(yaw) * 7.6, 3.4, fp[1].z + Math.cos(yaw) * 7.6); out.look.set(fc[1].x - 1.9, fc[1].y + 0.3 + c.u * 0.15, fc[1].z); } },
       ] },
       strike: { pri: 2, parts: [
         { len: 0.5, cut: 1, slow: 0.3, fov: 34, pose(c, out) { const i = c.x, j = 1 - i, d = F[i].dir; out.pos.set(fp[i].x - d * 3.4, 4.3, fp[i].z + 3.2); out.look.set(fc[j].x, fc[j].y, fc[j].z); } },
@@ -1056,6 +1082,7 @@ window.DuelScene = (() => {
       const zoom = 1 + punch * 0.07;
       if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
       if (fx) fx.update(dt);
+      drawFar();
       composer.render();
     }
     const smoothU = x => x * x * (3 - 2 * x);
