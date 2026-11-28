@@ -24,6 +24,9 @@ window.BossAudio = (() => {
     hit: 2.2, crit: 1.35, weak: 1.5, raid: 12, shieldHit: 2.4, shieldUp: 0.4, shieldBreak: 0.6, windup: 0.7, warn: 2.3,
     blockOk: 1.6, blockFail: 1.5, impact: 0.5, launch: 2.8, returned: 1.1, projHit: 2.6, addSpawn: 1.9, addKill: 1.1,
     roar: 0.85, stagger: 1.1, weakOpen: 1.1, milestone: 1.6, defeat: 0.5, swipe: 1.3, stomp: 0.9, charge: 0.7,
+    // the new attacks and actions (28 Nov 2026), set against the same loudness check
+    quakeWind: 0.5, quakeHit: 0.6, scanWind: 0.55, scanHit: 0.75, rainWind: 0.75, rainHit: 0.9, grabWind: 1.0, grabHit: 0.55,
+    kneel: 0.6, transform: 0.8, glitchRoar: 1.8, deathBuild: 1.0, implode: 0.9, plates: 1.0,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
@@ -281,6 +284,93 @@ window.BossAudio = (() => {
         o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
       },
       stomp(t) { tone(t, 'sine', 70, 30, 0.45, 0.7); hiss(t, 0.35, 220, 0.7, 0.45, 'lowpass', 0.002); },
+      // ---- Syntax Error's new attacks: a wind-up sound for the length of the wind-up, and its landing ----
+      // segfault: a rumble and a servo whine that climb as it rises, then a floor-shaking pound and debris
+      quakeWind(t, d = 3) {
+        tone(t, 'sawtooth', 38, 92, d, 0.22, Math.min(1.2, d * 0.7));
+        tone(t, 'sawtooth', 40, 95, d, 0.18, Math.min(1.2, d * 0.7));
+        tone(t, 'triangle', 260, 880, d, 0.07, d * 0.8);
+        hiss(t, d, 160, 0.8, 0.22, 'lowpass', d * 0.75, 900);
+      },
+      quakeHit(t, blocked) {
+        tone(t, 'sine', 64, 24, 1.3, 0.9);
+        tone(t, 'sawtooth', 90, 30, 0.6, 0.18);
+        hiss(t, 1.1, 320, 0.7, 0.8, 'lowpass', 0.002, 90);
+        hiss(t, 0.09, 3500, 0.7, 0.45, 'highpass', 0.001);
+        for (let i = 0; i < 9; i++) hiss(t + 0.12 + Math.random() * 0.7, 0.05, 900 + Math.random() * 2500, 3, 0.12, 'bandpass', 0.001);
+        if (blocked) { tone(t, 'triangle', 1900, 1250, 0.4, 0.14); tone(t + 0.02, 'triangle', 2850, 1900, 0.3, 0.08); }
+      },
+      // scan line: a whine that charges, then a sizzling beam that sweeps
+      scanWind(t, d = 3) {
+        const o = c.createOscillator(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(2600, t + d);
+        lfo.frequency.setValueAtTime(6, t); lfo.frequency.exponentialRampToValueAtTime(28, t + d); lg.gain.value = 0.06;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + d * 0.9); g.gain.linearRampToValueAtTime(0, t + d);
+        lfo.connect(lg).connect(g.gain); o.connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
+        hiss(t, d, 2000, 4, 0.1, 'bandpass', d * 0.9, 7000);
+      },
+      scanHit(t, blocked) {
+        const o = c.createOscillator(), g = c.createGain(), v = c.createOscillator(), vg = c.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(120, t); v.frequency.value = 38; vg.gain.value = 22;
+        v.connect(vg).connect(o.frequency);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.setValueAtTime(0.3, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+        o.connect(g).connect(out); o.start(t); v.start(t); o.stop(t + 0.8); v.stop(t + 0.8);
+        hiss(t, 0.7, 5200, 0.8, 0.35, 'highpass', 0.01);
+        tone(t, 'square', 1800, 400, 0.12, 0.12);
+        if (blocked) tone(t + 0.05, 'triangle', 2200, 1700, 0.5, 0.1);
+      },
+      // code rain: glitchy blips that thicken as the code gathers, then a quick barrage of zaps
+      rainWind(t, d = 3) {
+        tone(t, 'sawtooth', 55, 70, d, 0.14, d * 0.6);
+        const n = Math.floor(d / 0.07);
+        for (let i = 0; i < n; i++) { const u = i / n; if (Math.random() > 0.35 + 0.6 * u) continue; const f = 400 + Math.floor(Math.random() * 8) * 140 * (1 + u); tone(t + i * 0.07, 'square', f, f, 0.035, 0.035 + 0.05 * u); }
+      },
+      rainHit(t, blocked) {
+        for (let i = 0; i < 9; i++) { const w = t + i * 0.05; tone(w, 'square', 1500 - i * 60, 260, 0.06, 0.12); hiss(w, 0.06, blocked ? 5000 : 2200, 1.5, 0.22); }
+        tone(t, 'sine', 90, 40, 0.5, 0.45);
+      },
+      // memory grab: a servo whirr and the talons clicking open, then a metal clamp crunching shut
+      grabWind(t, d = 3) {
+        hiss(t, d, 700, 3, 0.1, 'bandpass', d * 0.5, 1400);
+        tone(t, 'sawtooth', 85, 150, d, 0.08, d * 0.5);
+        for (let i = 0; i < 5; i++) { const w = t + 0.15 + i * 0.09; tone(w, 'triangle', 2400 + i * 200, 1800, 0.04, 0.12); hiss(w, 0.03, 6000, 2, 0.12); }
+      },
+      grabHit(t, blocked) {
+        hiss(t, 0.16, 1600, 1.2, 0.6, 'bandpass', 0.001, 500);
+        tone(t, 'sine', 95, 38, 0.45, 0.7);
+        const o = c.createOscillator(), g = c.createGain(), v = c.createOscillator(), vg = c.createGain();
+        o.type = 'sawtooth'; o.frequency.value = 62; v.frequency.value = 17; vg.gain.value = 0.12;
+        g.gain.setValueAtTime(0.0001, t + 0.05); g.gain.exponentialRampToValueAtTime(0.16, t + 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.65);
+        v.connect(vg).connect(g.gain); o.connect(g).connect(out); o.start(t); v.start(t); o.stop(t + 0.7); v.stop(t + 0.7);
+        for (let i = 0; i < 6; i++) hiss(t + 0.1 + Math.random() * 0.45, 0.025, 4000 + Math.random() * 3000, 4, 0.14, 'bandpass', 0.001);
+        if (blocked) tone(t, 'triangle', 1700, 1300, 0.35, 0.12);
+      },
+      // the kneel: a heavy thud as it sinks, and its power whining down
+      kneel(t) { tone(t, 'sine', 75, 30, 0.7, 0.75); hiss(t, 0.5, 300, 0.7, 0.5, 'lowpass', 0.003); tone(t + 0.05, 'sine', 900, 110, 1.1, 0.12); hiss(t + 0.1, 0.9, 3000, 1, 0.08, 'bandpass', 0.05, 400); },
+      // the change of phase: power surging up, and the plates clanking as they lock in their new places
+      transform(t) {
+        tone(t, 'sawtooth', 55, 230, 1.1, 0.16, 0.6);
+        hiss(t, 1.0, 400, 0.8, 0.22, 'bandpass', 0.7, 3500);
+        [0.55, 0.72, 0.86, 0.98].forEach((w, i) => { tone(t + w, 'triangle', 700 + i * 160, 380, 0.1, 0.2); hiss(t + w, 0.06, 2500, 1.5, 0.3, 'bandpass', 0.001); tone(t + w, 'sine', 110, 50, 0.15, 0.3); });
+      },
+      // a digital screech over the roar
+      glitchRoar(t) {
+        for (let i = 0; i < 6; i++) { const w = t + 0.1 + i * 0.13 + Math.random() * 0.05, f = 600 + Math.random() * 900; tone(w, 'square', f, f * 0.5, 0.09, 0.08); }
+        hiss(t, 1.4, 1800, 0.6, 0.12, 'bandpass', 0.3, 500);
+      },
+      // a stack of plates hitting the floor as the armour comes off
+      plates(t) { for (let i = 0; i < 7; i++) { const w = t + i * 0.07 + Math.random() * 0.05; tone(w, 'triangle', 500 + Math.random() * 700, 260, 0.12, 0.16); hiss(w, 0.05, 1800 + Math.random() * 2000, 2, 0.2, 'bandpass', 0.001); } tone(t, 'sine', 80, 40, 0.4, 0.5); },
+      // the death: the core going unstable, then the pull inward just before it blows
+      deathBuild(t) {
+        const o = c.createOscillator(), g = c.createGain(), v = c.createOscillator(), vg = c.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(1500, t + 1.3);
+        v.frequency.setValueAtTime(5, t); v.frequency.exponentialRampToValueAtTime(30, t + 1.3); vg.gain.setValueAtTime(20, t); vg.gain.linearRampToValueAtTime(260, t + 1.3);
+        v.connect(vg).connect(o.frequency);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 1.1); g.gain.linearRampToValueAtTime(0, t + 1.35);
+        o.connect(g).connect(out); o.start(t); v.start(t); o.stop(t + 1.4); v.stop(t + 1.4);
+        for (let i = 0; i < 14; i++) hiss(t + Math.random() * 1.3, 0.03, 3000 + Math.random() * 4000, 3, 0.15, 'bandpass', 0.001);
+      },
+      implode(t) { hiss(t, 0.35, 200, 0.7, 0.4, 'lowpass', 0.3, 2400); tone(t, 'sine', 40, 160, 0.33, 0.4, 0.3); },
       weakOpen(t) { [660, 880, 1320].forEach((f, i) => tone(t + i * 0.08, 'triangle', f, f, 0.2, 0.18)); },
       milestone(t) { [784, 1046].forEach((f, i) => tone(t + i * 0.09, 'triangle', f, f, 0.18, 0.16)); },
       defeat(t) {
