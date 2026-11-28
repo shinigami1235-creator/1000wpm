@@ -11,7 +11,7 @@ Router.register('hangar', (() => {
   const KEY = 'wpm-bot', IDLE_AFTER = 3;
   const GLOWS = ['theme', '#8cff58', '#5cc8ff', '#ffb000', '#b48cff', '#ff7ad9', '#3effc8', '#f4f4f4', '#ff8a3d'];
   const SCREENS = ['', '#ffffff', '#9ff3ff', '#ffd27a', '#ff9be0', '#c6ffa8'];
-  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop' });
+  const fresh = () => ({ color: '', shell: 'white', eyes: 'own', screen: '', sig: 0, back: 'none', top: 'none', blush: false, name: '', stickers: [], wear: 0, arm: 'none', trail: 'none', emote: 'wave', victory: 'hop', armor: 'none' });
   const voice = mood => { if (window.IdleAudio && store) IdleAudio.bot(store.active, mood); };
   // a bought part's price tag, or nothing if it's free or yours
   const lockOf = (part, v) => { const it = BotKit.itemFor(part, v === true ? 'on' : v); return it && !WPM.owns(it.id) ? it : null; };
@@ -20,7 +20,7 @@ Router.register('hangar', (() => {
   // the categories, each with where the camera goes: [turn of the bot, camera height, distance, look height]
   const TABS = [
     ['Colour', [0.0, 1.4, 11.5, 0.1]], ['Face', [0.0, 0.6, 8.4, 0.1]], ['Head', [0.25, 2.6, 8.8, 0.7]], ['Back', [Math.PI, 1.6, 10, 0.2]],
-    ['Arm', [0.75, 0.9, 8.5, -0.1]], ['Trail', [-0.5, 2.2, 15, -0.6]], ['Moves', [0.0, 1.6, 12.5, 0.4]], ['Marks', [-0.6, 1.2, 9.5, 0.1]],
+    ['Armour', [-0.55, 1.5, 12, 0.3]], ['Arm', [0.75, 0.9, 8.5, -0.1]], ['Trail', [-0.5, 2.2, 15, -0.6]], ['Moves', [0.0, 1.6, 12.5, 0.4]], ['Marks', [-0.6, 1.2, 9.5, 0.1]],
   ];
   let el = null, store = null, tab = 'Colour', hist = [], hi = 0, stage = null;
 
@@ -158,6 +158,8 @@ Router.register('hangar', (() => {
       h += `<div class="hg-group"><span class="label">On its head</span>${cards('top', BotKit.OPTIONS.top, L)}</div>`;
     } else if (tab === 'Back') {
       h += `<div class="hg-group"><span class="label">Back</span>${cards('back', BotKit.OPTIONS.back, L)}</div>`;
+    } else if (tab === 'Armour') {
+      h += `<div class="hg-group"><span class="label">Armour set</span>${cards('armor', BotKit.OPTIONS.armor, L)}<p class="hg-hint">A set brings its own shell colour. Your glow stays.</p></div>`;
     } else if (tab === 'Arm') {
       h += `<div class="hg-group"><span class="label">Arm tool</span>${cards('arm', BotKit.OPTIONS.arm, L)}<p class="hg-hint">Looks only. It fires with your spells.</p></div>`;
     } else if (tab === 'Trail') {
@@ -266,7 +268,7 @@ Router.register('hangar', (() => {
       if (bot) bot.dispose();
       const L = { ...look(), ...(over || {}) };
       bot = BotKit.create(THREE, store.active, { color: BotKit.FX[L.color] ? L.color : glowOf(L), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back, top: L.top, blush: !!L.blush,
-        marks: { stickers: L.stickers, wear: L.wear }, arm: L.arm, trail: L.trail, emote: L.emote, victory: L.victory });
+        marks: { stickers: L.stickers, wear: L.wear }, arm: L.arm, trail: L.trail, emote: L.emote, victory: L.victory, armor: L.armor });
       bot.group.traverse(o => { if (o.isMesh && !(o.material && (o.material.blending === THREE.AdditiveBlending || o.material.transparent))) o.castShadow = true; });
       scene.add(bot.group);
       const c = accent(); ringMat.color.copy(c).multiplyScalar(1.15); bgMat.uniforms.uCol.value.copy(c); floorMat.uniforms.uCol.value.copy(c); rimA.color.copy(c).lerp(new THREE.Color('#ffffff'), 0.35);

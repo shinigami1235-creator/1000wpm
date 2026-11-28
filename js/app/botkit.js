@@ -74,6 +74,7 @@ window.BotKit = (() => {
     // 28 Nov 2026: a tool on the bot's side, a trail behind it, an emote and a victory pose
     arm: [['none', 'None'], ['blaster', 'Blaster'], ['shield', 'Hex shield'], ['claw', 'Claw'], ['drill', 'Drill'], ['saber', 'Saber'], ['cannon', 'Cannon']],
     trail: [['none', 'None'], ['spark', 'Sparks'], ['pixels', 'Pixels'], ['ribbon', 'Ribbon'], ['hearts', 'Hearts'], ['flame', 'Flame'], ['stars', 'Stars']],
+    armor: [['none', 'None'], ...Object.entries(ARMOR).map(([k, a]) => [k, a.name])],
     emote: [['wave', 'Wave'], ['laugh', 'Laugh'], ['spin', 'Spin'], ['heart', 'Love'], ['dance', 'Dance'], ['flip', 'Backflip']],
     victory: [['hop', 'Hop'], ['spin', 'Spin'], ['float', 'Float'], ['dance', 'Dance'], ['flip', 'Flips'], ['fireworks', 'Fireworks']],
     sig: {
@@ -125,7 +126,8 @@ window.BotKit = (() => {
   function icon(it) {
     const acc = (window.Theme && Theme.hex('accent')) || '#8cff58';
     const shellC = { mint: '#b8f0d8', sky: '#bcdcff', lilac: '#dcc8ff', peach: '#ffd3bd', pearl: '#f4f1ec', rose: '#e8b4a0', gold: '#e9c25a', cherry: '#d8343f', lime: '#c8f06a', bubblegum: '#ff9ccf', midnight: '#22306a', holo: '#e8f0ff', gunmetal: '#4d535c', black: '#1f2226', chrome: '#b8bec7', ivory: '#efe6d2', jade: '#3fae86', ocean: '#1f6f9a', sunset: '#ff9a6a', carbon: '#2b2e33', obsidian: '#141318' };
-    const body = it.part === 'shell' ? shellC[it.v] || '#d8dce2' : '#d8dce2';
+    const AR = it.part === 'armor' && ARMOR[it.v];
+    const body = it.part === 'shell' ? shellC[it.v] || '#d8dce2' : AR ? shellC[AR.shell] || '#d8dce2' : '#d8dce2';
     const FXG = { rainbow: ['#ff5c8a', '#ffd23d', '#3effc8', '#8c7bff'], ember: ['#c41c1c', '#ff6a1f', '#ffe066', '#ff6a1f'], frost: ['#3b7dff', '#7fe8ff', '#ffffff', '#7fe8ff'], galaxy: ['#3b2bff', '#9b6bff', '#ff5cd6', '#5cc8ff'], toxic: ['#2f8a12', '#9dff2e', '#f4ff9a', '#9dff2e'], ocean: ['#2266ff', '#2ee6d6', '#9ffcff', '#2ee6d6'], sunset: ['#ffd166', '#ff7a59', '#d94f9a', '#ff7a59'], neon: ['#ff2bd6', '#ff2bd6', '#20e7ff', '#20e7ff'] };
     const fxg = FXG[it.part === 'color' && it.v] || FXG.rainbow;
     const glowC = it.part === 'color' ? 'url(#rb)' : acc;
@@ -206,6 +208,17 @@ window.BotKit = (() => {
       stars: () => '<path d="M90 166l2 5 5 1-4 3 1 5-4-3-4 3 1-5-4-3 5-1zM112 182l2 4 4 1-3 3 1 4-4-2-4 2 1-4-3-3 4-1z" fill="#fff6c8"/>',
     };
     const arm = it.part === 'arm' ? ARMS[it.v] || '' : '';
+    // an armour set: the cape behind, then shoulders, collar and its crown, crest or horns in front
+    let arBack = '', arFront = '';
+    if (AR) {
+      if (AR.cape) arBack = `<path d="M62 92L46 182h108L138 92z" fill="${AR.cloth}"/><path d="M46 182h108" stroke="${AR.hem || AR.trim}" stroke-width="4"/>`;
+      if (AR.skirt) arBack += `<path d="M66 128l-14 40h96l-14-40z" fill="${AR.cloth}"/><path d="M52 168h96" stroke="${AR.trim}" stroke-width="3"/>` + [0, 1, 2, 3, 4].map(i => `<rect x="${58 + i * 17}" y="132" width="14" height="26" rx="2" fill="${AR.plate}"/>`).join('');
+      arFront = [-1, 1].map(s2 => `<path d="M${100 + s2 * 30} 96a${22} 18 0 0 ${s2 > 0 ? 1 : 0} ${s2 * 34} 22l${-s2 * 34} 4z" fill="${AR.plate}" stroke="${AR.trim}" stroke-width="3"/>`).join('')
+        + `<path d="M70 132q30 12 60 0" stroke="${AR.plate}" stroke-width="8" fill="none"/><path d="M96 134l4 8 4-8-4-4z" fill="${AR.trim}"/>`;
+      if (AR.crown) arFront += `<path d="M74 66l6-18 8 12 12-20 12 20 8-12 6 18z" fill="${AR.plate}" stroke="${AR.trim}" stroke-width="2"/>`;
+      if (AR.crest) arFront += `<path d="M76 64q14-34 52-30l4 30z" fill="${AR.plate}" stroke="${AR.trim}" stroke-width="3"/>`;
+      if (AR.horns) arFront += `<path d="M76 74q-18-20-6-44q2 22 16 36zM124 74q18-20 6-44q-2 22-16 36z" fill="${AR.plate}" stroke="${AR.trim}" stroke-width="2"/>`;
+    }
     const trail = it.part === 'trail' && TRAILS[it.v] ? TRAILS[it.v]() : '';
     // each move gets its own mark: arcs for a wave, a turning arrow for a spin, notes for a dance...
     const stroke = (d, c = acc) => `<path d="${d}" stroke="${c}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -222,8 +235,8 @@ window.BotKit = (() => {
     };
     const moves = it.part === 'emote' || it.part === 'victory' ? (it.part === 'victory' && (it.v === 'spin' || it.v === 'flip' || it.v === 'dance') ? spark(40, 36, '#ffd23d') + spark(164, 34, '#ff6fae', 7) : '') + (MOVES[it.v] || '') : '';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="${fxg[0]}"/><stop offset=".33" stop-color="${fxg[1]}"/><stop offset=".66" stop-color="${fxg[2]}"/><stop offset="1" stop-color="${fxg[3]}"/></linearGradient></defs>
-      <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
-      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}</svg>`;
+      <rect width="200" height="200" fill="#050a07"/>${moves}${back}${trail}${arBack}<circle cx="100" cy="104" r="44" fill="${body}"/>${arm}<path d="M66 100a34 26 0 0 1 68 0v6a34 22 0 0 1-68 0z" fill="#0b0d10"/>${eyes}${blush}
+      <ellipse cx="100" cy="150" rx="22" ry="5" fill="${glowC}"/>${top}${arFront}</svg>`;
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
 
@@ -1254,7 +1267,7 @@ window.BotKit = (() => {
   const accent = () => (window.Theme ? Theme.hex('accent') : '#8cff58');
   const lookOf = L => ({ color: L.color || accent(), shell: L.shell, eyes: L.eyes, screen: L.screen || undefined, sig: L.sig, back: L.back,
     top: L.top || 'none', blush: !!L.blush, marks: { stickers: L.stickers || [], wear: L.wear || 0 }, name: L.name || '',
-    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop' });
+    arm: L.arm || 'none', trail: L.trail || 'none', emote: L.emote || 'wave', victory: L.victory || 'hop', armor: L.armor || 'none' });
   // the bought parts (REWARDS.shop.bot): { id, name, price, part, v }; part is a look key
   const SHOP = () => (window.REWARDS && REWARDS.shop && REWARDS.shop.bot) || [];
   const itemFor = (part, v) => SHOP().find(x => x.part === part && String(x.v) === String(v)) || null;
@@ -1262,13 +1275,13 @@ window.BotKit = (() => {
   // the parts in a look that this player hasn't bought
   function locked(L) {
     const out = [];
-    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
+    for (const k of ['color', 'shell', 'eyes', 'back', 'top', 'blush', 'arm', 'trail', 'emote', 'victory', 'armor']) { const it = itemFor(k, L[k] === true ? 'on' : L[k]); if (it && !owns(it.id)) out.push(it); }
     return out;
   }
   // a look with its unbought parts back to the free ones, for fights
   function owned(L) {
     const o = { ...L };
-    for (const it of locked(L)) o[it.part] = it.part === 'blush' ? false : it.part === 'color' ? '' : it.part === 'top' ? 'none' : OPTIONS[it.part][0][0];
+    for (const it of locked(L)) o[it.part] = it.part === 'blush' ? false : it.part === 'color' ? '' : it.part === 'top' || it.part === 'armor' ? 'none' : OPTIONS[it.part][0][0];
     return o;
   }
   function mine() {

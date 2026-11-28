@@ -113,6 +113,10 @@ window.REWARDS = {
       { id: 'bot-arm-drill', name: 'Drill', price: 2000, part: 'arm', v: 'drill' },
       { id: 'bot-arm-saber', name: 'Saber', price: 3000, part: 'arm', v: 'saber' },
       { id: 'bot-arm-cannon', name: 'Cannon', price: 3500, part: 'arm', v: 'cannon' },
+      // armour sets (Gid, 28 Nov 2026: knight bots in our own designs); premium, the biggest bot items
+      { id: 'bot-armor-vigil', name: 'Vigil armour', price: 25000, part: 'armor', v: 'vigil' },
+      { id: 'bot-armor-sovereign', name: 'Sovereign armour', price: 30000, part: 'armor', v: 'sovereign' },
+      { id: 'bot-armor-ember', name: 'Ember Warden armour', price: 30000, part: 'armor', v: 'ember' },
       { id: 'bot-trail-spark', name: 'Spark trail', price: 1000, part: 'trail', v: 'spark' },
       { id: 'bot-trail-pixels', name: 'Pixel trail', price: 1200, part: 'trail', v: 'pixels' },
       { id: 'bot-trail-ribbon', name: 'Ribbon trail', price: 1500, part: 'trail', v: 'ribbon' },
