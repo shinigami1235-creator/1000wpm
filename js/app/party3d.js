@@ -35,13 +35,7 @@ window.PartyScene = (() => {
   }
 
   // your keyboard's style, saved with your Character Lab look; a board you don't own fires as the Slab
-  function kbStyle() {
-    try {
-      const p = TT.store.get('wpm-operator', null), s = p && p.kb && p.kb.style;
-      if (!['split', 'arc', 'compact'].includes(s)) return 'slab';
-      return window.WPM && WPM.owns && !WPM.owns('kb-' + s) ? 'slab' : s;
-    } catch (e) { return 'slab'; }
-  }
+  const kbStyle = () => (window.KbShots ? KbShots.mine() : 'slab');
 
   function mount(host, opts = {}) {
     let impl = null, gone = false, fight = null, last = null;
@@ -1117,6 +1111,8 @@ window.PartyScene = (() => {
       // camera and filled the near screen here); your combo shots and keyboard signatures use the combat layer
       const tier = h.you ? Math.min(3, h.tier || 0) : 0;
       if (fx && (tier >= 2 || (h.you && myKb && myKb !== 'slab'))) fx.shot(tier, from, to, land, { color: col, kb: h.you ? myKb : null, w: 0.5 });
+      // your board's switch and shot sound (js/app/kb-shots.js)
+      if (h.you && myKb !== 'slab' && window.KbShots) KbShots.play(myKb, { ctx: opts.audio && opts.audio.ctx, vol: 0.8, big: tier >= 3 || !!h.crit });
       else {
         const sc = col ? C(col) : h.you ? C('#eafff4') : colorOf(h.id);
         streak(from, to, sc, h.crit ? 0.3 : 0.26, land, h.you ? 1 : 0.7);

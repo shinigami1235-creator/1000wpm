@@ -14,7 +14,7 @@
 //   fx.charge(at, level, tier)                               the charge orb: words feed it, level 0..1; level 0 hides it
 //   fx.feed(from, at, kb)                                    a typed word's spark flying into the orb
 //   fx.release(tier, power, from, to(out), onLand, kb)       the orb winds up and fires one attack sized by power 0..1
-//   kb (also opt.kb on shot): the shooter's keyboard, 'slab' | 'compact' | 'split' | 'arc'; see "keyboard signatures"
+//   kb (also opt.kb on shot): the shooter's keyboard, any id in KbShots (js/app/kb-shots.js); see "keyboard signatures"
 //   fx.update(dt)  fx.clear()  fx.dispose()  fx.info()
 //
 // caster and target are small adapters, so the same effect can hit a boss or another player:
@@ -374,6 +374,23 @@ Combat.FX = (() => {
       _m.compose(base, _cq, _cs.set(r, len, r));
       crystals.setMatrixAt(nCry, _m); crystals.setColorAt(nCry, _c.copy(col).multiplyScalar(k)); nCry++;
     }
+    // ---------- drops: glossy lit blobs for the Typewriter's ink, rebuilt every frame like the crystals ----------
+    // (28 Nov 2026) Additive light can't draw black, so ink is real geometry: a lit icosphere, stretched
+    // along its flight, that the arena's lights catch as a wet highlight.
+    const DRN = 96;
+    const dropMat = own(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.14, metalness: 0.35 }));
+    // a pale rim of light round each drop, so black ink still reads against the dark arena
+    dropMat.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(0.38, 0.4, 0.44) * pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.0);'); };
+    const drops = new THREE.InstancedMesh(own(new THREE.IcosahedronGeometry(1, 1)), dropMat, DRN);
+    drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage); drops.setColorAt(0, new THREE.Color()); drops.frustumCulled = false; drops.count = 0;
+    root.add(drops);
+    let nDrop = 0;
+    function drop(at, dir, r, len, col) {
+      if (nDrop >= DRN || r < 0.004) return;
+      _cq.setFromUnitVectors(UP, dir);
+      _m.compose(at, _cq, _cs.set(r, len, r));
+      drops.setMatrixAt(nDrop, _m); drops.setColorAt(nDrop, col); nDrop++;
+    }
     const lampGone = false;
     function drawLamp(dt) {
       if (!lamp) return;
@@ -516,10 +533,11 @@ Combat.FX = (() => {
     function shot(tier, from, to, onLand, opt = {}) {
       onLand = zeroLand(tier, onLand, 0.7);
       const col = opt.color ? C(opt.color) : tier >= 1 && TIER_COL[Math.min(tier, TOP)] !== GREEN ? TIER_COL[Math.min(tier, TOP)] : null;
-      const kb = KB_SIG[opt.kb] ? opt.kb : null, sw = opt.w || 1;   // w: how wide the board's marks are drawn
+      const kb = sigOf(opt.kb), sw = opt.w || 1, lane = opt.lane || 0;   // w: how wide the board's marks are drawn
       const e = add({ from: from.clone(), to, onLand, tier: Math.min(tier, 4), landed: false, col, side: Math.random() < 0.5 ? -1 : 1 });
       const dur = opt.dur || (tier >= 3 ? 0.05 : tier === 2 ? 0.17 : 0.15);   // opt.dur: match a slower flight, as the duel's letters
-      const life = tier >= 3 ? 0.3 : dur + 0.14;
+      // the newer boards' landing marks (lattice, rings, field loops) stay a little longer than a plain hit
+      const life = tier >= 3 ? 0.3 : dur + (kb && !['compact', 'split', 'arc'].includes(kb.style) ? 0.36 : 0.14);
       if (tier === 1) flare(from, col || GREEN, 2.2, 0.12, 1.2);
       if (tier === 2) { flare(t0.copy(from).add(t1.set(-1, 0.5, 0)), col || GREEN, 2, 0.12); flare(t0.copy(from).add(t1.set(1, 0.5, 0)), col || CYAN, 2, 0.12); }
       e.update = dt => {
@@ -532,12 +550,13 @@ Combat.FX = (() => {
           flare(t0, c, 2.5 + tier * 1.6, 0.2, 1.1);
           if (tier >= 3) { juice('shake', tier >= 4 ? 0.5 : 0.3); juice('stop', tier >= 4 ? 60 : 40); light(t0, c, tier >= 4 ? 1.2 : 0.7, 0.2); }
           if (tier >= 4) burst(t0, 30, 16, col || GREEN, 0.5, 0.8, G.dot, { drag: 1.5 });
+          if (kb) sigHit(kb, t0, e.from, col || GREEN, tier <= 1 ? sw : (1 + 0.25 * tier) * sw);
           if (onLand) onLand(t0.clone());
         }
         const ku = clamp(1 - (e.t - dur) / (life - dur), 0, 1);
         if (kb && tier <= 1) {
           // a bought keyboard fires its own basic shot
-          if (u < 1) sigBolt(kb, e.from, t0, u, 1, col || GREEN, sw);
+          if (u < 1) { sigLane = lane; sigBolt(kb, e.from, t0, u, 1, col || GREEN, sw); sigLane = 0; }
           else sigLand(kb, t0, e.from, col || GREEN, ku, sw);
           return e.t < life;
         }
@@ -603,18 +622,87 @@ Combat.FX = (() => {
       return e;
     }
 
-    // ---------- keyboard signatures (Gid, 25 Nov 2026) ----------
-    // The keyboard is the operator's weapon, so each shape in the shop leaves its own mark on your
-    // shots. Looks only: damage, timing and where a shot lands are the same for every board.
+    // ---------- keyboard signatures (Gid, 25 Nov 2026; six more and Art's boards 28 Nov) ----------
+    // The keyboard you own changes your shot, so each board in the shop leaves its own mark. Looks
+    // only: damage, timing and where a shot lands are the same for every board. Boards and their
+    // colours are listed in js/app/kb-shots.js (KbShots); a board of Art's fires one of these styles
+    // in its own colours (pal).
     //   slab     the free board: the plain shots above
     //   compact  Needles: thin bolts that fly three at a time
     //   split    Twin: shots leave from both halves and cross on the target
     //   arc      Storm: shots fly as forked lightning
-    const KB_SIG = { compact: 1, split: 1, arc: 1 };
-    const sigPts = [], sigPts2 = [], _sa = new V(), _sb = new V(), _sc = new V(), _sd = new V(), _sv = new V(), _c2 = new THREE.Color();
+    //   type     Ink: glossy black type slugs on a low arc that splat into flying drops
+    //   comet    Rainbow: a comet whose tail runs through the colours, sparkles shed behind it
+    //   laser    Pin: a hair-thin beam there at once, a reticle closing on the target, the burst a beat later
+    //   grid     Grid: a 3 by 3 block of squares in formation that breaks into a lattice on the target
+    //   ring     Click: shockwave rings that pulse down the line and boom on the target
+    //   mag      Magnet: the shot swings wide toward the camera, field loops round it, and snaps in
+    const KB_SIG = { compact: 1, split: 1, arc: 1, type: 1, comet: 1, laser: 1, grid: 1, ring: 1, mag: 1 };
+    const sigCache = {};
+    // a keyboard id to { style, pal: [Color x3] | null, crystal }, or null for the plain Slab
+    function sigOf(kb) {
+      if (!kb || kb === 'slab') return null;
+      if (sigCache[kb] !== undefined) return sigCache[kb];
+      const r = window.KbShots ? KbShots.resolve(kb) : { style: kb, pal: null };
+      return (sigCache[kb] = KB_SIG[r.style] ? { id: kb, style: r.style, pal: r.pal ? r.pal.map(h => C(h)) : null, crystal: !!r.crystal } : null);
+    }
+    const INK = C('#07080b'), MAGN = C('#ff4d5e'), MAGS = C('#3ee6ff');
+    const sigPts = [], sigPts2 = [], _sa = new V(), _sb = new V(), _sc = new V(), _sd = new V(), _sv = new V(), _se = new V(), _sf = new V(), _sg = new V(), _c2 = new THREE.Color(), _c3 = new THREE.Color();
     const halfOf = (from, side, w, out) => out.copy(from).add(_sd.set(side * 0.32 * w, 0, 0));
+    const pc = (S, i, col) => (S.pal ? S.pal[i] : i === 0 ? col : WHITE);
+    // an orthonormal frame round direction d: su across, sv2 the other way
+    const su = new V(), sv2 = new V();
+    function frameOf(d) { su.copy(Math.abs(d.y) > 0.9 ? Z : UP).cross(d).normalize(); sv2.copy(d).cross(su).normalize(); }
+    // a frame in the screen's plane at `at`: su across the travel direction d, sv2 along it, scam toward the camera
+    const scam = new V();
+    function camFrame(at, d) {
+      scam.subVectors(camera.position, at).normalize();
+      su.crossVectors(scam, d); if (su.lengthSq() < 1e-4) su.copy(Math.abs(scam.y) > 0.9 ? Z : UP).cross(scam);
+      su.normalize(); sv2.crossVectors(su, scam).normalize();
+    }
+    // the side the magnet swings to: across the line, toward the camera
+    // the side the magnet swings to: across the line as the camera sees it, downward, so it passes
+    // under the word; flying away from the camera (World Boss) it swings sideways instead
+    function magSide(a, b, out) {
+      _se.subVectors(b, a).normalize();
+      _sf.lerpVectors(a, b, 0.5).sub(camera.position).negate().normalize();
+      out.crossVectors(_se, _sf);
+      if (out.lengthSq() < 0.05) out.copy(UP).cross(_se);
+      if (out.lengthSq() < 1e-4) out.set(1, 0, 0);
+      out.normalize();
+      if (out.y > 0.05 || (Math.abs(out.y) <= 0.05 && out.x < 0)) out.negate();
+      return out;
+    }
+    // the new boards' shots speed up as they fly, like a thrown word (the duel's letters fly the same way)
+    const accel = u => Math.pow(clamp(u, 0, 1), 1.3);
+    const rainbow = (h, out) => out.setHSL(((h % 1) + 1) % 1, 1, 0.6);
+    // a point on a board's flight path at s (0..1): type and comet ride a low arc, mag swings wide
+    let sigLane = 0;   // opt.lane on a shot: how far below (negative) the word the board's shot flies, at its middle
+    function sigPath(S, a, b, s, w, out) {
+      out.lerpVectors(a, b, s);
+      const arc = Math.sin(Math.PI * clamp(s, 0, 1));
+      if (S.style === 'type') out.y += arc * 0.9 * w;
+      else if (S.style === 'comet') out.y += arc * 1.4 * w;
+      else if (S.style === 'grid') out.y += arc * 0.3 * w;
+      else if (S.style === 'mag') { const L = a.distanceTo(b); magSide(a, b, _sg); out.addScaledVector(_sg, Math.sin(Math.PI * Math.pow(clamp(s, 0, 1), 0.8)) * Math.min(L * 0.16, 1.5 * w)); }
+      if (sigLane && S.style !== 'mag') out.y += sigLane * arc;
+      return out;
+    }
+    // a hollow square of side z at c, in the plane of su and sv2
+    const _q1 = new V(), _q2 = new V();
+    function square(c, z, col, k, rot = 0, wd = 0.05) {
+      const R = z * Math.SQRT1_2;
+      for (let i = 0; i < 4; i++) {
+        const q0 = rot + Math.PI / 4 + i * Math.PI / 2, q1 = q0 + Math.PI / 2;
+        _q1.copy(c).addScaledVector(su, Math.cos(q0) * R).addScaledVector(sv2, Math.sin(q0) * R);
+        _q2.copy(c).addScaledVector(su, Math.cos(q1) * R).addScaledVector(sv2, Math.sin(q1) * R);
+        seg(_q1, _q2, wd, col, k);
+      }
+    }
+
     // a bolt from a to b with its head at u (0..1), fading by k
-    function sigBolt(kb, a, b, u, k, col, w = 1) {
+    function sigBolt(S, a, b, u, k, col, w = 1) {
+      const kb = S.style;
       if (kb === 'compact') {
         for (let i = 0; i < 3; i++) {
           const ui = (u - i * 0.16) / 0.68;
@@ -638,7 +726,7 @@ Combat.FX = (() => {
             t6.copy(t7);
           }
         }
-      } else {
+      } else if (kb === 'arc') {
         // forked lightning, redrawn every frame so it crackles; held still under reduced motion
         _sa.lerpVectors(a, b, ease(clamp(u, 0, 1)));
         const pts = jag(a, _sa, 10, reduce ? 0 : 0.09, sigPts);
@@ -648,24 +736,222 @@ Combat.FX = (() => {
           _sb.copy(pts[j]).add(_sv.set(rnd(-1, 1), rnd(-0.4, 1), rnd(-0.6, 0.6)).multiplyScalar(1.3 * w));
           line(jag(pts[j], _sb, 4, 0.25, sigPts2), 0.07 * w, WHITE, 1.2 * k);
         }
+      } else if (kb === 'type') {
+        // three slugs one behind the other, like letters struck in a row, each a wet black drop
+        // with a thin ring of the shot's colour so it reads against the dark arena
+        const ink = S.pal ? _c3.copy(S.pal[0]).multiplyScalar(0.55) : INK, rim = pc(S, S.pal ? 1 : 0, col);
+        const hd = accel(u);
+        for (let i = 0; i < 3; i++) {
+          const s = hd - i * 0.07;
+          if (s <= 0) continue;
+          sigPath(S, a, b, s, w, _sa); sigPath(S, a, b, Math.max(0, s - 0.04), w, _sb);
+          _sv.subVectors(_sa, _sb); if (_sv.lengthSq() < 1e-6) _sv.subVectors(b, a); _sv.normalize();
+          const r = (0.5 - i * 0.13) * w;
+          drop(_sa, _sv, r, r * (2.1 - i * 0.35), ink);
+          circle(_sa, _sd.subVectors(camera.position, _sa).normalize(), r * 1.3, 0.05 * w, rim, 1.2 * k, 16, clock * 6 + i);
+          if (i === 0) { flare(_sa, rim, 1.1 * w, 0.05, 0.5, 0.1); seg(_sb.copy(_sa).addScaledVector(_sv, -1.6 * w), _sa, 0.06 * w, rim, 0.7 * k); }
+        }
+        if (!reduce && u < 1 && Math.random() < 0.55) { sigPath(S, a, b, Math.max(0, hd - 0.05), w, _sa); puff(_sa, _sv.set(rnd(-0.3, 0.3), -0.6, rnd(-0.3, 0.3)), ink, 0.9 * w, 0.6, 0.6); }
+      } else if (kb === 'comet') {
+        // a white-hot head, a tail that runs through the colours (or the board's two), sparkles shed
+        const hd = accel(u), tl = Math.max(0, hd - 0.42), N = 16;
+        sigPath(S, a, b, tl, w, _sb);
+        for (let i = 1; i <= N; i++) {
+          const f = i / N;
+          sigPath(S, a, b, tl + (hd - tl) * f, w, _sa);
+          if (S.pal) _c2.copy(S.pal[1]).lerp(S.pal[0], f); else rainbow(f * 0.85 - clock * 1.6, _c2);
+          seg(_sb, _sa, (0.1 + 0.55 * f) * w, _c2, (0.45 + 0.6 * f) * k);
+          seg(_sb, _sa, (0.04 + 0.12 * f) * w, _c3.copy(_c2).lerp(WHITE, 0.5), (0.6 + 0.6 * f) * k);
+          _sb.copy(_sa);
+        }
+        flare(_sa, WHITE, 0.55 * w, 0.05, 1, 0.1);
+        flare(_sa, S.pal ? S.pal[0] : rainbow(-clock * 1.6, _c2), 1.2 * w, 0.06, 0.6, 0.1);
+        if (!reduce && u < 1) for (let j = 0; j < 2; j++) spawn(_sa, _pv.set(rnd(-1, 1), rnd(-0.5, 1.2), rnd(-1, 1)).multiplyScalar(2.2 * w), S.pal ? S.pal[2] : rainbow(Math.random(), _c3), 0.36 * w, 0.5, G.star, { drag: 2.5, grav: 2 });
+      } else if (kb === 'laser') {
+        // the beam is there at once, hair thin; a reticle closes on the target while it flies
+        const kk = k * (0.85 + 0.15 * Math.sin(clock * 90)), c1 = pc(S, 0, col);
+        seg(a, b, 0.22 * w, c1, 0.5 * kk);
+        seg(a, b, 0.045 * w, S.pal ? _c2.copy(c1).lerp(WHITE, 0.45) : WHITE, 2 * kk);
+        flare(a, c1, 0.6 * w, 0.05, 0.8, 0.1);
+        _sv.subVectors(a, b).normalize(); frameOf(_sv);
+        const R = (0.25 + 1.4 * (1 - ease(clamp(u, 0, 1)))) * w, rot = clock * 3 + u * 2;
+        for (let i = 0; i < 4; i++) {
+          const q = rot + i * Math.PI / 2;
+          _sa.copy(b).addScaledVector(su, Math.cos(q) * R).addScaledVector(sv2, Math.sin(q) * R);
+          _sb.copy(b).addScaledVector(su, Math.cos(q) * (R + 0.45 * w)).addScaledVector(sv2, Math.sin(q) * (R + 0.45 * w));
+          seg(_sa, _sb, 0.05 * w, i % 2 ? WHITE : c1, 1.6 * k);
+        }
+        circle(b, _sv, R * 0.8, 0.03 * w, c1, 0.9 * k, 24, -rot);
+        flare(b, WHITE, (0.3 + 0.9 * u) * w, 0.05, 1.2, 0.1);
+      } else if (kb === 'grid') {
+        // a 3 by 3 block of squares facing the camera, the middle one leading in the board's accent
+        const hd = accel(u), c1 = pc(S, 0, col), lead = S.pal ? S.pal[1] : WHITE;
+        sigPath(S, a, b, hd, w, _sc); _sv.subVectors(b, a).normalize(); camFrame(_sc, _sv);
+        const sp = 0.42 * w, z = 0.3 * w, conv = 1 - 0.35 * Math.pow(hd, 3);   // the block tightens as it arrives
+        for (let r = -1; r <= 1; r++) for (let c = -1; c <= 1; c++) {
+          const lag = (Math.abs(r) + Math.abs(c)) * 0.025, s = Math.max(0, hd - lag);
+          sigPath(S, a, b, s, w, _sd).addScaledVector(su, c * sp * conv).addScaledVector(sv2, r * sp * conv);
+          const ctr = !r && !c, cc = ctr ? lead : c1;
+          square(_sd, z * (ctr ? 1.15 : 1), cc, (ctr ? 1.8 : 1.3) * k, 0, 0.055 * w);
+          panel(_sd, camera.position, z * 0.78, z * 0.78, cc, 0.22 * k);
+          _se.copy(_sd).addScaledVector(_sv, -0.9 * w);
+          seg(_se, _sd, 0.035 * w, cc, 0.5 * k);
+        }
+      } else if (kb === 'ring') {
+        // rings that pulse down the line like the sound of a click, the oldest biggest and faintest
+        const hd = accel(u), c1 = pc(S, 0, col), c2 = S.pal ? S.pal[1] : WHITE;
+        _sv.subVectors(b, a).normalize();
+        for (let i = 0; i < 4; i++) {
+          const s = hd - i * 0.11;
+          if (s <= 0) continue;
+          sigPath(S, a, b, s, w, _sa);
+          const r = (0.28 + i * 0.2 + 0.05 * Math.sin(clock * 40 - i)) * w, kk = (1 - i * 0.22) * k;
+          circle(_sa, _sv, r, 0.07 * w, c1, 1.3 * kk, 26, clock * 4);
+          circle(_sa, _sv, r * 0.8, 0.03 * w, c2, 1.2 * kk, 22, -clock * 4);
+        }
+        sigPath(S, a, b, hd, w, _sa);
+        flare(_sa, c2, 1.1 * w, 0.05, 1.1, 0.1);
+        seg(_sb.copy(_sa).addScaledVector(_sv, -0.5 * w), _sa, 0.08 * w, WHITE, 1.6 * k);
+      } else if (kb === 'mag') {
+        // a bright core with two poles orbiting it, field loops round it, swinging wide onto the target
+        const hd = accel(u), c1 = pc(S, 0, col), c2 = S.pal ? S.pal[1] : MAGN, c3 = S.pal ? S.pal[2] : MAGS, N = 14, tl = Math.max(0, hd - 0.35);
+        sigPath(S, a, b, tl, w, _sb);
+        for (let i = 1; i <= N; i++) {
+          const f = i / N;
+          sigPath(S, a, b, tl + (hd - tl) * f, w, _sa);
+          seg(_sb, _sa, (0.05 + 0.32 * f) * w, c1, (0.25 + 0.5 * f) * k);
+          seg(_sb, _sa, 0.08 * f * w, WHITE, 1.3 * f * k);
+          if (i < N) _sb.copy(_sa);
+        }
+        _sv.subVectors(_sa, _sb).normalize(); camFrame(_sa, _sv);
+        flare(_sa, c1, 1.3 * w, 0.05, 0.9, 0.1); flare(_sa, WHITE, 0.5 * w, 0.05, 1.2, 0.1);
+        for (const [sd, pcol] of [[1, c2], [-1, c3]]) {
+          const q = clock * 14 + (sd > 0 ? 0 : Math.PI);
+          _sd.copy(_sa).addScaledVector(su, Math.cos(q) * 0.42 * w).addScaledVector(sv2, Math.sin(q) * 0.42 * w);
+          flare(_sd, pcol, 0.45 * w, 0.05, 1.3, 0.1); seg(_sa, _sd, 0.03 * w, pcol, 0.8 * k);
+          // a field loop either side of the core, facing the camera
+          for (const rr of [0.35, 0.6]) {
+            _se.copy(_sa).addScaledVector(su, sd * rr * w);
+            circle(_se, scam, rr * w, 0.045 * w, sd > 0 ? c2 : c3, 1.3 * k, 18, clock * 5 * sd, 0.72);
+          }
+        }
       }
     }
-    // the mark a board's shot leaves where it lands, fading by k
-    function sigLand(kb, at, from, col, k, w = 1) {
+    // the mark a board's shot leaves where it lands, drawn every frame and fading by k
+    function sigLand(S, at, from, col, k, w = 1) {
+      const kb = S.style;
       _sv.subVectors(from, at).normalize();
       if (kb === 'compact') for (let i = 0; i < 3; i++) circle(_sa.copy(at).add(_sd.set((i - 1) * 0.5 * w, (i === 1 ? 0.4 : -0.2) * w, 0)), _sv, (0.3 + (1 - k) * 1.2) * w, 0.07, i === 1 ? WHITE : col, 1.3 * k, 6, i);
       else if (kb === 'split') for (const sd of [-1, 1]) { _sb.copy(_sv).add(_sd.set(sd * 0.5, 0, 0)).normalize(); circle(at, _sb, (0.8 + (1 - k) * 2.4) * w, 0.1, sd > 0 ? WHITE : col, 1.2 * k, 22); }
-      else {
+      else if (kb === 'arc') {
         circle(at, _sv, (0.7 + (1 - k) * 1.8) * w, 0.08, col, k, 20);
         if (!reduce && k > 0.35) for (let i = 0; i < 4; i++) {
           _sb.copy(at).add(_sd.set(rnd(-1, 1), rnd(-1, 1), rnd(-0.5, 0.5)).normalize().multiplyScalar(rnd(1.2, 2.2) * w));
           line(jag(at, _sb, 4, 0.3, sigPts2), 0.07 * w, i % 2 ? WHITE : col, 1.3 * k);
         }
+      } else if (kb === 'type') circle(at, _sv, (0.5 + (1 - k) * 1.6) * w, 0.06 * w, pc(S, S.pal ? 1 : 0, col), 1.1 * k, 24);
+      else if (kb === 'comet') {
+        for (let i = 0; i < 7; i++) { if (S.pal) _c2.copy(S.pal[i % 2]); else rainbow(i / 7 - clock, _c2); circle(at, _sv, (0.6 + (1 - k) * 2.2) * w, 0.09 * w, _c2, 1.3 * k, 28, i / 7 * Math.PI * 2 + (1 - k) * 2, 1 / 7); }
+      } else if (kb === 'laser') {
+        seg(from, at, 0.04 * w, WHITE, 1.4 * k * k * k);   // the beam lingers for a blink
+      } else if (kb === 'grid') {
+        // the block breaks into a lattice on the target, spreading as it fades
+        const c1 = pc(S, 0, col); camFrame(at, _sd.set(1, 0, 0));
+        const sp = (0.42 + (1 - k) * 0.9) * w, n = 2, L = sp * n;
+        for (let i = -n; i <= n; i++) {
+          _sa.copy(at).addScaledVector(su, i * sp).addScaledVector(sv2, -L); _sb.copy(at).addScaledVector(su, i * sp).addScaledVector(sv2, L); seg(_sa, _sb, 0.04 * w, c1, 1.1 * k * (1 - Math.abs(i) * 0.25));
+          _sa.copy(at).addScaledVector(sv2, i * sp).addScaledVector(su, -L); _sb.copy(at).addScaledVector(sv2, i * sp).addScaledVector(su, L); seg(_sa, _sb, 0.04 * w, c1, 1.1 * k * (1 - Math.abs(i) * 0.25));
+        }
+        square(at, 0.4 * w * (1 + (1 - k)), S.pal ? S.pal[1] : WHITE, 1.6 * k, (1 - k) * 1.5, 0.07 * w);
+      } else if (kb === 'ring') {
+        circle(at, _sv, (0.5 + ease(1 - k) * 3) * w, 0.1 * w * k + 0.02, pc(S, 0, col), 1.4 * k, 36);
+        if (k < 0.85) circle(at, _sv, (0.3 + ease((0.85 - k) / 0.85) * 2.2) * w, 0.05 * w, S.pal ? S.pal[1] : WHITE, 1.2 * k, 32);
+      } else if (kb === 'mag') {
+        // the field loops snap shut onto the target
+        const c2 = S.pal ? S.pal[1] : MAGN, c3 = S.pal ? S.pal[2] : MAGS; camFrame(at, _sv);
+        for (const [rr, kk] of [[(0.6 + 1.8 * k) * w, 1.6 * k], [(0.35 + 1.1 * k) * w, 1.3 * k]]) for (const sd of [1, -1]) {
+          _se.copy(at).addScaledVector(su, sd * rr); circle(_se, scam, rr, 0.06 * w, sd > 0 ? c2 : c3, kk, 26, clock * 8 * sd, 0.8);
+        }
+      }
+    }
+    // the moment a board's shot lands, once: the splat, the delayed burst, the snap
+    function sigHit(S, at, from, col, w = 1) {
+      const kb = S.style;
+      _sv.subVectors(from, at).normalize();
+      if (kb === 'type') {
+        const ink = S.pal ? C('#000').copy(S.pal[0]).multiplyScalar(0.55) : INK, rim = pc(S, S.pal ? 1 : 0, col).clone(), spark = pc(S, S.pal ? 2 : 0, col).clone();
+        const e = add({ at: at.clone().addScaledVector(_sv, 0.9 * w), n: _sv.clone().add(_sd.subVectors(camera.position, at).normalize()).normalize(), d: [] });   // on the near face of the target, not inside it
+        frameOf(e.n);
+        for (let i = 0; i < (reduce ? 7 : 14); i++) {
+          const q = i / 14 * Math.PI * 2 + rnd(-0.2, 0.2), sp = rnd(5, 11) * w;
+          e.d.push({ p: e.at.clone(), v: new V().addScaledVector(su, Math.cos(q) * sp).addScaledVector(sv2, Math.sin(q) * sp).addScaledVector(e.n, rnd(0.5, 2.5) * w).add(_sd.set(0, 3 * w, 0)), r: rnd(0.16, 0.34) * w });
+        }
+        e.update = dt => {
+          const u = e.t / 0.95; if (u >= 1) return false;
+          // the splat itself: a flattened drop facing the shooter that spreads, then shrinks away
+          const R = 1.05 * w * ease(Math.min(1, e.t / 0.06)) * (u < 0.6 ? 1 : 1 - (u - 0.6) / 0.4);
+          drop(e.at, e.n, R, R * 0.14, ink);
+          for (const d of e.d) {
+            d.v.y -= 16 * dt; d.p.addScaledVector(d.v, dt);
+            _sd.copy(d.v); const sp = _sd.length(); _sd.divideScalar(sp || 1);
+            drop(d.p, _sd, d.r * (1 - u * 0.7), d.r * (1 + sp * 0.06) * (1 - u * 0.5), ink);
+          }
+          return true;
+        };
+        shock(at, rim, 0.3 * w, 2.2 * w, 0.32, 0.08 * w, e.n, 1.3);
+        if (!reduce) burst(at, 10, 5 * w, spark, 0.22 * w, 0.4, G.dot, { drag: 2.5 });
+        smoke(at, 3, ink, 1.3 * w, 0.8, { speed: 2 * w, alpha: 0.55, tint: 0.9 });
+      } else if (kb === 'comet') {
+        if (!reduce) for (let i = 0; i < 22; i++) { _pv.set(rnd(-1, 1), rnd(-0.6, 1.2), rnd(-1, 1)).normalize().multiplyScalar(rnd(3, 8) * w); spawn(at, _pv, S.pal ? S.pal[i % 3] : rainbow(i / 22, _c3), rnd(0.25, 0.45) * w, rnd(0.4, 0.8), G.star, { drag: 2.4, grav: 3 }); }
+        flare(at, WHITE, 2.4 * w, 0.14, 1.4, 0.4);
+      } else if (kb === 'laser') {
+        // a beat after the pin lands: the burst, a lens star across it, and crystal shards on the Diamond
+        const c1 = pc(S, 0, col).clone(), crys = S.crystal;
+        const e = add({ at: at.clone(), n: _sv.clone(), boom: false, sh: [] });
+        e.update = dt => {
+          const D = 0.09;
+          if (e.t < D) { flare(e.at, WHITE, (0.4 + e.t / D * 0.5) * w, 0.05, 1.5, 0.1); return true; }
+          if (!e.boom) {
+            e.boom = true;
+            flare(e.at, WHITE, 3 * w, 0.12, 1.5, 0.3); flare(e.at, c1, 5 * w, 0.3, 0.9, 0.7);
+            shock(e.at, c1, 0.3 * w, 3 * w, 0.3, 0.07 * w, null, 1.4);
+            if (!reduce) burst(e.at, 18, 9 * w, c1, 0.26 * w, 0.4, crys ? G.shard : G.star, { drag: 3 });
+            light(e.at, c1, 0.6, 0.18);
+            juice('shake', 0.12);
+            if (crys) for (let i = 0; i < 7; i++) e.sh.push({ p: e.at.clone(), v: _sd.set(rnd(-1, 1), rnd(-0.5, 1.2), rnd(-1, 1)).normalize().multiplyScalar(rnd(4, 7) * w).clone(), s: rnd(0, 6) });
+          }
+          const u = (e.t - D) / (crys ? 0.6 : 0.35); if (u >= 1) return false;
+          frameOf(_sd.subVectors(camera.position, e.at).normalize());
+          const L = (1.2 + 2.6 * ease(u)) * w, k = 1 - u;
+          seg(_sa.copy(e.at).addScaledVector(su, -L), _sb.copy(e.at).addScaledVector(su, L), 0.05 * w, WHITE, 1.8 * k);
+          seg(_sa.copy(e.at).addScaledVector(sv2, -L * 0.6), _sb.copy(e.at).addScaledVector(sv2, L * 0.6), 0.04 * w, c1, 1.6 * k);
+          for (const s of e.sh) { s.v.y -= 9 * dt; s.p.addScaledVector(s.v, dt); _se.copy(s.v).normalize(); crystal(s.p, _se, 1.0 * w * Math.sqrt(k), 0.17 * w, c1, 1.4 * k, s.s); }
+          return true;
+        };
+      } else if (kb === 'grid') {
+        if (!reduce) burst(at, 16, 6 * w, pc(S, 0, col), 0.34 * w, 0.5, G.box, { drag: 2.2 });
+        flare(at, S.pal ? S.pal[1] : WHITE, 2 * w, 0.12, 1.2, 0.3);
+      } else if (kb === 'ring') {
+        const c1 = pc(S, 0, col);
+        shock(at, c1, 0.4 * w, 4 * w, 0.4, 0.12 * w, null, 1.6);
+        shock(at, S.pal ? S.pal[1] : WHITE, 0.2 * w, 2.6 * w, 0.3, 0.05 * w, null, 1.2);
+        flare(at, WHITE, 2.2 * w, 0.1, 1.3, 0.2);
+        juice('shake', 0.1);
+      } else if (kb === 'mag') {
+        // sparks pulled in from all round, then a pop
+        const c2 = S.pal ? S.pal[1] : MAGN, c3 = S.pal ? S.pal[2] : MAGS;
+        if (!reduce) for (let i = 0; i < 18; i++) {
+          _sd.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(2.2 * w);
+          spawn(_sa.copy(at).add(_sd), _pv.copy(_sd).multiplyScalar(-4.2), i % 2 ? c2 : c3, 0.26 * w, 0.24, G.dot, { drag: 0.5 });
+        }
+        flare(at, pc(S, 0, col), 2.6 * w, 0.2, 1.2, 0.5);
+        shock(at, pc(S, 0, col), 2.2 * w, 0.2 * w, 0.22, 0.06 * w, null, 1.3);   // the field closes in
       }
     }
     // laid over a big shot (twin beam, rail, overload) while it lasts
-    function sigTrail(kb, a, b, t, k, col, w = 1) {
+    function sigTrail(S, a, b, t, k, col, w = 1) {
       if (k <= 0) return;
+      const kb = S.style;
       if (kb === 'compact') {
         // needles racing down the beam
         for (let i = 0; i < 4; i++) {
@@ -677,9 +963,32 @@ Combat.FX = (() => {
       } else if (kb === 'split') {
         // a thin beam from each half beside the main one
         for (const sd of [-1, 1]) { halfOf(a, sd, w * 1.4, _sa); seg(_sa, b, 0.14 * w, sd > 0 ? WHITE : col, 0.9 * k); }
-      } else {
+      } else if (kb === 'arc') {
         // lightning crawling along the beam
         line(jag(a, b, 14, reduce ? 0 : 0.05, sigPts), 0.08 * w, WHITE, 1.3 * k);
+      } else if (kb === 'type') {
+        // ink dripping off the beam
+        const ink = S.pal ? _c3.copy(S.pal[0]).multiplyScalar(0.55) : INK;
+        for (let i = 0; i < 5; i++) { const f = (t * 2.2 + i * 0.37) % 1; _sa.lerpVectors(a, b, 0.15 + i * 0.17); _sa.y -= f * f * 2.4 * w; drop(_sa, UP, 0.11 * w * (1 - f * 0.5), 0.2 * w, ink); }
+      } else if (kb === 'comet') {
+        for (let i = 0; i < 6; i++) { const u = (t * 3 + i / 6) % 1; _sa.lerpVectors(a, b, u); _sb.lerpVectors(a, b, Math.min(1, u + 0.08)); if (S.pal) _c2.copy(S.pal[i % 2]); else rainbow(i / 6, _c2); seg(_sa, _sb, 0.3 * w, _c2, 1.3 * k); }
+      } else if (kb === 'laser') {
+        _sv.subVectors(b, a).normalize(); frameOf(_sv);
+        for (const sd of [-1, 1]) seg(_sa.copy(a).addScaledVector(su, sd * 0.3 * w), _sb.copy(b).addScaledVector(su, sd * 0.3 * w), 0.03 * w, WHITE, 1.6 * k);
+      } else if (kb === 'grid') {
+        _sv.subVectors(b, a).normalize(); frameOf(_sv);
+        for (let i = 0; i < 5; i++) square(_sa.lerpVectors(a, b, (t * 4 + i / 5) % 1), 0.6 * w, i ? pc(S, 0, col) : WHITE, 1.4 * k, 0, 0.05 * w);
+      } else if (kb === 'ring') {
+        _sv.subVectors(b, a).normalize();
+        for (let i = 0; i < 4; i++) circle(_sa.lerpVectors(a, b, (t * 3 + i / 4) % 1), _sv, 0.5 * w, 0.05 * w, i % 2 ? WHITE : pc(S, 0, col), 1.4 * k, 22);
+      } else if (kb === 'mag') {
+        _sv.subVectors(b, a); const len = _sv.length(); _sv.divideScalar(len || 1); frameOf(_sv);
+        for (const ph of [0, Math.PI]) for (let i = 0; i <= 24; i++) {
+          const s = i / 24, q = s * Math.PI * 6 + t * 16 + ph;
+          t7.copy(a).addScaledVector(_sv, len * s).addScaledVector(su, Math.cos(q) * 0.6 * w).addScaledVector(sv2, Math.sin(q) * 0.6 * w);
+          if (i && i % 2) seg(t6, t7, 0.06 * w, ph ? MAGS : MAGN, 1.2 * k);
+          t6.copy(t7);
+        }
       }
     }
 
@@ -699,16 +1008,16 @@ Combat.FX = (() => {
     }
     function feed(from, at, kb) {
       const col = TIER_COL[chg.tier];
-      kb = KB_SIG[kb] ? kb : null;
+      kb = sigOf(kb);
       if (kb) {
         const a = from.clone(), b = at.clone(), f = add({});
-        f.update = () => { const u = f.t / 0.16; if (u < 1) sigBolt(kb, a, b, u, 1, col, 0.45); else sigLand(kb, b, a, col, 1 - (u - 1) / 0.6, 0.35); return u < 1.6; };
+        f.update = () => { const u = f.t / 0.16; if (u < 1) sigBolt(kb, a, b, u, 1, col, 0.45); else { if (!f.hit) { f.hit = true; sigHit(kb, b, a, col, 0.35); } sigLand(kb, b, a, col, 1 - (u - 1) / 0.6, 0.35); } return u < 1.6; };
       }
       if (chg.pull < 0) { chg.pull = pulls.length; pulls.push({ at: chg.at, k: 0, swirl: 0 }); }
       const a = pulls[chg.pull]; a.k = 60; a.swirl = 6;
       for (let k = 0; k < (reduce ? 4 : 10); k++) {
         _pv.set(rnd(-1, 1), rnd(0.2, 1.2), rnd(-0.6, 0.6)).multiplyScalar(4);
-        const o = kb === 'split' ? halfOf(from, k % 2 ? 1 : -1, 1.6, t0) : t0.copy(from);
+        const o = kb && kb.style === 'split' ? halfOf(from, k % 2 ? 1 : -1, 1.6, t0) : t0.copy(from);
         spawn(o.add(t1.set(rnd(-0.6, 0.6), rnd(-0.2, 0.4), 0)), _pv, k % 3 ? col : WHITE, 0.32, 0.9, k % 2 ? G.one : G.zero, { pull: chg.pull });
       }
     }
@@ -773,7 +1082,7 @@ Combat.FX = (() => {
     }
     const tmpPts = [];
     function release(tier, power, from, to, onLand, kb) {
-      kb = KB_SIG[kb] ? kb : null;
+      kb = sigOf(kb);
       tier = clamp(tier | 0, 0, TOP); power = clamp(power, 0, 1);
       onLand = zeroLand(tier, onLand, 0.6 + 0.6 * power);
       const col = TIER_COL[tier], WIND = reduce ? 0.08 : 0.22, FLY = 0.12 + 0.06 * (1 - power);
@@ -823,6 +1132,7 @@ Combat.FX = (() => {
           juice('shake', reduce ? 0 : 0.18 + 0.6 * P2);
           juice('stop', reduce ? 0 : Math.round(40 + 90 * P2));
           if (P2 > 0.6 && canFlash()) juice('tint', tier >= 4 ? 0x3ee6ff : Theme.num('accent'), 0.25);
+          if (kb) sigHit(kb, e.at, camera.position, col, 1.5 + 2 * power);
           if (onLand) onLand(e.at.clone());
         }
         // shockwaves and spikes after the hit, facing the camera so they read as rings
@@ -1711,7 +2021,7 @@ Combat.FX = (() => {
     function update(dt) {
       clock += dt;
       slow += ((dt > 0.034 ? 1 : 0) - slow) * Math.min(1, dt * 1.2);
-      nSeg = 0; nCry = 0;
+      nSeg = 0; nCry = 0; nDrop = 0;
       for (let i = live.length - 1; i >= 0; i--) {
         const e = live[i];
         e.t += dt;
@@ -1723,6 +2033,7 @@ Combat.FX = (() => {
       drawCharge(dt);
       segs.count = nSeg;
       crystals.count = nCry; if (nCry || crystals.userData.n) { crystals.instanceMatrix.needsUpdate = true; crystals.instanceColor.needsUpdate = true; } crystals.userData.n = nCry;
+      drops.count = nDrop; if (nDrop || drops.userData.n) { drops.instanceMatrix.needsUpdate = true; drops.instanceColor.needsUpdate = true; } drops.userData.n = nDrop;
       segs.instanceMatrix.needsUpdate = true;
       if (segs.instanceColor) segs.instanceColor.needsUpdate = true;
       // particles

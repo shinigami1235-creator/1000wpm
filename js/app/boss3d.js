@@ -1945,6 +1945,7 @@ window.BossScene = (() => {
         const sh = !!h.shield && shieldF !== null;
         const from = gun(new V()) || new V().copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.6);
         fx.shot(Math.min(4, h.tier), from, out => aimAt(ti, sh, from, out), at => land(h, at, ti), { color: h.color, kb: youKb() });
+        kbSound(h.tier >= 3);
         markGlow[RAID] = 1;
         return;
       }
@@ -3195,6 +3196,8 @@ window.BossScene = (() => {
     // the orb hangs in front of the camera, low in the middle of the frame, between you and the boss
     const orbPos = out => { camera.getWorldDirection(v1); out.copy(camera.position).addScaledVector(v1, 11); out.y -= 1.7; return out; };
     function chargeOrb(level, tier) { if (fx && !dead) fx.charge(orbPos(orbAt), level, tier); }
+    // your board's switch and shot sound (js/app/kb-shots.js), on the raid's audio context
+    function kbSound(big) { const kb = youKb(); if (kb !== 'slab' && window.KbShots) KbShots.play(kb, { ctx: window.BossAudio && BossAudio.out ? () => BossAudio.out().ac : null, vol: 0.75, big }); }
     function feed() { if (fx && !dead) fx.feed(gun(v2) || v2.copy(raidPos[RAID]).setY(raidPos[RAID].y + 0.4), orbPos(orbAt), youKb()); }
     // onLand(x, y): the impact's place on screen, for the damage number
     function release(tier, power, onLand) {
@@ -3204,6 +3207,7 @@ window.BossScene = (() => {
       if (flight) { if (tier >= 3 && power >= 0.6) flight.strike(nowS()); else if (tier >= 1) flight.strafe(RAID, nowS()); }
       if (tier >= 3 && power >= 0.6) play(Math.random() < 0.6 ? 'strike' : 'back');
       const ti = -2, sh = shieldF !== null;   // a release always goes for the core
+      setTimeout(() => { if (!dead) kbSound(power >= 0.6); }, 200);   // when the orb lets go, after its wind-up
       fx.release(tier, power, from, out => aimAt(ti, sh, from, out), at => {
         recoilV -= 0.3 + 1.4 * power;
         recoilSide = clamp((at.x - root.position.x) / 6, -1, 1);

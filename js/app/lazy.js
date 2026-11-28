@@ -11,7 +11,7 @@ window.Lazy = (() => {
   const G = {
     words: { js: ['js/wordbank-common.js', 'js/wordbank.js'] },
     mt: { js: ['js/words-mt.js'] },
-    combat: { css: ['css/combat.css'], js: ['bus', 'spells', 'combo', 'damage', 'engine', 'bank', 'sfx', 'fx3d', 'inline'].map(f => `js/app/combat/${f}.js`) },
+    combat: { css: ['css/combat.css'], js: ['js/app/kb-shots.js', ...['bus', 'spells', 'combo', 'damage', 'engine', 'bank', 'sfx', 'fx3d', 'inline'].map(f => `js/app/combat/${f}.js`)] },
     map: { css: ['css/map.css'], js: ['js/app/community.js', 'js/app/missions.js', 'js/app/worldmap.js', 'js/app/activity.js'] },
     kb: { js: ['js/keyboards.js', 'js/kb3d.js'] },
     race: { need: ['mt'], css: ['css/modes.css'], js: ['js/race-audio.js', 'js/race.js', 'js/games.js'] },
@@ -28,7 +28,7 @@ window.Lazy = (() => {
     // these loaders add their own files after themselves, so the group is ready when the globals are
     breach: { js: ['js/breach/load.js'], ready: () => window.Breach && window.Breach.endlessScores },
     room: { js: ['js/room/load.js'], ready: () => window.Room && window.RoomItems },
-    operator: { js: ['js/app/operator3d.js'] },
+    operator: { js: ['js/app/kb-shots.js', 'js/app/operator3d.js'] },
 
     // pages
     // home draws without the network layer (and the combat code it needs); js/app/home.js loads it
@@ -44,10 +44,10 @@ window.Lazy = (() => {
     'page:u': { need: ['net'], js: ['js/app/players.js'] },
     'page:commons': { need: ['net'], css: ['css/commons.css'], js: ['js/app/player-card.js', 'js/app/commons.js'] },
     'page:leaderboard': { need: ['net'], js: ['js/app/leaderboard.js'] },
-    'page:shop': { js: ['js/app/botkit.js', 'js/app/shop.js'] },
+    'page:shop': { css: ['css/kbtry.css'], js: ['js/app/botkit.js', 'js/app/kb-shots.js', 'js/app/kb-try.js', 'js/app/shop.js'] },
     'page:room': { js: ['js/app/room.js'] },
     'page:hangar': { css: ['css/hangar.css'], js: ['js/app/idle-audio.js', 'js/app/botkit.js', 'js/app/hangar.js'], pre: ['three'] },
-    'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/combat/sfx.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
+    'page:lab': { css: ['css/lab.css'], js: ['js/app/idle-audio.js', 'js/app/combat/sfx.js', 'js/app/kb-shots.js', 'js/app/operator3d.js', 'js/app/lab.js'], pre: ['three', 'gltf', 'model-full'] },
     'page:profile': { need: ['net'], css: ['css/ops.css'], js: ['js/app/stats-view.js', 'js/app/ops-ui.js', 'js/app/profile.js'] },
   };
   // Files a 3D page fetches only once its scripts run (three.js through the import map, the model
