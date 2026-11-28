@@ -871,11 +871,12 @@ SuperModels.compiler = function (THREE, K, ctx) {
       if (deadT < 1.25 && Math.random() < dt * 30) K.fx.burst(v1.set(T.x + rnd(-11, 11), T.y + rnd(-6, 6) - fall * 14, T.z + 1.2), 4, Math.random() < 0.5 ? '#ffffff' : ctx.pal.a, { speed: 6, g: 12, life: 0.8, size: 0.28 });
       if (deadT > 0.45 && !deathFx.eye) {
         deathFx.eye = true; eye.getWorldPosition(v1);
-        K.fx.burst(v1, 160, '#ffffff', { speed: 22, g: 6, life: 1.2, size: 0.5 });
-        K.fx.burst(v1, 80, ctx.pal.a, { speed: 14, g: 6, life: 1.5, size: 0.55 });
-        K.fx.shock(v1, WHITE, 1, 16, 0.8, { flat: false, face: ctx.camPos });
-        K.fx.light(v1, '#ffffff', 70, 2.2, 50);
-        ctx.juice.shake(0.6); ctx.juice.stop(90); ctx.juice.flash(0.4); sfx('zap');
+        // held down: the teardown shot is a close-up on the eye when it goes
+        K.fx.burst(v1, 80, '#ffffff', { speed: 18, g: 6, life: 0.9, size: 0.34 });
+        K.fx.burst(v1, 50, ctx.pal.a, { speed: 12, g: 6, life: 1.2, size: 0.4 });
+        K.fx.shock(v1, WHITE, 0.6, 9, 0.6, { flat: false, face: ctx.camPos, k: 0.55 });
+        K.fx.light(v1, '#ffffff', 35, 3, 40);
+        ctx.juice.shake(0.5); ctx.juice.stop(80); ctx.juice.flash(0.15); sfx('zap');
       }
       if (deadT > 0.85 && !deathFx.panels) {
         // the corner blocks and side panels blow off the frame
@@ -896,12 +897,12 @@ SuperModels.compiler = function (THREE, K, ctx) {
         // the core under the heatsink blows and the tower goes down
         deathFx.core = true;
         v1.set(T.x, T.y + T.h / 2 + 4.5, T.z - 0.6).add(tower.position);
-        K.fx.burst(v1, 220, '#ffffff', { speed: 26, g: 8, life: 1.4, size: 0.5 });
-        K.fx.burst(v1, 120, ctx.pal.a, { speed: 16, g: 6, life: 1.8, size: 0.6 });
+        K.fx.burst(v1, 170, '#ffffff', { speed: 26, g: 8, life: 1.3, size: 0.45 });
+        K.fx.burst(v1, 100, ctx.pal.a, { speed: 16, g: 6, life: 1.7, size: 0.55 });
         K.fx.shock(v1, WHITE, 1, 24, 1.1, { flat: false, face: ctx.camPos, k: 0.6 });
         K.fx.shock(v2.set(T.x, 0.1, T.z + 2), ctx.pal.a, 2, 40, 1.4);
         K.fx.light(v1, '#ffffff', 80, 1.8, 60);
-        ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(0.6); sfx('boom'); sfx('collapse');
+        ctx.juice.shake(1); ctx.juice.stop(120); ctx.juice.flash(0.4); sfx('boom'); sfx('collapse');
         ctx.shed(v1, 30, C('#ffffff'), 2, 1);
       }
       if (deadT > 1.25 && deadT < 4.2 && Math.random() < dt * 16) K.fx.burst(v1.set(T.x + rnd(-14, 14), 0.4, T.z + rnd(-2, 5)), 6, '#cfefff', { speed: 6, up: 2, g: 12, life: 0.8, size: 0.4, floor: 0.05 });
