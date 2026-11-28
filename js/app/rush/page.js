@@ -371,7 +371,7 @@ window.RushPage = (() => {
           break;
         }
         case 'blockWord': A.play('blockOk'); scene.guard(); break;
-        case 'block': scene.windupEnd(); scene.react('stagger'); pop('BLOCKED', 'cyan'); A.play('stagger'); break;
+        case 'block': scene.windupEnd(); scene.react('stagger', 0, { block: true }); pop('BLOCKED', 'cyan'); A.play('stagger'); break;
         case 'slam': scene.slam(); flashTint(); pop('HIT', 'red'); A.play('blockFail'); break;
         case 'stun': scene.stun(p.ms); tip('stun'); break;
         case 'overheat': pop('OVERHEATED', 'amber'); A.play('shieldBreak'); break;

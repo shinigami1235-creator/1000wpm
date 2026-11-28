@@ -56,7 +56,7 @@ window.RushScene = (() => {
     };
     for (const n of ['windup', 'windupEnd', 'slam', 'stun', 'enrage', 'gifts', 'giftGone', 'packet', 'returnShot', 'packetHit',
       'speakers', 'speakerOff', 'moveEnd', 'heat', 'cast', 'fizzle', 'aura', 'fxEvent', 'react', 'hurt', 'defeat', 'pause',
-      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench', 'entrance', 'cutaway', 'key', 'typo', 'guard', 'lose', 'botInfo', 'gameCam']) ctl[n] = (...a) => call(n, ...a);
+      'sig', 'sigDone', 'sigHit', 'sigGone', 'stage', 'lunge', 'review', 'threat', 'moveDone', 'preview', 'titan', 'internals', 'bench', 'entrance', 'cutaway', 'key', 'typo', 'guard', 'lose', 'botInfo', 'gameCam', 'moment']) ctl[n] = (...a) => call(n, ...a);
     return ctl;
   }
 
@@ -893,6 +893,9 @@ window.RushScene = (() => {
       o.pos.copy(botS).addScaledVector(gB, GAME.back * k);
       o.pos.x += gB.z * GAME.side * k; o.pos.z -= gB.x * GAME.side * k;
       o.pos.y = GAME.y + 0.04 * H;
+      // never let the bot (knocked about, or darting) come closer than 4.5 to the lens
+      gT.copy(o.pos).sub(YOU); const near = gT.length();
+      if (near < 4.5) o.pos.addScaledVector(gT.normalize(), 4.5 - near);
       o.fov = GAME.fov;
       // aim: the bot on the left third (fx) and the top of the boss a little under the top edge (fy is the
       // lowest the bot may sit), found by nudging the look point the way camdir's frame target does
@@ -926,22 +929,22 @@ window.RushScene = (() => {
     // your bot's shots: o the camera, l where it looks, u 0 to 1 through the part
     const BOT_SHOT = {
       // the block: low behind the bot's shield, the blow bouncing off it in slow motion
-      blockIn: (u, o, l) => { botFrame(); coreWorld(dB); o.copy(YOU).addScaledVector(fG, 3.2 - 0.4 * u).addScaledVector(fR, 2.1); o.y = YOU.y + 0.45; l.copy(dB).lerp(YOU, 0.35); },
+      blockIn: (u, o, l) => { botFrame(); coreWorld(dB); o.copy(YOU).addScaledVector(fG, 4.2 - 0.4 * u).addScaledVector(fR, 2.6); o.y = YOU.y + 0.6; l.copy(dB).lerp(YOU, 0.35); },
       // then side on and wide: the boss reeling, the bot holding its ground
-      blockOut: (u, o, l) => { botFrame(); const H = bossTop(); dB.copy(dA).lerp(YOU, 0.5); const d = fitD(H, 0.72, 42); o.copy(dB).addScaledVector(fR, d * 0.95).addScaledVector(fG, d * 0.25); o.y = H * 0.32; l.copy(dB); l.y = H * 0.42; },
+      blockOut: (u, o, l) => { botFrame(); const H = bossTop(); dB.copy(dA).lerp(YOU, 0.5); const d = fitD(H, 0.85, 42); o.copy(dB).addScaledVector(fR, d * 0.95).addScaledVector(fG, d * 0.25); o.y = H * 0.32; l.copy(dB); l.y = H * 0.42; },
       // a blow lands on the bot: side on, close, as it's thrown back across the frame
       hurt: (u, o, l) => { botFrame(); o.copy(YOU).addScaledVector(fR, 3.4 + 0.4 * u).addScaledVector(fG, -1.2); o.y = YOU.y + 0.5; coreWorld(dB); l.copy(YOU).lerp(dB, 0.22); },
       // the bot goes down: over it as it falls, the boss behind
-      down: (u, o, l) => { botFrame(); o.copy(YOU).addScaledVector(fR, 2.6).addScaledVector(fG, 1.8); o.y = YOU.y + 1.4 - 0.4 * u; l.copy(YOU); l.y -= 0.4; },
+      down: (u, o, l) => { botFrame(); o.copy(YOU).addScaledVector(fR, 4.2).addScaledVector(fG, 3.0); o.y = YOU.y + 2.0 - 0.5 * u; l.copy(YOU); l.y -= 0.4; },
       // a shot at the weak point: behind the bot's shoulder as it fires
-      fire: (u, o, l) => { botFrame(); coreWorld(dB); o.copy(YOU).addScaledVector(fG, 1.9 - 0.4 * u).addScaledVector(fR, 0.9); o.y = YOU.y + 0.55; l.copy(dB).lerp(YOU, 0.15); },
+      fire: (u, o, l) => { botFrame(); coreWorld(dB); o.copy(YOU).addScaledVector(fG, 3.0 - 0.4 * u).addScaledVector(fR, 1.5); o.y = YOU.y + 0.7; l.copy(dB).lerp(YOU, 0.15); },
       // then close on the boss's core as it lands
       core: (u, o, l) => { botFrame(); coreWorld(dB); const H = bossTop(), d = H * (0.62 - 0.06 * u); o.copy(dB).addScaledVector(fG, d * 0.8).addScaledVector(fR, d * 0.6); o.y = dB.y - H * 0.04; l.copy(dB); },
     };
     // your spell (Gid, 28 Nov 2026: the shot follows the cast to the landing): low behind you as it leaves,
     // then a hard cut to three-quarters on the titan from the right as it lands. Sized from the spell's hits;
     // a fizzle gets the same two beats for the block or the dodge, a self buff a short look at you.
-    const CAST_OUT = SP((u, o, l) => { coreWorld(dB); if (bot) { botFrame(); o.copy(YOU).addScaledVector(fG, 3.8 - 0.5 * u).addScaledVector(fR, 1.9); o.y = YOU.y + 1.0 + 0.2 * u; } else o.set(YOU.x + 1.5, YOU.y + 1.3 + 0.2 * u, YOU.z + 3.4 - 0.5 * u); l.copy(dB).lerp(YOU, 0.25); }, { cut: 1, fov: 46, omega: 12 });
+    const CAST_OUT = SP((u, o, l) => { coreWorld(dB); if (bot) { botFrame(); o.copy(YOU).addScaledVector(fG, 4.6 - 0.5 * u).addScaledVector(fR, 2.3); o.y = YOU.y + 1.1 + 0.2 * u; } else o.set(YOU.x + 1.5, YOU.y + 1.3 + 0.2 * u, YOU.z + 3.4 - 0.5 * u); l.copy(dB).lerp(YOU, 0.25); }, { cut: 1, fov: 46, omega: 12, frame: bot ? ['bot', -0.4, -0.22] : null });
     const LANDS = SP((u, o, l) => { bossAt(dA); coreWorld(dB); const H = bossH(), d = fitD(H, 0.74, 42) * (1 - 0.05 * u); o.set(dA.x + d * 0.58, H * 0.36 + 0.4 * u, dA.z + d * 0.82); l.copy(dB); l.y -= H * 0.05; }, { cut: 1, fov: 42, omega: 10 });
     const BUFF = SP((u, o, l) => { if (bot) { botFrame(); o.copy(YOU).addScaledVector(fG, -2.2).addScaledVector(fR, 2.0 - 0.3 * u); o.y = YOU.y + 0.5; } else o.set(YOU.x + 2.2 - 0.3 * u, YOU.y + 0.6, YOU.z - 2.4); l.copy(YOU); l.y += 0.3; }, { cut: 1, fov: 40, omega: 10 });
     function spellCam(id, hits, fizz) {
@@ -968,19 +971,19 @@ window.RushScene = (() => {
             SP((u, o, l) => { bossAt(dA); const H = bossH(); o.set(dA.x + 3.6 - 0.8 * u, 0.9, dA.z + 7.6 - 0.8 * u); l.set(dA.x, H * 0.8, dA.z); }, { len: 1.1, cut: 1, fov: 38, omega: 5 }),
           ] },
           block: bot ? { pri: 3, parts: [
-            SP(BOT_SHOT.blockIn, { len: 0.6, slow: 0.45, cut: 1, fov: 40, omega: 12 }),
-            SP(BOT_SHOT.blockOut, { len: 0.9, cut: 1, fov: 42, omega: 8 }),
+            SP(BOT_SHOT.blockIn, { len: 0.6, slow: 0.45, cut: 1, fov: 40, omega: 12, frame: ['bot', -0.38, -0.2] }),
+            SP(BOT_SHOT.blockOut, { len: 0.9, cut: 1, fov: 42, omega: 8, frame: ['bot', -0.55, -0.1] }),
           ] } : { pri: 3, parts: [
             SP((u, o, l) => { coreWorld(dB); o.set(YOU.x + 2.1, 1.3 + 0.3 * u, YOU.z + 2.2 - 0.4 * u); l.copy(dB); l.y -= 0.6; }, { len: 0.6, slow: 0.45, cut: 1, fov: 40, omega: 12 }),
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42); o.set(dA.x + d * 0.85, H * 0.38, dA.z + d * 0.5); l.set(dA.x, H * 0.48, dA.z + 1.2); }, { len: 0.9, cut: 1, fov: 42, omega: 8 }),
           ] },
           // its blow landed: with your bot, side on as the bot is thrown back (asked for at contact, by botHit)
-          hit: bot ? { pri: 2, parts: [SP(BOT_SHOT.hurt, { len: 0.85, slow: 0.35, cut: 1, fov: 42, omega: 10 })] } : { pri: 2, parts: [
+          hit: bot ? { pri: 2, parts: [SP(BOT_SHOT.hurt, { len: 0.85, slow: 0.35, cut: 1, fov: 42, omega: 10, frame: ['bot', -0.2, 0] })] } : { pri: 2, parts: [
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.68, 42) * (1 - 0.06 * u); o.set(dA.x + d * 0.5, 2.2 + 0.5 * u, dA.z + d * 0.86); l.set(dA.x - 0.4, H * 0.5, dA.z + 1.4); }, { len: 0.9, slow: 0.3, cut: 1, fov: 42, omega: 9 }),
           ] },
-          down: { pri: 4, free: true, parts: [SP(BOT_SHOT.down, { len: 2.2, slow: 0.5, cut: 1, fov: 42, omega: 5 })] },
+          down: { pri: 4, free: true, parts: [SP(BOT_SHOT.down, { len: 2.2, slow: 0.5, cut: 1, fov: 42, omega: 5, frame: ['bot', -0.1, -0.15] })] },
           // a shot into the weak point: behind the bot as it fires, then close on the core as it lands
-          weak: { pri: 2, parts: [SP(BOT_SHOT.fire, { len: 0.32, slow: 0.3, cut: 1, fov: 44, omega: 12 }), SP(BOT_SHOT.core, { len: 0.75, cut: 1, fov: 40, omega: 9 })] },
+          weak: { pri: 2, parts: [SP(BOT_SHOT.fire, { len: 0.32, slow: 0.3, cut: 1, fov: 44, omega: 12, frame: ['bot', -0.42, -0.25] }), SP(BOT_SHOT.core, { len: 0.75, cut: 1, fov: 40, omega: 9 })] },
           phase: { pri: 3, parts: [
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.7, 42), a = 0.75 - 0.5 * u; o.set(dA.x + Math.sin(a) * d, 0.8 + H * 0.45 * u, dA.z + Math.cos(a) * d); l.set(dA.x, H * 0.62, dA.z); }, { len: 1.5, cut: 1, fov: 42, omega: 4 }),
           ] },
@@ -1084,9 +1087,11 @@ window.RushScene = (() => {
       } else if (kind === 'stagger') {
         // a block breaks the attack off: the wind-up drops, it's thrown back and reels
         windOn = false; atkT = 0; reelAt = nowS(); jolt = 0;
-        if (bot) { bot.brace(false); bot.block(); if (!fig.P.T) shieldFx(); }
+        // your block (extra.block, from the page): the bot's shield takes the blow; a spell's stagger is only the reel
+        const mine = !!(extra && extra.block);
+        if (bot && mine) { bot.brace(false); bot.block(); if (!fig.P.T) shieldFx(); }
         if (fig.P.T) fig.P.T.strike(false);
-        want('block');
+        if (mine) want('block');
         recoilV -= 2.4; shake = Math.max(shake, 0.6); stopUntil = Math.max(stopUntil, pnow() + 110);
         if (canFlash()) flash = calm ? 0.5 : 1;
       } else if (kind === 'flash') { recoilV -= 0.35; if (canFlash()) flash = calm ? 0.5 : 1; }
@@ -1159,7 +1164,7 @@ window.RushScene = (() => {
     renderer.setAnimationLoop(() => {
       if (window.__rushStep) vclock += window.__rushStep;
       const t = nowS();
-      let dt = Math.min(0.05, t - last); last = t;
+      let dt = clamp(t - last, 0, 0.05); last = t;   // never negative (the review clock can start behind real time)
       if (paused) dt = 0;
       if (!visible || document.hidden) return;
       frames++;
@@ -1337,7 +1342,7 @@ window.RushScene = (() => {
       vfx.remove();
     }
 
-    return {
+    const api = {
       live: () => visible && !document.hidden,
       setBoss,
       entrance: () => enterMs,
@@ -1398,8 +1403,21 @@ window.RushScene = (() => {
       preview: list => { if (fig && fig.P.T) { fig.P.T.preview(list); sigClear(); windOn = false; } },
       titan: () => (fig && fig.P.T ? { mode: fig.P.T.mode(), attack: fig.P.T.attack(), shot: director ? director.shot() : 'game', cam: camera.position.toArray().map(x => +x.toFixed(2)), threat: threatMs, base: camBase.toArray().map(x => +x.toFixed(2)), fov: +camera.fov.toFixed(1), log: director ? director.log() : [] } : null),
       screen,
+      // tests: play a moment for review shots with the fight frozen (threat cleared so the director takes it)
+      moment: (kind) => {
+        threatMs = Infinity;
+        const ctl = api;
+        if (kind === 'block') { if (fig && fig.P.T) { fig.P.T.windup(null, 2000); } ctl.react('stagger', 0, { block: true }); }
+        else if (kind === 'hit') { if (fig && fig.P.T) fig.P.T.windup(null, 1000); ctl.slam(); }
+        else if (kind === 'weak') hit({ kind: 'weak', tier: 3, amount: 60, crit: true });
+        else if (kind === 'shot') hit({ kind: 'word', tier: 2, amount: 20 });
+        else if (kind === 'cast') ctl.cast('glitch-blade', { hits: [{ at: 300, power: 70 }], effect: {} });
+        else if (kind === 'down') ctl.lose();
+        else if (kind === 'typo') ctl.typo();
+        return director ? director.shot() : 'game';
+      },
       gameCam: (o, pin) => { Object.assign(GAME, o || {}); if (bot && pin !== undefined) bot.pin(pin); return { ...GAME }; },
-      botInfo: () => (bot ? { id: bot.id, at: bot.at.toArray().map(x => +x.toFixed(2)), shot: director ? director.shot() : 'game' } : null),
+      botInfo: () => (bot ? { id: bot.id, at: bot.at.toArray().map(x => +x.toFixed(2)), shot: director ? director.shot() : 'game', threat: threatMs, log: director ? director.log().slice(-14) : [] } : null),
       internals: () => ({ scene, fig, renderer, tfx, THREE, camera }),   // tests only
       // tests only: the cost of drawing one frame, timed with the GPU finished, best of five batches
       bench: (n = 4) => { const gl = renderer.getContext(), px = new Uint8Array(4), sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); let best = Infinity; for (let b = 0; b < 5; b++) { sync(); const t0 = performance.now(); for (let i = 0; i < n; i++) { composer.render(); sync(); } best = Math.min(best, (performance.now() - t0) / n); } return +best.toFixed(1); },
@@ -1407,6 +1425,7 @@ window.RushScene = (() => {
       info: () => ({ aq: aq ? aq.state() : null, detail, frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, lines: renderer.info.render.lines, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, size: [renderer.domElement.width, renderer.domElement.height], boss: slotNow && slotNow.boss.id, mark: slotNow && slotNow.mark, wind: +pose.wind.toFixed(2), dying, shield: shieldF, fx: fx ? fx.info() : null, flyers: pool.filter(p => p.id).length }),
       dispose,
     };
+    return api;
   }
 
   return { mount };

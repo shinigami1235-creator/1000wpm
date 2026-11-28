@@ -61,8 +61,11 @@ window.RushBot = (() => {
       // a blow lands: thrown back away from the boss and up, sparks are the scene's
       hit(power = 1, from) {
         if (ko) return;
+        // thrown back from the boss, up, and off to the left (the camera sits back and to the right of it,
+        // so a blow never throws the bot into the lens)
         tmp.copy(pos).sub(from || base).setY(0); if (tmp.lengthSq() < 1e-4) tmp.set(0, 0, 1); tmp.normalize();
-        knockV.addScaledVector(tmp, 7 * power).add(tmp2.set(0, 2.6 * power, 0));
+        tmp2.set(-tmp.z, 0, tmp.x);   // the bot's left, seen from the camera
+        knockV.addScaledVector(tmp, 3.2 * power).addScaledVector(tmp2, 3.6 * power).add(tmp2.set(0, 2.4 * power, 0));
         f.hurt(power > 0.8 ? 'knock' : 'jolt', { k: power, side: Math.random() < 0.5 ? -1 : 1 });
         f.hit(tmp2.set(0, 0, -1), Math.min(1.5, power));
         nextDart = last + 1.0;
@@ -79,7 +82,7 @@ window.RushBot = (() => {
     };
 
     function update(t, dt, c) {
-      last = t;
+      last = t; dt = clamp(dt || 0, 0, 0.1);
       base.copy(c.boss);
       if (!started) { started = true; pick(c); pos.copy(post); vel.set(0, 0, 0); nextDart = t + rnd(2.5, 4); }
       // a new post now and then, only when nothing is about to land on you
