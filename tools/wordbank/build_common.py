@@ -48,6 +48,8 @@ HIDDEN = forms(codecs.decode(
     'shpxvat shpxrq shpxva shpxre nff nffubyr nffrf onqnff cvff cvffrq encr encrq encvfg zbyrfg jnax ubr '
     'yhfg zvfgerff ivetva fcrez frzra ahqvgl fgevc fgevcf fgevccrq rebgvpn avttre avttn snt snttbg erg'
     'neq fcvp puvax xvxr jrgonpx ergneqrq pbba tbbx fdhnj', 'rot13'))
+# more of the same, ROT13 (29 Nov 2026: whore was misspelled above and these were missing)
+HIDDEN |= forms(codecs.decode('cravf intvan phag phz nany juber juberf zbgureshpxre zbgureshpxvat qvyqb wvmm chffl pbpx pbpxf qvpx qvpxf gvg gvggl avccyr avccyrf betnfz ubeal frzra fcrez rebgvp znfgheongvba cbeab cbeabtencul ubbxre', 'rot13'))
 # short forms, chat words and fragments that pass the dictionary
 SKIP = set('mr mrs ms dr st etc vs ie eg ok lol haha hmm uh um ah oh yeah ya yep nope gonna gotta wanna kinda dont im ive '
     'id ill ve ll re pre http www com org gov edu tv pc uk us eu un da le la el de du ne en ad ex al ii iii pm am '

@@ -30,6 +30,9 @@ const words = seed => { const r = G.NetCore.rng(seed); return Array.from({ lengt
   ok(!F.blocked('peacock and cucumber'), 'keeps harmless words that contain short blocked words');
   ok(!F.blocked('my therapist said gg'), 'keeps therapist');
   ok(!F.blocked('I died on the last fight'), 'keeps everyday game talk');
+  ok(F.blocked('w h o r EE') && F.blocked('sup b i t ces') && F.blocked('fvck') && F.blocked('b!tch'), 'blocks spaced, misspelled and swapped swears (29 Nov)');
+  ok(F.blocked('putangina mo') && F.blocked('gago ka') && F.blocked('ควยเอ้ย'), 'blocks common Tagalog and Thai swears');
+  ok(!F.blocked('rapper skyscraper hashtag bitcoin cocktail analysis assassin shiitake') && !F.blocked('i t was a b c'), 'keeps words that contain a blocked stem');
   ok(F.clean('you are a bitch').text === 'you are a *****', 'clean stars the word');
   ok(F.clean('see https://x.com/abc').text === 'see [link removed]', 'clean removes links');
   ok(!F.nameOk('Art').ok && !F.nameOk('10000wpm').ok && !F.nameOk('Admin').ok, 'reserved names fail');
