@@ -463,7 +463,9 @@
     for (const i of pos.slice(0, Math.min(n, w.length - 2))) a[i] = TT.pick(D.GLITCH[w[i]]);
     return a.join('');
   }
+  // Glitch words were dropped on 28 Nov 2026 (Gid: digits in place of letters read as typos, not words).
   function wantsGlitch(type) {
+    return false;
     if (runDiff === 'easy' || ['bug', 'node', 'heavy', 'mimic', 'shard'].includes(type)) return false;
     if (type === 'glitcher') return true;
     const df = DF(), stage = E ? Math.floor((E.level - 1) / 3) : chIndex;

@@ -62,6 +62,11 @@ NAMES = set('john york china trump smith peter tom jack louis mike frank henry m
     'mafia frankfurt lang ana cos col chi mac las sec min mins ave cam atm asap abs prof rev jun nah cant gal wright mar pic '
     'jean ann rick dan sam ben tim jim alex chris kim max ray rose jay pat sue eve doe victor victoria phoenix jersey '
     'trans hmm bro dude yo sis mom mommy daddy kinda sorta lmao omg btw idk tbh wtf'.split())
+# Contractions with the apostrophe dropped (wordfreq lists "didn't" as "didnt"): they read as misspellings, so they go.
+# Real words that happen to match a contraction (ill, well, were, its, lets, shell, wed, hell, shed, id) stay.
+CONTRACTIONS = set('dont cant wont didnt doesnt isnt arent wasnt werent hasnt havent hadnt couldnt wouldnt shouldnt mustnt '
+    'neednt aint im ive youre youve youll youd theyre theyve theyll theyd weve thats whats whos wheres theres heres '
+    'hows whys whens itll itd shes hes thatll thered whatre yall gonna wanna gotta'.split())
 TWO = set('of to in it is be as at so we he by or on do if me my up an go no am'.split())
 
 def main():
@@ -79,7 +84,7 @@ def main():
                 for c in (b, b + 'e', b + 'y', b[:-1] if b[-1:] == b[-2:-1] else None):
                     if c and (c in low or (c in web2 and c not in cap)): return True
         return False
-    block = VIOLENT | DRUGS | BRANDS | HIDDEN | SKIP | NAMES
+    block = VIOLENT | DRUGS | BRANDS | HIDDEN | SKIP | NAMES | CONTRACTIONS
     words = []
     for w in wordfreq.top_n_list('en', 40000):
         if not re.fullmatch('[a-z]{2,14}', w) or w in block: continue
