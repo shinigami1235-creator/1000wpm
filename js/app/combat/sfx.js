@@ -10,7 +10,7 @@ window.Combat = window.Combat || {};
 Combat.Audio = (() => {
   // level per sound, set from loudness renders so they sit with the boss's own hits
   const LEVEL = {
-    shot1: 1.5, shot2: 1.4, shot3: 1.0, shot4: 0.7, tierUp: 1.3, offer: 1.4, break: 2.6, fizzle: 2.0, ward: 1.2, guard: 1.6,
+    shot1: 1.5, shot2: 1.4, shot3: 1.0, shot4: 0.7, tierUp: 1.3, offer: 1.4, break: 2.6, fizzle: 2.0, ward: 1.2, guard: 1.6, parry: 1.4, whiff: 1.6,
     crack: 1.3, tick: 4, pulse: 3.28, slice: 1.5, ice: 2.0, zap: 1.4, blip: 3.6, boom: 0.5, sweep: 1.44, thrum: 0.32, crash: 1.0, lock: 2.18, ultimate: 0.34,
     'data-spike': 0.6, 'safe-mode': 0.64, 'binary-rain': 2.05, 'echo-pulse': 0.73, 'glitch-blade': 0.95, 'cryo-lock': 0.89, 'electro-storm': 2.06,
     'hyper-thread': 0.77, 'packet-storm': 4.4, 'neon-nova': 1.79, 'system-purge': 2.01, 'void-sphere': 0.24, 'kernel-panic': 3.52, 'root-access': 1.02,
@@ -133,6 +133,19 @@ Combat.Audio = (() => {
         tone(t, 'sine', 140, 70, 0.3, 0.4); hiss(t, 0.18, 6000, 1, 0.22, 'highpass');
       },
       guard(t) { [1760, 1780].forEach(f => tone(t, 'sine', f, f, 0.6, 0.12, 0.002)); tone(t + 0.07, 'triangle', 2637, 2600, 0.4, 0.07); hiss(t, 0.12, 9000, 2, 0.08); },
+      // a fizzled spell meets the target (28 Nov 2026): parry is the bolt shattering on its shield or being
+      // swatted away (a hard tick, a metal ring and grit), whiff the bolt sailing past a sidestep and sputtering out
+      parry(t) {
+        hiss(t, 0.05, 4200, 1.2, 0.3, 'bandpass', 0.001);
+        [880, 1318, 2093].forEach((f, i) => tone(t + 0.004, 'triangle', f, f * 0.985, 0.32 - i * 0.07, 0.09 - i * 0.02, 0.001));
+        tone(t, 'sine', 160, 70, 0.14, 0.22);
+        hiss(t + 0.03, 0.22, 2400, 0.9, 0.08, 'bandpass', 0.01, 700);
+      },
+      whiff(t) {
+        hiss(t, 0.28, 900, 1.4, 0.2, 'bandpass', 0.06, 3800);
+        tone(t + 0.2, 'square', 260, 110, 0.12, 0.05);
+        hiss(t + 0.22, 0.16, 3000, 2, 0.08, 'bandpass', 0.002, 500);
+      },
 
       // ---- spell casts (28 Nov 2026): each one has a wind-up, a body and a tail that rings into a room ----
       'data-spike'(t) {

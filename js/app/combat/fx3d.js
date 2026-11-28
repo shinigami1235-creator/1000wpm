@@ -9,6 +9,8 @@
 //   });
 //   fx.shot(tier, from, to(out), onLand, { color })        a basic attack; to() is read every frame so it follows a moving target
 //   fx.cast(spellId, { caster, target, hits, effect })      hits come from engine.cast() so the effect lands with the damage
+//   fx.fizzle(spellId, { caster, target, how })             a spell lost to a typo: it still flies and the target blocks or dodges it
+//                                                            (how: 'shield' | 'swat' | 'dodge', or left out to take turns); see "fizzles"
 //   fx.aura(name, on, { caster, target })                    'ward' | 'hyper' | 'split' | 'root' while a status lasts
 //   fx.event('ward' | 'guard', { caster })                   safe mode used up, a quantum split copy lost
 //   fx.charge(at, level, tier)                               the charge orb: words feed it, level 0..1; level 0 hides it
@@ -20,7 +22,8 @@
 // caster and target are small adapters, so the same effect can hit a boss or another player:
 //   caster: { pos(out) }   where the spell starts
 //   target: { pos(out) centre, top(out) highest point, base(out) floor under it, size (about 6 for the world boss, 1 for a player),
-//             react(kind, power, extra) }   kinds: flinch, stagger, break, stun, freeze, pull, flash
+//             react(kind, power, extra) }   kinds: flinch, stagger, break, stun, freeze, pull, flash,
+//             block (extra { at, how: 'shield' | 'swat', side }) and dodge (extra { side: -1 | 1 }) for a fizzle
 // Everything is pooled: one instanced mesh of glowing boxes for lines and shapes, one
 // point cloud for particles and glyphs, 24 flares and three shells.
 window.Combat = window.Combat || {};
@@ -495,7 +498,7 @@ Combat.FX = (() => {
         const u = (e.t - e.delay) / dur;
         if (u < 0) return true;
         if (u < 1) {
-          const hd = easeIn(u) * 0.85 + u * 0.15, tl = Math.max(0, hd - 0.28);
+          const hd = easeIn(u) * 0.85 + u * 0.15, tl = Math.max(0, hd - 0.36);
           path(tl, h2);
           for (let i = 1; i <= 8; i++) {
             path(tl + (hd - tl) * i / 8, h3);
@@ -504,7 +507,7 @@ Combat.FX = (() => {
             seg(h2, h3, w * 0.28 * f, WHITE, 1.5 * f);
             h2.copy(h3);
           }
-          flare(h3, col, w * 3.2, 0.05, 1.2, 0.1);
+          flare(h3, col, w * 3.6, 0.05, 1.2, 0.1); flare(h3, WHITE, w * 1.3, 0.04, 1.1, 0.1);
           if (!reduce) spawn(h3, _pv.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).multiplyScalar(2), Math.random() < 0.4 ? WHITE : col, 0.32 * w, 0.35, o2.glyph || G.dot, { drag: 2 });
           return true;
         }
@@ -1393,6 +1396,8 @@ Combat.FX = (() => {
       flare(t1, cols[0], 3, 0.2, 1.1);
       burst(t1, 14, 5, cols[0], 0.4, 0.35, G.box, { drag: 3 });
       e.arcPts = Array.from({ length: 24 }, () => new V());
+      P(cs, 'pos', e.src = new V());
+      e.flyPts = Array.from({ length: 13 }, () => new V());
       e.strike = (i, h) => {
         react(tg, 'stagger', h.power); juice('stop', 70); juice('glitch', 1, 0.45);
         P(tg, 'pos', t1); t1.z += 1.2 * S;
@@ -1403,6 +1408,34 @@ Combat.FX = (() => {
       e.update = () => {
         strikes(e);
         P(tg, 'pos', t1);
+        // the blade flies: a crescent in three split colours, tilted like the cut it's about to make,
+        // growing as it closes on the target, with two fading afterimages behind it
+        const fly = 0.2;
+        if (e.t < fly + 0.02) {
+          t5.copy(t1); t5.z += 1.2 * S;
+          for (let g = 2; g >= 0; g--) {
+            const u = clamp((e.t - g * 0.025) / fly, 0, 1); if (u <= 0) continue;
+            // it leaves a little ahead of you, small, so it never fills the screen near the camera
+            t2.lerpVectors(e.src, t5, 0.12 + 0.88 * (easeIn(u) * 0.6 + u * 0.4)); t2.y += Math.sin(u * Math.PI) * 1.2;
+            t3.subVectors(camera.position, t2).normalize();
+            _u.copy(UP).cross(t3).normalize(); _v.copy(t3).cross(_u).normalize();
+            const R = (0.35 + 3.4 * u * u) * S * Math.min(1, t2.distanceTo(camera.position) / 14), tilt = -0.55, ct = Math.cos(tilt), st = Math.sin(tilt);
+            for (let i = 0; i <= 12; i++) {
+              const a = -1.25 + 2.5 * i / 12, x = Math.sin(a) * R, y = (Math.cos(a) - 1) * R * 0.55;
+              e.flyPts[i].copy(t2).addScaledVector(_u, x * ct - y * st).addScaledVector(_v, x * st + y * ct);
+            }
+            const gk = g ? 0.35 / g : 1;
+            for (let c = 0; c < 3; c++) {
+              const off = (c - 1) * 0.22 * S * (1 + Math.sin(e.t * 70) * 0.6);
+              for (let i = 0; i < 12; i++) {
+                t3.copy(e.flyPts[i]).addScaledVector(_u, off); t4.copy(e.flyPts[i + 1]).addScaledVector(_u, off);
+                const w = Math.sin(Math.PI * (i + 0.5) / 12);
+                seg(t3, t4, (c === 2 ? 0.22 : 0.6) * S * w, cols[c], (c === 2 ? 1.8 : 0.75) * gk);
+              }
+            }
+            if (!g) { flare(t2, cols[0], 3.4 * S, 0.05, 0.9, 0.1); if (!reduce) spawn(e.flyPts[Math.floor(rnd(1, 12))], _pv.set(rnd(-2, 2), rnd(-2, 2), rnd(-2, 2)), cols[Math.floor(rnd(0, 3))], 0.5 * S, 0.4, G.box, { drag: 2 }); }
+          }
+        }
         // the cut lies in the plane facing the camera, from upper left to lower right
         t2.subVectors(camera.position, t1).normalize();
         _u.copy(UP).cross(t2).normalize(); _v.copy(t2).cross(_u).normalize();
@@ -1430,16 +1463,25 @@ Combat.FX = (() => {
     };
 
     SP['cryo-lock'] = (e, cs, tg) => {
-      const S = sizeOf(tg) / 6, col = C('#bfefff'), deep = C('#5fc8ff'), mist = C('#cfefff');
+      const S = sizeOf(tg) / 6, col = C('#bfefff'), deep = C('#5fc8ff'), mist = C('#cfefff'), ICE = C('#9fe4ff');
       const hold = ((e.effect && e.effect.ms) || 5000) / 1000;
       P(tg, 'base', e.base = new V());
       sigil(cs, deep, 0.35, 1.8);
       P(cs, 'pos', t1);
-      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.45, col, 1.1, null, { delay: 0.12, arc: 3, glyph: G.shard });
-      e.shards = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * Math.PI * 2, h: rnd(9, 15) * S, d: rnd(0, 0.35), spin: rnd(0, 6), dir: new V() }));
+      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.45, col, 1.6, null, { delay: 0.12, arc: 3, glyph: G.shard });
+      e.shards = Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * Math.PI * 2, h: rnd(5.5, 9.5) * S, d: rnd(0, 0.35), spin: rnd(0, 6), dir: new V() }));
+      // the crust: crystals that grow out of the target's body from where the bolt struck, and a cold
+      // shell of ice round it (Gid, 28 Nov 2026: "ice encasing for cryo lock")
+      e.crust = Array.from({ length: 14 }, (_, i) => {
+        const a = (i / 14) * Math.PI * 2 + rnd(-0.2, 0.2), el = rnd(-0.75, 0.9);
+        return { off: new V(Math.cos(a) * Math.cos(el) * 3.6, Math.sin(el) * 4.4, Math.sin(a) * Math.cos(el) * 2.6 + 0.8), dir: new V(Math.cos(a) * 0.9, Math.sin(el) + 0.35, Math.sin(a) * 0.6 + 0.5).normalize(), len: rnd(1.6, 3.2), r: rnd(0.35, 0.6), d: 0.05 + Math.abs(el) * 0.25 + rnd(0, 0.12), spin: rnd(0, 6) };
+      });
       juice('tint', '#9fdfff', 0.25);
       e.strike = (i, h) => {
         P(tg, 'pos', t1); t1.z += 1.5 * S;
+        e.iceAt = e.t;
+        // the shell is a big transparent sphere, so a slow device (adaptive quality) keeps only the crust
+        if (slow < 0.5) { e.ice = shell(); e.ice.m.material.uniforms.uCol.value.copy(ICE); e.ice.m.material.uniforms.uHex.value = 0; } else e.ice = { m: null };
         impact(t1, col, 1.3 * S, { glyph: G.shard, shake: 0.35 });
         burst(t1, 50, 9, col, 0.5, 1, G.star, { drag: 1.5 });
         smoke(t1, 8, mist, 3 * S, 2, { speed: 3, alpha: 0.35, tint: 0.8 });
@@ -1451,9 +1493,29 @@ Combat.FX = (() => {
         P(tg, 'base', e.base);
         if (e.t < 0.6) return true;
         const tt = e.t - 0.6, end = hold, out = tt > end ? (tt - end) / 0.4 : 0;
+        // the shell and the crust on the body
+        if (e.ice) {
+          P(tg, 'pos', t1);
+          if (out >= 1) { if (e.ice.m) freeShell(e.ice); e.ice = null; }
+          else if (e.ice.m) {
+            const g = backOut(tt / 0.35);
+            e.ice.m.position.copy(t1).add(_pv.set(0, -0.6 * S, 0.6 * S));
+            e.ice.m.scale.set(4.8 * S * g, 6 * S * g, 4 * S * g);
+            e.ice.m.material.uniforms.uAmt.value = (tt < 0.15 ? 1.0 : 0.48 + 0.08 * Math.sin(e.t * 3)) * (1 - out);
+          }
+          for (const c of e.crust) {
+            const g = backOut((tt - c.d) / 0.25);
+            if (g <= 0) continue;
+            t2.copy(t1).addScaledVector(c.off, S);
+            prism(t2, c.dir, c.len * S * g, c.r * S * (1 - out), deep, col, (0.85 + 0.15 * Math.sin(e.t * 7 + c.spin)) * (1 - out), 4, c.spin);
+          }
+        }
         if (out >= 1) {
           if (!e.broke) {
             e.broke = true;
+            P(tg, 'pos', t1);
+            for (const c of e.crust) { t2.copy(t1).addScaledVector(c.off, S); burst(t2, 5, 7, col, 0.45, 0.8, G.shard, { grav: 14 }); }
+            flare(t1, col, 9 * S, 0.3, 0.8);
             for (const s of e.shards) { t1.set(e.base.x + Math.cos(s.a) * 4 * S, s.h * 0.45, e.base.z + Math.sin(s.a) * 3 * S); burst(t1, 10, 8, col, 0.5, 0.9, G.shard, { grav: 12 }); }
             t1.copy(e.base).setY(4 * S); smoke(t1, 8, mist, 3 * S, 1.6, { speed: 4, alpha: 0.35, tint: 0.8, spread: 3 * S });
             light(t1, deep, 1, 0.3);
@@ -1474,6 +1536,7 @@ Combat.FX = (() => {
         if (!reduce && Math.random() < dt * 9) { t1.set(e.base.x + rnd(-5, 5) * S, rnd(0, 2) * S, e.base.z + rnd(-3, 3) * S); puff(t1, _pv.set(rnd(-0.6, 0.6), 0.2, rnd(-0.3, 0.6)), mist, rnd(2.5, 4) * S, 1.8, 0.22); }
         return true;
       };
+      e.cleanup = () => { if (e.ice && e.ice.m) freeShell(e.ice); };
     };
 
     SP['electro-storm'] = (e, cs, tg) => {
@@ -1481,6 +1544,19 @@ Combat.FX = (() => {
       const last = e.hits.length ? e.hits[e.hits.length - 1].at / 1000 : 3;
       sigil(cs, col, 0.5, 1.8);
       e.bolts = [];
+      P(cs, 'pos', e.src = new V());
+      e.chan = []; e.chanRe = 0;
+      // chain lightning: from where a bolt struck, arcs jump across the target's body to two or three
+      // more points (four on the last one), each a beat after the one before, with sparks where they land
+      const chain = (from, n, w) => {
+        let a = from;
+        for (let c = 0; c < n; c++) {
+          P(tg, 'pos', t4);
+          const b = new V(t4.x + rnd(-3.2, 3.2) * S, t4.y + rnd(-3.5, 3) * S, t4.z + rnd(0.6, 1.8) * S);
+          e.bolts.push({ from: a, to: b, t: -c * 0.05, life: 0.2, re: 0, pts: [], forks: [[]], chain: true, w });
+          a = b;
+        }
+      };
       e.strike = (i, h) => {
         P(tg, 'top', t1); P(tg, 'pos', t2);
         const from = new V(t1.x + rnd(-5, 5) * S, t1.y + 2.4 * S, t1.z + rnd(-2, 2) * S);
@@ -1488,8 +1564,9 @@ Combat.FX = (() => {
         // the big one goes to the floor at the target's feet; the rest hit the body
         const to = big ? (P(tg, 'base', t3), t3.clone().setY(0.2)) : new V(t2.x + rnd(-2.5, 2.5) * S, t2.y + rnd(-3, 4) * S, t2.z + 1.5 * S);
         e.bolts.push({ from, to, t: 0, life: big ? 0.38 : 0.24, re: 0, pts: [], forks: [[], [], []], big });
+        if (!big) chain(to.clone(), i % 2 ? 2 : 1, 0.55); else { P(tg, 'pos', t5); chain(new V(t5.x, t5.y - 2 * S, t5.z + 1.5 * S), 4, 0.8); }
         burst(to, big ? 50 : 22, big ? 14 : 10, core, 0.35, 0.5, G.star, { drag: 2.5 });
-        if (big) impact(to, col, 1.6 * S, { floor: true, shake: 0.6 }); else { flare(to, WHITE, 2.5 * S, 0.1, 1.3); flare(to, col, 5 * S, 0.25, 0.9); light(to, col, 1.1, 0.16); smoke(to, 2, dark, 1.6 * S, 0.8, { speed: 2, alpha: 0.3 }); juice('shake', 0.25); }
+        if (big) impact(to, col, 1.6 * S, { floor: true, shake: 0.6 }); else { flare(to, WHITE, 1.7 * S, 0.09, 1.05); flare(to, col, 3.6 * S, 0.22, 0.7); light(to, col, 0.9, 0.16); smoke(to, 2, dark, 1.6 * S, 0.8, { speed: 2, alpha: 0.3 }); juice('shake', 0.25); }
         flare(from, col, 5 * S, 0.15, 0.7);   // the cloud lights up where the bolt leaves it
         react(tg, big ? 'stagger' : 'flinch', h.power);
         if (big) juice('stop', 80);
@@ -1497,6 +1574,25 @@ Combat.FX = (() => {
       e.update = dt => {
         strikes(e);
         P(tg, 'top', t1);
+        // the call: a crackling bolt leaves your hand, arcs high and feeds the cloud over the target
+        if (e.t < 0.85) {
+          P(cs, 'pos', e.src);
+          const go = ease(e.t / 0.3), k = e.t < 0.5 ? 1 : 1 - (e.t - 0.5) / 0.35;
+          e.chanRe -= dt;
+          if (e.chanRe <= 0) {
+            e.chanRe = 0.045;
+            for (let i = 0; i <= 18; i++) {
+              const s2 = go * i / 18, sw = Math.sin(s2 * Math.PI) * (i && i < 18 ? 1 : 0);
+              (e.chan[i] ||= new V()).lerpVectors(e.src, h0.set(t1.x, t1.y + 2.4 * S, t1.z), s2);
+              e.chan[i].y += Math.sin(s2 * Math.PI) * 7;
+              e.chan[i].x += rnd(-1, 1) * 0.9 * sw; e.chan[i].y += rnd(-1, 1) * 0.9 * sw; e.chan[i].z += rnd(-1, 1) * 0.5 * sw;
+            }
+          }
+          line(e.chan, 0.5 * k, col, 0.35 * k, 0.5);
+          line(e.chan, 0.11 * k, core, 1.5 * k, 0.5);
+          if (e.t < 0.3) flare(e.chan[18], col, 3, 0.05, 1, 0.1);
+          if (e.t < 0.06) { flare(e.src, core, 3, 0.15, 1.2); light(e.src, col, 0.6, 0.2); }
+        }
         // the cloud: dark puffs turning in a disk over the target, lit from inside now and then
         const cloudOn = e.t < last + 0.4, grow = Math.min(1, e.t / 0.7);
         if (cloudOn) {
@@ -1517,18 +1613,20 @@ Combat.FX = (() => {
           const B = e.bolts[b];
           B.t += dt; B.re -= dt;
           if (B.t > B.life) { e.bolts.splice(b, 1); continue; }
+          if (B.t < 0) continue;
+          if (B.chain && !B.lit) { B.lit = true; flare(B.to, WHITE, 1.1 * S, 0.08, 1); flare(B.to, col, 2.2 * S, 0.16, 0.6); if (!reduce) burst(B.to, 10, 7, core, 0.28, 0.35, G.star, { drag: 3 }); }
           if (B.re <= 0) {
             B.re = 0.045;
-            jag(B.from, B.to, 14, 0.15, B.pts);
+            jag(B.from, B.to, B.chain ? 7 : 14, B.chain ? 0.22 : 0.15, B.pts);
             for (const [fi, f] of B.forks.entries()) {
               const at = B.pts[2 + fi * 4];
-              t3.copy(at).add(_pv.set(rnd(-4, 4) * S, rnd(-3, -1) * S, rnd(-1, 1) * S));
+              t3.copy(at).add(_pv.set(rnd(-4, 4) * S, rnd(-3, -1) * S, rnd(-1, 1) * S).multiplyScalar(B.chain ? 0.4 : 1));
               jag(at, t3, 5, 0.25, f);
             }
           }
           // thickest and brightest on the first frame, then thinner, then breaking apart
           const u = B.t / B.life, k = u < 0.15 ? 1.3 : 1 - u * 0.8, wk = u < 0.15 ? 1.35 : 1 - u * 0.5;
-          const w = (B.big ? 1.8 : 1.1) * S * wk;
+          const w = (B.big ? 1.8 : B.chain ? B.w : 1.1) * S * wk;
           for (let i = 0; i < B.pts.length - 1; i++) {
             if (u > 0.6 && ((i * 7 + Math.floor(B.t * 60)) % 3 === 0)) continue;
             const bend = 1 + 0.6 * Math.abs(Math.sin(i * 2.1));
@@ -1611,6 +1709,8 @@ Combat.FX = (() => {
     SP['neon-nova'] = (e, cs, tg) => {
       const S = sizeOf(tg) / 6, col = C('#ff4fd8'), hi = C('#ffd6f6');
       sigil(cs, col, 0.4, 1.8);
+      P(cs, 'pos', t1);
+      comet(t1, out => { P(tg, 'pos', out); out.z += 1 * S; return out; }, 0.28, col, 1.3, at => { flare(at, hi, 5 * S, 0.12, 1.2); burst(at, 16, 6 * S, col, 0.35, 0.4, G.star, { drag: 3 }); }, { arc: 2.2, glyph: G.star });
       e.strike = (i, h) => {
         P(tg, 'pos', t1); t1.z += 1 * S;
         e.boom = e.t; e.sh = shell(); e.at = t1.clone();
@@ -1670,7 +1770,28 @@ Combat.FX = (() => {
       e.update = () => {
         strikes(e);
         P(tg, 'base', t1); P(cs, 'pos', t2);
-        const u = e.t / 1.1, k = u < 0.85 ? 1 : (1 - u) / 0.15;
+        // the run in: a bright bar across the floor with the grid trailing it, from you to the target
+        const run = e.t / 0.42;
+        if (run < 1.15) {
+          const rk = run < 1 ? 1 : (1.15 - run) / 0.15;
+          t3.subVectors(t1, t2).setY(0); const L = t3.length(); t3.divideScalar(L || 1);
+          t4.set(-t3.z, 0, t3.x);
+          const half2 = 6 * S;
+          for (let g = 0; g < 4; g++) {
+            const f = clamp(ease(Math.min(1, run)) - g * 0.06, 0, 1);
+            t5.copy(t2).addScaledVector(t3, L * f).setY(0.12 + g * 0.02);
+            t6.copy(t5).addScaledVector(t4, -half2 * (1 - g * 0.15)); t7.copy(t5).addScaledVector(t4, half2 * (1 - g * 0.15));
+            seg(t6, t7, (g ? 0.12 : 0.35) * S, g ? col : hi, (g ? 0.9 - g * 0.2 : 1.8) * rk);
+          }
+          for (let g = -3; g <= 3; g++) {
+            t5.copy(t2).addScaledVector(t4, g * 2 * S).setY(0.1);
+            t6.copy(t5).addScaledVector(t3, L * ease(Math.min(1, run)));
+            seg(t5.addScaledVector(t3, L * Math.max(0, ease(Math.min(1, run)) - 0.3)), t6, 0.06 * S, col, 0.6 * rk);
+          }
+          if (!reduce && run < 1) { t5.copy(t2).addScaledVector(t3, L * ease(run)).addScaledVector(t4, rnd(-6, 6) * S).setY(0.2); spawn(t5, _pv.set(0, rnd(2, 5), 0), Math.random() < 0.3 ? hi : col, 0.45 * S, 0.5, Math.random() < 0.5 ? G.hash : G.brace); }
+        }
+        const u = (e.t - 0.38) / 1.1, k = u < 0.85 ? 1 : (1 - u) / 0.15;
+        if (u < 0) return true;
         if (u >= 1) return false;
         const y = ease(u) * (e.top.y + 4 * S), cz = (t1.z + t2.z) / 2, half = 18 * S;
         // the scan plane: a faint lit sheet, a hard leading edge and the grid it drags behind it
@@ -1804,7 +1925,7 @@ Combat.FX = (() => {
       const S = sizeOf(tg) / 6, amber = C('#ffc46b'), hi = C('#fff2d6');
       sigil(cs, amber, 0.35, 1.8);
       P(cs, 'pos', t1);
-      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.32, amber, 0.9, null, { delay: 0.12, arc: 2, glyph: G.key });
+      comet(t1, out => { P(tg, 'pos', out); out.z += 1.5 * S; return out; }, 0.32, amber, 1.4, null, { delay: 0.12, arc: 2, glyph: G.key });
       e.strike = (i, h) => {
         P(tg, 'pos', t1); t1.z += 1.5 * S;
         impact(t1, amber, 1.2 * S, { glyph: G.lock, shake: 0.3 });
@@ -1862,6 +1983,8 @@ Combat.FX = (() => {
       P(tg, 'top', e.top = new V());
       sigil(cs, red, at * 0.8, 2.2);
       juice('dim', 0.7, at + 0.4);
+      P(cs, 'pos', e.src = new V());
+      e.upPts = Array.from({ length: 17 }, () => new V());
       e.strike = (i, h) => {
         e.boom = e.t;
         P(tg, 'base', t1); P(tg, 'pos', t2);
@@ -1880,6 +2003,28 @@ Combat.FX = (() => {
         strikes(e);
         P(tg, 'base', t1); P(tg, 'pos', t2);
         const sky = t3.set(t2.x, e.top.y + 16 * S, t2.z);
+        if (e.boom === undefined && e.t < 1.3) {
+          // the upload: a red pillar climbs from you, then a stream of code arcs over to the target's sky
+          P(cs, 'pos', e.src);
+          const up = ease(e.t / 0.3), fade = e.t < 0.7 ? 1 : Math.max(0, 1 - (e.t - 0.7) / 0.5);
+          h0.copy(e.src).setY(e.src.y + 7 * up);
+          seg(e.src, h0, 0.8 * fade, deep, 0.4 * fade); seg(e.src, h0, 0.26 * fade, red, 0.9 * fade); seg(e.src, h0, 0.07 * fade, hi, 1.6 * fade);
+          if (e.t < 0.1) flare(e.src, red, 4, 0.3, 0.9);
+          // the stream lands over the target, low enough to stay in the game shot's frame
+          h2.set(t2.x, e.top.y + 3 * S, t2.z);
+          const go = clamp((e.t - 0.2) / 0.55, 0, 1);
+          if (go > 0) {
+            const tl = Math.max(0, go - 0.45);
+            for (let i = 0; i <= 16; i++) {
+              const s2 = tl + (go - tl) * i / 16;
+              e.upPts[i].lerpVectors(h1.copy(e.src).setY(e.src.y + 7), h2, s2); e.upPts[i].y += Math.sin(s2 * Math.PI) * 6;
+            }
+            if (go >= 1 && !e.landed) { e.landed = true; flare(h2, red, 5 * S, 0.2, 0.9); burst(h2, 12, 6, hi, 0.4, 0.5, G.one, { drag: 2 }); }
+            line(e.upPts, 0.9 * S * fade, red, 0.45 * fade, 0.7);
+            line(e.upPts, 0.25 * S * fade, hi, 1.4 * fade, 0.7);
+            if (!reduce && go < 1) for (let k = 0; k < 3; k++) spawn(e.upPts[16], _pv.set(rnd(-2, 2), rnd(-3, 1), rnd(-2, 2)), Math.random() < 0.3 ? hi : red, 0.7 * S, 0.7, [G.zero, G.one, G.hash][k], { drag: 1.5 });
+          }
+        }
         if (e.boom === undefined) {
           // red code falls in a ring, a target mark burns into the floor, then the charge gathers in the sky
           for (let k = 0; k < 5; k++) {
@@ -1926,6 +2071,155 @@ Combat.FX = (() => {
       return e;
     }
 
+    // ---------- fizzles (Gid, 28 Nov 2026: "some fizzles or mistakes lead to the enemy blocking or dodging it") ----------
+    // A typo in a spell word still throws it: it leaves the caster unstable, flickering between its own
+    // colour and typo red and shedding sparks, and the target deals with it one of three ways, in turn:
+    //   shield  a hex shield flashes up in front of it and the bolt shatters on it
+    //   swat    it swings at the bolt and knocks it away; the bolt tumbles off and sputters out
+    //   dodge   it sidesteps and the bolt sails past where it stood, then sputters out behind it
+    // The target is told with react('block', 0, { at, how, side }) or react('dodge', 0, { side }).
+    // Purely visual: the spell dealt no damage. Self buffs fizzle as a sputter at the caster.
+    const TYPO = C('#ff4d5e'), ASH = C('#8a8f96'), GUARD = C('#9fe9ff');
+    const FIZZ = ['shield', 'dodge', 'swat'];
+    let fzN = Math.floor(Math.random() * 3);
+    function fizzle(id, ctx = {}) {
+      const cs = ctx.caster, tg = ctx.target, S = sizeOf(tg) / 6, BS = 1.3 * S + 0.3;   // BS: the bolt's size
+      const sp = window.Combat && Combat.spell ? Combat.spell(id) : null;
+      const col = C(sp ? sp.color : '#ffffff'), hi = C('#ffffff');
+      const e = add({ id: 'fizzle', how: '', trail: Array.from({ length: 12 }, () => new V()), nTrail: 0, from: new V(), pos: new V(), vel: new V(), side: Math.random() < 0.5 ? -1 : 1 });
+      P(cs, 'pos', e.from);
+      // the stutter at the caster: a broken cast circle and a puff of sparks
+      flare(e.from, col, 2.6, 0.14, 0.9); flare(e.from, TYPO, 1.6, 0.1, 1);
+      if (!reduce) burst(e.from, 12, 4, col, 0.3, 0.45, G.dot, { drag: 3 });
+      const self = !sp || !sp.strike || !tg;
+      if (self) {
+        e.how = 'sputter';
+        smoke(e.from, 4, ASH, 1.6, 1, { speed: 1.5, alpha: 0.35, tint: 0 });
+        burst(e.from, 8, 3, TYPO, 0.6, 0.6, G.bang, { drag: 2.5, up: 0.6 });
+        e.update = () => {
+          P(cs, 'pos', t1);
+          const u = e.t / 0.6; if (u >= 1) return false;
+          circle(t2.copy(t1).setY(0.08), UP, 1.6, 0.06, Math.random() < 0.4 ? TYPO : col, 1.2 * (1 - u) * (Math.random() < 0.3 ? 0.2 : 1), 36, e.t, 0.35 + 0.4 * Math.random());
+          return true;
+        };
+        return e;
+      }
+      e.how = ctx.how && FIZZ.includes(ctx.how) ? ctx.how : FIZZ[fzN++ % 3];
+      const fly = 0.5;
+      P(tg, 'pos', e.goal = new V());
+      e.dir = new V().subVectors(e.goal, e.from); e.dist = e.dir.length(); e.dir.divideScalar(e.dist || 1);
+      e.lat = new V().crossVectors(e.dir, UP).normalize();
+      // where the bolt ends its flight: the shield in front of the target, just short of it for a swat,
+      // and beside where it stood for a dodge (the target steps the other way)
+      const stand = e.how === 'shield' ? 3.4 * S : e.how === 'swat' ? 2 * S : 0;
+      e.end = new V().copy(e.goal).addScaledVector(e.dir, -stand);
+      if (e.how === 'swat') e.end.addScaledVector(e.lat, e.side * 1.4 * S);
+      if (e.how === 'dodge') e.end.addScaledVector(e.lat, -e.side * 3.6 * S).addScaledVector(UP, 0.8 * S);
+      e.arc = Math.min(3, e.dist * 0.08);
+      e.phase = 0;   // 0 flying, 1 after the shield, swat or pass
+      const head = (u, out) => { out.lerpVectors(e.from, e.end, u); out.y += Math.sin(u * Math.PI) * e.arc; return out; };
+      e.update = dt => {
+        // the target's reaction comes a beat before the bolt arrives, so it reads as the cause
+        if (!e.told && e.t > fly * (e.how === 'dodge' ? 0.4 : 0.62)) {
+          e.told = true;
+          if (e.how === 'dodge') react(tg, 'dodge', 0, { side: e.side });
+          else react(tg, 'block', 0, { at: e.end.clone(), how: e.how, side: e.side });
+        }
+        if (e.phase === 0) {
+          const u = e.t / fly;
+          if (u < 1) {
+            head(easeIn(u) * 0.55 + u * 0.45, e.pos);
+          } else {
+            e.phase = 1; e.hitT = e.t; e.pos.copy(e.end);
+            if (e.how === 'shield') {
+              // the shield flashes up and the bolt shatters on it
+              e.sh = shell(); e.sh.m.material.uniforms.uCol.value.copy(GUARD); e.sh.m.material.uniforms.uHex.value = 1;
+              flare(e.end, WHITE, 3 * S, 0.1, 1.2, 0.3); flare(e.end, GUARD, 6 * S, 0.35, 0.8);
+              burst(e.end, 26, 9 * S, col, 0.4, 0.6, G.box, { grav: 10, drag: 1 });
+              burst(e.end, 18, 7 * S, GUARD, 0.35, 0.5, G.hex, { drag: 3 });
+              burst(e.end, 6, 3, TYPO, 0.7 * Math.sqrt(S), 0.7, G.bang, { drag: 2.5, up: 0.4 });
+              smoke(e.end, 4, ASH, 1.8 * S, 1, { speed: 1.5, alpha: 0.32, tint: 0.1 });
+              light(e.end, GUARD, 0.6, 0.25);
+              juice('shake', 0.12);
+            } else if (e.how === 'swat') {
+              // knocked away: off to the side and up, tumbling
+              e.vel.copy(e.lat).multiplyScalar(e.side * 20 * Math.sqrt(S)).addScaledVector(UP, 12).addScaledVector(e.dir, -5);
+              flare(e.end, WHITE, 2.4 * S, 0.08, 1.1, 0.3); flare(e.end, col, 4 * S, 0.25, 0.7);
+              burst(e.end, 16, 8 * S, col, 0.35, 0.45, G.star, { drag: 2.5 });
+              juice('shake', 0.1);
+            } else {
+              // sails on past where the target stood, veering away from it so the miss stays in sight
+              const sp2 = e.dist / fly;
+              e.vel.copy(e.dir).multiplyScalar(sp2 * 0.55).addScaledVector(e.lat, -e.side * sp2 * 0.3).addScaledVector(UP, 4);
+            }
+          }
+        } else {
+          const v = e.t - e.hitT;
+          if (e.how === 'shield') {
+            const k = 1 - v / 0.45;
+            if (e.sh) {
+              if (k <= 0) { freeShell(e.sh); e.sh = null; }
+              else {
+                e.sh.m.position.copy(e.end).addScaledVector(e.dir, 0.6 * S); e.sh.m.lookAt(e.from);
+                const g = backOut(v / 0.12);
+                e.sh.m.scale.set(3.4 * S * g, 3.4 * S * g, 0.5 * S * g); e.sh.m.material.uniforms.uAmt.value = 1.0 * k * k;
+              }
+            }
+            if (k > 0) { circle(e.end, e.dir, 3.4 * S * (0.9 + 0.4 * ease(v / 0.3)), 0.12 * S, GUARD, 1.3 * k, 6, 0.5); circle(e.end, e.dir, 2.2 * S, 0.06 * S, WHITE, k, 6, 0.5 + v * 2); }
+            if (v > 0.6) { if (e.sh) { freeShell(e.sh); e.sh = null; } return false; }
+            e.nTrail = 0;
+            return true;
+          }
+          // the swipe that knocked it away: a white arc across the contact, on the side it was sent
+          if (e.how === 'swat' && v < 0.18) {
+            t2.subVectors(camera.position, e.end).normalize();
+            _u.copy(UP).cross(t2).normalize(); _v.copy(t2).cross(_u).normalize();
+            const R = 2.4 * S, sw = ease(v / 0.1), kk = 1 - v / 0.18;
+            for (let i = 0; i < 10; i++) {
+              const a0 = e.side * (-1.3 + 2.4 * sw * i / 10), a1 = e.side * (-1.3 + 2.4 * sw * (i + 1) / 10);
+              t3.copy(e.end).addScaledVector(_u, Math.sin(a0) * R).addScaledVector(_v, (Math.cos(a0) - 0.6) * R);
+              t4.copy(e.end).addScaledVector(_u, Math.sin(a1) * R).addScaledVector(_v, (Math.cos(a1) - 0.6) * R);
+              const w = Math.sin(Math.PI * (i + 0.5) / 10);
+              seg(t3, t4, 0.5 * S * w, GUARD, 0.6 * kk); seg(t3, t4, 0.14 * S * w, WHITE, 1.6 * kk);
+            }
+          }
+          // swat and dodge: the bolt flies on, losing itself, then goes out with a pop
+          const life = e.how === 'swat' ? 0.42 : 0.4;
+          if (v >= life) {
+            if (!e.out) {
+              e.out = true;
+              flare(e.pos, col, 2.2 * S, 0.18, 0.8); flare(e.pos, TYPO, 1.4 * S, 0.12, 1);
+              burst(e.pos, 14, 4, col, 0.3, 0.5, G.dot, { drag: 2, grav: 4 });
+              burst(e.pos, 6, 2.5, TYPO, 0.6 * Math.sqrt(S), 0.7, G.bang, { drag: 2.5, up: 0.5 });
+              smoke(e.pos, 5, ASH, 2 * S, 1.2, { speed: 1.4, alpha: 0.35, tint: 0.1 });
+              if (e.pos.y < 3) decal(e.pos, col, 3 * S, 0.7, 0.5);
+            }
+            return v < life + 0.4;
+          }
+          e.vel.y -= (e.how === 'swat' ? 22 : 6) * dt;
+          e.pos.addScaledVector(e.vel, dt);
+          if (e.pos.y < 0.3) { e.pos.y = 0.3; e.vel.y = Math.abs(e.vel.y) * 0.3; }
+        }
+        // the bolt: a flickering head and a broken trail of its last positions
+        const tr = e.trail; tr.unshift(tr.pop().copy(e.pos)); e.nTrail = Math.min(tr.length, e.nTrail + 1);
+        const dying = e.phase === 1 ? clamp(1 - (e.t - e.hitT) / 0.6, 0.2, 1) : 1;
+        for (let j = 0; j < e.nTrail - 1; j++) {
+          const f = 1 - j / tr.length, c2 = Math.random() < 0.3 ? TYPO : col;
+          seg(tr[j], tr[j + 1], 0.6 * BS * f, c2, 0.45 * f * dying);
+          if (Math.random() < 0.2) continue;   // the core breaks up: the instability
+          seg(tr[j], tr[j + 1], 0.16 * BS * f, hi, 1.3 * f * dying);
+        }
+        const fl = Math.random();
+        flare(e.pos, fl < 0.25 ? TYPO : col, (2.4 + fl * 2) * BS * dying, 0.05, 1.1, 0.1);
+        flare(e.pos, WHITE, 0.9 * BS * dying, 0.04, 1, 0.1);
+        if (!reduce) for (let q = 0; q < 2; q++) spawn(e.pos, _pv.set(rnd(-3, 3), rnd(-1, 3), rnd(-3, 3)), Math.random() < 0.35 ? TYPO : col, 0.35 * BS, 0.5, Math.random() < 0.15 ? G.bang : G.dot, { grav: 9, drag: 1 });
+        if (!reduce && Math.random() < dt * 12) puff(e.pos, _pv.set(rnd(-0.4, 0.4), 0.6, rnd(-0.4, 0.4)), ASH, 1.3 * BS, 0.6, 0.28);
+        return true;
+      };
+      e.cleanup = () => { if (e.sh) freeShell(e.sh); };
+      return e;
+    }
+
     // ---------- statuses that stay on screen ----------
     function aura(name, on, ctx = {}) {
       const cur = auras[name];
@@ -1934,6 +2228,7 @@ Combat.FX = (() => {
       const a = { name, ctx, t: 0, ending: 0, until: ctx.ms ? ctx.ms / 1000 : 0, ghosts: [1, 1] };
       auras[name] = a;
     }
+    const AU = { ward: C('#7dffc4'), cshield: C('#7dd8ff'), split: C('#d6b8ff'), root: C('#ffc46b'), hyper: C('#ffb066'), frenzy: C('#ff6a2a') };
     function drawAura(a, dt) {
       a.t += dt;
       if (a.until && a.t > a.until && !a.ending) a.ending = a.t;
@@ -1941,42 +2236,51 @@ Combat.FX = (() => {
       if (k <= 0) return false;
       const cs = a.ctx.caster, tg = a.ctx.target;
       if (a.name === 'ward') {
-        P(cs, 'pos', t1); t1.y = 0.4;
-        const col = C('#7dffc4');
-        for (let i = 0; i < 3; i++) circle(t2.copy(t1).setY(0.4 + i * 0.9), UP, 2.4 - i * 0.55, 0.07, col, 1.1 * k, 6, a.t * (i % 2 ? -0.8 : 0.8));
+        // a hex cage round your bot, centred on it (the bots hover), with a slow bright band running over it
+        P(cs, 'pos', t1);
+        const col = AU.ward, R = 2.3, cy = t1.y - 0.3;
+        for (let i = -1; i <= 1; i++) { const el = i * 0.62; circle(t2.set(t1.x, cy + Math.sin(el) * R, t1.z), UP, Math.cos(el) * R, 0.08, col, (i ? 0.8 : 1.1) * k, 6, a.t * (i % 2 ? -0.6 : 0.6)); }
         for (let i = 0; i < 6; i++) {
-          const ang = a.t * 0.8 + i * Math.PI / 3;
+          const ang = a.t * 0.6 + i * Math.PI / 3;
           let pv = null;
-          for (let j = 0; j <= 4; j++) {
-            const el = (j / 4) * Math.PI / 2;
-            const p = t3.set(t1.x + Math.cos(ang) * Math.cos(el) * 2.4, 0.4 + Math.sin(el) * 2.4, t1.z + Math.sin(ang) * Math.cos(el) * 2.4);
-            if (pv) seg(pv, p, 0.05, col, 0.8 * k);
+          for (let j = 0; j <= 6; j++) {
+            const el = -Math.PI / 2 * 0.75 + (j / 6) * Math.PI * 0.75 * 1.33;
+            const p = t3.set(t1.x + Math.cos(ang) * Math.cos(el) * R, cy + Math.sin(el) * R, t1.z + Math.sin(ang) * Math.cos(el) * R);
+            if (pv) seg(pv, p, 0.06, col, 0.75 * k);
             pv = t4.copy(p);
           }
         }
+        const band = (a.t * 0.5) % 1, el = -1.1 + band * 2.2;
+        circle(t2.set(t1.x, cy + Math.sin(el) * R, t1.z), UP, Math.cos(el) * R + 0.05, 0.1, WHITE, 0.9 * k * Math.sin(band * Math.PI), 6, a.t * 0.6);
       } else if (a.name === 'cshield') {
         P(cs, 'pos', t1);
-        const col = C('#7dd8ff');
+        const col = AU.cshield;
         for (let i = 0; i < 4; i++) {
           const ang = a.t * 1.2 + i * Math.PI / 2;
-          circle(t2.set(t1.x + Math.cos(ang) * 1.9, 1.5, t1.z + Math.sin(ang) * 1.9), t3.set(Math.cos(ang), 0, Math.sin(ang)), 0.55, 0.06, col, 1.1 * k, 6, a.t);
+          circle(t2.set(t1.x + Math.cos(ang) * 1.9, t1.y, t1.z + Math.sin(ang) * 1.9), t3.set(Math.cos(ang), 0, Math.sin(ang)), 0.55, 0.06, col, 1.1 * k, 6, a.t);
         }
       } else if (a.name === 'hyper' || a.name === 'frenzy') {
         P(cs, 'pos', t1);
-        const fz = a.name === 'frenzy', col = C(fz ? '#ff7a3d' : '#ffb066');
+        const fz = a.name === 'frenzy', col = fz ? AU.frenzy : AU.hyper;
         for (const s of [0, Math.PI]) {
           let pv = null;
           for (let j = 0; j <= 16; j++) {
-            const h = j / 16 * 3.6, ang = a.t * (fz ? 8 : 5) + s + j * 0.6;
+            const h = Math.max(0.1, t1.y - 1.8) + j / 16 * 3.6, ang = a.t * (fz ? 8 : 5) + s + j * 0.6;
             const p = t3.set(t1.x + Math.cos(ang) * 1.3, h, t1.z + Math.sin(ang) * 1.3);
             if (pv) seg(pv, p, 0.1, s ? WHITE : col, (s ? 0.8 : 1.4) * k);
             pv = t4.copy(p);
           }
         }
         if (Math.random() < 0.5) spawn(t5.set(t1.x + rnd(-1, 1), 0.3, t1.z + rnd(-1, 1)), _pv.set(0, rnd(2, 4), 0), col, 0.3, 0.8, G.dot);
+        // frenzy runs hotter: embers off you and a ring at your feet that beats like a pulse
+        if (fz) {
+          if (!reduce && Math.random() < 0.6) spawn(t5.set(t1.x + rnd(-0.9, 0.9), t1.y + rnd(-0.6, 0.8), t1.z + rnd(-0.9, 0.9)), _pv.set(rnd(-0.5, 0.5), rnd(2.5, 4.5), rnd(-0.5, 0.5)), Math.random() < 0.4 ? EMBER : col, 0.32, 0.7, G.ember, { drag: 1 });
+          const beat = Math.pow(0.5 + 0.5 * Math.sin(a.t * 9), 3);
+          circle(t5.copy(t1).setY(0.08), UP, 1.5 + beat * 0.3, 0.07, col, (0.5 + beat * 0.9) * k, 28);
+        }
       } else if (a.name === 'split') {
         P(cs, 'pos', t1);
-        const col = C('#d6b8ff');
+        const col = AU.split;
         a.ghosts.forEach((g, i) => {
           if (!g) return;
           const side = i ? 1 : -1;
@@ -1985,11 +2289,11 @@ Combat.FX = (() => {
           const pts = (a.pts ||= Array.from({ length: 6 }, () => new V()));
           [[0, r * 1.5, 0], [0, -r * 1.5, 0], [r, 0, 0], [-r, 0, 0], [0, 0, r], [0, 0, -r]].forEach(([x, y, z], n) => pts[n].set(t2.x + x * Math.cos(spin) - z * Math.sin(spin), t2.y + y, t2.z + x * Math.sin(spin) + z * Math.cos(spin)));
           for (const [p, q] of [[0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [1, 3], [1, 4], [1, 5], [2, 4], [4, 3], [3, 5], [5, 2]]) seg(pts[p], pts[q], 0.06, col, (0.9 + 0.3 * Math.sin(a.t * 11 + i)) * k);
-          seg(t1.clone().setY(0.6), t2, 0.03, col, 0.35 * k);
+          seg(t6.copy(t1).setY(0.6), t2, 0.03, col, 0.35 * k);
         });
       } else if (a.name === 'root') {
         P(tg, 'pos', t1);
-        const col = C('#ffc46b');
+        const col = AU.root;
         const S = sizeOf(tg) / 6;
         t2.subVectors(camera.position, t1).normalize();
         circle(t1, t2, 2.6 * S, 0.12 * S, col, 0.9 * k, 32, a.t * 2, 0.2);
@@ -2128,7 +2432,7 @@ Combat.FX = (() => {
     }
     function info() { return { live: live.map(e => ({ id: e.id || 'shot' + e.tier, t: +e.t.toFixed(3) })), auras: Object.keys(auras), segs: nSeg, particles: pAlive, smoke: sAlive, slow: +slow.toFixed(2), decals: decalGlow.count, light: lamp ? +lamp.intensity.toFixed(1) : 0 }; }
 
-    return { shot, charge, feed, release, cast, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP), _layers: { smoke: smokePts, decalGlow, decalDark, lamp, crystals } };
+    return { shot, charge, feed, release, cast, fizzle, aura, event, update, clear, dispose, info, has: id => !!SP[id], SPELLS: Object.keys(SP), _layers: { smoke: smokePts, decalGlow, decalDark, lamp, crystals } };
   }
   return { create };
 })();

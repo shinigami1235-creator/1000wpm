@@ -15,6 +15,7 @@
 //   sc.typo(id)                         a wrong key: their bot glitches
 //   sc.shot({ id, foe, dmg, tier, crit, you })   a word from a player's bot to a foe; onImpact on landing
 //   sc.cast(spellId, { from, foe, hits, effect })  a spell from the combat layer
+//   sc.fizzle(spellId, { from, foe })   a spell lost to a typo: it still flies and the foe blocks or dodges it
 //   sc.attackLands({ id, target }) / sc.block({ id, by }) / sc.chip({ from, targets, what })
 //   sc.foeGone(id, how)  how: kill | pop | bite | cut     sc.regrow(id)   sc.down(id)   sc.up(id)   sc.heal(id, by)   sc.shield(id, by)
 //   sc.clear()  the fight is won     sc.anchors() -> Map(foeId -> { x, y, on }) in host pixels, for word labels
@@ -53,6 +54,7 @@ window.PartyScene = (() => {
       key: (id, frac) => impl && impl.key(id, frac),
       typo: id => impl && impl.typo(id),
       cast: (id, c) => impl && impl.cast(id, c),
+      fizzle: (id, c) => impl && impl.fizzle(id, c),
       attackLands: a => impl && impl.attackLands(a),
       block: b => impl && impl.block(b),
       chip: c => impl && impl.chip(c),
@@ -1136,22 +1138,37 @@ window.PartyScene = (() => {
         if ((h.tier || 0) === 1) after(70, () => { if (cre) streak(handAt(h.id, new V()), to, sc, 0.26, null, h.you ? 0.6 : 0.45); });
       }
     }
-    function cast(id, c = {}) {
-      const m = team.get(c.from || 'me');
-      if (m && !m.down) m.f.spell();
-      // your own spell: a short look at your bot rising and driving in, when nothing is coming at you
-      if ((c.from || 'me') === 'me') want('spell', { pri: 2 });
-      if (!fx || !cre) return;
-      const caster = { pos: out => handAt(c.from || 'me', out) };
-      const foe = c.foe;
-      const target = {
+    // the spell's target: a foe, its hit glow, and (spell-fx, 28 Nov 2026) the guard and the sidestep of a fizzle
+    function spellTarget(foe) {
+      return {
         size: kind === 'swarm' ? 3 : 4,
         pos: out => foePos(foe, out),
         top: out => foePos(foe, out).add(v4.set(0, 2.5, 0)),
         base: out => foePos(foe, out).setY(0),
-        react: () => cre.hit(foe, 1),
+        react: (k, p, x) => {
+          if (!cre) return;
+          if (k === 'dodge') { dodgeAt = nowS(); dodgeSide = (x && x.side) || 1; if (opts.onGuard) opts.onGuard('dodge'); return; }
+          cre.hit(foe, k === 'block' ? 0.6 : 1);
+          if (k === 'block') { punch = Math.max(punch, 0.25); if (opts.onGuard) opts.onGuard('block'); }
+        },
       };
-      fx.cast(id, { caster, target, hits: c.hits, effect: c.effect });
+    }
+    let dodgeAt = -9, dodgeSide = 1;
+    function cast(id, c = {}) {
+      const m = team.get(c.from || 'me');
+      if (m && !m.down) m.f.spell();
+      if (!fx || !cre) { if ((c.from || 'me') === 'me') want('spell', { pri: 2 }); return; }
+      const caster = { pos: out => handAt(c.from || 'me', out) };
+      fx.cast(id, { caster, target: spellTarget(c.foe), hits: c.hits, effect: c.effect });
+      // your own spell: the shot follows it from your bot to the foe (spellCam)
+      if ((c.from || 'me') === 'me') spellCam(id, c.hits, c.foe, false);
+    }
+    function fizzle(id, c = {}) {
+      const m = team.get(c.from || 'me');
+      if (m && !m.down) m.f.typo();
+      if (!fx || !cre) return;
+      fx.fizzle(id, { caster: { pos: out => handAt(c.from || 'me', out) }, target: spellTarget(c.foe), how: c.how });
+      if ((c.from || 'me') === 'me') spellCam(id, null, c.foe, true);
     }
     // sounds go through opts.audio (an ArenaAudio on the run's audio context)
     const snd = (name, arg) => { if (opts.audio) opts.audio.play(name, arg); };
@@ -1329,6 +1346,27 @@ window.PartyScene = (() => {
         { len: 2.0, cut: 1, fov: 44, omega: 2.5, pose(c, out) { const a = -0.7 + c.u * 1.2; out.pos.set(killAt.x + Math.sin(a) * 15, 6.5 + c.u * 2, killAt.z + Math.cos(a) * 15); out.look.set(killAt.x, 3, killAt.z); } },
       ] },
     };
+    // your spell, two beats (spell-fx, 28 Nov 2026; Gid: not just a close-up on the bot): behind your bot's
+    // shoulder as it leaves, then three-quarters on the foe it's going for as it lands. Sized from its hits.
+    const foeAt = new V();
+    let spellCamAt = -9;
+    function spellCam(id, hits, foe, fizz) {
+      if (reduce || !dir) return;
+      const sp = window.Combat && Combat.spell(id);
+      if (!fizz && sp && !sp.strike) { want('spell', { pri: 2 }); return; }
+      const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
+      const a = Math.round(clamp(f - 0.4, 0.2, 0.6) * 20) / 20, b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
+      const name = `spell_${a}_${b}`, t = nowS();
+      if (t - spellCamAt < 4) return;
+      shots[name] ||= { pri: 3, parts: [
+        { ...shots.spell.parts[0], len: a, slow: 0 },
+        { len: b, cut: 1, fov: 40, omega: 9, pose(c, out) {
+          const p = c.x ? foePos(c.x, foeAt) : bossCentre(foeAt);
+          out.look.copy(p); out.pos.set(p.x * 0.5 + 7.5 - c.u * 0.8, Math.max(2.2, p.y * 0.6 + 1.6), p.z + 12 - c.u * 1.2);
+        } },
+      ] };
+      if (dir.want(name, { pri: 3, x: foe || null }) ) spellCamAt = t;
+    }
     const dir = window.CamDirector ? CamDirector.create(THREE, camera, {
       reduce, shots, lockBefore: 5.5, gap: 6, budget: 3,
       onPart(name, idx, part) { partNow = name + idx; if (part.slow && !reduce) { slowK = part.slow; slowUntil = performance.now() + part.len * 1000; } },
@@ -1435,6 +1473,8 @@ window.PartyScene = (() => {
       const zoom = 1 + punch * 0.05 * (reduce ? 0 : 1);
       if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
       if (!dieT && cre && !teamWon) holder.visible = !lineupNow();
+      // a dodged fizzle: the creature sways aside and back (spell-fx)
+      { const du = nowS() - dodgeAt; holder.position.x = du < 1.2 ? (du < 0.22 ? ease(du / 0.22) : Math.max(0, 1 - (du - 0.45) / 0.75)) * 2.4 * dodgeSide * still : 0; }
       composer.render();
       if (aq) { if (!aqLoaded) { aqLoaded = true; aq.loaded(); } aq.frame(performance.now()); }
       if (opts.onFrame) opts.onFrame();
@@ -1456,7 +1496,7 @@ window.PartyScene = (() => {
     const info = () => ({ kind, foes: foes.size, cre: !!cre, fx: fx ? fx.info() : null });
     function key(id, frac) { teamKey(id, frac); }
     function typo(id) { const m = team.get(id); if (m && !m.down) m.f.typo(); }
-    return { setFight, sync, shot, key, typo, cast, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
+    return { setFight, sync, shot, key, typo, cast, fizzle, attackLands, block, chip, foeGone, regrow, down, heal, shield, up, clear, anchors, live, info, dispose, director: () => dir,
       renderInfo: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures }),
       test: { shatter: () => shatter(new V(0, 5, -3), 16, 7, 0.42), want: n => want(n, { x: new V(0, 5, -3), pri: 3 }), cam: () => ({ p: camera.position.toArray(), fov: camera.fov, zoom: camera.zoom }), dbg: () => ({ THREE, scene, camera, team, bloom }) } };
   }

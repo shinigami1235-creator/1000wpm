@@ -116,7 +116,7 @@ let last = performance.now();
 renderer.setAnimationLoop(() => { if (!auto) return; const n = performance.now(), dt = Math.min(0.05, (n - last) / 1000); last = n; step(dt); draw(); });
 
 const bar = document.getElementById('bar');
-for (const s of Combat.SPELLS()) { const b = document.createElement('button'); b.textContent = s.word; b.onclick = () => cast(s.id, true); bar.appendChild(b); }
+for (const s of Combat.SPELLS()) { const b = document.createElement('button'); b.textContent = s.word; b.onclick = e => (e.shiftKey ? fx.fizzle(s.id, { caster, target }) : cast(s.id, true)); b.title = 'Shift-click: fizzle'; bar.appendChild(b); }
 
 window.spellLab = {
   fx, reacts, renderer,
@@ -124,7 +124,7 @@ window.spellLab = {
   shoot(id, ts, opt = {}) {
     auto = false; fx.clear(); clock = 0; shake = 0; tintK = 0; dimUntil = 0; reacts.length = 0;
     Math.random = rng;
-    cast(id, false);
+    if (opt.fizzle) fx.fizzle(id, { caster, target, how: opt.fizzle }); else cast(id, false);
     const out = []; let t = 0;
     for (const at of ts) { while (t < at - 1e-6) { step(1 / 60); t += 1 / 60; } draw(); out.push(renderer.domElement.toDataURL('image/jpeg', 0.9)); }
     return out;

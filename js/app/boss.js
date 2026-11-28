@@ -342,7 +342,8 @@ Router.register('boss', (() => {
     tip('start');
     scene = BossScene.mount(q('stage'), { onImpact, onFrame: placeLabels, onBoom: boom, bossId: 'syntax',
       onMenace: k => { if (k === 'stomp') sfx('stomp'); else if (k !== 'lean' && k !== 'taunt') sfx('swipe'); },
-      onSfx: (n, a) => sfx(n, a) });
+      onSfx: (n, a) => sfx(n, a),
+      onGuard: kind => cSfx(kind === 'dodge' ? 'whiff' : 'parry') });
     scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
       .catch(() => { const l = q('loading'); if (l) l.textContent = "The boss can't load without an internet connection."; });
 
@@ -797,6 +798,7 @@ Router.register('boss', (() => {
     if (r.fizzled) {
       sess.missed++;
       cSfx('fizzle');
+      if (scene) scene.fizzle(sp.id);
       pop('FIZZLED', 'red');
       pushFeed({ text: `${sp.word} fizzled on a typo`, cls: 'alert' });
       return;
@@ -2045,6 +2047,8 @@ Router.register('boss', (() => {
       offer: ids => me && me.debug.offer(ids),
       // casts a spell as if it had been offered and typed cleanly
       cast: id => { const sp = Combat.spell(id); if (!sp || !me) return false; me.debug.offer([id]); typed = ''; target = null; castSpell(sp, true); return true; },
+      // a fizzle of it, as if typed with a typo; how picks the block or dodge ('shield' | 'swat' | 'dodge')
+      fizzle: (id, how) => { const sp = Combat.spell(id); if (!sp || !scene) return false; cSfx('fizzle'); scene.fizzle(id, how); return true; },
       spells: () => Combat.SPELLS().map(x => x.id),
       fx: () => { const i = scene && scene.info(); return i && i.fx; },
       pause: on => scene && scene.pause(on),
