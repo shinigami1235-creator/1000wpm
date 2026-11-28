@@ -328,14 +328,16 @@ window.SuperKit = (() => {
     function mark(at, r, c, kind = 1) {
       const k = marks.find(x => !x.m.visible) || marks[0];
       k.m.visible = true; k.on = true; k.u = 0; k.a = 0; k.m.position.copy(at); k.m.scale.setScalar(r);
-      k.m.material.uniforms.uC.value.copy(c.isColor ? c : C(c)); k.m.material.uniforms.uKind.value = kind;
-      return { set: u => { k.u = u; }, off: () => { k.on = false; }, at: k.m.position, mesh: k.m };
+      k.m.material.uniforms.uC.value.copy(c.isColor ? c : C(c)); k.m.material.uniforms.uKind.value = kind; k.follow = null;
+      // track(fn): fn(out) writes where the mark should sit each frame (under Art's bot as it moves)
+      return { set: u => { k.u = u; }, off: () => { k.on = false; }, track: fn => { k.follow = fn; }, at: k.m.position, mesh: k.m };
     }
     function updateMarks(dt, t) {
       for (const k of marks) {
         if (!k.m.visible) continue;
         k.a += ((k.on ? 1 : 0) - k.a) * Math.min(1, dt * (k.on ? 10 : 6));
         if (!k.on && k.a < 0.02) { k.m.visible = false; continue; }
+        if (k.follow && k.on) { const y = k.m.position.y; k.follow(k.m.position); k.m.position.y = y; }
         const U = k.m.material.uniforms; U.uU.value = k.u; U.uA.value = k.a; U.uT.value = t;
       }
     }

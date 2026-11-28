@@ -192,6 +192,11 @@ SuperModels.hydra = function (THREE, K, ctx) {
 
   // ---------- slam (the tidal wave) and the body ----------
   let slam = null, bodyLift = 0, bodyShake = 0, wave = null;
+  // attack variants (28 Nov 2026, Gid: "range projectiles, multi-head lunges"): the rules' breath and tidal slam each
+  // have a second look, taken in turn so the streamer's page and every viewer draw the same one. Root's breath is a
+  // beam or a volley of bolts; the slam is the hull and the wave or all three heads lunging one after another.
+  let breathN = 0, slamN = 0;
+  const bolts = [];   // the volley in flight: { from, to, side, t0, len, hit, done }
   let neckOpen = false, chestOpen = 0;
   let roarT = -9, dead = false, deadT = 0, finishing = false, bigFlash = 0;
   // the wave: an arc of water rolling out from the hull toward Art, foam on its crest
@@ -233,9 +238,14 @@ SuperModels.hydra = function (THREE, K, ctx) {
   function event(n, d, t) {
     if (n === 'windup') {
       if (d.kind === 'bite' && st.fork.up) startAct(st.fork, 'bite', d.ms, t);
-      if (d.kind === 'breath' && st.root.up) startAct(st.root, 'breath', d.ms, t);
+      if (d.kind === 'breath' && st.root.up) { startAct(st.root, 'breath', d.ms, t); st.root.variant = breathN++ % 2 ? 'volley' : 'beam'; if (ctx.variant) ctx.variant('breath', st.root.variant); }
       if (d.kind === 'mend' && st.patch.up) startAct(st.patch, 'mend', d.ms, t);
-      if (d.kind === 'slam') { slam = { t0: t, len: d.ms / 1000, slammed: false }; wave = null; slam.mark = K.fx.mark(underArt(v1), 3.6, '#ff4d5e', 1); }
+      if (d.kind === 'slam') {
+        slam = { t0: t, len: d.ms / 1000, slammed: false, variant: slamN++ % 2 ? 'wave' : 'lunge' }; wave = null; slam.mark = K.fx.mark(underArt(v1), 3.6, '#ff4d5e', 1);
+        if (ctx.variant) ctx.variant('slam', slam.variant);
+        // the lunge: every head still on coils back for the whole wind-up, eyes on Art's bot
+        if (slam.variant === 'lunge') for (const id of ['fork', 'root', 'patch']) { const h = st[id]; if (h.up && (!h.act || h.act === 'fire' || h.act === 'reel')) { endAct(h, null, t); startAct(h, 'bite', d.ms, t); h.lunge = true; } }
+      }
     }
     if (n === 'attack' && d.kind === 'bite') { const s = st.fork; if (s.up) { s.act = 'bite'; s.strikeT = t; ctx.sfx('snap'); } }
     if (n === 'attack' && d.kind === 'mend') {
@@ -257,7 +267,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
     if (n === 'block' || n === 'blockFail' || n === 'cancel') {
       const hitArt = n === 'blockFail';
       if (d.attack === 'breath') fireBreath(hitArt, n === 'cancel', t);
-      if (d.attack === 'slam') breakWave(hitArt, n === 'cancel', t);
+      if (d.attack === 'slam') { if (slam && slam.variant === 'lunge') lungeAll(hitArt, n === 'cancel', t); else breakWave(hitArt, n === 'cancel', t); }
     }
     if (n === 'sever') sever(d.head, t);
     if (n === 'regrow') { const s = st[d.head]; if (s) { s.up = true; s.grow = 0; s.down = 0; s.act = null; heads[d.head].g.visible = true; regrowFx(d.head); } }
@@ -279,6 +289,17 @@ SuperModels.hydra = function (THREE, K, ctx) {
       endAct(s, 'reel', t); return;
     }
     mouthWorld('root', v1);
+    if (s.variant === 'volley') {
+      // seven bolts fanned out of the jaws: on a block they streak past Art's bot on both sides as it threads
+      // between them; on a miss they close on it one after another
+      s.fireAt = hitArt ? 'art' : 'shield';
+      for (let i = 0; i < 7; i++) bolts.push({ from: v1.clone(), side: (i % 2 ? 1 : -1) * (0.6 + Math.floor(i / 2) * 0.55), t0: t + i * 0.055, len: 0.42 + i * 0.012, hit: hitArt, up: rnd(-0.6, 1.4), done: false });
+      K.fx.burst(v1, 40, '#bfefff', { speed: 9, g: 2, life: 0.35, size: 0.3 });
+      K.fx.light(v1, '#3ee6ff', 45, 5);
+      ctx.sfx('spit');
+      endAct(s, 'fire', t); s.kbV += 1.5;
+      return;
+    }
     const stop = hitArt ? ctx.artAim(v2) : ctx.shieldAt(v2);
     s.fireAt = hitArt ? 'art' : 'shield';
     // the beam stays in the mouth while the head recoils, and on Art's bot while it is thrown back
@@ -298,6 +319,22 @@ SuperModels.hydra = function (THREE, K, ctx) {
       K.fx.shock(v2.copy(at).setY(0.1), C(hitArt ? '#ff4d5e' : '#3ee6ff'), 1, 9, 0.6);
       K.fx.light(at, hitArt ? '#ff4d5e' : '#9fe8ff', 50, 4);
     }
+    slam = null; wave = null; waveMesh.visible = false;
+  }
+  // the multi-head lunge: the heads strike one after another. Blocked, the jaws snap shut on the air where Art's bot
+  // was (it ducks and rolls out from under them, sb-bots.js); missed, they follow it and the last one lands
+  function lungeAll(hitArt, cancelled, t) {
+    if (slam.mark) slam.mark.off();
+    const ids = ['fork', 'root', 'patch'].filter(id => st[id].up && st[id].lunge);
+    if (cancelled) { for (const id of ids) { endAct(st[id], 'reel', t); st[id].lunge = false; } slam = null; return; }
+    ctx.artAim(v1);
+    ids.forEach((id, i) => {
+      const h = st[id];
+      h.act = 'bite'; h.strikeT = t + i * 0.17; h.fired = false; h.lunge = false;
+      h.biteFix = hitArt && i === ids.length - 1 ? null : v1.clone().add(v2.set(rnd(-0.8, 0.8), rnd(-0.6, 0.4), 0));
+      h.lungeHit = hitArt && i === ids.length - 1;
+    });
+    ctx.sfx('snap');
     slam = null; wave = null; waveMesh.visible = false;
   }
   function sever(id, t) {
@@ -333,15 +370,15 @@ SuperModels.hydra = function (THREE, K, ctx) {
     if (slam) {
       const u = (t - slam.t0) / slam.len;
       // rise over the first 40% (anticipation), crash at 48%, the wave rolls the rest of the way
-      lift = u < 0.4 ? ease(u / 0.4) * 5 + Math.sin(t * 40) * 0.1 * u : u < 0.48 ? 5 * (1 - easeIn((u - 0.4) / 0.08)) : 0;
-      if (u >= 0.48 && !slam.slammed) {
+      lift = slam.variant === 'lunge' ? ease(Math.min(1, u * 2)) * 1.2 + Math.sin(t * 40) * 0.06 * u : u < 0.4 ? ease(u / 0.4) * 5 + Math.sin(t * 40) * 0.1 * u : u < 0.48 ? 5 * (1 - easeIn((u - 0.4) / 0.08)) : 0;
+      if (slam.variant !== 'lunge' && u >= 0.48 && !slam.slammed) {
         slam.slammed = true; bodyShake = 1;
         ctx.juice.shake(0.7); ctx.juice.stop(90); ctx.sfx('slam');
         K.fx.burst(v1.copy(BODY).setY(0.5), 140, '#cfefff', { speed: 14, g: 16, life: 1.2, size: 0.45, up: 2.5, spread: 6, floor: 0.05 });
         K.fx.light(v1.copy(BODY).setY(3), '#9fe8ff', 60, 3);
         wave = { t0: t, len: Math.max(0.3, slam.len * 0.52), r0: 7 };
       }
-      if (u < 0.4 && Math.random() < dt * 30) K.fx.spark(v1.copy(BODY).add(v2.set(rnd(-7, 7), rnd(0, 3) + lift, rnd(-3, 5))), v3.set(0, -2, 0), C('#9fe8ff', 0.8), { size: 0.22, life: 0.8, g: 14 });
+      if (slam.variant !== 'lunge' && u < 0.4 && Math.random() < dt * 30) K.fx.spark(v1.copy(BODY).add(v2.set(rnd(-7, 7), rnd(0, 3) + lift, rnd(-3, 5))), v3.set(0, -2, 0), C('#9fe8ff', 0.8), { size: 0.22, life: 0.8, g: 14 });
       if (slam.mark) slam.mark.set(clamp(u, 0, 1));
     }
     bodyLift += (lift - bodyLift) * Math.min(1, dt * 14);
@@ -414,6 +451,24 @@ SuperModels.hydra = function (THREE, K, ctx) {
     const roarIn = roar > 0 ? Math.sin(clamp((t - roarT) / 1.8, 0, 1) * Math.PI) : 0;
     let li = 0;
     ctx.artAim(aim);
+    // the volley: each bolt bends out to its side and either streaks past Art's bot or closes on it
+    for (let i = bolts.length - 1; i >= 0; i--) {
+      const b = bolts[i], u = (t - b.t0) / b.len;
+      if (u < 0) continue;
+      v2.copy(aim).sub(b.from); v2.y = 0; v2.normalize(); v4.set(-v2.z, 0, v2.x);   // toward Art, and across
+      // the end: on Art's bot, or past it on its own side and behind it
+      if (b.hit) v3.copy(aim); else v3.copy(aim).addScaledVector(v4, b.side * 2.2).addScaledVector(v2, 7).setY(aim.y + b.up);
+      const e = Math.min(1, u), bend = Math.sin(e * Math.PI) * (b.hit ? 2.2 : 3.2) * Math.sign(b.side);
+      vS.copy(b.from).lerp(v3, e).addScaledVector(v4, bend); vS.y += Math.sin(e * Math.PI) * 1.6;
+      if (u < 1) {
+        K.fx.spark(vS, v1.set(0, 0, 0), C('#e8fdff', 2), { size: 0.85, end: 0.5, life: 0.05, drag: 0 });
+        K.fx.spark(vS, v1.set(rnd(-0.5, 0.5), rnd(-0.5, 0.5), rnd(-0.5, 0.5)), HC.root, { size: 0.45, end: 0, life: 0.28, drag: 3 });
+      } else {
+        if (b.hit) { K.fx.burst(vS, 26, '#ff8a8a', { speed: 10, g: 6, life: 0.45, size: 0.28 }); if (i === 0) K.fx.light(vS, '#ff4d5e', 40, 5); }
+        else K.fx.burst(vS, 10, '#bfefff', { speed: 5, g: 3, life: 0.35, size: 0.22 });
+        bolts.splice(i, 1);
+      }
+    }
     // the floor marks stay under Art's bot as it drifts
     for (const mk of [st.root.mark, slam && slam.mark]) if (mk) { mk.at.x += (aim.x - mk.at.x) * Math.min(1, dt * 6); mk.at.z += (aim.z - mk.at.z) * Math.min(1, dt * 6); }
     for (const id of Object.keys(DEF)) {
@@ -435,12 +490,13 @@ SuperModels.hydra = function (THREE, K, ctx) {
       const at = t - s.actT;
       if (s.act === 'bite') {
         // where the head has to be for its jaws to close on Art's bot: the mouth's reach back toward the head's rest
-        biteP.copy(D.rest).sub(aim).normalize().multiplyScalar(3.6).add(aim);
-        if (s.strikeT < 0) {   // coil back: up and away, jaws wide, trembling, eyes on Art's bot
+        const bAt = s.biteFix || aim;
+        biteP.copy(D.rest).sub(bAt).normalize().multiplyScalar(s.biteFix ? 2.4 : 3.6).add(bAt);
+        if (s.strikeT < 0 || t < s.strikeT) {   // coil back: up and away, jaws wide, trembling, eyes on Art's bot
           const u = clamp(at / s.actLen, 0, 1), e = ease(u);
           v1.add(v2.set(D.dir * -0.8 * e, 2.0 * e, -3.2 * e)).add(v4.set(Math.sin(t * 50) * 0.06 * u, Math.sin(t * 43) * 0.06 * u, 0));
           jaw = 0.15 + 0.9 * e; eyeK = 1 + 2 * e; mouthK = 0.4 + e; focus = e;
-          if (at > s.actLen + 0.6) s.act = null;   // called off
+          if (at > s.actLen + 0.6 && s.strikeT < 0) { s.act = null; s.lunge = false; }   // called off
         } else {
           const u = t - s.strikeT;
           focus = 1;
@@ -451,9 +507,11 @@ SuperModels.hydra = function (THREE, K, ctx) {
             if (s.up) for (let k = 0; k < 4; k++) K.fx.spark(v2.copy(s.pos).add(vS.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))), vS.set(0, 0, 0), HC.fork, { size: 0.5, end: 0, life: 0.25, drag: 0 });
             jaw = 1.05 * (1 - smooth((u - 0.1) / 0.06)); eyeK = 3; mouthK = 1.4;
           } else if (u < 0.3) { v1.copy(biteP); jaw = 0; eyeK = 2.5;
-            if (!s.fired) { s.fired = true; mouthWorld(id, v2); K.fx.burst(v2, 30, '#ffffff', { speed: 9, g: 6, life: 0.4, size: 0.25 }); K.fx.shock(v2, HC.fork, 0.4, 4, 0.35, { flat: false, face: ctx.camPos }); }
+            if (!s.fired) { s.fired = true; mouthWorld(id, v2); K.fx.burst(v2, 30, '#ffffff', { speed: 9, g: 6, life: 0.4, size: 0.25 }); K.fx.shock(v2, HC[id], 0.4, 4, 0.35, { flat: false, face: ctx.camPos });
+              if (s.lungeHit) { ctx.artAim(v3); K.fx.burst(v3, 50, '#ff8a8a', { speed: 13, g: 8, life: 0.6, size: 0.32 }); K.fx.light(v3, '#ff4d5e', 50, 5); s.lungeHit = false; }
+              if (s.biteFix) ctx.sfx('snap'); }
           } else if (u < 1.0) { const e = smooth((u - 0.3) / 0.7); v1.lerp(biteP, 1 - e); jaw = 0.1 + 0.2 * e; focus = 1 - e; }
-          else s.act = null;
+          else { s.act = null; s.biteFix = null; s.strikeT = -1; }
         }
       } else if (s.act === 'breath') {
         const u = clamp(at / s.actLen, 0, 1), e = ease(Math.min(1, u * 1.4));
@@ -588,7 +646,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
       Object.assign(s, { up: true, grow: 1, kb: 0, kbV: 0, flash: 0, down: 0, splashed: false, limpFrom: null });
       s.pos.copy(DEF[id].rest); heads[id].g.visible = true;
     }
-    slam = null; wave = null; body.userData.boom = false; dead = false; deadT = 0; roarT = -9;
+    slam = null; wave = null; bolts.length = 0; body.userData.boom = false; dead = false; deadT = 0; roarT = -9;
     void soft;
   }
 

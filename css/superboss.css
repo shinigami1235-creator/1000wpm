@@ -409,3 +409,8 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
 .sb-gain svg { width: 20px; height: 20px; }
 .sb-gain b { font-family: var(--f-mono); color: var(--gold); }
 .sb-streamer .sb-gain, .sb-streamer .sb-share { display: none; }
+
+/* the viewers' names over their dropped items and their bots (sb-bots.js) */
+.sb-allies { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.sb-ally { position: absolute; left: 0; top: 0; padding: .45cqh .9cqh; font: 600 calc(var(--k) * 1.8cqh)/1 var(--f-label); letter-spacing: .04em; color: var(--c); white-space: nowrap;
+  background: rgba(3, 7, 9, .62); border-left: .3cqh solid var(--c); transition: opacity .15s; will-change: transform; }

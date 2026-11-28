@@ -94,7 +94,8 @@ window.SuperSupport = (() => {
       if (n === 'shielded') {
         // a layer of the barrier stops the hit and shatters
         barCol.set('#f2c230'); barFlash = 1.4;
-        K.fx.burst(v1.copy(art).setY(3).setZ(art.z - 5.6), 90, '#ffe08a', { speed: 13, g: 10, life: 0.9, size: 0.35, spread: 3 });
+        const yw = ctx.yaw ? ctx.yaw() : Math.PI;
+        K.fx.burst(v1.set(art.x + Math.sin(yw) * 5.6, 3, art.z + Math.cos(yw) * 5.6), 90, '#ffe08a', { speed: 13, g: 10, life: 0.9, size: 0.35, spread: 3 });
         K.fx.light(v1, '#f2c230', 50, 4);
       }
       if (n === 'block') { barCol.set('#3ee6ff'); barFlash = 1.2; barA = Math.max(barA, 0.6); barRise = 1; }
@@ -105,6 +106,9 @@ window.SuperSupport = (() => {
       }
     }
     function update(t, dt, s) {
+      // Art's bot flies round the arena (sb-bots.js): the barrier, the heal column and the rune ring go with it
+      barrier.position.set(art.x, 0, art.z); barrier.rotation.y = (ctx.yaw ? ctx.yaw() : Math.PI) - Math.PI;
+      column.position.set(art.x, 0, art.z); rune.position.set(art.x, 0.12, art.z);
       const sh = s && s.art ? s.art.shield : 0;
       if (sh !== shields) { if (sh > shields) barRise = 0; shields = sh; }
       const wantA = shields ? 0.06 + shields * 0.04 : 0;
@@ -112,7 +116,8 @@ window.SuperSupport = (() => {
       barRise = Math.min(1, barRise + dt * 1.6);
       barFlash = Math.max(0, barFlash - dt * 2.4);
       barrier.visible = barA > 0.01 || barFlash > 0.01;
-      barMat.uniforms.uA.value = barA; barMat.uniforms.uFlash.value = barFlash; barMat.uniforms.uRise.value = shields || barFlash > 0 ? barRise : 1; barMat.uniforms.uT.value = t;
+      // the camera looks over Art's bot through the barrier, so it is kept faint enough to see the boss through
+      barMat.uniforms.uA.value = barA * 0.55; barMat.uniforms.uFlash.value = barFlash * 0.5; barMat.uniforms.uRise.value = shields || barFlash > 0 ? barRise : 1; barMat.uniforms.uT.value = t;
       barMat.uniforms.uC.value.copy(barCol);
       // heal
       const hu = (t - healT) / 1.6;

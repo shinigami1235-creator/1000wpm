@@ -25,6 +25,7 @@ window.SuperAudio = (() => {
     compile: 1.2, fix: 2.4, order: 6, weakOpen: 2.6, weak: 1.3, decoy: 3.2, packet: 6, packetHit: 4.5, typo: 9, neck: 0.9,
     count: 9, support: 1.8, chaos: 2.2, hype: 0.8, phase: 0.75, enrage: 1.1, finish: 0.7, win: 0.8, lose: 0.75,
     snap: 2.2, roar: 1.0, slam: 1.0, splash: 1.1, boom: 0.9, assemble: 1.6, launch: 1.4, thunder: 0.9, dive: 1.2, plates: 1.6, spit: 1.6, pop: 1.6,
+    pickup: 1.4, whoosh: 1.2, powerup: 1.0, ally: 2.2,
     windupSlam: 1.0, windupLaser: 1.2, windupBreach: 1.2, counter: 1.4, key: 8,
     boot: 1.2, stackPush: 3.4, stackThrow: 1.5, stackCrash: 2.8, servo: 2.4, relay: 2.6, zap: 1.3, panic: 1.4, shatter: 1.4, collapse: 1.0,
     levCharge: 0.9, levStrike: 1.2, levCrunch: 1.3, levClang: 1.2, levBurst: 1.0, levSweep: 1.1, levRoar: 0.9, levDie: 0.9, levSurface: 1.0,
@@ -275,6 +276,11 @@ window.SuperAudio = (() => {
       count(t, go) { tone(t, 'square', go ? 1320 : 880, go ? 1320 : 880, go ? 0.35 : 0.12, 0.14); if (go) tone(t, 'sine', 110, 55, 0.4, 0.4); },
       // stingers and alerts, on their own bus so they cut through the music
       support(t) { chord(t, [784, 988, 1175, 1568], 'triangle', 0.3, 0.13, 0.06); hiss(t, 0.4, 7000, 1, 0.08, 'highpass'); },
+      // the bots (sb-bots.js): Art's bot grabbing a dropped item, a weave past an attack, a combo power-up, an ally's shot
+      pickup(t) { tone(t, 'sine', 660, 1320, 0.12, 0.22); tone(t + 0.07, 'triangle', 990, 1980, 0.18, 0.16); chord(t + 0.1, [1319, 1568, 1976], 'sine', 0.35, 0.05, 0.05); hiss(t, 0.25, 6000, 1, 0.06, 'highpass'); },
+      whoosh(t, k = 1) { hiss(t, 0.28, 900, 0.9, 0.22 * k, 'bandpass', 0.02, 2600); tone(t, 'sine', 240, 120, 0.22, 0.05 * k); },
+      powerup(t, k = 1) { const f = 220 * Math.pow(2, k / 4); tone(t, 'sawtooth', f, f * 2, 0.5, 0.06); tone(t, 'sine', f * 2, f * 4, 0.55, 0.08); hiss(t + 0.1, 0.5, 3500, 1.4, 0.06, 'bandpass', 0.2, 7000); },
+      ally(t) { tone(t, 'square', 1250 * vary(), 620, 0.06, 0.05); hiss(t, 0.05, 4200, 2, 0.05); },
       chaos(t) { [0, 0.08, 0.16].forEach((w, i) => tone(t + w, 'sawtooth', 700 - i * 160, 300 - i * 70, 0.12, 0.12)); hiss(t, 0.35, 1200, 3, 0.15, 'bandpass', 0.01, 300); },
       hype(t) { hiss(t, 1.4, 900, 0.5, 0.25, 'bandpass', 0.6, 3000); chord(t + 0.6, [523, 659, 784, 1046, 1318], 'sawtooth', 0.9, 0.05, 0.05); tone(t + 0.6, 'sine', 130, 65, 0.6, 0.45); },
       phase(t) { tone(t, 'sine', 55, 30, 1.4, 0.8); hiss(t, 1.1, 180, 0.8, 0.5, 'lowpass', 0.01, 60); chord(t + 0.02, [110, 165, 220], 'sawtooth', 1.1, 0.07); hiss(t + 0.02, 0.4, 5000, 0.7, 0.18, 'highpass'); },
@@ -285,7 +291,7 @@ window.SuperAudio = (() => {
     };
     return { set: (node, name) => { const g = c.createGain(); g.gain.value = LEVEL[name] || 1; g.connect(node); out = g; }, voices };
   }
-  const GAP = { hit: 28, typo: 40, packetHit: 60, block: 60, stackPush: 40, stackCrash: 70, shatter: 80 };
+  const GAP = { ally: 90, whoosh: 120, hit: 28, typo: 40, packetHit: 60, block: 60, stackPush: 40, stackCrash: 70, shatter: 80 };
   const lastAt = {};
   function play(name, arg) {
     if (!on) return;

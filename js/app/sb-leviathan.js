@@ -319,7 +319,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (atk && atk.mark) atk.mark.off();
     if (atk && atk.orb) atk.orb.pop();
     atk = { kind, t0: t, len: Math.max(0.6, ms / 1000), done: false, from: headPos.clone(), side: headPos.x > 0 ? 1 : -1, entered: false, hitDone: false, surfaced: false };
-    atk.mark = K.fx.mark(v1.copy(art).setY(0.06), kind === 'breach' ? 3.8 : 3.2, '#ff4d5e', 1);
+    atk.mark = K.fx.mark(v1.copy(art).setY(0.06), kind === 'breach' ? 3.8 : 3.2, '#ff4d5e', 1); atk.mark.track(out => out.copy(art));
     // the lunge's stance: up out of the sea in front of Art, to the side it's already on
     atk.stance = new V(clamp(headPos.x * 0.45, -7, 7), 10.5, clamp(headPos.z * 0.25, -3, 1.5));
     if (kind === 'lunge') { atk.orb = K.fx.orb(ctx.pal.a, out => mouthW(out)); sfx('levCharge', ms); }

@@ -17,6 +17,7 @@
 //   const f = BotFighter.create(THREE, 'nova', look, { gap: 14 })   gap: the distance to the other bot
 //   scene.add(f.group)   place f.group at the bot's spot, turned so local +z points at the other bot
 //   f.update(dt)         every frame
+//   create(..., { shieldK }) scales the hex shield (1 by default; Superboss draws it smaller, 0.7)
 //   f.muzzle(out)        where a shot leaves from (world)
 //   f.hold(frac)         Showdown: a finished word adds a spark that stays, the orb holds at frac until attack()
 //   f.clear()            drops the charge and every spark (a new round)
@@ -966,7 +967,7 @@ window.BotFighter = (() => {
       bot.glowMat.color.multiplyScalar(clamp(1 + S.glow * 0.55, 0.15, 3.5));
       orb.draw(t, now ? 0 : dt, Math.max(0, S.orb), Math.max(0, S.flash));
       const sh = Math.max(0, S.shield); shield.visible = sh > 0.03;
-      if (shield.visible) { shield.scale.setScalar(1.9 * (0.7 + 0.3 * sh)); hexFill.material.opacity = 0.22 * sh; hexEdge.material.opacity = 0.9 * sh; hexIn.material.opacity = 0.95 * sh; hexEdge.rotation.z = t * 0.8; }
+      if (shield.visible) { shield.scale.setScalar(1.9 * (o.shieldK || 1) * (0.7 + 0.3 * sh)); hexFill.material.opacity = 0.22 * sh; hexEdge.material.opacity = 0.9 * sh; hexIn.material.opacity = 0.95 * sh; hexEdge.rotation.z = t * 0.8; }
     }
 
     function update(dt) { t += dt; compute(dt); apply(dt, false); }

@@ -362,13 +362,13 @@ SuperModels.compiler = function (THREE, K, ctx) {
   const colBase = (a, out) => out.copy(a.wrist).add(v5.set(0, 0.9, 0.3));
   function event(n, d, t) {
     if (n === 'countdown') { bootT = t; sfx('boot'); }
-    if (n === 'windup' && d.kind === 'overflow') { endStack(true); stack = { t0: t, len: d.ms / 1000, n: [0, 0], thrown: false, mark: K.fx.mark(v1.copy(art).setY(0.06), 3.4, '#ff4d5e', 1) }; sfx('servo', 0.5); }
+    if (n === 'windup' && d.kind === 'overflow') { endStack(true); stack = { t0: t, len: d.ms / 1000, n: [0, 0], thrown: false, mark: K.fx.mark(v1.copy(art).setY(0.06), 3.4, '#ff4d5e', 1) }; stack.mark.track(out => out.copy(art)); sfx('servo', 0.5); }
     if (n === 'windup' && d.kind === 'laser') {
       endLaser();
       const s = Math.random() < 0.5 ? -1 : 1;
       laser = { t0: t, len: d.ms / 1000, s, fired: false, R1: new V(T.x + s * 15, 21.8, T.z + 2.5), R2: new V(T.x + s * 16, 6.8, T.z + 8), sat: [s < 0 ? 0 : 7, s < 0 ? 1 : 8], sweep: new V(), pinged: 0 };
       laser.orb = K.fx.orb('#ff4d5e', out => eye.getWorldPosition(out).add(v4.set(0, 0, 0.8)));
-      laser.mark = K.fx.mark(v1.copy(art).setY(0.06), 3, '#ff4d5e', 1);
+      laser.mark = K.fx.mark(v1.copy(art).setY(0.06), 3, '#ff4d5e', 1); laser.mark.track(out => out.copy(art));
     }
     if (n === 'windup' && d.kind === 'bomb') { bombT = t; for (const a of arms) a.launch = t; sfx('launch'); }
     if (n === 'block' || n === 'blockFail' || n === 'cancel') {
@@ -972,7 +972,10 @@ SuperModels.compiler = function (THREE, K, ctx) {
     props.userData.tick = (t, pal) => { barMat.color.copy(pal.a).multiplyScalar(1 + Math.sin(t * 2) * 0.3); pm.userData.u.uSeam.value.copy(pal.a).multiplyScalar(0.5); };
   }
 
+  // Art's bot keeps to a lane right of the tower (botLane, world x), so from the game shot the code laid over the
+  // screen never hides it (sb-bots.js, sb-cam.js)
   return { group, props, update, event, apply, anchor, worldOf, attacker, subj, packets, reset, shots, dispose() {}, height: 27, width: 50, camY: 9, focus: new V(0, 12, -6), face: 'core',
+    botLane: [9.5, 13],
     info: () => ({ stack: blocks.filter(b => b.mode === 'col').length, blocks: blocks.length, laser: laser ? (laser.fired ? 'fired' : 'charging') : null, drones: drones.size }),
     // joint check: the elbow's bend (0 = straight) and which way it points; it must stay behind the arm
     // (toward the pole), so the forearm always folds forward like an elbow, never backward
