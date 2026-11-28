@@ -450,8 +450,9 @@ window.SyntaxDress = (() => {
 
       // smoke and embers from the damage: more vents open each phase
       if (!o.reduce) {
-        smokeAcc += dt * (dead ? 30 : ph * 7 + (st.charge || 0) * 6);
-        emberAcc += dt * (dead ? 40 : ph * 6);
+        const dk = detail > 0.65 ? 1 : detail > 0.5 ? 0.5 : 0;
+        smokeAcc += dt * (dead ? 30 : ph * 7 + (st.charge || 0) * 6) * dk;
+        emberAcc += dt * (dead ? 40 : ph * 6) * dk;
         kit.group.updateMatrixWorld(true);
         while (smokeAcc > 1) {
           smokeAcc -= 1;
@@ -478,6 +479,8 @@ window.SyntaxDress = (() => {
     function flash(k = 1) { flashK = Math.max(flashK, Math.min(1.2, k)); }
     // a burst of smoke and embers at a point, for the death and big hits
     function puff(at, n = 12, power = 1) {
+      if (detail <= 0.5) return;
+      if (detail <= 0.65) n = Math.ceil(n / 2);
       for (let i = 0; i < n; i++) {
         emit(smoke, at, vv.set(rnd(-3, 3) * power, rnd(0.5, 3.5) * power, rnd(-3, 3) * power), rnd(1.6, 3.2), rnd(6, 12) * Math.sqrt(power));
         emit(embers, at, vv.set(rnd(-6, 6) * power, rnd(2, 8) * power, rnd(-6, 6) * power), rnd(0.6, 1.6), rnd(0.8, 1.8));
@@ -487,8 +490,11 @@ window.SyntaxDress = (() => {
       for (const x of [glyphs, smoke.pts, embers.pts, pool, shadow]) if (x.parent) x.parent.remove(x);
       keep.forEach(x => x.dispose && x.dispose());
     }
+    // adaptive quality: below 0.8 no hex codes, below 0.65 half the smoke and embers, below 0.5 none
+    let detail = 1;
+    function setDetail(d) { detail = d; glyphs.visible = d > 0.8; smoke.pts.visible = embers.pts.visible = d > 0.5; }
     const objs = [glyphs, smoke.pts, embers.pts, pool, shadow, halo, codeRing, visorGlow, ...dressed];   // for the cost check in tests
-    return { arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow, smoke, embers, env, objs };
+    return { setDetail, glow, arms, body, dressed, update, flash, puff, dispose, U, coreLight, halo, visorGlow, smoke, embers, env, objs };
   }
   return { dress };
 })();

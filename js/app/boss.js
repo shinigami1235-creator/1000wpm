@@ -127,9 +127,9 @@ Router.register('boss', (() => {
         if (e.shielded) pushFeed({ text: 'Your recruit shield saved you. You can go down from CL-02', cls: 'you' });
       }),
       squad.on('down', e => { if (scene) scene.act(opId(e.who), 'down'); if (!el) return; pushFeed({ text: e.who.you ? "You're down. Each word you type brings you back a second sooner" : `${e.who.name} is down. Type ${e.who.handle} to revive them`, cls: 'alert' }); if (e.who.you) { sfx('blockFail'); typed = ''; target = null; renderQueue(); } }),
-      squad.on('revive', e => { if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
+      squad.on('revive', e => { if (scene) { scene.act(opId(e.who), 'up'); if (e.by) scene.act(opId(e.by), 'revive'); } if (!el) return; if (e.by && e.by.you) { sfx('blockOk'); pop('REVIVED', 'green'); } pushFeed({ text: `${e.by.you ? 'You' : e.by.name} revived ${name(e.who)}`, cls: e.by.you || e.who.you ? 'you' : '' }); }),
       squad.on('up', e => { if (scene) scene.act(opId(e.who), 'up'); if (el && e.who.you) pushFeed({ text: "You're back up", cls: 'you' }); }),
-      squad.on('heal', e => { if (scene) scene.act(opId(e.by), 'cast'); if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
+      squad.on('heal', e => { if (scene) scene.act(opId(e.by), 'heal'); if (!el) return; if (e.by.you) pop(`+${e.amount}`, 'green'); else if (e.who.you) pushFeed({ text: `${e.by.name} healed you for ${e.amount}`, cls: 'you' }); }),
     );
   }
 
