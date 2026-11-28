@@ -70,16 +70,19 @@ window.RushTitans = (() => {
     function hitYou(colr = RED) {
       youFloor(v2);
       tfx.ring(v2, 0.2, 2.6, 0.45, colr, { k: 2.6 });
-      tfx.burst(v3.copy(you).setY(1), 26, { col: colr, speed: 8, up: 2, life: 0.55, size: 0.2 });
+      tfx.burst(v3.copy(you), 26, { col: colr, speed: 8, up: 2, life: 0.55, size: 0.2 });
       tfx.burst(v2, 8, { kind: 'dust', col: '#7d8288', speed: 3, size: 1.2, life: 1 });
-      tfx.flash(v3.copy(you).setY(1.5), colr, 0.9);
+      tfx.flash(v3.copy(you), colr, 0.9);
+      if (c.onYou) c.onYou('hit', atk && atk.big ? 1.2 : 1);
     }
+    // a point d in front of you, toward the titan (your bot flies round it, so "in front" turns with it)
+    const toward = (d, out) => { out.set(root.position.x - you.x, 0, root.position.z - you.z); const L = out.length() || 1; return out.multiplyScalar(d / L).add(you); };
     // your block: a cyan barrier ring stands up in front of you and the blow throws sparks off it
     function blockYou(p) {
-      v2.copy(you); v2.z -= 1.2; v2.y = 1.6;
-      tfx.ring(v2, 0.3, 2.8, 0.5, CYAN, { tilt: Math.PI / 2, y: 1.6, k: 2.6 });
-      tfx.ring(v2, 0.2, 1.6, 0.3, WHITE, { tilt: Math.PI / 2, y: 1.6, k: 1.5 });
-      v3.set(0, 0.4, -1);
+      toward(1.2, v2);
+      tfx.ring(v2, 0.3, 2.8, 0.5, CYAN, { tilt: Math.PI / 2, y: v2.y, k: 2.6 });
+      tfx.ring(v2, 0.2, 1.6, 0.3, WHITE, { tilt: Math.PI / 2, y: v2.y, k: 1.5 });
+      v3.copy(v2).sub(you).normalize(); v3.y += 0.4;
       tfx.burst(v2, 34, { col: CYAN, speed: 9, dir: v3, spread: 0.9, life: 0.5, size: 0.2 });
       tfx.flash(v2, CYAN, 0.8);
       if (p) tfx.burst(p, 16, { col: col, speed: 6, life: 0.5, size: 0.2 });
@@ -126,7 +129,7 @@ window.RushTitans = (() => {
         shock: { tele: ['ring'], lunge: 0, charge: k => { charge(fist('L', v1), k); charge(fist('R', v2), k); },
           hit: L => { at('chest', 0, -6, 0, v1); v1.y = 0.05; quake(v1, 1.1); later(0.1, () => { tfx.ring(v1, 2, 12, 0.9, col2, { k: 1.6 }); tfx.ring(v1.setY(2.5), 1, 7, 0.6, col, { k: 1.4 }); }); }, snd: ['throneCharge', 'throneShock'] },
         decree: { tele: ['mark', 1.8], lunge: 0.2, charge: k => charge(fist('R', v1), k, col2),
-          hit: L => { fist('R', v1); fly(v1, v2.copy(you).setY(1.2), 0.28, col2, p => { tfx.burst(p, 30, { col: col2, speed: 7, life: 0.5 }); tfx.ring(youFloor(v3), 0.2, 2.4, 0.4, col2, { k: 2.2 }); J.shake(0.4); }, 0.6); }, snd: ['decreeCharge', 'decreeCast'] },
+          hit: L => { fist('R', v1); fly(v1, v2.copy(you), 0.28, col2, p => { tfx.burst(p, 30, { col: col2, speed: 7, life: 0.5 }); tfx.ring(youFloor(v3), 0.2, 2.4, 0.4, col2, { k: 2.2 }); J.shake(0.4); }, 0.6); }, snd: ['decreeCharge', 'decreeCast'] },
         crush: { tele: ['lane', 1.2], lunge: 0.4, trail: 'handR', charge: k => charge(fist('R', v1), k),
           hit: L => { fist('R', v1); v1.y = 0.05; quake(v1, 1.2); }, snd: ['siegeCharge', 'crush'] },
       },
@@ -368,7 +371,7 @@ window.RushTitans = (() => {
             if (atk.hit) atk.hit(landed);
             if (atk.snd) sfx(atk.snd[1]);
             if (landed) later(0.12, () => hitYou());
-            else { v2.copy(you); v2.z -= 1.2; v2.y = 1.6; tfx.burst(v2, 24, { col: CYAN, speed: 8, life: 0.4 }); }
+            else { toward(1.2, v2); tfx.burst(v2, 24, { col: CYAN, speed: 8, life: 0.4 }); }
           }
           // swing trail on the striking part
           const tr = atk.trail;
@@ -378,7 +381,7 @@ window.RushTitans = (() => {
             else { fist(tr.slice(-1), v1); v2.copy(v1); v2.y += S.fist * 0.6 * scaleOf(); }
             tfx.trail(0, v1, v2, col, true);
           } else tfx.trail(0, v1, v2, col, false);
-          if (beamT > 0) { beamT -= dt; core(v1); v2.copy(you).setY(1.2); tfx.beam(v1, v2, beamT / 0.55, col); if (Math.random() < 0.8) tfx.burst(v2, 4, { col, speed: 6, life: 0.3 }); if (beamT <= 0) tfx.beamOff(); }
+          if (beamT > 0) { beamT -= dt; core(v1); v2.copy(you); tfx.beam(v1, v2, beamT / 0.55, col); if (Math.random() < 0.8) tfx.burst(v2, 4, { col, speed: 6, life: 0.3 }); if (beamT <= 0) tfx.beamOff(); }
           if (id === 'colossus' && atkId === 'lash' && kit.tail) kit.tail.rotation.y = -1.1 * into * back;
           if (id === 'half' && atkId === 'lash') B.foreR.scale.y = 1 + 1.3 * into * back;
           if (tS > 1.3) { mode = 'idle'; atk = null; lungeV.z = 0; B.foreR.scale.y = 1; mover.position.x = 0; }
