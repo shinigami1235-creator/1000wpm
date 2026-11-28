@@ -233,7 +233,7 @@ window.RoomView = (() => {
   const urlOf = G => { if (!urls.has(G)) urls.set(G, new Promise(ok => G.toBlob(b => ok(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.93))); return urls.get(G); };
   function gradeCached(P, tier, key, look) {
     const k = tier + key + (P.naturalWidth || P.width);
-    if (!grades.has(k)) { if (grades.size > 2) { const old = grades.keys().next().value, G = grades.get(old); grades.delete(old); if (urls.has(G)) urls.get(G).then(u => u && URL.revokeObjectURL(u)); } grades.set(k, RA.grade(P, look)); }
+    if (!grades.has(k)) { if (grades.size > 0) { const old = grades.keys().next().value, G = grades.get(old); grades.delete(old); if (urls.has(G)) urls.get(G).then(u => u && URL.revokeObjectURL(u)); } grades.set(k, RA.grade(P, look)); }
     return grades.get(k);
   }
 
