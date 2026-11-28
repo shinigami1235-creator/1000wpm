@@ -27,7 +27,7 @@ window.OpsUI = (() => {
     const gold = cl.i >= 7;
     return `
       <div class="op-card${gold ? ' gold' : ''}">
-        <div class="op-head"><span class="op-brand"><span class="ctrl-tag" aria-hidden="true"><svg viewBox="0 0 2380 2895"><use href="#i-ctrl"/></svg></span>CTRL // Operator ID</span><span class="op-live">Active</span></div>
+        <div class="op-head"><span class="op-brand"><span class="ctrl-tag" aria-hidden="true"><svg viewBox="0 0 2001 2428"><use href="#i-ctrl"/></svg></span>CTRL // Operator ID</span><span class="op-live">Active</span></div>
         <div class="op-who">
           ${img}
           <div class="op-id">

@@ -136,7 +136,7 @@ window.GameGuard = (() => {
   function result(s) {
     const rows = (s.stats || []).filter(r => r && r[1] !== undefined && r[1] !== null);
     show('result', `
-      <span class="gg-label"><svg class="gg-mark" viewBox="0 0 2380 2895" aria-hidden="true"><use href="#i-ctrl"/></svg>// ${esc(s.label || 'RESULT')}</span>
+      <span class="gg-label"><svg class="gg-mark" viewBox="0 0 2001 2428" aria-hidden="true"><use href="#i-ctrl"/></svg>// ${esc(s.label || 'RESULT')}</span>
       <h2 id="gg-h">${esc(s.title || 'Fight over')}</h2>
       ${s.sub ? `<p class="gg-sub">${esc(s.sub)}</p>` : ''}
       <dl class="gg-stats">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${typeof v === 'number' ? fmt(v) : v}</dd></div>`).join('')}</dl>

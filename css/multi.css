@@ -356,12 +356,47 @@
 .sd-prog > em { font: 400 var(--t-xs)/1 var(--f-mono); font-style: normal; color: var(--ink-3); min-height: 1em; }
 .sd-prog.done { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb),.6); }
 .sd-prog.done > span b { color: var(--accent); }
+/* Showdown overdrive (28 Nov 2026): the stream past the 10 words, its meter by the progress ring, its numbers */
+.sd { --od: #b77bff; --od-rgb: 183,123,255; }
+.sd-line.od { align-items: baseline; gap: 6px 26px; }
+.sd-odtag { align-self: center; padding: 5px 10px; font: 600 var(--t-xs)/1 var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--od);
+  box-shadow: inset 0 0 0 1px rgba(var(--od-rgb),.6); background: rgba(var(--od-rgb),.1); }
+.sd-odtag b { margin-left: 6px; font: 600 var(--t-s)/1 var(--f-mono); color: #fff; letter-spacing: 0; }
+.sd-odtag[data-t="2"] { box-shadow: inset 0 0 0 1px var(--od), 0 0 14px -4px var(--od); }
+.sd-odtag[data-t="3"] { color: #fff; background: rgba(var(--od-rgb),.28); box-shadow: inset 0 0 0 1px #e2c9ff, 0 0 22px -4px var(--od); }
+.sd-odtag.sp { color: var(--sc); background: color-mix(in srgb, var(--sc) 14%, transparent); box-shadow: inset 0 0 0 1px var(--sc), 0 0 18px -4px var(--sc); }
+.sd-w.cur.od { font-size: 1.18em; color: #fff; background: rgba(var(--od-rgb),.14); box-shadow: 0 0 22px -6px var(--od); padding: 0 10px; margin: 0 -10px; }
+.sd-w.cur.od i.ok { color: #d9b8ff; }
+.sd-w.cur.od i.at::before { background: var(--od); }
+.sd-w.cur.od.spell { background: color-mix(in srgb, var(--sc) 18%, transparent); box-shadow: 0 0 26px -4px var(--sc); }
+.sd-w.cur.od.spell i.ok { color: var(--sc); }
+.sd-w.cur.od.spell i.at::before { background: var(--sc); }
+.sd-w.od.next { color: var(--ink-3); }
+.sd-w.od.next.n2 { opacity: .45; }
+.sd-od { display: none; grid-template-columns: auto auto; align-items: center; gap: 4px 6px; justify-items: center; }
+.du-acc.od .sd-od { display: grid; }
+.sd-od > b { grid-column: 1 / -1; font: 600 9px/1 var(--f-label); letter-spacing: .16em; text-transform: uppercase; color: var(--od); }
+.sd-od-bar { display: flex; gap: 3px; }
+.sd-od-bar i { width: 12px; height: 6px; background: rgba(var(--od-rgb),.18); }
+.sd-od[data-t="1"] .sd-od-bar i:nth-child(-n+1), .sd-od[data-t="2"] .sd-od-bar i:nth-child(-n+2), .sd-od[data-t="3"] .sd-od-bar i { background: var(--od); box-shadow: 0 0 8px var(--od); }
+.sd-od[data-t="3"] .sd-od-bar i { background: #e7d2ff; }
+.sd-od > em { font: 600 var(--t-xs)/1 var(--f-mono); font-style: normal; color: #fff; }
+.sd-od.low > em { color: var(--ink-3); font-family: var(--f-head); font-weight: 400; }
+.sd-od.low .sd-od-bar i { background: rgba(var(--od-rgb),.18); box-shadow: none; }
+.du-acc.sd-prog.od { box-shadow: inset 0 0 0 1px rgba(var(--od-rgb),.55); }
+.mu-pop.od { color: var(--od); font: 600 var(--t-l)/1 var(--f-mono); text-shadow: 0 0 12px rgba(var(--od-rgb),.7); }
+.mu-pop.tier.od { color: #e2c9ff; font: 600 var(--t-m)/1 var(--f-head); }
+.mu-pop.spell.od { color: #e2c9ff; }
+.du-banner.od { color: var(--od); font-size: clamp(22px, 2.6vw, 34px); top: 20%; text-shadow: 0 2px 0 #000, 0 0 18px rgba(var(--od-rgb),.8); letter-spacing: .08em; text-transform: uppercase; }
 .du-mid b.red { color: var(--red); }
 .du.sd[data-art] .du-side.r .du-hp > i { background: var(--cyan); box-shadow: 0 0 10px rgba(62,230,255,.5); }
 @media (max-width: 700px) {
   .du-tab { padding: 10px 14px; }
   .sd-line { font-size: 20px; gap: 4px 14px; }
   .du-botname { display: none; }
+  .sd-od { grid-template-columns: auto auto; gap: 4px; }
+  .sd-od > b { display: none; }
+  .sd-odtag { padding: 4px 7px; letter-spacing: .1em; }
 }
 
 .u-modes li { display: grid; grid-template-columns: 9em 1fr 3.5em; align-items: center; gap: 10px; font-size: var(--t-s); }
