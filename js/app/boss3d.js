@@ -1110,21 +1110,37 @@ window.BossScene = (() => {
     // Gid, 28 Nov 2026: the whole boss stays in frame in normal play, and a cut-in can come closer but
     // never crops its head. keepHead pulls a camera back along its line of sight until the top of the
     // head (horns included) sits under 88% of the frame's height; shots on your bot's face opt out (face: 1).
-    const kCam = new THREE.PerspectiveCamera(40, 1, 0.1, 400), kTop = new V(), kV = new V();
-    function keepHead(o, l, fov, lim = 0.88) {
-      if (dead && deadBoom) return;
+    const kCam = new THREE.PerspectiveCamera(40, 1, 0.1, 400), kTop = new V(), kV = new V(), kO = new V();
+    // how far back (a factor on the ground distance to the look point) the camera must stand to show the head
+    function headPull(o, l, fov, lim = 0.88) {
+      if (dead && deadBoom) return 1;
       kTop.copy(anchorHead); kTop.y += 1.3;
       kCam.fov = fov; kCam.aspect = camera.aspect; kCam.updateProjectionMatrix();
+      let f = 1;
       for (let i = 0; i < 4; i++) {
-        kCam.position.copy(o); kCam.lookAt(l); kCam.updateMatrixWorld(); kCam.matrixWorldInverse.copy(kCam.matrixWorld).invert();
+        kO.set(l.x + (o.x - l.x) * f, o.y, l.z + (o.z - l.z) * f);
+        kCam.position.copy(kO); kCam.lookAt(l); kCam.updateMatrixWorld(); kCam.matrixWorldInverse.copy(kCam.matrixWorld).invert();
         kV.copy(kTop).project(kCam);
         const behind = kV.z > 1;
-        if (!behind && kV.y <= lim) return;
-        const f = behind ? 1.8 : Math.min(1.8, 1 + (kV.y - lim) / lim * 1.1 + 0.02);
-        o.sub(l).multiplyScalar(f).add(l);
+        if (!behind && kV.y <= lim) break;
+        f *= behind ? 1.8 : Math.min(1.8, 1 + (kV.y - lim) / lim * 1.1 + 0.02);
       }
+      return f;
     }
-    const P = (pose, more = {}) => Object.assign({ pose: (c, o) => { pose(c.u, o.pos, o.look, c); if (!more.face) keepHead(o.pos, o.look, o.fov || 40); } }, more);
+    // back along the ground, keeping its height, so the floor and your squad stay in the bottom of the frame
+    const pullBack = (o, l, f) => { o.x = l.x + (o.x - l.x) * f; o.z = l.z + (o.z - l.z) * f; };
+    function keepHead(o, l, fov, lim) { pullBack(o, l, headPull(o, l, fov, lim)); }
+    // in a cut-in the pull only grows through the shot, so the camera eases away instead of bobbing with the head
+    const P = (pose, more = {}) => {
+      const st = { u: 9, f: 1 };
+      return Object.assign({ pose: (c, o) => {
+        pose(c.u, o.pos, o.look, c);
+        if (more.face) return;
+        if (c.u < st.u) st.f = 1;
+        st.u = c.u; st.f = Math.max(st.f, headPull(o.pos, o.look, o.fov || 40));
+        pullBack(o.pos, o.look, st.f);
+      } }, more);
+    };
     const CLOSE = P((u, o, l) => {                                     // your bot's face, pushing in
       const y = raidPos[RAID]; toBoss(y);
       // side on to your bot, the boss beyond it: never between the two, since it dives in right next to the boss
