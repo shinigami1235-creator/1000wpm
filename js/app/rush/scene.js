@@ -876,9 +876,9 @@ window.RushScene = (() => {
       const a = Math.round(clamp(f - 0.4, 0.2, 0.6) * 20) / 20;
       const b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
       const name = `spell_${a}_${b}`, t = nowS();
-      if (!fizz && t - spellCamAt < 4) return;
+      if (t - spellCamAt < 4) return;
       dirShots[name] ||= { pri: 2, parts: [{ ...CAST_OUT, len: a }, { ...LANDS, len: b }] };
-      if (director.want(name, { pri: fizz ? 2 : 3 }) && !fizz) spellCamAt = t;
+      if (director.want(name, { pri: 3 }) ) spellCamAt = t;
     }
     function makeDirector() {
       if (!window.CamDirector || director) return;

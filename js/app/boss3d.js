@@ -1307,11 +1307,11 @@ window.BossScene = (() => {
       const b = Math.round(clamp(f - 0.25 - a + Math.min(1.6, last - f) + 0.85, 0.8, 2.6) * 20) / 20;
       const name = `spell_${a}_${b}`;
       // your own spell outranks the raid's routine cutaways (priority 3 gets past their budget), with its own
-      // gap of 4 s so a run of spells doesn't cut every second; a fizzle stays at the routine priority
+      // gap of 4 s so a run of spells doesn't cut every second (a fizzle counts as one)
       const t = nowS();
-      if (!fizz && t - spellCamAt < 4) return;
+      if (t - spellCamAt < 4) return;
       dirShots[name] ||= { pri: 2, parts: [{ ...SHOULDER, len: a, slow: 0 }, { ...LAND, len: b }] };
-      if (play(name, null, fizz ? 2 : 3) && !fizz) spellCamAt = t;
+      if (play(name, null, 3)) spellCamAt = t;
     }
     let spellCamAt = -9;
     const faceV = new V();

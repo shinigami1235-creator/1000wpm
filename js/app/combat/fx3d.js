@@ -1463,7 +1463,7 @@ Combat.FX = (() => {
     };
 
     SP['cryo-lock'] = (e, cs, tg) => {
-      const S = sizeOf(tg) / 6, col = C('#bfefff'), deep = C('#5fc8ff'), mist = C('#cfefff');
+      const S = sizeOf(tg) / 6, col = C('#bfefff'), deep = C('#5fc8ff'), mist = C('#cfefff'), ICE = C('#9fe4ff');
       const hold = ((e.effect && e.effect.ms) || 5000) / 1000;
       P(tg, 'base', e.base = new V());
       sigil(cs, deep, 0.35, 1.8);
@@ -1480,7 +1480,8 @@ Combat.FX = (() => {
       e.strike = (i, h) => {
         P(tg, 'pos', t1); t1.z += 1.5 * S;
         e.iceAt = e.t;
-        e.ice = shell(); e.ice.m.material.uniforms.uCol.value.copy(C('#9fe4ff')); e.ice.m.material.uniforms.uHex.value = 0;
+        // the shell is a big transparent sphere, so a slow device (adaptive quality) keeps only the crust
+        if (slow < 0.5) { e.ice = shell(); e.ice.m.material.uniforms.uCol.value.copy(ICE); e.ice.m.material.uniforms.uHex.value = 0; } else e.ice = { m: null };
         impact(t1, col, 1.3 * S, { glyph: G.shard, shake: 0.35 });
         burst(t1, 50, 9, col, 0.5, 1, G.star, { drag: 1.5 });
         smoke(t1, 8, mist, 3 * S, 2, { speed: 3, alpha: 0.35, tint: 0.8 });
@@ -1495,12 +1496,12 @@ Combat.FX = (() => {
         // the shell and the crust on the body
         if (e.ice) {
           P(tg, 'pos', t1);
-          if (out >= 1) { freeShell(e.ice); e.ice = null; }
-          else {
+          if (out >= 1) { if (e.ice.m) freeShell(e.ice); e.ice = null; }
+          else if (e.ice.m) {
             const g = backOut(tt / 0.35);
             e.ice.m.position.copy(t1).add(_pv.set(0, -0.6 * S, 0.6 * S));
-            e.ice.m.scale.set(5.4 * S * g, 6.6 * S * g, 4.4 * S * g);
-            e.ice.m.material.uniforms.uAmt.value = (tt < 0.15 ? 1.0 : 0.5 + 0.08 * Math.sin(e.t * 3)) * (1 - out);
+            e.ice.m.scale.set(4.8 * S * g, 6 * S * g, 4 * S * g);
+            e.ice.m.material.uniforms.uAmt.value = (tt < 0.15 ? 1.0 : 0.48 + 0.08 * Math.sin(e.t * 3)) * (1 - out);
           }
           for (const c of e.crust) {
             const g = backOut((tt - c.d) / 0.25);
@@ -1535,7 +1536,7 @@ Combat.FX = (() => {
         if (!reduce && Math.random() < dt * 9) { t1.set(e.base.x + rnd(-5, 5) * S, rnd(0, 2) * S, e.base.z + rnd(-3, 3) * S); puff(t1, _pv.set(rnd(-0.6, 0.6), 0.2, rnd(-0.3, 0.6)), mist, rnd(2.5, 4) * S, 1.8, 0.22); }
         return true;
       };
-      e.cleanup = () => { if (e.ice) freeShell(e.ice); };
+      e.cleanup = () => { if (e.ice && e.ice.m) freeShell(e.ice); };
     };
 
     SP['electro-storm'] = (e, cs, tg) => {
@@ -1565,7 +1566,7 @@ Combat.FX = (() => {
         e.bolts.push({ from, to, t: 0, life: big ? 0.38 : 0.24, re: 0, pts: [], forks: [[], [], []], big });
         if (!big) chain(to.clone(), i % 2 ? 2 : 1, 0.55); else { P(tg, 'pos', t5); chain(new V(t5.x, t5.y - 2 * S, t5.z + 1.5 * S), 4, 0.8); }
         burst(to, big ? 50 : 22, big ? 14 : 10, core, 0.35, 0.5, G.star, { drag: 2.5 });
-        if (big) impact(to, col, 1.6 * S, { floor: true, shake: 0.6 }); else { flare(to, WHITE, 2.5 * S, 0.1, 1.3); flare(to, col, 5 * S, 0.25, 0.9); light(to, col, 1.1, 0.16); smoke(to, 2, dark, 1.6 * S, 0.8, { speed: 2, alpha: 0.3 }); juice('shake', 0.25); }
+        if (big) impact(to, col, 1.6 * S, { floor: true, shake: 0.6 }); else { flare(to, WHITE, 1.7 * S, 0.09, 1.05); flare(to, col, 3.6 * S, 0.22, 0.7); light(to, col, 0.9, 0.16); smoke(to, 2, dark, 1.6 * S, 0.8, { speed: 2, alpha: 0.3 }); juice('shake', 0.25); }
         flare(from, col, 5 * S, 0.15, 0.7);   // the cloud lights up where the bolt leaves it
         react(tg, big ? 'stagger' : 'flinch', h.power);
         if (big) juice('stop', 80);
@@ -2082,7 +2083,7 @@ Combat.FX = (() => {
     const FIZZ = ['shield', 'dodge', 'swat'];
     let fzN = Math.floor(Math.random() * 3);
     function fizzle(id, ctx = {}) {
-      const cs = ctx.caster, tg = ctx.target, S = sizeOf(tg) / 6;
+      const cs = ctx.caster, tg = ctx.target, S = sizeOf(tg) / 6, BS = 1.3 * S + 0.3;   // BS: the bolt's size
       const sp = window.Combat && Combat.spell ? Combat.spell(id) : null;
       const col = C(sp ? sp.color : '#ffffff'), hi = C('#ffffff');
       const e = add({ id: 'fizzle', how: '', trail: Array.from({ length: 12 }, () => new V()), nTrail: 0, from: new V(), pos: new V(), vel: new V(), side: Math.random() < 0.5 ? -1 : 1 });
@@ -2204,14 +2205,15 @@ Combat.FX = (() => {
         const dying = e.phase === 1 ? clamp(1 - (e.t - e.hitT) / 0.6, 0.2, 1) : 1;
         for (let j = 0; j < e.nTrail - 1; j++) {
           const f = 1 - j / tr.length, c2 = Math.random() < 0.3 ? TYPO : col;
-          seg(tr[j], tr[j + 1], 0.45 * Math.sqrt(S) * f, c2, 0.45 * f * dying);
+          seg(tr[j], tr[j + 1], 0.8 * BS * f, c2, 0.45 * f * dying);
           if (Math.random() < 0.2) continue;   // the core breaks up: the instability
-          seg(tr[j], tr[j + 1], 0.12 * Math.sqrt(S) * f, hi, 1.2 * f * dying);
+          seg(tr[j], tr[j + 1], 0.2 * BS * f, hi, 1.3 * f * dying);
         }
         const fl = Math.random();
-        flare(e.pos, fl < 0.25 ? TYPO : col, (1.4 + fl * 1.4) * Math.sqrt(S) * dying, 0.05, 1.1, 0.1);
-        if (!reduce && Math.random() < 0.7) spawn(e.pos, _pv.set(rnd(-2, 2), rnd(-1, 2), rnd(-2, 2)), Math.random() < 0.35 ? TYPO : col, 0.3, 0.5, Math.random() < 0.12 ? G.bang : G.dot, { grav: 9, drag: 1 });
-        if (!reduce && Math.random() < dt * 10) puff(e.pos, _pv.set(rnd(-0.4, 0.4), 0.6, rnd(-0.4, 0.4)), ASH, 0.9 * Math.sqrt(S), 0.6, 0.25);
+        flare(e.pos, fl < 0.25 ? TYPO : col, (2.4 + fl * 2) * BS * dying, 0.05, 1.1, 0.1);
+        flare(e.pos, WHITE, 0.9 * BS * dying, 0.04, 1, 0.1);
+        if (!reduce) for (let q = 0; q < 2; q++) spawn(e.pos, _pv.set(rnd(-3, 3), rnd(-1, 3), rnd(-3, 3)), Math.random() < 0.35 ? TYPO : col, 0.35 * BS, 0.5, Math.random() < 0.15 ? G.bang : G.dot, { grav: 9, drag: 1 });
+        if (!reduce && Math.random() < dt * 12) puff(e.pos, _pv.set(rnd(-0.4, 0.4), 0.6, rnd(-0.4, 0.4)), ASH, 1.3 * BS, 0.6, 0.28);
         return true;
       };
       e.cleanup = () => { if (e.sh) freeShell(e.sh); };
@@ -2226,6 +2228,7 @@ Combat.FX = (() => {
       const a = { name, ctx, t: 0, ending: 0, until: ctx.ms ? ctx.ms / 1000 : 0, ghosts: [1, 1] };
       auras[name] = a;
     }
+    const AU = { ward: C('#7dffc4'), cshield: C('#7dd8ff'), split: C('#d6b8ff'), root: C('#ffc46b'), hyper: C('#ffb066'), frenzy: C('#ff6a2a') };
     function drawAura(a, dt) {
       a.t += dt;
       if (a.until && a.t > a.until && !a.ending) a.ending = a.t;
@@ -2233,42 +2236,51 @@ Combat.FX = (() => {
       if (k <= 0) return false;
       const cs = a.ctx.caster, tg = a.ctx.target;
       if (a.name === 'ward') {
-        P(cs, 'pos', t1); t1.y = 0.4;
-        const col = C('#7dffc4');
-        for (let i = 0; i < 3; i++) circle(t2.copy(t1).setY(0.4 + i * 0.9), UP, 2.4 - i * 0.55, 0.07, col, 1.1 * k, 6, a.t * (i % 2 ? -0.8 : 0.8));
+        // a hex cage round your bot, centred on it (the bots hover), with a slow bright band running over it
+        P(cs, 'pos', t1);
+        const col = AU.ward, R = 2.3, cy = t1.y - 0.3;
+        for (let i = -1; i <= 1; i++) { const el = i * 0.62; circle(t2.set(t1.x, cy + Math.sin(el) * R, t1.z), UP, Math.cos(el) * R, 0.08, col, (i ? 0.8 : 1.1) * k, 6, a.t * (i % 2 ? -0.6 : 0.6)); }
         for (let i = 0; i < 6; i++) {
-          const ang = a.t * 0.8 + i * Math.PI / 3;
+          const ang = a.t * 0.6 + i * Math.PI / 3;
           let pv = null;
-          for (let j = 0; j <= 4; j++) {
-            const el = (j / 4) * Math.PI / 2;
-            const p = t3.set(t1.x + Math.cos(ang) * Math.cos(el) * 2.4, 0.4 + Math.sin(el) * 2.4, t1.z + Math.sin(ang) * Math.cos(el) * 2.4);
-            if (pv) seg(pv, p, 0.05, col, 0.8 * k);
+          for (let j = 0; j <= 6; j++) {
+            const el = -Math.PI / 2 * 0.75 + (j / 6) * Math.PI * 0.75 * 1.33;
+            const p = t3.set(t1.x + Math.cos(ang) * Math.cos(el) * R, cy + Math.sin(el) * R, t1.z + Math.sin(ang) * Math.cos(el) * R);
+            if (pv) seg(pv, p, 0.06, col, 0.75 * k);
             pv = t4.copy(p);
           }
         }
+        const band = (a.t * 0.5) % 1, el = -1.1 + band * 2.2;
+        circle(t2.set(t1.x, cy + Math.sin(el) * R, t1.z), UP, Math.cos(el) * R + 0.05, 0.1, WHITE, 0.9 * k * Math.sin(band * Math.PI), 6, a.t * 0.6);
       } else if (a.name === 'cshield') {
         P(cs, 'pos', t1);
-        const col = C('#7dd8ff');
+        const col = AU.cshield;
         for (let i = 0; i < 4; i++) {
           const ang = a.t * 1.2 + i * Math.PI / 2;
-          circle(t2.set(t1.x + Math.cos(ang) * 1.9, 1.5, t1.z + Math.sin(ang) * 1.9), t3.set(Math.cos(ang), 0, Math.sin(ang)), 0.55, 0.06, col, 1.1 * k, 6, a.t);
+          circle(t2.set(t1.x + Math.cos(ang) * 1.9, t1.y, t1.z + Math.sin(ang) * 1.9), t3.set(Math.cos(ang), 0, Math.sin(ang)), 0.55, 0.06, col, 1.1 * k, 6, a.t);
         }
       } else if (a.name === 'hyper' || a.name === 'frenzy') {
         P(cs, 'pos', t1);
-        const fz = a.name === 'frenzy', col = C(fz ? '#ff7a3d' : '#ffb066');
+        const fz = a.name === 'frenzy', col = fz ? AU.frenzy : AU.hyper;
         for (const s of [0, Math.PI]) {
           let pv = null;
           for (let j = 0; j <= 16; j++) {
-            const h = j / 16 * 3.6, ang = a.t * (fz ? 8 : 5) + s + j * 0.6;
+            const h = Math.max(0.1, t1.y - 1.8) + j / 16 * 3.6, ang = a.t * (fz ? 8 : 5) + s + j * 0.6;
             const p = t3.set(t1.x + Math.cos(ang) * 1.3, h, t1.z + Math.sin(ang) * 1.3);
             if (pv) seg(pv, p, 0.1, s ? WHITE : col, (s ? 0.8 : 1.4) * k);
             pv = t4.copy(p);
           }
         }
         if (Math.random() < 0.5) spawn(t5.set(t1.x + rnd(-1, 1), 0.3, t1.z + rnd(-1, 1)), _pv.set(0, rnd(2, 4), 0), col, 0.3, 0.8, G.dot);
+        // frenzy runs hotter: embers off you and a ring at your feet that beats like a pulse
+        if (fz) {
+          if (!reduce && Math.random() < 0.6) spawn(t5.set(t1.x + rnd(-0.9, 0.9), t1.y + rnd(-0.6, 0.8), t1.z + rnd(-0.9, 0.9)), _pv.set(rnd(-0.5, 0.5), rnd(2.5, 4.5), rnd(-0.5, 0.5)), Math.random() < 0.4 ? EMBER : col, 0.32, 0.7, G.ember, { drag: 1 });
+          const beat = Math.pow(0.5 + 0.5 * Math.sin(a.t * 9), 3);
+          circle(t5.copy(t1).setY(0.08), UP, 1.5 + beat * 0.3, 0.07, col, (0.5 + beat * 0.9) * k, 28);
+        }
       } else if (a.name === 'split') {
         P(cs, 'pos', t1);
-        const col = C('#d6b8ff');
+        const col = AU.split;
         a.ghosts.forEach((g, i) => {
           if (!g) return;
           const side = i ? 1 : -1;
@@ -2277,11 +2289,11 @@ Combat.FX = (() => {
           const pts = (a.pts ||= Array.from({ length: 6 }, () => new V()));
           [[0, r * 1.5, 0], [0, -r * 1.5, 0], [r, 0, 0], [-r, 0, 0], [0, 0, r], [0, 0, -r]].forEach(([x, y, z], n) => pts[n].set(t2.x + x * Math.cos(spin) - z * Math.sin(spin), t2.y + y, t2.z + x * Math.sin(spin) + z * Math.cos(spin)));
           for (const [p, q] of [[0, 2], [0, 3], [0, 4], [0, 5], [1, 2], [1, 3], [1, 4], [1, 5], [2, 4], [4, 3], [3, 5], [5, 2]]) seg(pts[p], pts[q], 0.06, col, (0.9 + 0.3 * Math.sin(a.t * 11 + i)) * k);
-          seg(t1.clone().setY(0.6), t2, 0.03, col, 0.35 * k);
+          seg(t6.copy(t1).setY(0.6), t2, 0.03, col, 0.35 * k);
         });
       } else if (a.name === 'root') {
         P(tg, 'pos', t1);
-        const col = C('#ffc46b');
+        const col = AU.root;
         const S = sizeOf(tg) / 6;
         t2.subVectors(camera.position, t1).normalize();
         circle(t1, t2, 2.6 * S, 0.12 * S, col, 0.9 * k, 32, a.t * 2, 0.2);
