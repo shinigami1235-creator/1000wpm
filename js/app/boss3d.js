@@ -1123,6 +1123,18 @@ window.BossScene = (() => {
     const bF = new V(), bS = new V(), tB = new V(), dY = new V(0, 1, 0), dD = new V();
     function bossFrame() { const a = root.rotation.y; bF.set(Math.sin(a), 0, Math.cos(a)); bS.set(bF.z, 0, -bF.x); }
     function toBoss(y) { return tB.copy(root.position).sub(y).setY(0).normalize(); }
+    // the dodge shot's side: +1 or -1 across tB, whichever puts the camera further from the nearest squad bot
+    let dodgeSide = 0;
+    const sideV = new V();
+    function clearSide(y) {
+      let best = 1, bestD = -1;
+      for (const sd of [1, -1]) {
+        sideV.copy(y).addScaledVector(tB, -2.6); sideV.x += tB.z * 3.6 * sd; sideV.z -= tB.x * 3.6 * sd;
+        let near = Infinity; for (let i = 0; i < RAID; i++) near = Math.min(near, raidPos[i].distanceTo(sideV));
+        if (near > bestD) { bestD = near; best = sd; }
+      }
+      return best;
+    }
     // how far back to stand so a thing h tall fills size of the frame's height
     const fitD = (h, size, fov) => (h * 0.5 / size) / Math.tan(THREE.MathUtils.degToRad(fov / 2));
     let bossHt = 0; const bossBox = new THREE.Box3();
@@ -1193,10 +1205,14 @@ window.BossScene = (() => {
         back: { pri: 2, parts: [BACK_LOW, SHOULDER] },
         block: { pri: 3, parts: [CLASH, WIDE_HIT] },
         // beside your bot as the shot passes: the dodge of the hit that's coming, so it may play during it
+        // (polish 28 Nov: further back and higher, on the side of your bot with no squad mate beside it, so your bot
+        // no longer fills a third of the screen and neither the boss's glowing arm reaching for it nor a squad
+        // mate's bot passes right by the lens)
         dodge: { pri: 3, duringThreat: true, parts: [P((u, o, l) => {
           const y = raidPos[RAID]; toBoss(y);
-          o.copy(y).addScaledVector(tB, -1.2 - 0.8 * u); o.x += tB.z * 3.2; o.z -= tB.x * 3.2; o.y = y.y + 0.4; l.copy(y).lerp(anchorCore, 0.15); },
-          { len: 0.8, slow: 0.8, cut: 1, omega: 12, fov: 36, frame: ['face', 0.3, 0], face: 1 })] },
+          if (u < 0.05 || !dodgeSide) dodgeSide = clearSide(y);
+          o.copy(y).addScaledVector(tB, -2.6 - 0.6 * u); o.x += tB.z * 3.6 * dodgeSide; o.z -= tB.x * 3.6 * dodgeSide; o.y = y.y + 1.7; l.copy(y).lerp(anchorCore, 0.18); },
+          { len: 0.8, slow: 0.8, cut: 1, omega: 12, fov: 40, frame: ['face', 0.3, 0], face: 1 })] },
         // from the floor in front of it, craning up and back
         scale: { pri: 3, parts: [P((u, o, l) => {
           bossFrame(); const H = bossH(), d = fitD(H, 1.5, 40) + (fitD(H, 0.85, 40) - fitD(H, 1.5, 40)) * smooth(u);
