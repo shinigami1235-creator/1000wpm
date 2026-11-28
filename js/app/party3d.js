@@ -101,7 +101,8 @@ window.PartyScene = (() => {
     }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(1.5, devicePixelRatio || 1));
+    const basePR = Math.min(1.5, devicePixelRatio || 1);
+    renderer.setPixelRatio(basePR);
     // draw calls are counted over the whole frame (every pass), for tests
     renderer.info.autoReset = false;
     const gl = renderer.info;
@@ -1039,8 +1040,10 @@ window.PartyScene = (() => {
     const SN = 50;
     const puffs = Array.from({ length: SN }, () => { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#7d888c', transparent: true, depthWrite: false, opacity: 0 })); m.visible = false; m.renderOrder = 4; scene.add(m); return { s: m, v: new V(), life: 0, max: 1, size: 1, op: 0.5 }; });
     let sI = 0;
+    let smokeK = 1;   // adaptive quality halves the smoke on a slow device
     function smoke(at, n, speed, o = {}) {
       if (reduce) n = Math.ceil(n / 2);
+      n = Math.ceil(n * smokeK);
       for (let k = 0; k < n; k++) {
         const p = puffs[sI = (sI + 1) % SN];
         p.s.position.copy(at).add(v4.set(rnd(-0.6, 0.6), rnd(0, 0.3), rnd(-0.6, 0.6)));
@@ -1327,6 +1330,13 @@ window.PartyScene = (() => {
     // compile every shader now, hidden pooled effects included, so the first hit, spell or status
     // effect in a fight doesn't stall a frame while its shader compiles
     try { renderer.compile(scene, camera); } catch (e) {}
+    // adaptive quality (28 Nov 2026 lag check: Party dipped to 48 fps on Intel graphics): resolution drops
+    // first, then the bloom and half the smoke, and they come back once frames are fast again
+    const aq = window.AdaptiveQuality && !window.__partyFull ? AdaptiveQuality.create({ key: 'wpm-party', fps: 60, minScale: 0.6, minDetail: 0.4,
+      onScale: k => { renderer.setPixelRatio(basePR * k); composer.setPixelRatio(basePR * k); fit(); },
+      onDetail: d => { bloom.enabled = d > 0.55 && aq.level !== 'low'; smokeK = d > 0.7 ? 1 : 0.5; } }) : null;
+    if (aq) { aq.loading(); aq.watch(renderer.domElement); aq.apply(); if (aq.level === 'low') bloom.enabled = false; }
+    let aqLoaded = false;
     let loopErr = 0;
     renderer.setAnimationLoop(() => { try { frame(); } catch (e) { if (loopErr++ < 3) console.error('arena frame', e); } });
     function frame() {
@@ -1414,11 +1424,12 @@ window.PartyScene = (() => {
       if (Math.abs(camera.zoom - zoom) > 0.001) { camera.zoom = zoom; camera.updateProjectionMatrix(); }
       if (!dieT && cre && !teamWon) holder.visible = !lineupNow();
       composer.render();
+      if (aq) { if (!aqLoaded) { aqLoaded = true; aq.loaded(); } aq.frame(performance.now()); }
       if (opts.onFrame) opts.onFrame();
     }
 
     function dispose() {
-      renderer.setAnimationLoop(null);
+      renderer.setAnimationLoop(null); if (aq) aq.dispose();
       for (const m of team.values()) m.f.dispose(); team.clear(); later.length = 0;
       if (fx) fx.dispose();
       ro.disconnect(); io.disconnect();
