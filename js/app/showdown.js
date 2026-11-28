@@ -294,11 +294,11 @@ window.Showdown = (() => {
         if (!clean) num(i, 'Chain broken', 'miss');
       }
       s.lastAt = t; s.typed = ''; s.wclean = true;
-      if (s.od.due && odSpells[m.round]) { s.sw = true; if (i === me) banner(`Special: ${Combat.spell(odSpells[m.round]).word}`, 'od', 1100); }
+      if (s.od.due && odSpells[m.round]) { s.sw = true; if (i === me) banner(`Special: ${Combat.spell(odSpells[m.round]).word}`, 'od', 900); }
       const tier = R.odTier(s.od), up = tier > s.odTier;
       s.odTier = tier;
       scene.overdrive(i, { n: s.od.clean + (s.od.special && s.od.special.ok ? 1 : 0), tier, up, clean, chain: s.od.chain, acc: R.odAcc(s.od) });
-      if (up) num(i, `Overdrive ${tier}`, 'od');
+      if (up) num(i, `OD${tier}`, 'od');
       if (i === me) paintWords();
       return clean ? 'word' : 'miss';
     }
