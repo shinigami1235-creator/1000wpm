@@ -1032,6 +1032,7 @@ window.DuelScene = (() => {
         struggle.through = win; struggle.xT = win ? 0.02 : 0.98; struggle.cut[lose] = true; struggle.heat = 1;
         xs('beamRelease', 0.6);
         if (struggle.loop) { struggle.loop.stop(); struggle.loop = null; }
+      if (dsfx) dsfx.dispose();
       });
       after(0.9, () => {
         lock.done = true;
@@ -1150,7 +1151,7 @@ window.DuelScene = (() => {
         g.size = o.orb ? size * (1.1 + tier * 0.25) : size; g.spin = 0; g.t = 0; g.on = true; g.flick = !!o.flick;
         if (g.tail) { g.tail.core.visible = g.tail.glow.visible = false; g.tail = null; }
         if (o.orb && k === 0) { const T2 = tails[tI = (tI + 1) % tails.length]; for (const x of glyphs) if (x.tail === T2) x.tail = null; g.tail = T2; T2.core.material.color.copy(col).lerp(WHITE, 0.5).multiplyScalar(1.4); T2.glow.material.color.copy(col).multiplyScalar(0.8); }
-        g.cb = order === n - 1 ? () => { if (how.lock && !how.lock.done) { how.lock.lands.push({ from, fn: landFn }); return; } if (how.deflect) deflectAt(to, col, onLand, { how, ward: how.ward }); else landFn(); } : () => { if (!how.deflect && !o.land && !how.lock) tick(to, col); };
+        g.cb = order === n - 1 ? () => { if (how.lock && !how.lock.done) { how.lock.lands.push({ from, fn: () => (how.deflect ? deflectAt(to, col, onLand, { how, ward: how.ward }) : landFn()) }); return; } if (how.deflect) deflectAt(to, col, onLand, { how, ward: how.ward }); else landFn(); } : () => { if (!how.deflect && !o.land && !how.lock) tick(to, col); };
         g.from = from; g.hide = false;
       }
       if (o.dodge && F[to].bf) {
@@ -2201,6 +2202,7 @@ window.DuelScene = (() => {
 
     function dispose() {
       alive = false;
+      if (struggle.loop) { struggle.loop.stop(); struggle.loop = null; }
       F.forEach(f => { if (f.op) f.op.dispose(); if (f.bf) f.bf.dispose(); });
       renderer.setAnimationLoop(null);
       if (arena) arena.dispose();
