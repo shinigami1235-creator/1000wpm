@@ -555,6 +555,8 @@ window.SuperScene = (() => {
       if (!snap || !snap.targets) return Infinity;
       let m = Infinity;
       for (const x of snap.targets) if (THREAT.has(x.kind) && x.left != null) m = Math.min(m, x.left - (nowMs - snapAt));
+      // the streamer's page fights on one line (InlineLine): its specials are in line.tags, not in targets
+      if (snap.line && snap.line.tags) for (const g of snap.line.tags) if (g && g.first && THREAT.has(g.kind) && g.ms) m = Math.min(m, g.ms - g.el - (nowMs - snapAt));
       return m === Infinity ? Infinity : dirT + Math.max(0, m) / 1000;
     }
     function fit() {

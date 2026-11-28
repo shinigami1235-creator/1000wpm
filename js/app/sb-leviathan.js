@@ -235,7 +235,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
         float dark = smoothstep(1.0, 0.0, r) * 0.6;
         float wob = sin(a * 5.0 + uT * 2.0) * 0.04 + sin(a * 11.0 - uT * 3.0) * 0.025;
         float rim = exp(-pow((r - 0.78 - wob) / 0.07, 2.0)) * (0.55 + 0.45 * sin(a * 7.0 - uT * 4.0 + sin(a * 3.0) * 2.0));
-        vec3 c = mix(vec3(0.0, 0.02, 0.03), uC * 1.6, clamp(foam + bub + rim, 0.0, 1.0)) + uHot * smoothstep(0.8, 0.0, r) * 0.25 * (0.6 + 0.4 * sin(uT * 14.0));
+        vec3 c = mix(vec3(0.0, 0.02, 0.03), uC * 1.1, clamp(foam + bub + rim, 0.0, 1.0)) + uHot * smoothstep(0.8, 0.0, r) * 0.25 * (0.6 + 0.4 * sin(uT * 14.0));
         gl_FragColor = vec4(c, clamp(dark + foam + bub * 0.8 + rim, 0.0, 1.0) * uA * smoothstep(1.0, 0.9, r)); }`,
     transparent: true, depthWrite: false,
   }));
@@ -243,10 +243,10 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   let spout = null;   // { t0, at, big }
   function burstWater(at, big, t) {
     spout = { t0: t, at: at.clone().setY(0), big };
-    K.fx.burst(v3.copy(at).setY(0.3), big ? 170 : 90, '#cfefff', { speed: big ? 17 : 12, up: 3, g: 16, life: 1.4, size: 0.5, spread: big ? 2.8 : 1.6, floor: 0.05 });
-    K.fx.burst(v3.copy(at).setY(1.0), big ? 50 : 20, '#ffffff', { speed: big ? 24 : 15, up: 5, g: 18, life: 1.0, size: 0.35, spread: 1, floor: 0.05 });
-    K.fx.shock(v3.copy(at).setY(0.08), C('#cfefff'), 1, big ? 15 : 9, 0.9, { w: 0.25 });
-    for (let k = 0; k < (big ? 4 : 2); k++) ripple(at, (big ? 7 : 4.5) + k * 2.2, 1.2 - k * 0.2, 1.6 + k * 0.3);
+    K.fx.burst(v3.copy(at).setY(0.3), big ? 140 : 80, C('#bfe8f4', 0.8), { speed: big ? 16 : 11, up: 3, g: 16, life: 1.3, size: 0.45, spread: big ? 2.4 : 1.4, floor: 0.05 });
+    K.fx.burst(v3.copy(at).setY(1.0), big ? 36 : 14, C('#ffffff', 0.8), { speed: big ? 22 : 14, up: 5, g: 18, life: 0.9, size: 0.3, spread: 1, floor: 0.05 });
+    K.fx.shock(v3.copy(at).setY(0.08), C('#9fdcea', 0.7), 1, big ? 11 : 7, 0.8, { w: 0.2, k: 0.7 });
+    for (let k = 0; k < (big ? 3 : 2); k++) ripple(at, (big ? 6 : 4) + k * 2.4, 0.9 - k * 0.2, 1.5 + k * 0.3);
   }
 
   // ---------- packets ----------
@@ -326,7 +326,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (how === 'cancel') { if (a.orb) { mouthW(v1); K.fx.burst(v1, 60, '#bfefff', { speed: 12, g: 2, life: 0.6, size: 0.35 }); K.fx.shock(v1, C('#3ee6ff'), 0.5, 7, 0.5, { flat: false, face: ctx.camPos }); a.orb.pop(); a.orb = null; } kbHV += 4; return; }
     if (a.kind === 'lunge') sfx('levStrike');
     if (a.kind === 'sweep') { sfx('levSweep'); a.tailFrom = (a.tailNow || a.tailUp).clone(); }
-    if (a.kind === 'breach') { a.emerge = new V(a.contact.x, 0, a.contact.z - (hit ? 4.2 : 3.4)); }
+    if (a.kind === 'breach') { a.emerge = new V(a.contact.x, 0, a.contact.z - (hit ? 5.2 : 4.2)); }
   }
   // the moment an attack lands: on Art's bot or on the barrier
   function contact(a, t) {
@@ -354,7 +354,12 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (n === 'windup' && (d.kind === 'lunge' || d.kind === 'sweep' || d.kind === 'breach')) startAtk(d.kind, d.ms, t);
     if (n === 'windup' && d.kind === 'spit') { spitT = t; orb = K.fx.orb(ctx.pal.a, out => mouthW(out)); orb.grow(0.6); }
     if ((n === 'block' || n === 'blockFail' || n === 'cancel') && atk && (d.attack === 'lunge' || d.attack === 'sweep' || d.attack === 'breach')) resolve(n, t);
-    if (n === 'packet' && d.id && pk.has(d.id) && d.returned) { const p = pk.get(d.id); p.back = t; p.from.copy(p.m.position); }
+    if (n === 'packet' && d.returned) {
+      // on the line the ids are ours, so the one sent back is the one nearest Art
+      let p = pk.get(d.id);
+      if (!p && lineMode) { let best = Infinity; for (const [, r] of pk) if (!r.back && r.left < best) { best = r.left; p = r; } }
+      if (p && !p.back) { p.back = t; p.from.copy(p.m.position); }
+    }
     if (n === 'weak' && d.hit && weakR.i >= 0) { segFlash[weakR.i] = 1; K.fx.burst(weakR.core.getWorldPosition(v1), 70, '#ffffff', { speed: 15, g: 6, life: 0.7, size: 0.35 }); K.fx.shock(v1, C('#ffffff'), 0.4, 3.5, 0.35, { flat: false, face: ctx.camPos, w: 0.2 }); }
     if (n === 'decoy' && decoyR.i >= 0) { segFlash[decoyR.i] = 1; K.fx.burst(decoyR.core.getWorldPosition(v1), 50, '#ff4d5e', { speed: 11, g: 4, life: 0.6, size: 0.35 }); }
     if (n === 'phase') {
@@ -378,9 +383,21 @@ SuperModels.leviathan = function (THREE, K, ctx) {
   function clearAtk() { if (atk) { if (atk.mark) atk.mark.off(); if (atk.orb) atk.orb.pop(); } atk = null; if (orb) { orb.pop(); orb = null; } }
 
   // targets from the snapshot: which segment is the weak point and which the decoy
+  // The streamer's page runs the fight on one line of words (InlineLine): its snapshot has no targets,
+  // and the specials live in s.line.tags instead (kind, ms, el). Read them there, with an id made from
+  // the kind and the total, which stays the same for as long as the special is lit.
+  let lineMode = false;
+  function fromLine(line) {
+    const out = [];
+    (line.tags || []).forEach(g => { if (g && g.first && g.ms) out.push({ id: 'L' + g.kind + g.ms, kind: g.kind, left: Math.max(0, g.ms - g.el), total: g.ms }); });
+    return out;
+  }
   function apply(s) {
     lastS = s;
-    const weak = s.targets.find(x => x.kind === 'weak'), decoy = s.targets.find(x => x.kind === 'decoy');
+    lineMode = !s.targets.length && !!s.line;
+    const tgs = lineMode ? fromLine(s.line) : s.targets;
+    if (lineMode) packets(tgs.filter(x => x.kind === 'packet'));
+    const weak = tgs.find(x => x.kind === 'weak'), decoy = tgs.find(x => x.kind === 'decoy');
     if (weak && weakI < 0) {
       // the segment nearest Art that is well out of the water
       let best = -1, bz = -1e9;
@@ -505,11 +522,11 @@ SuperModels.leviathan = function (THREE, K, ctx) {
         }
         // the sea under Art boils as it comes
         const bk = !a.done ? smooth((u - 0.3) / 0.6) : Math.max(0, 1 - (t - a.t1) * 5);
-        boil.visible = bk > 0.01; boilMat.uniforms.uA.value = bk; boilMat.uniforms.uT.value = t; boil.scale.setScalar(2.5 + bk * 3.2); boil.position.set(art.x, 0.05, art.z - 3.4);
+        boil.visible = bk > 0.01; boilMat.uniforms.uA.value = bk; boilMat.uniforms.uT.value = t; boil.scale.setScalar(2.5 + bk * 3.2); boil.position.set(art.x, 0.05, art.z - 4.6);
         if (!a.done && u > 0.3) {
-          if (Math.random() < dt * (14 + u * 50)) K.fx.spark(v5.set(art.x + rnd(-4, 4), 0.1, art.z - 3.4 + rnd(-4, 3)), v4.set(rnd(-0.6, 0.6), rnd(3, 8) * u, rnd(-0.6, 0.6)), C('#cfefff', 0.9), { size: 0.32, life: 0.55, g: 12, floor: 0.05 });
-          if (Math.random() < dt * (2 + u * 4)) ripple(v5.set(art.x + rnd(-2.5, 2.5), 0, art.z - 3.4 + rnd(-2, 2)), rnd(1.5, 3.5), 0.9, 0.9);
-          ctx.lightPool(5, v5.set(art.x, 0, art.z - 3.4), '#ff4d5e', 0.4 * u);
+          if (Math.random() < dt * (14 + u * 50)) K.fx.spark(v5.set(art.x + rnd(-4, 4), 0.1, art.z - 4.6 + rnd(-4, 3)), v4.set(rnd(-0.6, 0.6), rnd(3, 8) * u, rnd(-0.6, 0.6)), C('#cfefff', 0.9), { size: 0.32, life: 0.55, g: 12, floor: 0.05 });
+          if (Math.random() < dt * (2 + u * 4)) ripple(v5.set(art.x + rnd(-2.5, 2.5), 0, art.z - 4.6 + rnd(-2, 2)), rnd(1.5, 3.5), 0.8, 0.9);
+          ctx.lightPool(5, v5.set(art.x, 0, art.z - 4.6), '#ff4d5e', 0.4 * u);
         }
       } else if (a.kind === 'sweep') {
         look.copy(aimV); jawK = 0.4 + 0.3 * u; eyeK = 1 + 1.5 * u;
@@ -678,15 +695,15 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     ripples.instanceMatrix.needsUpdate = true; ripGeo.attributes.aAge.needsUpdate = true; ripGeo.attributes.aK.needsUpdate = true; ripGeo.attributes.aSeed.needsUpdate = true;
     ripMat.uniforms.uC.value.copy(ctx.pal.a).lerp(tmpC.set('#e8f8ff'), 0.6);
     if (spout) {
-      const u = (t - spout.t0) / (spout.big ? 1.6 : 1.0);
+      const u = (t - spout.t0) / (spout.big ? 1.2 : 0.8);
       if (u >= 1) { spout = null; column.visible = crown.visible = false; }
       else {
-        const H = (spout.big ? 12 : 6) * (u < 0.25 ? ease(u / 0.25) : 1 - easeIn((u - 0.25) / 0.75) * 0.7), A = u < 0.1 ? u / 0.1 : 1 - smooth((u - 0.35) / 0.65);
+        const H = (spout.big ? 8.5 : 4.5) * (u < 0.25 ? ease(u / 0.25) : 1 - easeIn((u - 0.25) / 0.75) * 0.7), A = u < 0.1 ? u / 0.1 : 1 - smooth((u - 0.35) / 0.65);
         column.visible = crown.visible = true;
         column.position.copy(spout.at); column.scale.set((spout.big ? 1.7 : 1.1) * (1 + u * 0.8), H, (spout.big ? 1.7 : 1.1) * (1 + u * 0.8));
         crown.position.copy(spout.at); crown.scale.set(1 + u * (spout.big ? 3 : 2), H * 0.28, 1 + u * (spout.big ? 3 : 2));
-        sprayMat.uniforms.uT.value = t; sprayMat.uniforms.uA.value = A * 0.75; crownMat.uniforms.uT.value = t * 0.7; crownMat.uniforms.uA.value = A * 0.8;
-        ctx.lightPool(4, v1.copy(spout.at).setY(4), '#cfefff', A * 1.2);
+        sprayMat.uniforms.uT.value = t; sprayMat.uniforms.uA.value = A * 0.5; crownMat.uniforms.uT.value = t * 0.7; crownMat.uniforms.uA.value = A * 0.55;
+        ctx.lightPool(4, v1.copy(spout.at).setY(4), '#cfefff', A * 0.8);
       }
     }
 
@@ -777,6 +794,6 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     props.userData.tick = (t, pal) => { lm.color.copy(pal.a).multiplyScalar(1.6 + Math.sin(t * 4) * 0.8); rk.userData.u.uSeam.value.copy(pal.a).multiplyScalar(0.35); };
   }
 
-  return { group, props, update, event, apply, packets, anchor, worldOf, attacker, subj, reset, dispose() {}, height: 15, width: 42, focus: new V(0, 6.5, -6), face: 'head',
+  return { group, props, update, event, apply, packets: (list, t) => { if (!lineMode) packets(list, t); }, anchor, worldOf, attacker, subj, reset, dispose() {}, height: 15, width: 42, focus: new V(0, 6.5, -6), face: 'head',
     info: () => ({ weakI, decoyI, frontI, atk: atk && atk.kind, tail: q[SEG - 1].toArray().map(x => +x.toFixed(1)), tt: atk && atk.tailNow ? atk.tailNow.toArray().map(x => +x.toFixed(1)) : null, done: !!(atk && atk.done), packets: pk.size, head: headPos.toArray().map(x => +x.toFixed(2)), mouth: mouthV.toArray().map(x => +x.toFixed(2)), aim: aimV.toArray().map(x => +x.toFixed(2)), ripples: aAge.filter(x => x < 1).length, spout: !!spout }) };
 };

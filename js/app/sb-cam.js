@@ -63,7 +63,7 @@ window.SuperCam = (() => {
       ] },
       // levBreach: the breach bursting out of the sea, side on at the waterline, in slow motion
       levBreach: { pri: 2, parts: [
-        { len: 1.0, cut: 1, slow: 0.5, fov: 44, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, Math.max(4, p.y), p.z); out.pos.set(p.x - 20 + c.u * 2, 1.6, p.z + 10); } },
+        { len: 1.0, cut: 1, slow: 0.5, fov: 44, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, Math.max(4, p.y), p.z); out.pos.set(p.x + 10 - c.u * 2, 1.5, p.z + 15); } },
       ] },
       // levKill: its last roar up close in slow motion, then wide and low on the water as it bursts and falls
       levKill: { pri: 5.5, free: true, parts: [
