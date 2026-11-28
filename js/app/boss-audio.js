@@ -30,7 +30,7 @@ window.BossAudio = (() => {
     // the arm cannon (28 Nov 2026): the charge rises under the music, the shot is a short hard crack
     cannonWind: 0.55, cannonFire: 0.9,
     // the beam face-off's one-shots (the drones and the struggle are in faceoff() below)
-    foStart: 0.8, foClash: 0.8, foEnd: 0.85, foWord: 0.5,
+    foStart: 0.8, foClash: 0.42, foEnd: 0.45, foWord: 0.5,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
   let on = true, want = -1, cur = null, fallback = null, token = 0;
@@ -485,13 +485,13 @@ window.BossAudio = (() => {
     function thump(t, k) {
       const o = c.createOscillator(), v = c.createGain(); o.type = 'sine';
       o.frequency.setValueAtTime(68, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.22);
-      v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(0.5 + 0.3 * k, t + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+      v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(0.42 + 0.2 * k, t + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
       o.connect(v).connect(g); o.start(t); o.stop(t + 0.3);
     }
     return {
       set(ph, ratio = 0, u = 0) {
         const r = Math.max(0, Math.min(1.5, ratio || 0)), t = c.currentTime;
-        if (ph !== phase) { phase = ph; if (ph === 'gather') ramp(g.gain, 1, 0.15); if (ph === 'clash') beatAt = t; }
+        if (ph !== phase) { phase = ph; if (ph === 'gather') ramp(g.gain, 0.5, 0.15); if (ph === 'clash') beatAt = t; }
         if (ph === 'gather' || ph === 'charge') {
           const k = ph === 'gather' ? 0.15 * u : 0.15 + 0.85 * u;
           boss.forEach((b, i) => { ramp(b.v.gain, 0.05 + 0.11 * k); ramp(b.o.frequency, (55 + 55 * k) * (i ? 1.014 : 1), 0.2); });
@@ -503,7 +503,7 @@ window.BossAudio = (() => {
         } else if (ph === 'clash') {
           const p = 0.5 + 0.3 * Math.tanh((r - 1) * 2.4);
           ramp(cb.frequency, 500 + 2400 * p, 0.06);
-          ramp(cg.gain, (0.18 + 0.2 * u) * (0.8 + 0.2 * Math.random()), 0.02);
+          ramp(cg.gain, (0.16 + 0.16 * u) * (0.8 + 0.2 * Math.random()), 0.02);
           boss.forEach(b => ramp(b.v.gain, 0.12)); team.forEach((x, i) => ramp(x.v.gain, [0.1, 0.07, 0.06][i]));
           // the heartbeat, from about 85 to 150 a minute
           if (t >= beatAt) { thump(t + 0.01, u); thump(t + 0.2, u * 0.7); beatAt = t + 60 / (85 + 65 * u); }
