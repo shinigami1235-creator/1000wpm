@@ -233,11 +233,17 @@ select.field { cursor: pointer; }
   .nav a { padding-left: 6px; padding-right: 6px; font-size: 14px; letter-spacing: .02em; }
   .logo small { display: none; }
 }
-/* ten nav items still fit on one line down to 1381px */
-@media (min-width: 1381px) and (max-width: 1600px) {
+/* eleven nav items, the streak, coins, sound and the operator fit on one line down to 1381px
+   once the nav is tighter and the operator shows only its picture (the name is on the profile) */
+@media (min-width: 1381px) and (max-width: 1800px) {
+  .top-in { gap: 12px; }
+  .top-right { gap: 6px; }
   .nav { gap: 0; }
   .nav a { padding-left: 4px; padding-right: 4px; font-size: 13px; letter-spacing: 0; }
+  .me { padding: 3px; }
+  .me span { display: none; }
 }
+@media (min-width: 1381px) and (max-width: 1440px) { .nav a { padding-left: 3px; padding-right: 3px; } }
 @media (max-width: 1380px) {
   .menu-btn { display: inline-grid; }
   .nav {

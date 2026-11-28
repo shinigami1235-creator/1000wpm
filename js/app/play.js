@@ -50,7 +50,7 @@ Router.register('play', (() => {
 
   function breach(host) {
     const panel = UI.el(`<section class="panel" aria-label="Breach">
-      <div class="game-bar"><p>Click the game and start typing.</p><button class="btn out" type="button" data-full>Full screen</button></div>
+      <div class="game-bar"><p>${matchMedia('(pointer: fine)').matches ? 'Click' : 'Tap'} the game and start typing.</p><button class="btn out" type="button" data-full>Full screen</button></div>
       <div class="breach-box" data-box tabindex="-1"></div>
     </section>`);
     host.append(panel);
