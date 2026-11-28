@@ -1,6 +1,6 @@
 // #/superboss: Art's live fights, made to stream. SUPERBOSS.md has the rules and the message format.
 //   #/superboss                          pick a boss and a difficulty
-//   #/superboss/stream/<boss>/<dial>     the streamer view: what Art plays and captures in OBS (16:9)
+//   #/superboss/stream/<boss>/<dial>     the streamer view: what Art plays and captures in OBS (fills the window)
 //   #/superboss/watch[/<boss>/<dial>]    the viewer view: the fight mirrored from the stream, chat and the support shop
 // The fight rules are in js/app/sb-fight.js, the 3D in sb-scene.js, the sound in sb-audio.js
 // and the stream messages, simulated chat and simulated viewers in sb-stream.js.
@@ -8,7 +8,7 @@
   const esc = s => UI.esc(s), fmt = n => UI.fmt(n);
   const clock = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
-  const opts = () => ({ slot: 'frame', reduceShake: false, duck: false, chat: true, ...(store('wpm-sb-opts') || {}) });
+  const opts = () => ({ slot: 'frame', reduceShake: false, duck: false, chat: true, cam: true, ...(store('wpm-sb-opts') || {}) });
   const saveOpts = o => store('wpm-sb-opts', o);
   const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const ITEM_GLYPH = { shield: '[#]', overclock: '>>>', heal: '+5%', slowmo: '|| ', hype: '/!\\', fog: '~~~', shuffle: '<->', speed: '>>|' };
@@ -17,7 +17,7 @@
 
   // ---------- the arena: 3D, HP, words, labels, ticker, alerts and the results card ----------
   // Both views build one and feed it snapshots and events; it never runs the fight.
-  function Arena(host, { mode, boss, onReady }) {
+  function Arena(host, { mode, boss, onReady, inset }) {
     host.innerHTML = `
       <section class="sb-arena" data-mode="${mode}" aria-label="Superboss fight">
         <div class="sb-loading">Loading</div>
@@ -59,7 +59,7 @@
     // the Hydra's heads in their colours in the arena (sb-scene.js)
     const OWN = { fork: Theme.hex('accent'), root: '#3ee6ff', patch: '#f2c230' };
     let dpsWin = [];
-    const scene = SuperScene.mount(root, { boss, onPop: pop, onFrame: frame, reduceShake: opts().reduceShake });
+    const scene = SuperScene.mount(root, { boss, onPop: pop, onFrame: frame, reduceShake: opts().reduceShake, inset });
     scene.ready.then(ok => { const l = root.querySelector('.sb-loading'); if (ok && l) l.remove(); if (onReady) onReady(); })
       .catch(() => { const l = root.querySelector('.sb-loading'); if (l) l.textContent = "The arena can't load without an internet connection."; });
     a('name').textContent = B.name;
@@ -539,6 +539,7 @@
           <div class="sb-arenabox" data-k="arena"></div>
           <aside class="sb-side" data-k="side" aria-label="Camera and chat"></aside>
           <button class="sb-exit" type="button" data-k="exit">Exit streamer mode</button>
+          <div class="sb-qt"><button type="button" data-k="qcam">Camera slot</button><button type="button" data-k="qchat">Chat</button></div>
         </div>
         <section class="sb-controls" aria-label="Stream settings">
           <div class="sb-crow">
@@ -553,6 +554,7 @@
             <label class="sb-field">Music <input type="range" min="0" max="1" step="0.05" data-k="music"></label>
             <label class="sb-field">Sound effects <input type="range" min="0" max="1" step="0.05" data-k="sfx"></label>
             <label class="sb-check"><input type="checkbox" data-k="shake"> Reduce shake</label>
+            <label class="sb-check"><input type="checkbox" data-k="camOn"> Show camera slot</label>
             <label class="sb-check"><input type="checkbox" data-k="chatOn"> Show chat</label>
             <button class="btn out sm" type="button" data-k="smode">Streamer mode</button>
           </div>
@@ -561,8 +563,12 @@
       </div>`;
     const q = k => el.querySelector(`[data-k="${k}"]`);
     const stage = q('stage');
-    const arena = Arena(q('arena'), { mode: 'stream', boss: B.id });
+    // the share of the width the camera slot and chat cover on the right, so the camera frames the boss beside them
+    let inset = 0;
+    const measure = () => { const w = stage.clientWidth; inset = w && (o.chat !== false || o.cam !== false) ? (q('side').offsetWidth + (parseFloat(getComputedStyle(q('side')).right) || 0)) / w : 0; };
+    const arena = Arena(q('arena'), { mode: 'stream', boss: B.id, inset: () => inset });
     const side = Side(q('side'), { mode: 'stream' });
+    const sro = new ResizeObserver(measure); sro.observe(stage);
     const sound = Sound();
     let fight, host, bc = SuperStream.broadcast(), raf = 0, last = 0, keys = null, recorded = false, camStream = null, micStream = null, botT = 0;
     // the fight's clock stops while the Esc menu is open (js/app/game-guard.js)
@@ -720,10 +726,14 @@
     q('sfx').addEventListener('input', e => SuperAudio.setVol({ sfx: +e.target.value }));
     q('shake').checked = !!o.reduceShake;
     q('shake').addEventListener('change', e => { o.reduceShake = e.target.checked; saveOpts(o); arena.setReduce(o.reduceShake); });
-    q('chatOn').checked = o.chat !== false;
-    const chatShow = on => { stage.classList.toggle('nochat', !on); o.chat = on; saveOpts(o); };
-    chatShow(o.chat !== false);
+    // the chat and the camera slot can each be hidden, remembered in this browser
+    const chatShow = on => { stage.classList.toggle('nochat', !on); o.chat = on; saveOpts(o); q('chatOn').checked = on; q('qchat').setAttribute('aria-pressed', on); measure(); };
+    const camShow = on => { stage.classList.toggle('nocam', !on); o.cam = on; saveOpts(o); q('camOn').checked = on; q('qcam').setAttribute('aria-pressed', on); measure(); };
+    chatShow(o.chat !== false); camShow(o.cam !== false);
     q('chatOn').addEventListener('change', e => chatShow(e.target.checked));
+    q('camOn').addEventListener('change', e => camShow(e.target.checked));
+    q('qchat').addEventListener('click', () => { chatShow(o.chat === false); keys.focus(); });
+    q('qcam').addEventListener('click', () => { camShow(o.cam === false); keys.focus(); });
     q('smode').addEventListener('click', () => streamerMode(!html.classList.contains('sb-streamer')));
     q('exit').addEventListener('click', () => streamerMode(false));
     q('restart').addEventListener('click', () => { newFight(); keys.focus(); });
@@ -746,6 +756,7 @@
       artHp: n => fight.debug.artHp(n), type: s => { for (const ch of s) fight.char(ch); },
       pause: on => arena.scene.pause(on), slow: k => arena.scene.slow(k), audio: () => SuperAudio.state(), render: (n, a2, s) => SuperAudio.render(n, a2, s), mix: t => SuperAudio.renderMix(t),
       camera: on => camera(on), streamer: on => streamerMode(on), slot: v => { q('slot').value = v; slot(v); },
+      showChat: on => chatShow(on), showCam: on => camShow(on), inset: () => inset,
       // a simulated typist for tests and screenshots
       bot: (wpm = 165) => {
         clearInterval(botT);
@@ -756,7 +767,7 @@
     };
     return () => {
       GameGuard.stop();
-      cancelAnimationFrame(raf); clearInterval(bg); clearInterval(botT);
+      cancelAnimationFrame(raf); clearInterval(bg); clearInterval(botT); sro.disconnect();
       document.removeEventListener('keydown', forward);
       document.removeEventListener('keydown', exitKey);
       removeEventListener('wpm-sound', snd);
