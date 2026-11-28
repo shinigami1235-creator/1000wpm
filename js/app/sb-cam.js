@@ -35,7 +35,8 @@ window.SuperCam = (() => {
       for (let k = 0; k < 2; k++) {
         tmp.lookAt(out.look); tmp.updateMatrixWorld();
         ndc.copy(p).project(tmp);
-        const ex = ndc.x < box[0] ? ndc.x - box[0] : ndc.x > box[1] ? ndc.x - box[1] : 0;
+        // sideways it only nudges (a quarter of the frame at most), so a bot at the edge of its patch never swings the boss out
+        const ex = Math.max(-0.25, Math.min(0.25, ndc.x < box[0] ? ndc.x - box[0] : ndc.x > box[1] ? ndc.x - box[1] : 0));
         const ey = ndc.y < box[2] ? ndc.y - box[2] : ndc.y > box[3] ? ndc.y - box[3] : 0;
         if (!ex && !ey) return;
         const d = out.pos.distanceTo(out.look), th = Math.tan(fov * D2R / 2);
@@ -76,7 +77,7 @@ window.SuperCam = (() => {
       out.look.set(fx, f.y - game.push * 0.6, fz).lerp(A, 0.12);
       out.fov = FOV - game.push * 3 + game.threat * 2;
       // the bot stays in the lower left third, above the word line (a boss may say where else: the Compiler's screen)
-      hold(out, A, [-0.45, -0.15, -0.06, 0.2], out.fov);
+      hold(out, A, [-0.55, 0.05, -0.06, 0.2], out.fov);
     }
     const H = () => (M() && M().height) || 16;
     const shots = {
@@ -129,7 +130,7 @@ window.SuperCam = (() => {
     Object.assign(shots, {
       // a block: a close side look at the weave in slow motion, then side on to the counter shot flying at the boss
       dodge: { pri: 3, parts: [
-        { len: 0.7, cut: 1, slow: 0.45, fov: 40, omega: 9, pose: (c, out) => { pair(P); out.pos.copy(B).addScaledVector(rt, 10).addScaledVector(fw, 2 + c.u * 0.8); out.pos.y = B.y + 1.2; out.look.copy(B).addScaledVector(fw, 2.6); } },
+        { len: 0.7, cut: 1, slow: 0.45, fov: 42, omega: 9, pose: (c, out) => { pair(P); out.pos.copy(B).addScaledVector(rt, 15).addScaledVector(fw, -1 + c.u * 0.8); out.pos.y = B.y + 2; out.look.copy(B).addScaledVector(fw, 4); } },
         { len: 1.1, cut: 1, fov: 44, omega: 6, pose: (c, out) => { const L = pair(P), d = (L * 0.62) / (Math.tan(22 * D2R) * (camera.aspect || 1.6)) + 4; v2.copy(Bg).lerp(v1.set(P.x, 0, P.z), 0.45); out.pos.copy(v2).addScaledVector(rt, d).addScaledVector(fw, -c.u * 1.5); out.pos.y = 3.5 + c.u * 0.5; out.look.copy(v2).setY((B.y + P.y) * 0.5); } },
       ] },
       // a new combo tier: a low push in on the bot as it flares, from in front and to its right

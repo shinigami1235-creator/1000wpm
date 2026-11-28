@@ -52,7 +52,7 @@ window.SuperBots = (() => {
     if (window.BotFighter && window.BotKit) {
       try {
         const b = BotKit.random('art');
-        bot = BotFighter.create(T3, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15, lite: true, roam: true });
+        bot = BotFighter.create(T3, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15, lite: true, roam: true, shieldK: 0.7 });
         scene.add(bot.group);
       } catch (e) { bot = null; }
     }
