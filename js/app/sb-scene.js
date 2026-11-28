@@ -412,6 +412,8 @@ window.SuperScene = (() => {
       // where an attack that lands should hit: the middle of Art's bot (it hovers about 2.6 up), or chest height
       // on the old marker. Gid, 28 Nov 2026: the hydra's beam was hitting the floor under the bot
       artAim: out => { if (artBot) { artBot.bot.body.getWorldPosition(out); return out; } return out.copy(artPos).setY(1.4); },
+      // a boss can ask the broadcast camera for its own shots (sb-cam.js); the director still turns down any that would hide an attack
+      want: (n, x) => cam.want(n, x),
     };
     const sup = SuperSupport.create(THREE, scene, K, { artPos, glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
     function mountModel(id) {
@@ -553,6 +555,8 @@ window.SuperScene = (() => {
       if (!snap || !snap.targets) return Infinity;
       let m = Infinity;
       for (const x of snap.targets) if (THREAT.has(x.kind) && x.left != null) m = Math.min(m, x.left - (nowMs - snapAt));
+      // the streamer's page fights on one line (InlineLine): its specials are in line.tags, not in targets
+      if (snap.line && snap.line.tags) for (const g of snap.line.tags) if (g && g.first && THREAT.has(g.kind) && g.ms) m = Math.min(m, g.ms - g.el - (nowMs - snapAt));
       return m === Infinity ? Infinity : dirT + Math.max(0, m) / 1000;
     }
     function fit() {
