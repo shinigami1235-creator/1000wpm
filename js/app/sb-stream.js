@@ -11,7 +11,7 @@
 window.SuperStream = (() => {
   const V = 1;
   const FORWARD = new Set(['countdown', 'go', 'hit', 'hurt', 'phase', 'enrage', 'finish', 'finishFail', 'win', 'lose', 'cast', 'fizzle', 'sever', 'regrow', 'neck',
-    'block', 'blockFail', 'windup', 'attack', 'cancel', 'compile', 'fix', 'order', 'line', 'weak', 'weakOpen', 'decoy', 'packet', 'support', 'hype', 'shielded',
+    'block', 'blockFail', 'windup', 'attack', 'cancel', 'compile', 'fix', 'order', 'line', 'weak', 'weakOpen', 'decoy', 'packet', 'support', 'drop', 'hype', 'shielded',
     'warded', 'tier', 'comboDrop', 'shuffle', 'cleanse', 'chaosEnd', 'offer', 'crowdGone', 'miss']);
   let seq = 0;
   const msg = (type, data, from) => ({ v: V, type, from, seq: ++seq, at: Date.now(), data });
@@ -93,7 +93,7 @@ window.SuperStream = (() => {
       if (n === 'fix' && rng() < 0.3) chat.react('fix', {}, 1, 0.3);
       if (n === 'weak' && d.hit) chat.react('weak', {}, 1, 1.2);
       if (n === 'decoy') chat.react('decoy', {}, 2, 1);
-      if (n === 'support') { const it = SuperData.item(d.id); chat.react(d.kind === 'chaos' ? 'chaos' : 'support', { who: d.buyer, item: it ? it.name.toLowerCase() : d.id }, 2, 1.5); }
+      if (n === 'drop' || (n === 'support' && d.kind === 'chaos')) { const it = SuperData.item(d.id); chat.react(d.kind === 'chaos' ? 'chaos' : 'support', { who: d.buyer, item: it ? it.name.toLowerCase() : d.id }, 2, 1.5); }
       if (n === 'hype') chat.react('hype', {}, 4, 4);
       if (n === 'finish') { chat.react('finish', {}, 4, 5); bump(0.03); }
       if (n === 'win') { chat.react('win', {}, 8, 8); bump(0.06); }

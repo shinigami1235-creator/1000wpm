@@ -275,7 +275,7 @@
       if (n === 'finishFail') banner('Too slow', 'It healed to 12% HP.', 'enrage', 2000);
       if (n === 'neck' && d.on) banner('Neck open', 'Core words deal triple damage for 5 seconds.', 'phase', 1600);
       if (n === 'hype' && d.full) { const sp = Combat.spell(d.spell); banner('Hype train', `The crowd gave Art ${sp ? sp.word : 'a spell'}. Type it to cast it.`, 'hype', 2400); }
-      if (n === 'support') alert(d);
+      if (n === 'drop' || (n === 'support' && !d.drop)) alert(d);   // a support item alerts as it drops, chaos as it lands
       if (n === 'go') { lastPhase = 1; enrageShown = false; }
       // big callouts on the moments that matter: a block, an interrupt, a hit on Art
       if (n === 'block') call('BLOCKED', 'block', 'art');
@@ -452,7 +452,8 @@
         case 'weakOpen': A.play('weakOpen'); break;
         case 'decoy': A.play('decoy'); break;
         case 'packet': if (!d.returned) A.play('packetHit'); break;
-        case 'support': A.play(d.kind === 'chaos' ? 'chaos' : 'support'); break;
+        case 'drop': A.play('support'); break;
+        case 'support': if (!d.drop) A.play(d.kind === 'chaos' ? 'chaos' : 'support'); else if (!d.late) A.play('pickup'); break;
         case 'hype': if (d.full) A.play('hype'); break;
         case 'phase': A.play('phase'); A.bed(boss, d.n); break;
         case 'enrage': A.play('enrage'); A.enrage(); break;

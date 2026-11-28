@@ -362,30 +362,13 @@ window.SuperScene = (() => {
     const artPos = new V(0, 0.9, 15);
     const fx = window.Combat && Combat.FX ? Combat.FX.create(THREE, scene, camera, { glowTex, calm: false, reduce: motionOff, pixelHeight: () => renderer.domElement.height, juice }) : null;
     const caster = { pos: out => artFrom(out) };   // spell-fx: spells leave Art's bot, where his shots do
-    // Art fights through his bot (Gid, 27 Nov 2026), the one he brings to a Duel (Showdown.botFor): the
-    // bot seeded from 'art', in his cyan. It stood here as a spinning cube before. It moves on his typing
-    // like the bots in Duel and Party: a spark per right key, a strike per word, a spell lifts it.
-    let artBot = null, artKeys = 0;
-    if (window.BotFighter && window.BotKit) {
-      try {
-        const b = BotKit.random('art');
-        artBot = BotFighter.create({ ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, b.id, { ...b.look, color: '#3ee6ff', name: 'Art' }, { gap: 8, scale: 1.15, lite: true });   // lite: no clear coat, so the extra bot costs next to nothing
-        artBot.group.position.set(artPos.x, 0, artPos.z); artBot.group.rotation.y = Math.PI;
-        scene.add(artBot.group);
-      } catch (e) { artBot = null; }
-    }
+    // Art fights through his bot (Gid, 27 Nov 2026), the one he brings to a Duel: the bot seeded from 'art', in his
+    // cyan. sb-bots.js flies it round his side of the arena on his typing (28 Nov 2026: "Art's bot is flitting around
+    // as well, not stationary"), and brings in the viewers' bots and the items they drop. artPos follows it on the floor,
+    // so every boss's aim, floor marks and support effects track where it is.
+    let bots = null, artBot = null;
     // where Art's shots leave: his bot's muzzle, or just above his spot
-    const artFrom = out => (artBot ? artBot.muzzle(out) : out.copy(artPos).setY(artPos.y + 0.8));
-    function artReact(n, d) {
-      if (n === 'key') { if (d.good) { artKeys++; artBot.key(d.finish ? 1 : artKeys / (artKeys + 4)); } else artBot.typo(); }
-      if (n === 'hit' && d.src !== 'spell' && d.src !== 'sever') { artBot.attack(Math.max(0, Math.min(3, (d.tier || 1) - 1))); artKeys = 0; }
-      if (n === 'cast') { artBot.spell(); artKeys = 0; }
-      if (n === 'hurt') artBot.hit(v4.set(0, 0, -1), d.amount >= 12 ? 1.2 : 0.6);
-      if (n === 'block') artBot.block();
-      if (n === 'win') artBot.victory();
-      if (n === 'lose') artBot.ko();
-    }
-
+    const artFrom = out => (bots ? bots.muzzle(out) : out.copy(artPos).setY(artPos.y + 0.8));
     // ---------- the bosses ----------
     const clock = { t: 0 };
     let snap = null, phase = 1, dead = false, deadT = 0, lost = false, finishing = false, enraged = false;
@@ -408,14 +391,27 @@ window.SuperScene = (() => {
       put: (p, sx, sy, sz, rx, ry, rz, c, k) => put(p, sx, sy, sz, rx, ry, rz, c, k),
       sfx: (n, a) => { if (opts.sfx !== false && window.SuperAudio) SuperAudio.play(n, a); },
       // where a blocked attack stops: Art's barrier, a little in front of him
-      shieldAt: out => out.set(artPos.x, 2.2, artPos.z - 3.2),
+      shieldAt: out => (bots ? bots.shieldAt(out) : out.set(artPos.x, 2.2, artPos.z - 3.2)),
       // where an attack that lands should hit: the middle of Art's bot (it hovers about 2.6 up), or chest height
       // on the old marker. Gid, 28 Nov 2026: the hydra's beam was hitting the floor under the bot
-      artAim: out => { if (artBot) { artBot.bot.body.getWorldPosition(out); return out; } return out.copy(artPos).setY(1.4); },
+      artAim: out => (bots ? bots.aim(out) : out.copy(artPos).setY(1.4)),
       // a boss can ask the broadcast camera for its own shots (sb-cam.js); the director still turns down any that would hide an attack
       want: (n, x) => cam.want(n, x),
+      // a boss tells the bots which look an attack takes (a beam or a volley, a slam or a lunge), so the bot weaves to fit
+      variant: (attack, v) => { if (bots) bots.variant(attack, v); },
     };
-    const sup = SuperSupport.create(THREE, scene, K, { artPos, glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
+    const sup = SuperSupport.create(THREE, scene, K, { artPos, yaw: () => (bots ? bots.yaw() : Math.PI), glitch: (k, s2) => juice.glitch(k, s2), tint: (h, k) => juice.tint(h, k), now: () => clock.t });
+    if (window.SuperBots) {
+      try {
+        bots = SuperBots.create(THREE, scene, K, { three: { ...THREE, RoundedBoxGeometry: ext && ext.RoundedBox }, artPos, fx, host,
+          focus: out => out.copy(model && model.focus ? model.focus : anchors.core),
+          // a tall boss (the Compiler) has the bots fly higher, so the camera can look up at both
+          liftK: () => Math.max(0, ((model && model.height) || 16) - 16) * 0.25,
+          target: (out, i) => worldOf(i % 3 === 2 ? 'body' : 'core', out),
+          sfx: (n, a) => mctx.sfx(n, a) });
+        artBot = bots.art;
+      } catch (e) { bots = null; }
+    }
     function mountModel(id) {
       if (model) { scene.remove(model.group, model.props); model.dispose(); }
       if (release) release();
@@ -548,7 +544,7 @@ window.SuperScene = (() => {
     // ---------- camera ----------
     // the broadcast camera: CamDirector plays the shots in sb-cam.js. dirSlow is the slow motion a shot asks for
     let dirSlow = 1, dirSlowUntil = 0, snapAt = 0, dirT = 0;
-    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, art: out => out.copy(artPos), setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
+    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, art: out => (bots ? bots.subject(out) : out.copy(artPos).setY(3.2)), chase: () => (bots ? bots.chase() : null), setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
     // the next moment an attack at Art lands, in real seconds: no cutaway may hide one
     const THREAT = new Set(['block', 'packet', 'weak', 'decoy', 'fix']);
     function threatAt(nowMs) {
@@ -559,6 +555,7 @@ window.SuperScene = (() => {
       if (snap.line && snap.line.tags) for (const g of snap.line.tags) if (g && g.first && THREAT.has(g.kind) && g.ms) m = Math.min(m, g.ms - g.el - (nowMs - snapAt));
       return m === Infinity ? Infinity : dirT + Math.max(0, m) / 1000;
     }
+    const threatIn = nowMs => { const a = threatAt(nowMs); return a === Infinity ? Infinity : a - dirT; };
     function fit() {
       const w = host.clientWidth || 800, h = host.clientHeight || 600;
       renderer.setSize(w, h, false);
@@ -581,7 +578,7 @@ window.SuperScene = (() => {
       return out;
     }
     function anchor(key, out = {}) {
-      if (key === 'art') return proj(v1.copy(artPos).setY(artPos.y + 1), out);
+      if (key === 'art') return proj(bots ? bots.aim(v1).setY(v1.y + 1.4) : v1.copy(artPos).setY(artPos.y + 1), out);
       if (model) { const w = model.anchor(key, v1); if (w) return proj(w, out); if (key.startsWith('head:')) return null; }
       if (key === 'seg:front') return proj(v1.copy(segPos[weakI >= 0 ? weakI : frontI]).setY(segPos[weakI >= 0 ? weakI : frontI].y + 3.4), out);
       if (key === 'seg:far') return proj(v1.copy(segPos[decoyI >= 0 ? decoyI : 12]).setY(segPos[decoyI >= 0 ? decoyI : 12].y + 3.4), out);
@@ -683,14 +680,19 @@ window.SuperScene = (() => {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (model) model.event(n, d, t);
       sup.event(n, d);
-      if (artBot) artReact(n, d);
-      if (n === 'key' && d.finish && d.good && model) { model.anchor('core', v1); K.fx.beam(v2.copy(artPos).setY(2), v1, '#ffffff', 0.18, 0.12, { grow: 0.06 }); K.fx.burst(v1, 8, '#ffffff', { speed: 6, g: 2, life: 0.35, size: 0.3 }); }
-      if (n === 'countdown') cam.want('intro');
+      if (bots) bots.event(n, d, snap);
+      if (n === 'key' && d.finish && d.good && model) { model.anchor('core', v1); K.fx.beam(artFrom(v2), v1, '#ffffff', 0.18, 0.12, { grow: 0.06 }); K.fx.burst(v1, 8, '#ffffff', { speed: 6, g: 2, life: 0.35, size: 0.3 }); }
+      if (n === 'countdown') { cam.want('intro'); if (bots) bots.clear(); }
       if (n === 'phase') cam.want('phase', model && model.face ? model.face : 'core');
       if (n === 'sever') cam.want('sever', d.head);
       if (n === 'neck' && d.on) cam.want('neck');
       if (n === 'weak' && d.hit) cam.want('weak');
       if (n === 'win') cam.want('kill');
+      // the bots' shots: the weave past a blocked attack, a new combo tier, a big hit, the run to a dropped item
+      if (n === 'block') cam.want('dodge');
+      if (n === 'tier' && d.tier >= 2) cam.want('power');
+      if (n === 'hit' && d.src !== 'spell' && ((d.crit && (d.tier || 0) >= 3) || d.src === 'counter')) cam.want('hero');
+      if (n === 'drop' && d.kind === 'support' && d.ms >= 1400) cam.want('chase', null, Math.min(2.6, d.ms / 1000 - 0.15));
       if (n === 'hit') {
         const crit = !!d.crit, big = d.src === 'sever' || d.src === 'weak' || (d.src === 'spell' && d.last);
         const land = () => {
@@ -724,11 +726,11 @@ window.SuperScene = (() => {
         juice.shake(heavy ? 0.9 : 0.4); juice.stop(heavy ? 120 : 60); juice.tint('#ff4d5e', heavy ? 0.9 : 0.5); kick = heavy ? 2.4 : 1.2;
         juice.glitch(heavy ? 0.6 : 0.25, heavy ? 0.4 : 0.2);
         if (heavy && canFlash()) flashAmt = 0.35;
-        flare(v1.copy(artPos).setY(1.5), C('#ff4d5e'), heavy ? 8 : 4, 0.35);
+        flare((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), C('#ff4d5e'), heavy ? 4.5 : 2.6, 0.3);
         wave(v1.copy(artPos).setY(0.15), C('#ff4d5e'), 1, heavy ? 13 : 7, 0.55);
-        shed(v1.copy(artPos).setY(1.2), heavy ? 22 : 8, C('#ff4d5e'), heavy ? 1.6 : 1, 0.5);
+        shed((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), heavy ? 22 : 8, C('#ff4d5e'), heavy ? 1.6 : 1, 0.5);
       }
-      if (n === 'block' || n === 'shielded' || n === 'warded') { wave(v1.copy(artPos).setY(0.15), C(n === 'shielded' ? '#f2c230' : '#3ee6ff'), 1, 7, 0.45); flare(v1.copy(artPos).setY(1.6), C('#bfefff'), 4, 0.25); }
+      if (n === 'block' || n === 'shielded' || n === 'warded') { wave(v1.copy(artPos).setY(0.15), C(n === 'shielded' ? '#f2c230' : '#3ee6ff'), 1, 7, 0.45); flare((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), C('#bfefff'), 2.2, 0.22); }
       if (n === 'sever') { juice.shake(0.5); juice.stop(90); }
       if (n === 'neck') { if (d.on) { juice.shake(0.4); wave(v1.copy(anchors.core), C('#ffffff'), 1, 14, 0.7, false); } }
       if (n === 'windup') {
@@ -746,8 +748,8 @@ window.SuperScene = (() => {
         juice.shake(0.35); juice.stop(70);
         if (canFlash()) flashAmt = Math.max(flashAmt, 0.3);
         wave(v1.copy(artPos).setY(0.15), C('#3ee6ff'), 1, 14, 0.6);
-        wave(v1.copy(artPos).setY(1.4), C('#bfefff'), 0.5, 6, 0.4, false);
-        shed(v1.copy(artPos).setY(1.4), 16, C('#3ee6ff'), 1.4, 0.45);
+        wave((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), C('#bfefff'), 0.4, 3.2, 0.35, false);
+        shed((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), 16, C('#3ee6ff'), 1.4, 0.45);
         attackerPos(d.attack, d.owner, v4);
         const tgt = new V().copy(v4), back = () => { knock(2.6); recoil = 1; hitGlow = 1; flare(tgt, C('#ffffff'), 7, 0.3); shed(tgt, 18, C('#3ee6ff'), 1.5, 0.6); if (bossId === 'leviathan') segKick.fill(1.2, 1, 6); };
         if (fx) fx.shot(model ? 2 : 4, artFrom(new V()), out => out.copy(tgt), back, { color: '#3ee6ff', dur: 0.2 }); else back();
@@ -778,7 +780,7 @@ window.SuperScene = (() => {
       if (n === 'finishFail') { juice.shake(0.5); juice.tint('#ff4d5e', 1); }
       if (n === 'win') { dead = true; deadT = 0; juice.shake(0.9); juice.stop(160); if (canFlash()) flashAmt = 1; shed(anchors.core, 40, C('#ffffff'), 2, 1); juice.dim(0, 0.1); }
       if (n === 'lose') { juice.tint('#ff4d5e', 1); juice.glitch(1, 1.5); juice.dim(0.5, 3); }
-      if (n === 'support') { const c = d.kind === 'chaos' ? C('#ff4da6') : C('#f2c230'); wave(v1.copy(artPos).setY(0.2), c, 1, 9, 0.6); flare(v1.copy(artPos).setY(2.4), c, 5, 0.35); }
+      if (n === 'support') { const c = d.kind === 'chaos' ? C('#ff4da6') : C('#f2c230'); wave(v1.copy(artPos).setY(0.2), c, 1, 9, 0.6); flare((bots ? bots.aim(v1) : v1.copy(artPos).setY(1.5)), c, 2, 0.25); }
       if (n === 'decoy') { if (decoyI >= 0) segFlash[decoyI] = 1; juice.tint('#ff4d5e', 0.6); }
       if (n === 'weak' && !d.hit) weakI = -1;
       if (n === 'packet' && d.returned) { const pk = packets.get(d.id); if (pk) { pk.gone = clock.t; flare(pk.pos, C('#3ee6ff'), 3, 0.25); } }
@@ -819,8 +821,8 @@ window.SuperScene = (() => {
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's bot, or the old marker cube when the bot kit isn't there; his spot on the floor
-      if (artBot) artBot.update(adt);
-      else put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
+      if (bots) bots.update(t, adt, { snap, threatIn: threatIn(nowMs), dead, lost, finishing });
+      if (!artBot) put(v1.copy(artPos).setY(artPos.y + Math.sin(t * 2) * 0.15), 0.9, 0.9, 0.9, Math.PI / 4, t * 1.5, Math.PI / 4, C(Theme.hex('accent')), 2 + kick);
       put(v1.copy(artPos).setY(0.08), 3.2, 0.06, 0.18, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       put(v1.copy(artPos).setY(0.08), 0.18, 0.06, 3.2, 0, t * 0.6, 0, C(Theme.hex('accent')), 1.3);
       sup.update(t, adt, snap);
@@ -848,6 +850,7 @@ window.SuperScene = (() => {
       cam.update(dirT, paused ? 0 : rdt, threatAt(nowMs), finishing);
       camera.position.x += Math.sin(nowMs * 0.041) * sh;
       camera.position.y += Math.sin(nowMs * 0.037 + 1) * sh * 0.7 + kick * 0.15 * shakeK();
+      if (bots) { camera.updateMatrixWorld(); bots.labels(camera); }
       if (debugCam) { camera.position.copy(debugCam.p); camera.lookAt(debugCam.l); if (camera.fov !== debugCam.f) { camera.fov = debugCam.f; camera.updateProjectionMatrix(); } }
       // post
       tintAmt = Math.max(0, tintAmt - rdt * 1.6); post.uniforms.uTintAmt.value = Math.max(tintAmt, enraged ? 0.22 + Math.sin(nowMs / 300) * 0.06 : 0);
@@ -887,6 +890,7 @@ window.SuperScene = (() => {
       phase = snap && snap.boss === id ? snap.phase : 1;
       dead = false; deadT = 0; debris.length = 0; towerLost.clear(); packets.clear(); weakI = decoyI = -1;
       mountModel(id);
+      if (bots) bots.clear();
       scene.environment = K.environment([B.pal[0].a, B.pal[0].c, B.pal[0].b]);
       K.clear();
       if (fx) fx.clear();
@@ -898,7 +902,7 @@ window.SuperScene = (() => {
     function dispose() {
       renderer.setAnimationLoop(null); if (aq) aq.dispose();
       if (fx) fx.dispose();
-      if (artBot) { scene.remove(artBot.group); artBot.dispose(); artBot = null; }
+      if (bots) { bots.dispose(); bots = null; artBot = null; }
       if (release) release();
       sup.dispose();
       K.dispose();
@@ -908,7 +912,7 @@ window.SuperScene = (() => {
       bloom.dispose(); if (composer.dispose) composer.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     }
-    function info() { return { kit: K.info(), acts: model && model.info ? model.info() : null, aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
+    function info() { return { bots: bots ? bots.info() : null, kit: K.info(), acts: model && model.info ? model.info() : null, aq: aq ? aq.state() : null, shot: cam.shot(), camlog: cam.log().slice(-12), boss: bossId, phase, blocks: nB, debris: debris.length, dead, weakI, frontI, packets: packets.size, fx: fx ? fx.info() : null }; }
     return { cameraAt: () => ({ p: camera.position.toArray(), fov: camera.fov, model: !!model, boss: bossId, shot: cam.shot(), log: cam.log() }), apply, event, anchor, screenRect, setBoss, bench, step: (secs, fps = 30) => { const was = paused; paused = false; for (let i = 0; i < Math.round(secs * fps); i++) frameStep(lastT + 1000 / fps); paused = was; lastT = performance.now(); }, artBot: () => artBot, cam: (p, l, f) => { debugCam = p ? { p: new V(...p), l: new V(...l), f: f || 42 } : null; }, model: () => model, setReduce: on => { reduceShake = on; }, pause: on => { paused = !!on; }, slow: k => { slowK = k; }, info, dispose };
   }
 

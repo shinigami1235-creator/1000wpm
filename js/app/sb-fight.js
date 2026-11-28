@@ -48,6 +48,7 @@ window.SuperFight = (() => {
     let typed = '', cur = null, clean = true, wordT0 = 0, idN = 0;
     let sched = [];
     const sup = { shield: 0, overUntil: 0, slowUntil: 0, healAt: -1e9 };
+    let drops = [], dropN = 0;   // support items on the arena floor, waiting for Art's bot
     const chaos = { fogUntil: 0, speedUntil: 0, lastEnd: -1e9, perPhase: [0, 0, 0, 0], live: '' };
     const hypeGoal = R.hypeGoal || 300, hypeK = R.hypeItemK || 3;
     let hype = 0, finish = null, usedPhrases = [];
@@ -330,11 +331,13 @@ window.SuperFight = (() => {
       chip(10, 'finish');
     }
     function winFight() {
+      flushDrops();
       status = 'won'; endAt = t(); hp = 0;
       finish = null; typed = ''; targets = [];
       emit('win', result());
     }
     function loseFight() {
+      flushDrops();
       status = 'lost'; endAt = t();
       finish = null; typed = ''; targets = [];
       me.closeOffer('lost');
@@ -400,28 +403,48 @@ window.SuperFight = (() => {
         if (id === 'fog') { chaos.fogUntil = at + 5000; chaos.lastEnd = at + 5000; chaos.live = 'fog'; }
         if (id === 'speed') { chaos.speedUntil = at + 8000; chaos.lastEnd = at + 8000; chaos.live = 'speed'; }
         if (id === 'shuffle') { chaos.lastEnd = at; shuffle(); }
-      } else {
-        if (id === 'shield') { if (sup.shield >= 2) return { ok: false, reason: 'Art already has 2 shields.' }; sup.shield++; }
-        if (id === 'overclock') sup.overUntil = at + 10000;
-        if (id === 'heal') {
-          if (at - sup.healAt < 8000) return { ok: false, reason: 'A heal landed in the last 8 seconds.' };
-          if (art.hp >= art.max) return { ok: false, reason: 'Art is at full HP.' };
-          sup.healAt = at; art.hp = Math.min(art.max, art.hp + art.max * 0.05);
-        }
-        if (id === 'slowmo') {
-          if (at >= sup.slowUntil) for (const x of targets) if (x.kind === 'block' || x.kind === 'packet') { const l = x.due - at; x.due += l * 0.2; x.total += l * 0.2; }
-          sup.slowUntil = at + 10000;
-        }
+        const rec = { id, kind: it.kind, buyer, price, at: fightMs(), you: !!opts.you };
+        stats.support.push(rec);
+        emit('support', rec);
+        return { ok: true };
       }
-      const rec = { id, kind: it.kind, buyer, price, at: fightMs(), you: !!opts.you };
-      stats.support.push(rec);
-      emit('support', rec);
-      if (it.kind === 'support') {
-        hype += price * (id === 'hype' ? hypeK : 1);
-        if (hype >= hypeGoal) { hype = 0; crowdSpell(); }
+      // a support item drops into the arena and Art's bot flies to it; it works when the bot picks it up
+      // (Gid, 28 Nov 2026: "they drop in the actual arena and Art's bot makes its way to it ... only then does it
+      // activate"). The trip takes 1 to 4 s, shorter the faster and cleaner Art is typing. The checks run now, so
+      // the coins are spent on an item that always lands; a fight that ends first applies it at once.
+      if (id === 'shield' && sup.shield + drops.filter(x => x.id === 'shield').length >= 2) return { ok: false, reason: 'Art already has 2 shields.' };
+      if (id === 'heal') {
+        if (at - sup.healAt < 8000) return { ok: false, reason: 'A heal landed in the last 8 seconds.' };
+        if (art.hp >= art.max) return { ok: false, reason: 'Art is at full HP.' };
+        sup.healAt = at;
       }
+      const q = Math.min(1, wpmNow() / 160) * Math.pow(stats.keys ? stats.good / stats.keys : 1, 3);
+      const ms = status === 'fight' || status === 'finish' ? Math.round(4000 - 3000 * q) : 0;
+      const d = { n: ++dropN, id, kind: it.kind, buyer, price, you: !!opts.you, due: at + ms };
+      drops.push(d);
+      emit('drop', { drop: d.n, id, kind: it.kind, buyer, price, you: d.you, ms, spot: d.n % 6 });
+      if (!ms) pickup(d);
       return { ok: true };
     }
+    function pickup(d, end) {
+      drops = drops.filter(x => x !== d);
+      const at = t(), id = d.id;
+      if (end) { const rec = { id, kind: d.kind, buyer: d.buyer, price: d.price, at: fightMs(), you: d.you, drop: d.n, late: true }; stats.support.push(rec); emit('support', rec); return; }
+      if (id === 'shield') sup.shield = Math.min(2, sup.shield + 1);
+      if (id === 'overclock') sup.overUntil = at + 10000;
+      if (id === 'heal') art.hp = Math.min(art.max, art.hp + art.max * 0.05);
+      if (id === 'slowmo') {
+        if (at >= sup.slowUntil) for (const x of targets) if (x.kind === 'block' || x.kind === 'packet') { const l = x.due - at; x.due += l * 0.2; x.total += l * 0.2; }
+        sup.slowUntil = at + 10000;
+      }
+      const rec = { id, kind: d.kind, buyer: d.buyer, price: d.price, at: fightMs(), you: d.you, drop: d.n };
+      stats.support.push(rec);
+      emit('support', rec);
+      hype += d.price * (id === 'hype' ? hypeK : 1);
+      if (hype >= hypeGoal) { hype = 0; crowdSpell(); }
+    }
+    // items still on the floor when the fight ends count as sent (the result card and support_sent), with nothing left to help
+    function flushDrops() { for (const d of drops.slice()) pickup(d, true); }
     function shuffle() {
       if (mod.shuffle && mod.shuffle()) { emit('shuffle', {}); return; }
       if (!stack.length) return;
@@ -463,6 +486,7 @@ window.SuperFight = (() => {
       me.tick();
       if (status === 'countdown' && at >= t0) { status = 'fight'; if (mod.init) mod.init(); if (stackOn) { refill(); fixStack(); } emit('go', {}); }
       if (status === 'finish' && finish && at >= finish.due) finishFail();
+      if (status === 'fight' || status === 'finish') for (const d of drops.filter(x => x.due <= at)) pickup(d);
       if (status !== 'fight') return;
       if (!enraged && at - t0 >= B.enrageS * 1000) { enraged = true; emit('enrage', {}); }
       if (chaos.live === 'fog' && at >= chaos.fogUntil) { chaos.live = ''; emit('chaosEnd', { id: 'fog' }); }

@@ -20,18 +20,56 @@ window.SuperCam = (() => {
     const v1 = new V(), v2 = new V();
     const M = () => o.model();
     const sub = k => { const m = M(); return m && m.subj ? m.subj()[k] : null; };
-    // the game shot: the boss's focus point, at a distance that fits its width in the frame
-    const game = { pos: new V(), look: new V(), fov: 42, push: 0 };
+    // the game shot (28 Nov 2026): over Art's shoulder. Gid: "the bots do battle with the boss" and "Art just types. The
+    // audience watches a performance." The camera sits behind his bot and off its right shoulder, far enough back to
+    // fit the boss's width, low enough to look up at it, and follows the bot as it flits (a trailing point, so the
+    // frame breathes). The bot is held in the lower left third, clear of the word line under it.
+    const game = { pos: new V(), look: new V(), fov: 42, push: 0, threat: 0 };
+    const tmp = camera.clone(), fw = new V(), rt = new V(), ndc = new V(), A = new V(), Ag = new V();
+    const artBody = out => (o.art ? o.art(out) : out.set(0, 3.2, 15));
+    // the camera's right and forward on the ground, from the bot toward the boss
+    function axes(a, f) { fw.set(f.x - a.x, 0, f.z - a.z); const L = fw.length() || 1; fw.divideScalar(L); rt.set(-fw.z, 0, fw.x); return L; }
+    // nudge the look point so a subject lands at (x, y) on screen, or inside a box [x0, x1, y0, y1]
+    function hold(out, p, box, fov) {
+      tmp.position.copy(out.pos); tmp.fov = fov; tmp.aspect = camera.aspect || 1.6; tmp.updateProjectionMatrix();
+      for (let k = 0; k < 2; k++) {
+        tmp.lookAt(out.look); tmp.updateMatrixWorld();
+        ndc.copy(p).project(tmp);
+        const ex = ndc.x < box[0] ? ndc.x - box[0] : ndc.x > box[1] ? ndc.x - box[1] : 0;
+        const ey = ndc.y < box[2] ? ndc.y - box[2] : ndc.y > box[3] ? ndc.y - box[3] : 0;
+        if (!ex && !ey) return;
+        const d = out.pos.distanceTo(out.look), th = Math.tan(fov * D2R / 2);
+        tmp.getWorldDirection(v1); v2.crossVectors(v1, tmp.up).normalize();
+        out.look.addScaledVector(v2, ex * d * th * tmp.aspect);
+        v1.crossVectors(v2, v1);
+        out.look.addScaledVector(v1, ey * d * th);
+      }
+    }
     function gamePose(c, out) {
       const m = M(), f = m && m.focus ? m.focus : v1.set(0, 7.6, -3), w = (m && m.width) || 38;
-      const aspect = camera.aspect || 1.6;
-      const half = Math.tan(21 * D2R);
-      const dist = Math.max(31, (w / 2) / (half * aspect)) + (m && m.camBack || 0);
+      // a longer lens from further back than the old front view: the boss keeps its size, Art's bot in the
+      // foreground shrinks to something the boss towers over, and its effects stop filling the frame
+      const aspect = camera.aspect || 1.6, FOV = 36;
+      const half = Math.tan(FOV / 2 * D2R);
+      const need = Math.max(36, (w / 2) / (half * aspect) * 0.92) + (m && m.camBack || 0);
       game.push += ((c.finishing ? 1 : 0) - game.push) * Math.min(1, (c.dt || 0.016) * 1.5);
+      // an attack winding up at Art: the camera eases up and back a touch, so the whole line of it reads
+      const th = c.threatAt - c.t;
+      game.threat += ((th > 0 && th < 2.2 ? 1 : 0) - game.threat) * Math.min(1, (c.dt || 0.016) * 2);
+      artBody(A); Ag.set(A.x, 0, A.z);
+      const fx = f.x, fz = f.z;
+      const L = axes(A, { x: fx, z: fz });
+      const back = Math.max(11, need - L + 2) - game.push * 5 + game.threat * 1.5;
       const t = c.t;
-      out.pos.set(f.x + Math.sin(t * 0.21) * 0.5, (m && m.camY || 6.4) + Math.sin(t * 0.17) * 0.25 - game.push * 1.2, f.z + dist - game.push * 6);
-      out.look.set(f.x, f.y - game.push * 0.6, f.z);
-      out.fov = 42 - game.push * 3;
+      // the camera takes half the bot's sideways moves, so its patch of the arena stays in the frame
+      out.pos.copy(Ag).addScaledVector(fw, -back).addScaledVector(rt, 3.2 + Math.sin(t * 0.21) * 0.4);
+      out.pos.x -= A.x * 0.45;
+      // about level with the bot, so the boss towers over it and the bot sits high enough to clear the word line
+      out.pos.y = Math.max(2.4, A.y + 0.5) + game.threat * 0.8 - game.push * 0.6 + Math.sin(t * 0.17) * 0.2;
+      out.look.set(fx, f.y - game.push * 0.6, fz).lerp(A, 0.12);
+      out.fov = FOV - game.push * 3 + game.threat * 2;
+      // the bot stays in the lower left third, above the word line
+      hold(out, A, [-0.45, -0.15, -0.06, 0.2], out.fov);
     }
     const H = () => (M() && M().height) || 16;
     const shots = {
@@ -76,6 +114,34 @@ window.SuperCam = (() => {
         { len: 3.6, cut: 1, slow: 0.7, fov: 50, omega: 3, pose: (c, out) => { const f = M().focus, h = H(), a = -0.6 + c.u * 1.2, r = fitD(h, 0.8, 50) + 6; out.look.set(f.x, f.y * 0.7, f.z); out.pos.set(f.x + Math.sin(a) * r, f.y * 0.7 + 3 + c.u * 3, f.z + Math.cos(a) * r); } },
       ] },
     };
+    // ---------- the bots (28 Nov 2026): Art's bot and the boss framed together ----------
+    // Gid: "good cinematography and action ... The audience watches a performance." Each shot is built from where
+    // the bot and the boss are this frame, on the game shot's side of the line between them.
+    const B = new V(), Bg = new V(), P = new V();
+    function pair(out) { artBody(B); Bg.set(B.x, 0, B.z); const m = M(), f = m && m.focus ? m.focus : v1.set(0, 7.6, -3); out.copy(f); return axes(B, f); }
+    Object.assign(shots, {
+      // a block: a close side look at the weave in slow motion, then side on to the counter shot flying at the boss
+      dodge: { pri: 3, parts: [
+        { len: 0.7, cut: 1, slow: 0.45, fov: 40, omega: 9, pose: (c, out) => { pair(P); out.pos.copy(B).addScaledVector(rt, 10).addScaledVector(fw, 2 + c.u * 0.8); out.pos.y = B.y + 1.2; out.look.copy(B).addScaledVector(fw, 2.6); } },
+        { len: 1.1, cut: 1, fov: 44, omega: 6, pose: (c, out) => { const L = pair(P), d = (L * 0.62) / (Math.tan(22 * D2R) * (camera.aspect || 1.6)) + 4; v2.copy(Bg).lerp(v1.set(P.x, 0, P.z), 0.45); out.pos.copy(v2).addScaledVector(rt, d).addScaledVector(fw, -c.u * 1.5); out.pos.y = 3.5 + c.u * 0.5; out.look.copy(v2).setY((B.y + P.y) * 0.5); } },
+      ] },
+      // a new combo tier: a low push in on the bot as it flares, from in front and to its right
+      power: { pri: 2, parts: [
+        { len: 0.75, cut: 1, slow: 0.5, fov: 38, omega: 10, hand: 0.03, pose: (c, out) => { pair(P); out.pos.copy(B).addScaledVector(fw, 5.5 - c.u * 1.6).addScaledVector(rt, 3.2); out.pos.y = B.y - 0.5; out.look.copy(B).setY(B.y + 0.2); } },
+      ] },
+      // a big hit: low behind the bot, looking up past it at the boss as the shot lands
+      hero: { pri: 1.5, parts: [
+        { len: 0.55, cut: 1, slow: 0.45, fov: 50, omega: 10, pose: (c, out) => { pair(P); out.pos.copy(Bg).addScaledVector(fw, -4.2 + c.u * 0.8).addScaledVector(rt, 2.6); out.pos.y = Math.max(0.9, B.y - 2.2); out.look.copy(P).setY(P.y + 1.5); } },
+        { len: 0.7, omega: 4, fov: 46, pose: (c, out) => { pair(P); out.pos.copy(Bg).addScaledVector(fw, -5 - c.u).addScaledVector(rt, 3.4); out.pos.y = Math.max(1.2, B.y - 1.6); out.look.copy(P).setY(P.y + 1); } },
+      ] },
+      // the drop chase: a tracking shot from the side that keeps the bot and the item in frame
+      chase: { pri: 2, len: 2, fov: 44, omega: 5, pose: (c, out) => {
+        pair(P); const ch = o.chase ? o.chase() : null, to = ch ? ch.to : Bg;
+        v2.copy(Bg).lerp(to, 0.5); const span = Math.max(4, Bg.distanceTo(to));
+        out.pos.copy(v2).addScaledVector(rt, 9 + span * 0.7).addScaledVector(fw, -3); out.pos.y = 3.6;
+        out.look.copy(v2).setY(Math.max(1.6, B.y * 0.7));
+      } },
+    });
     // ---------- Art's spells (spell-fx, 28 Nov 2026) ----------
     // Gid: the spell shot follows the cast to the landing. Low behind Art's bot as the spell leaves it, then
     // a hard cut to three-quarters on the boss from the right as it lands. Sized from the spell's hits by
@@ -93,9 +159,11 @@ window.SuperCam = (() => {
       reduce: o.reduce, gap: 4, budget: 3, lockBefore: 3.0, shots,
       onPart: (name, i, part) => o.setSlow(part.slow || 1, part.len || 1),
     }) : null;
-    const ctx = { threatAt: Infinity, t: 0, dt: 0, finishing: false };
+    // no cutaway puts the camera inside the space round Art's bot, where his shield barrier and the block flashes are
+    const keepOut = { c: new V(), r: 6.6 };
+    const ctx = { threatAt: Infinity, t: 0, dt: 0, finishing: false, occluders: [keepOut] };
     function update(t, dt, threatAt, finishing) {
-      ctx.threatAt = threatAt; ctx.t = t; ctx.dt = dt; ctx.finishing = finishing;
+      ctx.threatAt = threatAt; ctx.t = t; ctx.dt = dt; ctx.finishing = finishing; artBody(keepOut.c);
       if (dir) {
         // the director's springs are explicit: on a slow frame step them in small pieces so they never overshoot
         const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 40))));
@@ -110,7 +178,7 @@ window.SuperCam = (() => {
     }
     return {
       // a boss model may bring its own version of a shot (model.shots.intro, .phase, .kill): it plays in place of the stock one
-      want: (name, x) => { if (!dir) return false; const m = M(), own = m && m.shots && m.shots[name]; if (own) { shots['own:' + name] = own; name = 'own:' + name; } return dir.want(name, x != null ? { x } : {}); },
+      want: (name, x, len) => { if (!dir) return false; const m = M(), own = m && m.shots && m.shots[name]; if (own) { shots['own:' + name] = own; name = 'own:' + name; } const w = x != null ? { x } : {}; if (len) w.len = len; return dir.want(name, w); },
       spell: (a, b, pri) => dir && dir.want(spellShot(a, b), { pri }),
       update, shot: () => (dir ? dir.shot() : 'game'), log: () => (dir ? dir.log() : []), reset: () => dir && dir.reset(),
     };
