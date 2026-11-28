@@ -1547,7 +1547,7 @@ window.DuelScene = (() => {
     { const c = tongueCv.getContext('2d'), g = c.createRadialGradient(16, 84, 0, 16, 84, 64); g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.3, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
       c.save(); c.scale(1, 1); c.fillStyle = g; c.beginPath(); c.moveTo(16, 0); c.bezierCurveTo(30, 50, 32, 110, 16, 128); c.bezierCurveTo(0, 110, 2, 50, 16, 0); c.fill(); c.restore(); }
     const tongueTex = own(new THREE.CanvasTexture(tongueCv));
-    const TN = 26;
+    const TN = 20;
     const tongues = [0, 1].map(() => Array.from({ length: TN }, () => ({ s: sprite(tongueTex, 0, 7), life: 0, max: 1, v: new V(), off: new V(), w: 0.4, h: 1 })));
     const OD_ARCS = 5, OD_SEG = 7;
     const OD = [0, 1].map(i => {
@@ -1557,7 +1557,7 @@ window.DuelScene = (() => {
       const arcs = new THREE.LineSegments(ag, own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })));
       arcs.visible = false; arcs.frustumCulled = false; arcs.renderOrder = 8; scene.add(arcs);
       return { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0, ringTier: 0, sparkT: 0, arcT: 0, spin: 0, tongueT: 0, tI: 0, tongues: tongues[i],
-        outer: odMat(odTexA, 6), inner: odMat(odTexB, 6), halo: sprite(glowTex, 0, 6), ring, arcs, col: new THREE.Color(), mix: new THREE.Color(),
+        outer: odMat(odTexA, 6), inner: odMat(odTexB, 6), ring, arcs, col: new THREE.Color(), mix: new THREE.Color(),
         // the overdrive finisher's pillar where it lands on this side: the same streaks, straight up
         pil: [odMat(odTexA, 7, odMask), odMat(odTexB, 7, odMask)], pilT: 9 };
     });
@@ -1615,7 +1615,7 @@ window.DuelScene = (() => {
     function odClear() {
       OD.forEach((S, i) => {
         Object.assign(S, { on: false, n: 0, tier: 0, lvl: 0, tgt: 0, pulse: 0, dim: 0, surge: 0, rel: 0 });
-        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = S.arcs.visible = false; S.pilT = 9; S.tongues.forEach(q => { q.s.visible = false; q.life = 0; }); S.pil.forEach(m => { m.visible = false; });
+        S.outer.visible = S.inner.visible = S.ring.visible = S.arcs.visible = false; S.pilT = 9; S.tongues.forEach(q => { q.s.visible = false; q.life = 0; }); S.pil.forEach(m => { m.visible = false; });
         if (F[i].bf) F[i].bf.boost(0);
       });
     }
@@ -1655,7 +1655,7 @@ window.DuelScene = (() => {
           q.s.material.opacity = Math.min(1, u * 5) * (1 - u) * 1.4;
         }
         f.bf.boost(S.on ? Math.min(1, S.lvl * 1.1 + 0.3 * S.pulse) * (1 - 0.7 * S.dim) : 0);
-        S.outer.visible = S.inner.visible = S.halo.visible = S.ring.visible = show;
+        S.outer.visible = S.inner.visible = S.ring.visible = show;
         S.arcs.visible = show && S.tier >= 3 && !reduce;
         if (!show) return;
         odColOf(i, S.tier, S.col);
@@ -1667,15 +1667,13 @@ window.DuelScene = (() => {
         const H = (2.9 + 2.4 * k + 0.9 * S.surge) * BS, Wd = (1.9 + 1.2 * k + 0.4 * S.surge) * BS;
         const yaw = Math.atan2(camera.position.x - _oc.x, camera.position.z - _oc.z);
         const sc = sideCol(i);
-        for (const [m, w, h, op, colK] of [[S.outer, Wd, H, 0.6, 1.3], [S.inner, Wd * 0.72, H * 0.86, 0.55, 1.0]]) {
+        for (const [m, w, h, op, colK] of [[S.outer, Wd, H, 0.6, 1.3], [S.inner, Wd * 0.55, H * 0.78, 0.6, 1.1]]) {
           m.position.set(_oc.x, _oc.y + h * 0.12, _oc.z); m.rotation.set(0, yaw, 0); m.scale.set(w * (1 + 0.04 * Math.sin(t * 9 + i)), h, 1);
           m.material.opacity = Math.min(1, op * Math.pow(k, 1.3) * flick);
           m.material.color.copy(m === S.outer ? S.col : sc).multiplyScalar(colK * (0.75 + 0.5 * S.pulse));
         }
         odTexA.offset.y = (odTexA.offset.y - dt * (0.55 + 0.9 * k)) % 1;
         odTexB.offset.y = (odTexB.offset.y - dt * (0.95 + 1.3 * k)) % 1;
-        // a soft halo on the body
-        S.halo.position.copy(_oc); S.halo.scale.setScalar((2.2 + 1.3 * k) * (1 + 0.12 * S.pulse)); S.halo.material.color.copy(S.col).multiplyScalar(0.35 + 0.25 * k); S.halo.material.opacity = Math.min(0.7, 0.4 * k + 0.25 * S.pulse);
         // the gauge ring at the feet: lights a third per tier and turns faster as it fills
         if (S.ringTier !== S.tier) { S.ringTier = S.tier; S.ring.material.map = odRingTex[Math.min(3, S.tier)]; }
         S.spin += dt * (0.4 + 0.8 * k) * (i ? -1 : 1);
@@ -1685,7 +1683,7 @@ window.DuelScene = (() => {
         // tongues of flame lick up round the body, more and taller the higher the charge
         S.tongueT -= dt * (reduce ? 0.35 : 1);
         while (S.tongueT <= 0 && S.on) {
-          S.tongueT += 1 / (10 + 46 * k);
+          S.tongueT += 1 / (8 + 34 * k);
           const q = S.tongues[S.tI = (S.tI + 1) % TN], a = Math.random() * Math.PI * 2, r = (0.55 + 0.35 * Math.random()) * BS * (0.9 + 0.3 * k);
           q.off.set(Math.cos(a) * r, -0.7 * BS + Math.random() * 1.1 * BS, Math.sin(a) * r * 0.7); q.s.position.copy(_oc).add(q.off);
           q.v.set(-Math.cos(a) * 0.4, (2.2 + 2.4 * k) * BS * rnd(0.7, 1.1), -Math.sin(a) * 0.3);
