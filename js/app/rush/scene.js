@@ -322,7 +322,7 @@ window.RushScene = (() => {
         for (const sx of [-1, 1]) { solid.push([cyl, at(sx * 11, 6, -10, 0, 0, 0, 2.2, 12, 2.2)]); solid.push([cyl, at(sx * 11, 12.1, -10, 0, 0, 0, 2.8, 0.6, 2.8)]); }
         for (let x = -9; x <= 9; x += 4.5) { solid.push([box, at(x, 1.4, -12.6, 0, 0, 0, 3.2, 2.8, 0.6)]); for (let k = 0; k < 4; k++) lit.push([box, at(x, 0.6 + k * 0.6, -12.25, 0, 0, 0, 2.6, 0.16, 0.05)]); }
         let acc = 0;
-        anim = (t, dt) => { acc += dt; if (tfx && acc > 0.12) { acc = 0; for (const sx of [-1, 1]) tfx.burst(v1.set(sx * 11, 12.6, -10), 1, { kind: 'steam', col: '#bdb6ad', speed: 1.6, dir: v2.set(0, 1, 0.1), spread: 0.3, size: 2.4, life: 2.4, grow: 3, alpha: 0.35 }); } };
+        anim = (t, dt) => { acc += dt; if (tfx && acc > 0.22) { acc = 0; for (const sx of [-1, 1]) tfx.burst(v1.set(sx * 11, 12.6, -10), 1, { kind: 'steam', col: '#bdb6ad', speed: 1.6, dir: v2.set(0, 1, 0.1), spread: 0.3, size: 2.0, life: 2.2, grow: 2.6, alpha: 0.4 }); } };   // fewer, smaller puffs: big soft sprites cost the most to fill
       }
       if (solid.length) group.add(new THREE.Mesh(mergeGeos(solid), mat));
       if (lit.length) group.add(new THREE.Mesh(mergeGeos(lit), glowMat));
@@ -845,7 +845,7 @@ window.RushScene = (() => {
     const dirCtx = { threatAt: Infinity };
     // The titans' signature shots, all on the game shot's right-hand side. o: the camera, l: where it looks,
     // b: the titan's feet, H: its height, u: 0 to 1 through the shot
-    const SIG_LEN = 2.2;
+    const SIG_LEN = 1.6;
     const SIG_SHOT = {
       // from the rubble at its feet, looking up the whole height of it to the fists
       siege: (u, o, l, b, H) => { o.set(b.x + 2.4 + 0.3 * u, 0.45, b.z + 6.2 - 0.7 * u); l.set(b.x - 0.2, H * 0.74, b.z); },
@@ -865,7 +865,7 @@ window.RushScene = (() => {
       if (!window.CamDirector || director) return;
       director = CamDirector.create(THREE, camera, {
         reduce, lockBefore: 1.2, gap: 3.5, budget: 3,
-        onPart: (name, i, p) => { if (p.slow) juice.slow(p.slow); },
+        onPart: (name, i, p) => { if (p.slow) juice.slow(p.slow); if (name === 'signature' && i === 0) sigShotAt = nowS() + 12; },
         shots: {
           game: { pose: (c, o) => { o.pos.copy(camBase); o.look.copy(camLook); o.fov = 44; }, omega: 7 },
           enter: { pri: 4, free: true, parts: [
@@ -886,7 +886,8 @@ window.RushScene = (() => {
             SP((u, o, l) => { coreWorld(dB); bossAt(dA); const H = bossH(); o.set(dA.x + 3.2 - 0.6 * u, H * 0.55, dA.z + 7.2 - 0.8 * u); l.copy(dB); }, { len: 1.2, cut: 1, fov: 40, omega: 6 }),
           ] },
           // each titan's own shot, for the quiet moments when nothing is coming at you (asked for in the loop)
-          signature: { pri: 1, parts: [
+          // priority 3 lets it past the cutaway budget (it keeps its own: one every 12 s at most) but never past an attack
+          signature: { pri: 3, parts: [
             SP((u, o, l, c) => { bossAt(dA); const H = bossH(); SIG_SHOT[fig && fig.P.T ? fig.P.T.id : 'siege'](u, o, l, dA, H); }, { len: SIG_LEN, cut: 1, fov: 40, omega: 5, hand: 0.05 }),
           ] },
           kill: { pri: 4, free: true, parts: [
@@ -1118,8 +1119,8 @@ window.RushScene = (() => {
       if (director) {
         dirCtx.threatAt = t + threatMs / 1000;
         // the titan's signature shot when the coast is clear: idle, nothing at you for the shot and the way back
-        if (fig && fig.P.T && dying < 0 && !windOn && !reviewCam && fig.P.T.mode() === 'idle' && director.shot() === 'game'
-          && t > sigShotAt && threatMs > (SIG_LEN + 1.6) * 1000) { sigShotAt = t + 9; want('signature'); }
+        if (fig && fig.P.T && dying < 0 && !windOn && !reviewCam && /idle|strike/.test(fig.P.T.mode()) && director.shot() === 'game'
+          && t > sigShotAt && threatMs > (SIG_LEN + 1.6) * 1000) { sigShotAt = t + 2; want('signature'); }
         // its springs are stepped at 60 Hz or finer, so a slow frame can't make the camera overshoot
         const n = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 60))));
         for (let i = n - 1; i >= 0; i--) director.update(t - i * dt / n, dt / n, dirCtx);
@@ -1219,7 +1220,8 @@ window.RushScene = (() => {
         sigClear();
       },
       pause: on => { paused = !!on; },
-      sig: (id, kind, due) => { sigAdd(id, kind, due); if (fig && fig.P.T) fig.P.T.sig(kind); else atkT = Math.max(atkT, 0.5); },
+      // a titan's throw is its signature: the shot is asked for as it throws (camdir plays it only if nothing lands soon)
+      sig: (id, kind, due) => { sigAdd(id, kind, due); if (fig && fig.P.T) { fig.P.T.sig(kind); if (nowS() > sigShotAt && dying < 0) { sigShotAt = nowS() + 2; want('signature'); } } else atkT = Math.max(atkT, 0.5); },
       sigDone: id => sigRemove(id, 'done'),
       sigHit: id => { sigRemove(id, 'hit'); shake = Math.max(shake, 0.35); },
       sigGone: id => sigRemove(id, 'gone'),

@@ -633,9 +633,9 @@ window.RushPage = (() => {
       f.tick(t);
       if (!f) return;
       // the camera director keeps to the game shot while anything is coming at you (scene.js, camdir.js)
-      // a thrown word counts from when it lands: its word is lit in your line with its own timer, so a short
-      // cutaway may play while it falls and must end before it gets close (camdir's lock)
-      { const S = f.state(t); scene.threat(S.phase !== 'fight' ? Infinity : S.action ? 0 : Math.min(S.nextAttack, S.timed ? S.nextDue : Infinity, ['sign', 'page', 'byte', 'mute'].includes(S.sig) ? S.nextSig : Infinity)); }
+      // a thrown word counts from when it lands, not from when it is thrown: its word is lit in your line with
+      // its own timer, so a short cutaway may play while it falls and must end before it gets close (camdir's lock)
+      { const S = f.state(t); scene.threat(S.phase !== 'fight' ? Infinity : S.action ? 0 : Math.min(S.nextAttack, S.timed ? S.nextDue : Infinity, S.sig === 'mute' ? S.nextSig : Infinity)); }
       syncLine();
       paintChips(false);
       paintFlags(t);
