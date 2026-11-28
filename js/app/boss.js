@@ -540,7 +540,7 @@ Router.register('boss', (() => {
       foShown = e.id; foE = e; foPow = 0; foMine = { ok: 0, bad: 0 };
       if (!foHud && window.FaceoffHud) foHud = FaceoffHud.create(q('stage'));
       if (foHud) foHud.show();
-      A.faceoff('start', (e.end - t) / 1000);
+      A.faceoff('start', (e.end - t) / 1000, Math.max(0, t - e.start) / 1000);
       pushFeed({ sys: true, text: `${NAME} broke off and is charging its cannon. Type the resistance words` });
     }
     if (!foE) return;
