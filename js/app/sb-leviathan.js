@@ -555,7 +555,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (roar > 0 && !atk && !dead) { target.y += 7 * roar; target.z += 2 * roar; look.y += 20 * roar; jawK = Math.max(jawK, 1.25 * roar); throat = 3; eyeK = 3; lureK = 3; target.x += Math.sin(t * 37) * 0.15 * roar;
       if (Math.random() < dt * 40 * roar) K.fx.spark(mouthW(v5), v4.set(rnd(-2, 2), rnd(3, 7), rnd(2, 5)), ctx.pal.a, { size: 0.35, life: 0.6, g: 4 }); }
     // the finish: beaten down low on the water in front of Art, panting
-    if (finishing && !atk && !dead) { target.set(clamp(idleP.x * 0.3, -5, 5), 3.2 + Math.sin(t * 1.5) * 0.4, 1); look.copy(aimV).setY(-2); jawK = 0.6 + Math.sin(t * 4.5) * 0.25; eyeK = 0.5 + Math.random() * 0.5; neckDive = 1; }
+    if (finishing && !atk && !dead) { target.set(clamp(idleP.x * 0.25, -4, 4) + 3, 3.4 + Math.sin(t * 1.5) * 0.4, 2); look.copy(aimV).setY(-2); jawK = 0.6 + Math.sin(t * 4.5) * 0.25; eyeK = 0.5 + Math.random() * 0.5; follow = 3; }
     // the kill: thrashes, rears up and roars, then topples into the sea
     if (dead) {
       // the climax lands before the results card comes up (2.2 s after the win, slow motion included)
@@ -601,7 +601,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
       segKick[i] = Math.max(0, segKick[i] - dt * 2.2); segFlash[i] = Math.max(0, segFlash[i] - dt * 3);
       P[i].z -= segKick[i] * 2.5 + S.kb * 1.0; P[i].y += segKick[i] * 1.2;
       for (const w of waves) { const d = Math.abs(i - w.i) - (t - w.t0) * 18; if (d > -3 && d < 3) P[i].y += Math.cos(d / 3 * Math.PI * 0.5) * w.k * 1.4 * Math.max(0, 1 - (t - w.t0) * 1.2); }
-      if (finishing) P[i].y = Math.max(-1, P[i].y * 0.5 + 0.5);
+      if (finishing) P[i].y = Math.max(-1, P[i].y * 0.45 + 0.9);
       if (dead) { P[i].x += Math.sin(t * 11 + i * 0.6) * 1.6 * Math.max(0, 1 - deadT / 1.5); if (i > bi) P[i].y -= 4; P[i].y -= Math.max(0, deadT - 1.2) * 3; }
     }
     // a lunge or the finish pulls the neck down into the sea behind the head; a breach takes it straight down
@@ -698,7 +698,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     if (Math.abs(hy - 1) < 1 && Math.random() < dt * 2) ripple(hp, 4, 0.7);
 
     // ----- weak point and decoy rigs -----
-    rig(weakR, weakI >= 0 ? weakI : finishing && !dead ? frontI : -1, dt, t);
+    rig(weakR, weakI >= 0 ? weakI : finishing && !dead ? 4 : -1, dt, t);
     rig(decoyR, decoyI, dt, t);
 
     // ----- ripples, the water column -----
@@ -769,7 +769,7 @@ SuperModels.leviathan = function (THREE, K, ctx) {
     R.g.visible = true;
     R.g.matrix.compose(q[j], segQ[j], sc.setScalar(r)); R.g.matrixWorldNeedsUpdate = true;
     for (const p of R.petals) p.piv.rotation.set(0, -R.open * 1.15, p.a, 'ZYX');
-    R.core.scale.setScalar(0.3 + R.open * (0.75 + Math.sin(t * 18) * 0.06)); R.core.rotation.set(t * 2, t * 3, 0);
+    R.core.scale.setScalar((0.3 + R.open * (0.75 + Math.sin(t * 18) * 0.06)) * (finishing && R === weakR ? 1.25 : 1)); R.core.rotation.set(t * 2, t * 3, 0);
     R.halo.material.uniforms.uT.value = t;
   }
 

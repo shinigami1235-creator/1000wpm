@@ -58,7 +58,7 @@ window.SuperCam = (() => {
       ] },
       // levRoar: a phase break, from the water under its jaw in slow motion, then a high wide of the whole coil
       levRoar: { pri: 3.5, parts: [
-        { len: 1.4, cut: 1, slow: 0.5, fov: 32, hand: 0.05, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1, p.z); out.pos.set(p.x * 0.35, 1.4 + c.u * 0.5, 25 - c.u * 2); } },
+        { len: 1.4, cut: 1, slow: 0.5, fov: 32, hand: 0.05, pose: (c, out) => { const p = sub('head') || M().focus; out.look.set(p.x, p.y + 1.5, p.z); out.pos.set(p.x + (p.x < 0 ? -5 : 5), Math.max(4, p.y - 2.5) + c.u * 0.5, p.z + 15 - c.u * 2); } },
         { len: 1.3, cut: 1, fov: 50, pose: (c, out) => { const f = M().focus; out.look.set(f.x, f.y - 1.5, f.z); out.pos.set(f.x + 20 - c.u * 4, f.y + 13, f.z + 27); } },
       ] },
       // levBreach: the breach bursting out of the sea, side on at the waterline, in slow motion
