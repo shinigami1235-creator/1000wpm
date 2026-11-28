@@ -21,7 +21,7 @@
     perWord: 2.6,     // damage per finished word before accuracy
     finBonus: 6,      // all 10: the finisher adds this
     critX: 1.5,       // a clean round
-    dodgeMax: 0.55,
+    dodgeMax: 0.25,   // Gid, 28 Nov 2026: fast typists must not get an overwhelming advantage
   };
   const TIERS = ['No attack', 'Shot', 'Double shot', 'Dash strike', 'Finisher'];
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -37,7 +37,7 @@
   function dodgeChance(s) {
     if (s.words < CONFIG.words || s.doneAt == null) return 0;
     const left = clamp((CONFIG.roundMs - s.doneAt) / CONFIG.roundMs, 0, 1);
-    return Math.min(CONFIG.dodgeMax, 0.1 + 0.6 * left);
+    return Math.min(CONFIG.dodgeMax, 0.05 + 0.3 * left);
   }
   // who strikes first: the first to finish; otherwise the one with more words, then the faster last word
   const rank = s => (s.doneAt != null ? s.doneAt : CONFIG.roundMs + (CONFIG.words - s.words) * 1000 - Math.min(999, (s.lastAt || 0) / 100));
