@@ -361,7 +361,7 @@ window.SuperScene = (() => {
     // ---------- Art: the caster, at the front of the arena ----------
     const artPos = new V(0, 0.9, 15);
     const fx = window.Combat && Combat.FX ? Combat.FX.create(THREE, scene, camera, { glowTex, calm: false, reduce: motionOff, pixelHeight: () => renderer.domElement.height, juice }) : null;
-    const caster = { pos: out => out.copy(artPos).setY(artPos.y + 0.6) };
+    const caster = { pos: out => artFrom(out) };   // spell-fx: spells leave Art's bot, where his shots do
     // Art fights through his bot (Gid, 27 Nov 2026), the one he brings to a Duel (Showdown.botFor): the
     // bot seeded from 'art', in his cyan. It stood here as a spinning cube before. It moves on his typing
     // like the bots in Duel and Party: a spark per right key, a strike per word, a spell lifts it.
@@ -395,7 +395,7 @@ window.SuperScene = (() => {
       pos: out => out.copy(anchors.core),
       top: out => out.copy(anchors.core).setY(anchors.core.y + 4),
       base: out => out.set(anchors.core.x, 0, anchors.core.z),
-      react: (k, p) => { if (k === 'flash' || k === 'flinch') hitGlow = Math.max(hitGlow, 0.6); if (k === 'stagger' || k === 'break') { hitGlow = 1; recoil = 1; } },
+      react: (k, p, x) => { if (k === 'flash' || k === 'flinch') hitGlow = Math.max(hitGlow, 0.6); if (k === 'stagger' || k === 'break') { hitGlow = 1; recoil = 1; } spellReact(k, p, x); },
     };
     let recoil = 0;
 
@@ -546,7 +546,7 @@ window.SuperScene = (() => {
     // ---------- camera ----------
     // the broadcast camera: CamDirector plays the shots in sb-cam.js. dirSlow is the slow motion a shot asks for
     let dirSlow = 1, dirSlowUntil = 0, snapAt = 0, dirT = 0;
-    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
+    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, art: out => out.copy(artPos), setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
     // the next moment an attack at Art lands, in real seconds: no cutaway may hide one
     const THREAT = new Set(['block', 'packet', 'weak', 'decoy', 'fix']);
     function threatAt(nowMs) {
@@ -631,6 +631,50 @@ window.SuperScene = (() => {
       if (bossId === 'leviathan') return out.copy(anchors.head);
       return out.copy(anchors.core);
     }
+    // ---------- spell-fx (28 Nov 2026): fizzles, statuses, the spell shot and the boss's guard ----------
+    // A fizzled spell still leaves Art's bot and the boss blocks it, swats it away or sways out of its way
+    // (fx.fizzle in js/app/combat/fx3d.js); the buffs stay on his bot while they last; the camera follows a
+    // spell from his bot to the landing (sb-cam.js spell). Purely visual: no rule here changes.
+    let gSnd = null, dodgeAt = -9, dodgeSide = 1, dodgeOff = 0, spellCamAt = -9;
+    function guardSnd(k) {
+      if (opts.sfx === false || !window.SuperAudio || !window.Combat || !Combat.Audio) return;
+      try { gSnd ||= Combat.Audio.create({ ctx: () => SuperAudio.combat().ac, out: () => SuperAudio.combat().bus, on: () => SuperAudio.on }); gSnd.play(k === 'dodge' ? 'whiff' : 'parry'); } catch (e) {}
+    }
+    function spellReact(k, p, x) {
+      if (k === 'block') { hitGlow = Math.max(hitGlow, 0.35); knock(0.6); guardSnd('block'); }
+      else if (k === 'dodge') { dodgeAt = clock.t; dodgeSide = (x && x.side) || 1; guardSnd('dodge'); }
+      else if (k === 'pull') knock(-0.5);
+      else if (k === 'freeze' || k === 'stun') { hitGlow = Math.max(hitGlow, 0.5); recoil = Math.max(recoil, 0.6); }
+    }
+    // the boss sways out of a dodged bolt's way and back: an offset on its group, added after the model moves it
+    function spellDodge() {
+      if (!model) return;
+      const du = clock.t - dodgeAt, k = du < 1.2 ? (du < 0.22 ? 1 - Math.pow(1 - du / 0.22, 3) : Math.max(0, 1 - (du - 0.45) / 0.75)) : 0;
+      const off = k * 3.2 * dodgeSide * (motionOff ? 0.4 : 1);
+      model.group.position.x += off - dodgeOff; dodgeOff = off;
+    }
+    function spellCam(id, hits, fizz) {
+      if (motionOff || !cam.spell) return;
+      const sp = window.Combat && Combat.spell(id);
+      if (!sp || (!fizz && !sp.strike)) return;
+      const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
+      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20, b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      if (!fizz && clock.t - spellCamAt < 4) return;
+      if (cam.spell(a, b, fizz ? 2 : 3) && !fizz) spellCamAt = clock.t;
+    }
+    function spellEvent(n, d) {
+      if (!fx) return;
+      if (n === 'fizzle' && d.spell) {
+        const tg = { ...target };
+        if (bossId === 'leviathan' && !model) { tg.pos = out => out.copy(segPos[frontI]); tg.base = out => out.set(segPos[frontI].x, 0, segPos[frontI].z); }
+        fx.fizzle(d.spell, { caster, target: tg });
+        spellCam(d.spell, null, true);
+      }
+      if (n === 'status' && !d.on && ['ward', 'hyper', 'root', 'split', 'cshield', 'frenzy'].includes(d.name)) fx.aura(d.name, false);
+      if (n === 'warded') fx.event('ward', { caster });
+      if (n === 'guard') fx.event('guard', { caster });
+    }
+
     function event(n, d = {}) {
       const t = clock.t;   // the scene's own clock, which the rigs read
       if (model) model.event(n, d, t);
@@ -667,7 +711,9 @@ window.SuperScene = (() => {
         if (bossId === 'leviathan' && !model) { tg.pos = out => out.copy(segPos[frontI]); tg.top = out => out.copy(segPos[frontI]).setY(segPos[frontI].y + 4); tg.base = out => out.set(segPos[frontI].x, 0, segPos[frontI].z); }
         fx.cast(d.spell, { caster, target: tg, hits: d.hits, effect: d.effect || {} });
         if (d.rarity >= 3) juice.glitch(0.4, 0.6);
+        spellCam(d.spell, d.hits, false);
       }
+      spellEvent(n, d);
       if (n === 'hurt') {
         // an attack that lands on Art hurts: a hard shake, a held frame, red in the picture, sparks off him
         const heavy = d.amount >= 12;
@@ -765,7 +811,7 @@ window.SuperScene = (() => {
       if (dead) deadT = Math.min(3, deadT + dt);
       nB = 0;
       for (const pl of pools) pl.w = 0;
-      if (model) { model.update(t, adt * sup.timeScale(), { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
+      if (model) { model.update(t, adt * sup.timeScale(), { phase, enraged, dead, deadT, finishing, lost, kb, recoil, hit: hitGlow, neck: neckOpen }); spellDodge(); if (model.props.userData.tick) model.props.userData.tick(t, pal); model.anchor('core', anchors.core); model.anchor('body', anchors.body); model.anchor('head', anchors.head); }
       else if (bossId === 'compiler') compiler(t, adt);
       else leviathan(t, adt);
       // Art's bot, or the old marker cube when the bot kit isn't there; his spot on the floor

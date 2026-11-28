@@ -279,6 +279,7 @@ Router.register('party', (() => {
       lane: id => lanes.get(id) || null,
       onImpact: (h, x, y) => { if (x != null) MultiUI.pop(el.querySelector('[data-nums]'), x, y, String(h.dmg), h.you ? 'out' : 'team'); },
       onFrame: placeTags,
+      onGuard: k => cSfx(k === 'dodge' ? 'whiff' : 'parry'),
     });
     window._party = { scene: () => scene };   // tests
     // Leave run asks first; so do menu links, the back button and closing the tab, and Esc opens the
@@ -509,6 +510,8 @@ Router.register('party', (() => {
         break;
       }
       case 'cast': scene.cast(ev.spell, { from: ev.id, foe: ev.foe, hits: ev.hits.map(h => ({ at: Math.max(0, h.at - now), amount: h.dmg })), effect: ev.effect }); if (ev.id === 'me') { banner(MultiUI.spellName(ev.spell), 'spell mine', 1100); cSfx(ev.spell); } break;
+      // a spell lost to a typo still flies, and the foe blocks or dodges it (spell-fx, 28 Nov 2026)
+      case 'fizzle': scene.fizzle(ev.spell, { from: ev.id }); if (ev.id === 'me') cSfx('fizzle'); break;
       case 'attack': sfx('windup', Math.min(2.5, (ev.land - ev.start) / 1000)); if (ev.target === 'me' || ev.target === 'team') sfx('warn'); break;
       case 'block': scene.block({ id: ev.id, by: ev.by }); pop(ev.by === 'firewall' ? 'Firewall blocked it' : `${nameOf(ev.by)} blocked it`, 'block'); sfx('blockOk'); break;
       case 'impact': scene.attackLands({ id: ev.id, target: ev.target }); sfx('impact', false); break;

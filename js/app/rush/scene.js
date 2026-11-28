@@ -69,6 +69,7 @@ window.RushScene = (() => {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
     const ease = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
+    const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
     const C = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
     // the scene's clock: real time, or for review shots a fixed step a frame (window.__rushStep, tests only)
     let vclock = 0;
@@ -860,13 +861,31 @@ window.RushScene = (() => {
       // low and close under the vents, the steam rolling off its back
       brute: (u, o, l, b, H) => { o.set(b.x + 4.4 - 0.6 * u, H * 0.3, b.z + 5.0); l.set(b.x, H * 0.82, b.z - 0.4); },
     };
-    let sigShotAt = 0;
+    let sigShotAt = 0, dirShots = null, spellCamAt = -9;
+    // your spell (Gid, 28 Nov 2026: the shot follows the cast to the landing): low behind you as it leaves,
+    // then a hard cut to three-quarters on the titan from the right as it lands. Sized from the spell's hits;
+    // a fizzle gets the same two beats for the block or the dodge, a self buff a short look at you.
+    const CAST_OUT = SP((u, o, l) => { coreWorld(dB); o.set(YOU.x + 1.5, YOU.y + 1.3 + 0.2 * u, YOU.z + 3.4 - 0.5 * u); l.copy(dB).lerp(YOU, 0.25); }, { cut: 1, fov: 46, omega: 12 });
+    const LANDS = SP((u, o, l) => { bossAt(dA); coreWorld(dB); const H = bossH(), d = fitD(H, 0.74, 42) * (1 - 0.05 * u); o.set(dA.x + d * 0.58, H * 0.36 + 0.4 * u, dA.z + d * 0.82); l.copy(dB); l.y -= H * 0.05; }, { cut: 1, fov: 42, omega: 10 });
+    const BUFF = SP((u, o, l) => { o.set(YOU.x + 2.2 - 0.3 * u, YOU.y + 0.6, YOU.z - 2.4); l.copy(YOU); l.y += 0.3; }, { cut: 1, fov: 40, omega: 10 });
+    function spellCam(id, hits, fizz) {
+      if (!director || !dirShots || reduce) return;
+      const sp = window.Combat && Combat.spell(id);
+      if (!fizz && sp && !sp.strike) { dirShots.buffCam ||= { pri: 1, parts: [{ ...BUFF, len: 0.9 }] }; want('buffCam'); return; }
+      const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
+      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20;
+      const b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      const name = `spell_${a}_${b}`, t = nowS();
+      if (!fizz && t - spellCamAt < 4) return;
+      dirShots[name] ||= { pri: 2, parts: [{ ...CAST_OUT, len: a }, { ...LANDS, len: b }] };
+      if (director.want(name, { pri: fizz ? 2 : 3 }) && !fizz) spellCamAt = t;
+    }
     function makeDirector() {
       if (!window.CamDirector || director) return;
       director = CamDirector.create(THREE, camera, {
         reduce, lockBefore: 1.2, gap: 3.5, budget: 3,
         onPart: (name, i, p) => { if (p.slow) juice.slow(p.slow); if (name === 'signature' && i === 0) sigShotAt = nowS() + 12; },
-        shots: {
+        shots: dirShots = {
           game: { pose: (c, o) => { o.pos.copy(camBase); o.look.copy(camLook); o.fov = 44; }, omega: 7 },
           enter: { pri: 4, free: true, parts: [
             SP((u, o, l) => { bossAt(dA); const H = bossH(), d = fitD(H, 0.62, 40); o.set(dA.x + d * 0.42, 1.0 + 0.6 * u, dA.z + d * (0.95 - 0.15 * u)); l.set(dA.x, H * 0.52, dA.z); }, { len: 1.5, cut: 1, fov: 40, omega: 5 }),
@@ -988,7 +1007,11 @@ window.RushScene = (() => {
       else if (kind === 'stun') stunUntil = Math.max(stunUntil, nowS() + power / 1000);
       else if (kind === 'freeze') freezeUntil = nowS() + power / 1000;
       else if (kind === 'pull') recoilV += 0.4;
+      // a fizzled spell (28 Nov 2026): it braces and takes it on a shield or swats it off, or steps out of its way
+      else if (kind === 'block') { guardAt = nowS(); recoilV -= 0.5; jolt = Math.min(0.85, jolt + 0.25); flash = Math.max(flash, calm ? 0.2 : 0.3); if (opts.onGuard) opts.onGuard('block', extra && extra.how); }
+      else if (kind === 'dodge') { dodgeAt = nowS(); dodgeSide = (extra && extra.side) || 1; if (opts.onGuard) opts.onGuard('dodge'); }
     }
+    let guardAt = -9, dodgeAt = -9, dodgeSide = 1;
     function hit(h) {
       if (!fig || dying >= 0) { if (opts.onImpact) opts.onImpact(h, null, null); return; }
       const from = v2.copy(YOU).add(v1.set(rnd(-0.3, 0.3), 0.2, 0));
@@ -1061,7 +1084,10 @@ window.RushScene = (() => {
         fig.root.rotation.x = dying < 0 ? recoil * 0.3 - pose.reel * 0.12 : 0;
         // the boss never stands still: it sways across the arena, faster each phase
         const drift = reduce ? 0 : Math.sin(at * (0.45 + 0.22 * (stageN - 1))) * (1.1 + 0.4 * (stageN - 1)) * (stunned ? 0.2 : 1);
-        fig.root.position.x = drift + (enraged && !calm ? Math.sin(t * 31) * 0.04 : 0);
+        // a dodged fizzle: a quick step to the side (the camera looks down -z, so +x is the bolt's +side)
+        const du = t - dodgeAt, dodge = du < 1.2 ? (du < 0.22 ? ease(du / 0.22) : 1 - smooth((du - 0.45) / 0.75)) * 2.6 * dodgeSide * (reduce ? 0.4 : 1) : 0;
+        fig.root.position.x = drift + dodge + (enraged && !calm ? Math.sin(t * 31) * 0.04 : 0);
+        if (dying < 0) fig.root.rotation.z = -dodge * 0.06;
         // edges: red through a wind-up, blue while frozen, brighter on a hit
         flash = Math.max(0, flash - dt * 3.5);
         for (const m of lineMats) {
@@ -1206,7 +1232,8 @@ window.RushScene = (() => {
       speakerOff: order => { if (fig && fig.P.cones && fig.P.cones[order - 1]) fig.P.cones[order - 1].userData.on = false; },
       moveEnd: () => { moveOn = false; pool.forEach(p => { if (p.kind === 'gift') drop(p.id); }); },
       hit,
-      cast: (id, c = {}) => { if (fx && fig && dying < 0) fx.cast(id, { caster, target, hits: c.hits, effect: c.effect }); },
+      cast: (id, c = {}) => { if (fx && fig && dying < 0) { fx.cast(id, { caster, target, hits: c.hits, effect: c.effect }); spellCam(id, c.hits, false); } },
+      fizzle: (id, how) => { if (fx && fig && dying < 0) { fx.fizzle(id, { caster, target, how }); spellCam(id, null, true); } },
       aura: (name, on) => { if (fx) fx.aura(name, on, { caster, target }); },
       fxEvent: k => { if (fx) fx.event(k, { caster }); },
       react,

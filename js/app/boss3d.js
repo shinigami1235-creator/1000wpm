@@ -67,6 +67,7 @@ window.BossScene = (() => {
       setHit: p => impl && impl.setHit(p),
       hurt: k => impl && impl.hurt(k),
       cast: (id, c) => impl && impl.cast(id, c),
+      fizzle: (id, how) => impl && impl.fizzle(id, how),
       aura: (name, on) => impl && impl.aura(name, on),
       wave: k => impl && impl.wave(null, k),
       fxEvent: k => impl && impl.fxEvent(k),
@@ -1188,6 +1189,15 @@ window.BossScene = (() => {
       bossFrame(); const H = bossH(), d = fitD(H, 0.8, 40) * (1 - 0.1 * u);
       o.copy(root.position).addScaledVector(bF, -d).addScaledVector(bS, d * 0.35); o.y = 1 + H * 0.3 * smooth(u); l.copy(anchorHead); l.y -= H * 0.15; },
       { len: 1.25, cut: 1, omega: 10, free: true });
+    // the landing of your spell: three-quarters on to the boss from your squad's side, standing back far enough
+    // for all of it, so the spell crosses the frame from your side and the hit and its reaction both show
+    const LAND = P((u, o, l) => {
+      const y = raidPos[RAID]; toBoss(y); dD.crossVectors(dY, tB);
+      const H = bossH(), d = fitD(H, 0.78, 40) * (1 - 0.05 * u);
+      const sd = (tB.z * (gamePos.x - y.x) - tB.x * (gamePos.z - y.z)) > 0 ? 1 : -1;
+      o.copy(root.position).addScaledVector(tB, -d * 0.8).addScaledVector(dD, sd * d * 0.6); o.y = H * 0.38 + 0.8 * u;
+      l.copy(anchorCore); l.y -= H * 0.06; },
+      { len: 1, cut: 1, omega: 10, fov: 40 });
     const SHOULDER = P((u, o, l) => {                                  // over your bot's shoulder as the blast goes in
       const y = raidPos[RAID], b = root.position, H = bossH(); toBoss(y); const gap = Math.hypot(b.x - y.x, b.z - y.z);
       const d = Math.max(gap + 3.2, fitD(H, 0.62, 44)) - 1.2 * u; dD.crossVectors(dY, tB);
@@ -1196,10 +1206,11 @@ window.BossScene = (() => {
     const CLASH = P((u, o, l) => {                                     // low behind your barrier as the blow smashes into it
       o.copy(aim); o.x += 6; o.y = 2 + 0.8 * u; o.z += 9 - 1.5 * u; l.copy(aim); l.y = 5; l.z -= 5; },
       { len: 0.7, slow: 0.5, cut: 1, omega: 12 });
+    let dirShots = null;
     const director = window.CamDirector ? CamDirector.create(THREE, camera, {
       reduce: reduce || !BOT, lockBefore: 3.5,   // the punch and the lock-on wind up for 3 to 4.5 s
       onPart: (name, i, p) => { if (p.slow && !reduce) slowUntil = Math.max(slowUntil, performance.now() + p.slow * 1000); },
-      shots: {
+      shots: dirShots = {
         game: { pose: (c, o) => { o.pos.copy(gamePos); o.look.copy(gameLook); o.fov = gameFov; keepHead(o.pos, o.look, o.fov, 0.84); }, omega: 8 },
         strike: { pri: 2, parts: [CLOSE, WIDE_HIT] },
         back: { pri: 2, parts: [BACK_LOW, SHOULDER] },
@@ -1281,6 +1292,27 @@ window.BossScene = (() => {
       return director.want(kind, pri === undefined ? { x } : { x, pri });
     }
     const cutaway = (kind, len, x) => play(kind, x);
+    // the spell shot (Gid, 28 Nov 2026: it follows the cast to the landing, not just a close-up on the bot):
+    // over your bot's shoulder as the spell leaves it, then a hard cut side on to the boss as it lands and
+    // reels. The parts are sized to the spell, from its first and last hit; a fizzle gets the same two beats
+    // for the block or the dodge. A self buff gets a short look at your bot. CamDir still turns any of them
+    // down while an attack at you is on its way.
+    function spellCam(id, hits, fizz) {
+      if (!director || !dirShots || reduce) return;
+      const sp = window.Combat && Combat.spell(id);
+      if (!fizz && sp && !sp.strike) { dirShots.buffCam ||= { pri: 1, parts: [{ ...CLOSE, len: 0.9, slow: 0 }] }; play('buffCam'); return; }
+      const f = hits && hits.length ? hits[0].at / 1000 : 0.5, last = hits && hits.length ? hits[hits.length - 1].at / 1000 : f;
+      const a = Math.round(clamp(f * 0.55, 0.3, 0.7) * 20) / 20;
+      const b = Math.round(clamp(f - a + Math.min(1.6, last - f) + 0.85, 0.85, 2.6) * 20) / 20;
+      const name = `spell_${a}_${b}`;
+      // your own spell outranks the raid's routine cutaways (priority 3 gets past their budget), with its own
+      // gap of 4 s so a run of spells doesn't cut every second; a fizzle stays at the routine priority
+      const t = nowS();
+      if (!fizz && t - spellCamAt < 4) return;
+      dirShots[name] ||= { pri: 2, parts: [{ ...SHOULDER, len: a, slow: 0 }, { ...LAND, len: b }] };
+      if (play(name, null, fizz ? 2 : 3) && !fizz) spellCamAt = t;
+    }
+    let spellCamAt = -9;
     const faceV = new V();
     const dirCtx = { threatAt: Infinity, line: null, homeSide: 0, occluders: null, subjects: null };
     let dirOpened = false; const bornAt = nowS();
@@ -1326,6 +1358,8 @@ window.BossScene = (() => {
     let frac = 1, stage = 0, phase = 0, dead = false, deadT = 0, deadAt = 0;
     let shake = 0, hitGlow = 0, stopUntil = 0, slowUntil = 0, tintAmt = 0, glitch = 0;
     let recoil = 0, recoilV = 0, recoilSide = 0, headJerk = 0, weakOn = false, weakK = 0;
+    // a fizzled spell (28 Nov 2026): it guards or swats it away (guardAt) or sidesteps it (dodgeAt, dodgeV in the arena)
+    let guardAt = -9, guardHow = 'shield', dodgeAt = -9; const dodgeV = new V(), dgA = new V(), dgB = new V();
     // jolt: a short reel from your hits; reelAt: the big reel after a stagger or a blocked attack
     let jolt = 0, reelAt = -9;
     const cutK = (x, t) => x.cut ? 1 - smooth(clamp((t - x.cut) / 0.3, 0, 1)) : 1;
@@ -2045,6 +2079,16 @@ window.BossScene = (() => {
         stunUntil = t + power / 1000; headJerk = 1;
       } else if (kind === 'freeze') {
         freezeUntil = t + power / 1000;
+      } else if (kind === 'block') {
+        guardAt = t; guardHow = (extra && extra.how) || 'shield';
+        recoilV -= 0.35; hitGlow = Math.max(hitGlow, calm ? 0.2 : 0.35);
+        if (opts.onGuard) opts.onGuard('block', guardHow);
+      } else if (kind === 'dodge') {
+        // a quick sidestep across the line from your bot, the way the bolt's miss was thrown
+        dodgeAt = t; caster.pos(dgA); dgB.copy(anchorCore).sub(dgA).setY(0).normalize();
+        dodgeV.crossVectors(dgB, dgA.set(0, 1, 0)).normalize().multiplyScalar(((extra && extra.side) || 1) * 4.5);
+        mv.dashUntil = t + 0.45;
+        if (opts.onGuard) opts.onGuard('dodge');
       } else if (kind === 'pull' && extra) {
         // blocks torn off toward the black hole, then they fly back into place
         for (let k = 0; k < 12; k++) {
@@ -2440,6 +2484,12 @@ window.BossScene = (() => {
       }
       const bu = t - breakAt;
       if (bu < 1.5) { const w = Math.sin(clamp(bu / 1.5, 0, 1) * Math.PI); L.push(['reel', w]); busy = Math.max(busy, w); }
+      // a fizzled spell: arms up to take it, or one arm swatting it away
+      const gu = t - guardAt;
+      if (gu < 0.85 && !dead) {
+        const swat = guardHow === 'swat' && kit.POSES.sweep, w = gu < 0.18 ? ease(gu / 0.18) : 1 - smooth((gu - 0.18) / 0.67);
+        L.push([swat ? 'sweep' : kit.POSES.guard ? 'guard' : 'reel', w * (swat ? 0.9 : 0.8)]); busy = Math.max(busy, w);
+      }
       if (t < stunUntil) { L.push(['reel', 0.55]); tremble = Math.max(tremble, 0.5); }
       // knocked back: a blocked attack or a stagger throws it into the reel, your hits jolt it
       const rk = t - reelAt, rw = Math.max(rk < 1.1 ? Math.sin(clamp(rk / 1.1, 0, 1) * Math.PI) * 0.9 : 0, jolt);
@@ -2630,6 +2680,9 @@ window.BossScene = (() => {
         pose.headX = -0.75 * w; pose.hx = -0.45 * w; pose.lz = -2.5 * w; pose.rz = 2.5 * w; pose.lx = pose.rx = -0.7 * w; pose.y += 1.2 * w;
         tx *= 1 - w; tz = tz * (1 - w) - 3 * w;
       }
+      // a fizzled spell dodged: a quick step out of the bolt's way and back
+      const du = t - dodgeAt;
+      if (du < 1.3) { const w = (du < 0.25 ? ease(du / 0.25) : 1 - smooth((du - 0.5) / 0.8)) * still; tx += dodgeV.x * w; tz += dodgeV.z * w; }
       // roar after a phase change
       const ru = t - roarAt;
       if (ru < 2.6) {
@@ -3224,7 +3277,8 @@ window.BossScene = (() => {
       renderer.domElement.remove();
     }
     function live() { return visible && !document.hidden; }
-    function cast(id, c = {}) { if (fx && !dead) fx.cast(id, { caster, target: bossTarget, hits: c.hits, effect: c.effect }); }
+    function cast(id, c = {}) { if (fx && !dead) { fx.cast(id, { caster, target: bossTarget, hits: c.hits, effect: c.effect }); spellCam(id, c.hits, false); } }
+    function fizzle(id, how) { if (fx && !dead) { fx.fizzle(id, { caster, target: bossTarget, how }); spellCam(id, null, true); } }
     function aura(name, on) { if (fx) fx.aura(name, on, { caster, target: bossTarget }); }
     function fxEvent(kind) { if (fx) fx.event(kind, { caster }); }
     function freezeAttack(id) { frozen.add(id); }
@@ -3263,7 +3317,7 @@ window.BossScene = (() => {
     applyPal(1);
     // for tests: where the raid's bots are, the target zone's centre, who is down
     const raidInfo = () => ({ crew: crew.map(c => c.id), locks: locks.map(l => ({ slot: l.slot, out: l.outcome, fired: l.fired })), side: evs.filter(z => z.side).map(z => ({ k: z.side, kind: z.kind, out: z.outcome, cut: !!z.cut, hit: z.hitDone })), st: flight ? [0, 1, 2].map(i => { const s = flight.S[i]; return { run: !!s.run, down: s.downAt, rep: s.repairOf, by: s.repairBy }; }) : null, threat: (() => { const x = own(nowS()); return x ? { id: x.id, toHit: +(x.h - nowS()).toFixed(2), cut: !!x.cut } : null; })(), aim: aim.toArray(), pos: raidPos.slice(0, ONSCREEN).concat([raidPos[RAID]]).map(p => p.toArray().map(x => +x.toFixed(2))), down: flight ? raidPos.map((_, i) => flight.isDown(i) ? i : -1).filter(i => i >= 0) : [] });
-    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
+    return { raidInfo, breakCharge, setHit, wave, live, setPhase, setFrac, event, hit, returnShot, killAdd, block, stagger, hurt, setShield, setWeak, defeat, revive, screen, info, dispose, cast, fizzle, aura, fxEvent, react, freezeAttack, pause, charge: chargeOrb, feed, release, crew: setCrew, act, lock, sideAttack, orbitInfo: () => ({ phi: orbit.phi, w: orbit.w, turn: bossTurn }), director: () => director,
       aq: () => (aq ? aq.state() : null),
       dbg: () => ({ THREE, scene, camera, renderer, dress, kit, root, extras: [dust, decals, rainMesh, retMesh, guide, scanBeam, scanHot, ...qWalls.map(w => w.m)], liftY, gameLook: gameLook.clone(), lookCur: lookCur.clone(), adv, curY: cur.y }) };
   }

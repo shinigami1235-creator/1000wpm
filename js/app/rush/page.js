@@ -138,7 +138,7 @@ window.RushPage = (() => {
             </div>
           </div>
         </div>`;
-      scene = RushScene.mount(q('stage'), { onImpact, sfx: (n, a) => A.titan(n, a) });
+      scene = RushScene.mount(q('stage'), { onImpact, sfx: (n, a) => A.titan(n, a), onGuard: k => cSfx(k === 'dodge' ? 'whiff' : 'parry') });
       scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
         .catch(() => { const l = q('loading'); if (l) l.textContent = "The bosses can't load without an internet connection."; });
       q('quit').addEventListener('click', () => GameGuard.confirm());
@@ -332,7 +332,7 @@ window.RushPage = (() => {
       typed = ''; target = null; clean = true;
       const r = me.cast(sp.word, { clean: ok, shield: !!(f && f.state().shield) });
       if (!r) { renderQueue(); paintChips(true); return; }
-      if (r.fizzled) { cSfx('fizzle'); pop('FIZZLED', 'red'); renderQueue(); paintChips(true); return; }
+      if (r.fizzled) { cSfx('fizzle'); pop('FIZZLED', 'red'); if (scene) scene.fizzle(sp.id); renderQueue(); paintChips(true); return; }
       const out = f.cast(r, now());
       WPM.track('spell_cast', { spell: sp.id, mode: 'rush' });
       cSfx(sp.id);
@@ -1002,6 +1002,7 @@ window.RushPage = (() => {
       type: w => { for (const ch of w) onChar(ch); onChar(' '); },
       setCombo: n => me && me.debug.setCombo(n),
       cast: id => { const sp = Combat.spell(id); if (!sp || !me) return false; me.debug.offer([id]); typed = ''; target = null; castSpell(sp, true); return true; },
+      fizzle: (id, how) => { if (!scene || !Combat.spell(id)) return false; cSfx('fizzle'); scene.fizzle(id, how); return true; },
       boost: () => { if (!f) return false; f.plan.boost = { word: 'overclock', at: 0, dmg: Math.round(f.state(now()).max * 0.1) }; return true; },
       log: () => (dir ? dir.log() : []),
       board: () => RushBoard.load(),
