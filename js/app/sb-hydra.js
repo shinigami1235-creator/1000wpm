@@ -172,7 +172,23 @@ SuperModels.hydra = function (THREE, K, ctx) {
   const v1 = new V(), v2 = new V(), v3 = new V(), v4 = new V(), p2v = new V(), m4 = new THREE.Matrix4(), q1 = new Q(), sc = new V(), UP = new V(0, 1, 0);
   const tmpO = new THREE.Object3D();
   function bez(a, b, c, d, u, out) { const k = 1 - u; return out.set(0, 0, 0).addScaledVector(a, k * k * k).addScaledVector(b, 3 * k * k * u).addScaledVector(c, 3 * k * u * u).addScaledVector(d, u * u * u); }
-  const mouthWorld = (id, out) => out.copy(heads[id].mouthPos).applyMatrix4(heads[id].g.matrixWorld);
+  // the mouth: the middle of the gap between the upper teeth and the lower jaw, just behind the front teeth, so
+  // the charging orb sits in the jaws and a beam leaves from between them however wide the jaw is open
+  // (Gid, 28 Nov 2026: a head was aiming its laser at the wrong spot)
+  const UPPER = new V(0, -0.42, 3.75), LOWER = new V(0, 0.16, 2.55), mw = new V(), FACE = new V(0, 0.55, 2.3);
+  const mouthWorld = (id, out) => { const H = heads[id]; mw.copy(LOWER).applyMatrix4(H.jaw.matrixWorld); return out.copy(UPPER).applyMatrix4(H.g.matrixWorld).add(mw).multiplyScalar(0.5); };
+  // the face: the top of the snout between the eyes, where Patch's threads land
+  const faceWorld = (id, out) => out.copy(FACE).applyMatrix4(heads[id].g.matrixWorld);
+  // a look target that points the snout so a line out of the mouth runs straight into the target: the mouth sits
+  // below the skull's centre, so looking at the target itself would aim the mouth a few degrees low. Only the
+  // mouth's offset across the snout counts, so it still holds when the jaws are right on the target (the bite)
+  const mw2 = new V(), fw = new V();
+  const aimLook = (id, target, out) => {
+    mouthWorld(id, mw2).sub(st[id].pos); fw.set(0, 0, 1).applyQuaternion(heads[id].g.quaternion);
+    mw2.addScaledVector(fw, -mw2.dot(fw));
+    return out.copy(target).sub(mw2);
+  };
+  const aim = new V(), face2 = new V(), vS = new V(), biteP = new V();
 
   // ---------- slam (the tidal wave) and the body ----------
   let slam = null, bodyLift = 0, bodyShake = 0, wave = null;
@@ -198,10 +214,15 @@ SuperModels.hydra = function (THREE, K, ctx) {
     s.act = kind; s.actT = t; s.actLen = ms / 1000; s.strikeT = -1; s.fired = false;
     if (kind === 'breath') {
       s.orb = K.fx.orb(HC.root, out => mouthWorld('root', out));
-      s.mark = K.fx.mark(v1.copy(art).setY(0.06), 3.2, '#ff4d5e', 1);
+      s.mark = K.fx.mark(underArt(v1), 3.2, '#ff4d5e', 1);
     }
-    if (kind === 'mend') s.orb = K.fx.orb(HC.patch, out => mouthWorld('patch', out).add(v4.set(0, 0.6, 0)));
+    if (kind === 'mend') s.orb = K.fx.orb(HC.patch, out => mouthWorld('patch', out));
   }
+  // the floor under Art's bot (it hovers and drifts a little round his spot)
+  const underArt = out => { ctx.artAim(out); return out.setY(0.06); };
+  // the heads Patch mends: the other heads still on
+  const mendTargets = () => ['fork', 'root'].filter(id => st[id].up && !dead);
+  const mendMid = out => { const ids = mendTargets(); if (!ids.length) return false; out.set(0, 0, 0); for (const id of ids) out.add(faceWorld(id, vS)); out.multiplyScalar(1 / ids.length); return true; };
   function endAct(s, how, t) {
     if (s.orb) { s.orb.pop(); s.orb = null; }
     if (s.mark) { s.mark.off(); s.mark = null; }
@@ -214,7 +235,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
       if (d.kind === 'bite' && st.fork.up) startAct(st.fork, 'bite', d.ms, t);
       if (d.kind === 'breath' && st.root.up) startAct(st.root, 'breath', d.ms, t);
       if (d.kind === 'mend' && st.patch.up) startAct(st.patch, 'mend', d.ms, t);
-      if (d.kind === 'slam') { slam = { t0: t, len: d.ms / 1000, slammed: false }; wave = null; slam.mark = K.fx.mark(v1.copy(art).setY(0.06), 3.6, '#ff4d5e', 1); }
+      if (d.kind === 'slam') { slam = { t0: t, len: d.ms / 1000, slammed: false }; wave = null; slam.mark = K.fx.mark(underArt(v1), 3.6, '#ff4d5e', 1); }
     }
     if (n === 'attack' && d.kind === 'bite') { const s = st.fork; if (s.up) { s.act = 'bite'; s.strikeT = t; ctx.sfx('snap'); } }
     if (n === 'attack' && d.kind === 'mend') {
@@ -222,8 +243,14 @@ SuperModels.hydra = function (THREE, K, ctx) {
       if (s.up) {
         s.act = 'mendGo'; s.actT = t; if (s.orb) { s.orb.pop(); s.orb = null; }
         mouthWorld('patch', v1);
-        for (const id of ['fork', 'root']) if (st[id].up) { K.fx.beam(v1, st[id].pos, '#f2c230', 0.35, 0.7, { grow: 0.25 }); K.fx.burst(st[id].pos, 26, '#ffe08a', { speed: 5, g: -2, life: 1, size: 0.3 }); st[id].flash = 1; }
-        K.fx.shock(v2.copy(BODY).setY(6), C('#f2c230'), 2, 10, 0.7, { flat: false, face: ctx.camPos, w: 0.12, k: 0.7 });
+        for (const id of mendTargets()) {
+          faceWorld(id, v2);
+          // a thread snaps when either head is cut
+          const bm = K.fx.beam(v1, v2, '#f2c230', 0.35, 0.7, { grow: 0.25, follow: (a, b) => { if (!st[id].up || !st.patch.up) { bm.t = bm.life; return; } mouthWorld('patch', a); faceWorld(id, b); } });
+          K.fx.burst(v2, 26, '#ffe08a', { speed: 5, g: -2, life: 1, size: 0.3 }); st[id].flash = 1;
+          // a gold ring round each mended head (it was one big disc behind the hull that hid the necks)
+          K.fx.shock(v2, C('#f2c230'), 0.5, 3, 0.5, { flat: false, face: ctx.camPos, w: 0.25, k: 0.7 });
+        }
         K.fx.light(v1, '#f2c230', 30, 3);
       }
     }
@@ -253,7 +280,9 @@ SuperModels.hydra = function (THREE, K, ctx) {
     }
     mouthWorld('root', v1);
     const stop = hitArt ? ctx.artAim(v2) : ctx.shieldAt(v2);
-    K.fx.beam(v1, stop, '#3ee6ff', 0.95, 0.6, { grow: 0.1, follow: (a, b) => { mouthWorld('root', a); } });
+    s.fireAt = hitArt ? 'art' : 'shield';
+    // the beam stays in the mouth while the head recoils, and on Art's bot while it is thrown back
+    const bm = K.fx.beam(v1, stop, '#3ee6ff', 0.95, 0.6, { grow: 0.1, follow: (a, b) => { if (!s.up) { bm.t = bm.life; return; } mouthWorld('root', a); if (hitArt) ctx.artAim(b); } });
     K.fx.burst(stop, hitArt ? 80 : 70, hitArt ? '#ff8a8a' : '#bfefff', { speed: 14, g: 8, life: 0.7, size: 0.35, dir: v3.set(0, 0.6, hitArt ? 0.3 : -0.5), dirK: 0.6 });
     K.fx.light(stop, hitArt ? '#ff4d5e' : '#3ee6ff', 60, 4);
     if (!hitArt) K.fx.shock(stop, C('#3ee6ff'), 0.6, 6, 0.4, { flat: false, face: ctx.camPos });
@@ -384,6 +413,9 @@ SuperModels.hydra = function (THREE, K, ctx) {
     const roar = clamp(1 - (t - roarT) / 1.8, 0, 1) * (t - roarT < 1.8 ? 1 : 0);
     const roarIn = roar > 0 ? Math.sin(clamp((t - roarT) / 1.8, 0, 1) * Math.PI) : 0;
     let li = 0;
+    ctx.artAim(aim);
+    // the floor marks stay under Art's bot as it drifts
+    for (const mk of [st.root.mark, slam && slam.mark]) if (mk) { mk.at.x += (aim.x - mk.at.x) * Math.min(1, dt * 6); mk.at.z += (aim.z - mk.at.z) * Math.min(1, dt * 6); }
     for (const id of Object.keys(DEF)) {
       const D = DEF[id], s = st[id], H = heads[id];
       s.flash = Math.max(0, s.flash - dt * 4);
@@ -397,40 +429,47 @@ SuperModels.hydra = function (THREE, K, ctx) {
       let eyeK = 1, mouthK = 0.35, look = v3.copy(art).setY(art.y + 1);
       const ldx = Math.sin(t * 0.37 + ph) * 3;
       look.x += ldx;
+      // focus: 0 lets the head look around, 1 locks its mouth on what it attacks (fTo)
+      let focus = 0, fTo = aim;
       // actions
       const at = t - s.actT;
       if (s.act === 'bite') {
-        if (s.strikeT < 0) {   // coil back: up and away, jaws wide, trembling
+        // where the head has to be for its jaws to close on Art's bot: the mouth's reach back toward the head's rest
+        biteP.copy(D.rest).sub(aim).normalize().multiplyScalar(3.6).add(aim);
+        if (s.strikeT < 0) {   // coil back: up and away, jaws wide, trembling, eyes on Art's bot
           const u = clamp(at / s.actLen, 0, 1), e = ease(u);
           v1.add(v2.set(D.dir * -0.8 * e, 2.0 * e, -3.2 * e)).add(v4.set(Math.sin(t * 50) * 0.06 * u, Math.sin(t * 43) * 0.06 * u, 0));
-          jaw = 0.15 + 0.9 * e; eyeK = 1 + 2 * e; mouthK = 0.4 + e;
+          jaw = 0.15 + 0.9 * e; eyeK = 1 + 2 * e; mouthK = 0.4 + e; focus = e;
           if (at > s.actLen + 0.6) s.act = null;   // called off
         } else {
           const u = t - s.strikeT;
+          focus = 1;
           if (u < 0.16) {   // the lunge
             const e = easeIn(u / 0.16);
             v2.copy(D.rest).add(v4.set(D.dir * -0.8, 2.0, -3.2));
-            v4.copy(art).setY(3.2).lerp(D.rest, 0.22);
-            v1.copy(v2).lerp(v4, e);
-            if (s.up) for (let k = 0; k < 4; k++) K.fx.spark(v2.copy(s.pos).add(v3.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))), v3.set(0, 0, 0), HC.fork, { size: 0.5, end: 0, life: 0.25, drag: 0 });
+            v1.copy(v2).lerp(biteP, e);
+            if (s.up) for (let k = 0; k < 4; k++) K.fx.spark(v2.copy(s.pos).add(vS.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))), vS.set(0, 0, 0), HC.fork, { size: 0.5, end: 0, life: 0.25, drag: 0 });
             jaw = 1.05 * (1 - smooth((u - 0.1) / 0.06)); eyeK = 3; mouthK = 1.4;
-          } else if (u < 0.3) { v1.copy(art).setY(3.2).lerp(D.rest, 0.22); jaw = 0; eyeK = 2.5;
+          } else if (u < 0.3) { v1.copy(biteP); jaw = 0; eyeK = 2.5;
             if (!s.fired) { s.fired = true; mouthWorld(id, v2); K.fx.burst(v2, 30, '#ffffff', { speed: 9, g: 6, life: 0.4, size: 0.25 }); K.fx.shock(v2, HC.fork, 0.4, 4, 0.35, { flat: false, face: ctx.camPos }); }
-          } else if (u < 1.0) { const e = smooth((u - 0.3) / 0.7); v2.copy(art).setY(3.2).lerp(D.rest, 0.22); v1.lerp(v2, 1 - e); jaw = 0.1 + 0.2 * e; }
+          } else if (u < 1.0) { const e = smooth((u - 0.3) / 0.7); v1.lerp(biteP, 1 - e); jaw = 0.1 + 0.2 * e; focus = 1 - e; }
           else s.act = null;
         }
       } else if (s.act === 'breath') {
         const u = clamp(at / s.actLen, 0, 1), e = ease(Math.min(1, u * 1.4));
         v1.add(v2.set(0, 3.2 * e, -2.8 * e)).add(v4.set(Math.sin(t * 47) * 0.05 * u, 0, 0));
-        look.y += 6 * (1 - u) * e;   // rears up and looks down at Art as it fills
+        // rears up with its chin raised, then brings the jaws down onto Art's bot as the orb fills
+        focus = 1; fTo = face2.copy(aim); fTo.y += 5 * (1 - smooth(u * 2.2)) * e;
         jaw = 0.2 + 0.85 * smooth(u * 1.2); eyeK = 1 + 3 * u; mouthK = 0.6 + 2.5 * u;
-        if (s.orb) s.orb.grow(0.25 + u * 1.15);
+        if (s.orb) s.orb.grow(0.3 + u * 0.75);
         if (s.mark) s.mark.set(u);
         if (Math.random() < dt * (20 + u * 60)) { mouthWorld(id, v2); K.fx.suck(v2, 3.5, 2, HC.root, 0.45, 0.25); }
         if (at > s.actLen + 0.8) endAct(s, null, t);
       } else if (s.act === 'fire') {
         const u = clamp(at / 0.75, 0, 1);
         v1.add(v2.set(0, 2.2 * (1 - u), 1.8 * Math.sin(u * Math.PI) - 1.5 * (1 - u)));
+        // keeps its mouth on what it fires at while the beam lasts
+        focus = 1 - smooth((u - 0.7) / 0.3); fTo = s.fireAt === 'shield' ? ctx.shieldAt(face2) : aim;
         jaw = 1.1 - 0.9 * smooth(u); eyeK = 3 - 2 * u; mouthK = 3 - 2.4 * u;
         if (u >= 1) s.act = null;
       } else if (s.act === 'reel') {
@@ -439,16 +478,21 @@ SuperModels.hydra = function (THREE, K, ctx) {
         jaw = 0.5 * (1 - u); if (u >= 1) s.act = null;
       } else if (s.act === 'mend') {
         const u = clamp(at / s.actLen, 0, 1), e = ease(u);
-        v1.add(v2.set(0, 1.8 * e, -1.2 * e)); look.copy(BODY).setY(10);
+        v1.add(v2.set(0, 1.8 * e, -1.2 * e));
+        // turns to the heads it is about to mend
+        if (mendMid(face2)) { focus = e; fTo = face2; }
         jaw = 0.2 + 0.4 * e; eyeK = 1 + 1.5 * e; mouthK = 0.5 + 1.5 * e;
-        if (s.orb) s.orb.grow(0.35 + e * 0.6);
-        if (Math.random() < dt * 40) { mouthWorld(id, v2); K.fx.suck(v2.add(v4.set(0, 0.6, 0)), 3, 1, '#ffe08a', 0.5, 0.22); }
+        if (s.orb) s.orb.grow(0.3 + e * 0.5);
+        if (Math.random() < dt * 40) { mouthWorld(id, v2); K.fx.suck(v2, 3, 1, '#ffe08a', 0.5, 0.22); }
         if (at > s.actLen + 0.8) endAct(s, null, t);
       } else if (s.act === 'mendGo') {
         const u = clamp(at / 0.6, 0, 1);
         v1.add(v2.set(0, 1.8 * (1 - u), -1.2 * (1 - u) + Math.sin(u * Math.PI) * 1.2)); jaw = 0.6 * (1 - u);
+        // holds its gaze on them while the threads run, then looks back at Art
+        if (mendMid(face2)) { focus = 1 - smooth((u - 0.6) / 0.4); fTo = face2; }
         if (u >= 1) s.act = null;
       }
+      if (focus > 0) look.lerp(aimLook(id, fTo, v4), focus);
       // the roar at a phase change: every head rears back with its jaws open
       if (roarIn > 0 && s.up && (!s.act || s.act === 'reel')) {
         v1.add(v2.set(D.dir * 1.2 * roarIn, 2.6 * roarIn, -2 * roarIn)).add(v4.set(Math.sin(t * 38 + ph) * 0.12 * roarIn, Math.sin(t * 33) * 0.1 * roarIn, 0));
@@ -591,5 +635,7 @@ SuperModels.hydra = function (THREE, K, ctx) {
   }
 
   function dispose() { /* the kit owns every geometry and material */ }
-  return { group, props, update, event, anchor, worldOf, attacker, subj, reset, dispose, height: 16, width: 38, focus: new V(0, 7.6, -3), face: 'root', info: () => ({ acts: Object.fromEntries(Object.entries(st).map(([k, s]) => [k, s.act])), slam: !!slam }) };
+  return { group, props, update, event, anchor, worldOf, attacker, subj, reset, dispose, height: 16, width: 38, focus: new V(0, 7.6, -3), face: 'root', info: () => ({ acts: Object.fromEntries(Object.entries(st).map(([k, s]) => [k, s.act])), slam: !!slam,
+    // for tests: where each head is, where its mouth is and which way its snout points
+    heads: Object.fromEntries(Object.keys(st).map(k => { const g = heads[k].g, m = mouthWorld(k, new V()), f = new V(0, 0, 1).applyQuaternion(g.quaternion); return [k, { up: st[k].up, act: st[k].act, pos: g.position.toArray().map(x => +x.toFixed(2)), mouth: m.toArray().map(x => +x.toFixed(2)), fwd: f.toArray().map(x => +x.toFixed(3)), orb: st[k].orb ? st[k].orb.pos.toArray().map(x => +x.toFixed(2)) : null }]; })) }) };
 };
