@@ -78,7 +78,7 @@ window.DuelScene = (() => {
     const rnd = (a, b) => a + Math.random() * (b - a);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const phone = matchMedia('(max-width: 720px)').matches;
-    const FAR = 0.5;   // the stadium behind the fighters is drawn at half the canvas size (see drawFar)
+    const FAR = 0.42;   // the stadium behind the fighters is drawn at 0.42 of the canvas size (see drawFar)
 
     const renderer = new THREE.WebGLRenderer({ antialias: !phone, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, phone ? 1.5 : 1.75));
