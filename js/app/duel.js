@@ -1,13 +1,18 @@
-// #/duel: PvP typing duels. Both players type the same seeded words; every correct word
-// fires a shot at the other side, combos power the shots up and spells land on the
-// opponent. Best of 3 rounds. The match itself runs in the network layer (js/net/),
-// which is the simulated server for now, so this page only sends keys and draws.
+// #/duel: PvP typing duels, bot vs bot (Gid, 28 Nov 2026): each side fights with its bot from the
+// hangar (BotKit), never the operators. Two modes, each with its own MMR:
+//   Clash     real time. Both players type the same seeded words; every correct word fires a shot at
+//             the other side, combos power the shots up and spells land on the opponent. Best of 3
+//             rounds. The match runs in the network layer (js/net/), the simulated server for now,
+//             so this page only sends keys and draws.
+//   Showdown  turn based, 10 words and 20 seconds a round, then both attacks play (js/app/showdown.js).
 //
-//   #/duel            the duel menu: modes, your record, players online, incoming challenges
-//   #/duel/quick      a bot at your level
-//   #/duel/art        Art's ghost at 204 wpm
-//   #/duel/vs/<id>    challenge a player (simulated players answer for now)
-//   #/duel/watch      two bots, for spectating
+//   #/duel                 the duel menu (the last tab you used): modes, your record, players online
+//   #/duel/showdown        the menu on the Showdown tab
+//   #/duel/quick           Clash with a bot at your level
+//   #/duel/art             Clash with Art's ghost at 204 wpm
+//   #/duel/vs/<id>         challenge a player to a Clash (simulated players answer for now)
+//   #/duel/watch           two bots Clash, for spectating
+//   #/duel/showdown/quick | art | watch | vs/<id>   the same for Showdown
 window.DuelPage = { events: ['pvp_win', 'pvp_match'] };
 if (window.WPM) WPM.events.register(...DuelPage.events);
 
@@ -15,47 +20,100 @@ Router.register('duel', (() => {
   const e = s => UI.esc(s);
   let el = null, off = [], mode = 'menu', info = null, scene = null, raf = 0, keys = null, onDoc = null;
   let ty = null, lastState = null, fog = 0, endShown = false, waitC = null, incoming = null, incT = 0, ctl = null, noticeT = 0;
-  let snd = null, phaseWas = '', countWas = 0, endT = 0, resT = 0;
+  let snd = null, phaseWas = '', countWas = 0, endT = 0, resT = 0, sd = null, typedWas = [0, 0];
+  const TAB = 'wpm-duel-tab';
+  let sideCols = null;
   const SIDE_COL = [Theme.hex('accent'), '#f29d30'];
 
   function mount(root, params) {
     TT.useWeaponSound();
     el = root;
     off.push(Net.on('match', onMatch), Net.on('challenge', onChallenge), Net.on('presence', () => { if (mode === 'menu') paintOnline(); }));
-    // the fighters' portraits are 3D avatars: start loading them now, so they're ready by the countdown
-    if (window.Avatar) { Avatar.load(); Avatar.thumb(Avatar.mine(), 512, 512); }
     route(params || []);
   }
   function update(params) { stopFight(); route(params || []); }
 
   function route(p) {
     endShown = false;
+    if (p[0] === 'showdown') {
+      try { localStorage.setItem(TAB, 'showdown'); } catch (err) {}
+      if (['quick', 'art', 'watch'].includes(p[1]) || (p[1] === 'vs' && p[2])) return showdown(p[1], p[2] ? decodeURIComponent(p[2]) : null);
+      return menu('showdown');
+    }
     if (p[0] === 'quick') return start({ mode: 'quick' });
     if (p[0] === 'art') return start({ mode: 'art' });
     if (p[0] === 'watch') return start({ mode: 'watch' });
     if (p[0] === 'vs' && p[1]) return challenge(decodeURIComponent(p[1]));
-    menu();
+    let tab = 'clash';
+    try { tab = localStorage.getItem(TAB) === 'showdown' ? 'showdown' : 'clash'; } catch (err) {}
+    menu(tab);
+  }
+
+  // ---------- Showdown (js/app/showdown.js) ----------
+  function showdown(kind, opp) {
+    stopFight();
+    mode = 'showdown'; clearTimeout(incT);
+    const again = () => update(location.hash.replace(/^#\/duel\/?/, '').split('/'));
+    sd = Showdown.start(el, { mode: kind, opponent: opp, again });
   }
 
   // ---------- menu ----------
-  function menu() {
+  function menu(tab = 'clash') {
     mode = 'menu';
+    try { localStorage.setItem(TAB, tab); } catch (err) {}
+    const C = window.ShowdownRules ? ShowdownRules.CONFIG : { hp: 120, words: 10, roundMs: 20000, rounds: 5 };
+    const tabs = `<div class="du-tabs" role="tablist" aria-label="Duel mode">
+        <button type="button" role="tab" class="du-tab${tab === 'clash' ? ' on' : ''}" aria-selected="${tab === 'clash'}" data-tab="clash">Clash</button>
+        <button type="button" role="tab" class="du-tab${tab === 'showdown' ? ' on' : ''}" aria-selected="${tab === 'showdown'}" data-tab="showdown">Showdown</button>
+      </div>`;
+    if (tab === 'showdown') {
+      el.innerHTML = `
+      <div class="du-head">
+        <div class="title-block"><h1><span class="pre">&gt;</span>Duel</h1><p>// SHOWDOWN, 10 WORDS A ROUND, BEST OF ${C.rounds}</p></div>
+      </div>
+      ${tabs}
+      <div class="du-menu">
+        <div class="du-modes">
+          <a class="panel du-mode" href="#/duel/showdown/quick"><span class="label">&gt; Quick match</span><h3>A typist near your MMR</h3><p>Picked within about 100 of your Showdown MMR.</p></a>
+          <a class="panel du-mode art" href="#/duel/showdown/art"><span class="label">&gt; Challenge Art</span><h3>Art's ghost, ${NetRating.ART} MMR</h3><p>204 wpm on his race pace. Finish first or he strikes first.</p></a>
+          <a class="panel du-mode" href="#/duel/showdown/watch"><span class="label">&gt; Watch</span><h3>Two bots</h3><p>See a few rounds before you play.</p></a>
+        </div>
+        <section class="panel du-rec" aria-label="Your Showdown record"><div class="ph">// YOUR SHOWDOWN RECORD<span class="meta">THIS DEVICE</span></div><div data-rec></div></section>
+        <section class="panel du-online" aria-label="Players online"><div class="ph">// ONLINE NOW<span class="meta">SIMULATED</span></div><ul class="mu-list" data-online></ul></section>
+        <section class="panel du-rules" aria-label="How a Showdown works">
+          <div class="ph">// HOW A SHOWDOWN WORKS</div>
+          <ul class="du-rule-list">
+            <li>You both get the same ${C.words} words and ${C.roundMs / 1000} seconds. Each word you finish adds a spark to your bot's orb.</li>
+            <li>When time is up, or you're both done, the bots attack: 1 to 3 words a shot, 4 to 6 a double shot, 7 to 9 a dash strike, all ${C.words} the finisher.</li>
+            <li>Accuracy sets the damage. A round with no wrong key is a crit, 1.5 times the damage.</li>
+            <li>Whoever finishes first strikes first. Finish all ${C.words} early and you may dodge the other attack.</li>
+            <li>Each side has ${C.hp} HP for the whole match. First to ${C.winRounds} rounds wins, or empty the other bot's HP.</li>
+            <li>Showdown has its own MMR, separate from Clash.</li>
+          </ul>
+        </section>
+      </div>`;
+      wireTabs();
+      paintShowdownRecord();
+      Net.connect().then(() => paintOnline()).catch(() => {});
+      return;
+    }
     el.innerHTML = `
       <div class="du-head">
-        <div class="title-block"><h1><span class="pre">&gt;</span>Duel</h1><p>// PVP, BEST OF 3 ROUNDS</p></div>
+        <div class="title-block"><h1><span class="pre">&gt;</span>Duel</h1><p>// CLASH, REAL TIME, BEST OF 3 ROUNDS</p></div>
         <a class="btn out" href="#/leaderboard/duel">Duel leaderboard</a>
       </div>
+      ${tabs}
       <div class="du-menu">
         <div class="du-modes">
           <a class="panel du-mode" href="#/duel/quick"><span class="label">&gt; Quick match</span><h3>A bot near your MMR</h3><p>Picked within about 100 MMR of yours.</p></a>
           <a class="panel du-mode art" href="#/duel/art"><span class="label">&gt; Challenge Art</span><h3>Art's ghost, ${NetRating.ART} MMR</h3><p>His pace from the race ghost, with spells.</p></a>
           <a class="panel du-mode" href="#/duel/watch"><span class="label">&gt; Watch</span><h3>Two bots duel</h3><p>See how the accuracy rings and spells work before you play.</p></a>
         </div>
-        <section class="panel du-rec" aria-label="Your duel record"><div class="ph">// YOUR RECORD<span class="meta">THIS DEVICE</span></div><div data-rec><div class="loading-state">Loading</div></div></section>
+        <section class="panel du-rec" aria-label="Your Clash record"><div class="ph">// YOUR CLASH RECORD<span class="meta">THIS DEVICE</span></div><div data-rec><div class="loading-state">Loading</div></div></section>
         <section class="panel du-inc" data-inc hidden aria-live="polite"></section>
         <section class="panel du-online" aria-label="Players online"><div class="ph">// ONLINE NOW<span class="meta">SIMULATED</span></div><ul class="mu-list" data-online></ul></section>
         <section class="panel du-rules" aria-label="How a duel works">
-          <div class="ph">// HOW A DUEL WORKS</div>
+          <div class="ph">// HOW A CLASH WORKS</div>
           <ul class="du-rule-list">
             <li>You both type the same words. Every correct word fires a shot at the other side.</li>
             <li>Clean words build your combo and power up your shots. A typo drops it one tier.</li>
@@ -69,10 +127,31 @@ Router.register('duel', (() => {
           </details>
         </section>
       </div>`;
+    wireTabs();
     Net.connect().then(() => { paintRecord(); paintOnline(); }).catch(err => { const r = el && el.querySelector('[data-rec]'); if (r) r.innerHTML = `<p class="empty">${e(err.message)}</p>`; });
     // the simulated server sends a challenge from an online bot now and then while you wait here
     clearTimeout(incT);
     if (Net.isSim()) incT = setTimeout(() => { if (mode === 'menu' && !incoming) { const imp = Net._impl(); if (imp.challenges.incoming) imp.challenges.incoming(); } }, 25000 + Math.random() * 20000);
+  }
+
+  function wireTabs() {
+    el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+      const t = b.dataset.tab;
+      const want = t === 'showdown' ? '#/duel/showdown' : '#/duel';
+      if (location.hash === want) menu(t); else { try { localStorage.setItem(TAB, t); } catch (err) {} location.hash = want; }
+    }));
+  }
+  function paintShowdownRecord() {
+    const box = el && el.querySelector('[data-rec]');
+    if (!box || !window.Showdown) return;
+    const r = Showdown.record(), t = NetRating.tier(r.rating), last = r.history.slice(-4).reverse();
+    box.innerHTML = `
+      <div class="du-rating"><b class="big">${r.rating}</b><span class="label">MMR</span><span class="mu-tier ${t.id}">${t.name}</span></div>
+      <dl class="kv">
+        <dt>Wins</dt><dd>${r.wins}</dd><dt>Losses</dt><dd>${r.losses}</dd>
+        <dt>Best streak</dt><dd>${r.bestStreak}</dd><dt>Vs Art</dt><dd>${r.vsArt.w} won, ${r.vsArt.l} lost</dd>
+      </dl>
+      ${last.length ? `<ol class="du-last">${last.map(h => `<li class="${h.score === 1 ? 'w' : h.score === 0 ? 'l' : ''}"><span>${h.score === 1 ? 'Won' : h.score === 0 ? 'Lost' : 'Draw'}</span> vs ${e(h.opp.name)}${h.opp.bot && !h.opp.art ? ' <span class="mu-tag bot">Bot</span>' : ''}<em>${h.delta > 0 ? '+' : ''}${h.delta}</em></li>`).join('')}</ol>` : '<p class="dim">No Showdowns yet.</p>'}`;
   }
 
   function paintRecord() {
@@ -100,7 +179,7 @@ Router.register('duel', (() => {
     ul.innerHTML = list.map(p => `<li>
       <a class="mu-who" href="${MultiUI.link(p)}">${MultiUI.img(p, 68, 34)}<span>${MultiUI.name(p)}</span></a>
       <span class="mu-st ${p.status}">${ST[p.status] || ''}</span><span class="num dim">${p.rating} MMR</span>
-      <a class="btn out sm" href="#/duel/vs/${encodeURIComponent(p.id)}"${p.status === 'idle' ? '' : ' aria-disabled="true" tabindex="-1"'}>Challenge</a></li>`).join('');
+      <a class="btn out sm" href="#/duel/${el.querySelector('.du-tab.on[data-tab="showdown"]') ? 'showdown/' : ''}vs/${encodeURIComponent(p.id)}"${p.status === 'idle' ? '' : ' aria-disabled="true" tabindex="-1"'}>Challenge</a></li>`).join('');
   }
 
   function onChallenge(c) {
@@ -159,13 +238,16 @@ Router.register('duel', (() => {
 
   // ---------- the fight ----------
   function fight(i) {
-    mode = 'fight'; info = i; endShown = false; fog = 0;
+    mode = 'fight'; info = i; endShown = false; fog = 0; typedWas = [0, 0];
     const P = info.players, me = info.you;
     const L = 0, R = 1;
+    // each side's bot: yours from the hangar (owned parts only), everyone else's seeded from their name, Art's in his cyan
+    const bots = P.map((p, k) => Showdown.botFor(p, k === me, p.art ? '#3ee6ff' : SIDE_COL[k]));
+    const cols = P.map((p, k) => (k === me || (me < 0 && !k) ? Showdown.sideColor(p, 0, bots[k]) : p.art ? '#3ee6ff' : SIDE_COL[k]));
     const side = (k, cls) => {
       const p = P[k];
       return `<div class="du-side ${cls}">
-        <div class="du-id"><a class="mu-who" href="${MultiUI.link(p)}" ${me >= 0 ? 'tabindex="-1"' : ''}>${MultiUI.img(p, 68, 34)}<span>${MultiUI.name(p)}</span></a><span class="num dim">${p.art ? NetRating.ART : p.rating} MMR</span></div>
+        <div class="du-id"><span class="du-botname" style="--c:${cols[k]}">${e(BotKit.BOTS[bots[k].id].name)}</span><a class="mu-who" href="${MultiUI.link(p)}" ${me >= 0 ? 'tabindex="-1"' : ''}><span>${MultiUI.name(p)}</span></a><span class="num dim">${p.art ? NetRating.ART : p.rating} MMR</span></div>
         <div class="du-hp" data-hp="${k}"><i></i><b class="num">${DuelRules.CONFIG.hp}</b></div>
         <div class="du-pips" data-pips="${k}" aria-label="Rounds won"><i></i><i></i></div>
       </div>`;
@@ -208,21 +290,30 @@ Router.register('duel', (() => {
       </div>`;
     const stage = el.querySelector('[data-stage]');
     UI.play('duel', true);
-    // each side's operator: yours from the Character Lab, everyone else's seeded from their name
-    // other players get a base with a made model (the procedural one read dark and blocky under the stadium lights)
-    const other = seed => { const p = Operator.random(seed); if (!(Operator.MODELS || {})[p.base]) p.base = 'male'; return p; };
-    const preset = k => (!window.Operator ? null : k === me ? Operator.mine() : other(P[k].art ? 'art' : P[k].name || P[k].id));
     // the arena's sounds: hits, blocks, the bell, the crowd (js/app/arena-audio.js)
     snd = window.ArenaAudio ? ArenaAudio.create() : null;
     phaseWas = ''; countWas = 0;
-    scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ look: MultiUI.look(P[k]), color: P[k].art ? '#3ee6ff' : SIDE_COL[k], preset: preset(k), name: P[k].name })) });
+    // a keyboard you own only changes how your shots fly (Compact three bolts, Split two that cross, Arc forked lightning)
+    sideCols = cols;
+    scene = DuelScene.mount(stage, { me, audio: snd, sides: [0, 1].map(k => ({ color: cols[k], bot: bots[k], kb: k === me ? Showdown.kbStyle() : Showdown.kbOf(P[k].id), name: P[k].name })) });
     window._duel = { scene: () => scene };   // tests
     // load and play every effect once behind the cover, then tell the server this side is ready.
     // The countdown starts only when both sides are; a stuck load gives up after 12 seconds.
     const chars = [...new Set(info.words.flat().join('') + Combat.SPELLS().map(x => x.word).join(''))].join('');
     const at = info;
     Promise.race([scene.warm(chars), new Promise(r => setTimeout(r, 12000))]).then(() => { if (info === at && mode === 'fight') Net.match.ready(); });
-    el.querySelector('[data-leave]').addEventListener('click', () => { Net.match.leave(); if (me < 0) location.hash = '#/duel'; });
+    el.querySelector('[data-leave]').addEventListener('click', () => { if (me < 0) { Net.match.leave(); location.hash = '#/duel'; } else GameGuard.confirm(); });
+    // leaving mid-fight asks first; Esc opens the menu (the duel can't pause: the other side keeps typing)
+    if (me >= 0) GameGuard.start({
+      name: 'duel',
+      live: () => mode === 'fight' && !endShown && !!lastState && lastState.phase !== 'load',
+      end: leaving => {
+        const st = lastState;
+        Net.match.leave();
+        return leaving ? { label: 'CLASH', title: 'You left the duel', sub: `Counts as a loss against ${P[1 - me].name}.`, stats: [['Round', st ? Math.max(1, st.round) : 1], ['Damage', st ? UI.fmt(((st.sides[me] || {}).stats || {}).dmg || 0) : 0]] } : null;
+      },
+      after: () => {},
+    });
     lastState = info.state;
     if (me >= 0) {
       const words = r => (info.words[r] && info.words[r].length ? info.words[r] : info.words[1]);
@@ -264,6 +355,8 @@ Router.register('duel', (() => {
     const r = ty.key(k, t);
     if (r && r.submit && r.submit.kind === 'stream') fog = Math.max(0, fog - 1);
     if (r && r.key) TT.click(false);
+    // a correct key sends a spark into your bot's orb
+    if (r && r.key && r.good && scene) { const s2 = ty.state(); if (s2.target && s2.target.word) scene.key(info.you, s2.typed.length / s2.target.word.length); typedWas[info.you] = s2.typed.length; }
     // the simulated server answers at once; a real one sends the state back a moment later
     const cur = Net.match.current();
     if (cur && cur.state) lastState = cur.state;
@@ -288,7 +381,7 @@ Router.register('duel', (() => {
   function event(ev) {
     const me = info.you;
     switch (ev.type) {
-      case 'shot': scene.shot(ev.side, ev.tier, null, { color: info.players[ev.side].art ? '#3ee6ff' : SIDE_COL[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock() }); break;
+      case 'shot': scene.shot(ev.side, ev.tier, null, { color: sideCols[ev.side], word: ev.word, crit: ev.crit, combo: ev.combo, ms: ev.landAt - Net.match.clock() }); break;
       case 'hit': {
         num(ev.to, (ev.crit ? 'Crit ' : '') + ev.dmg, `${ev.to === me ? 'in' : 'out'}${ev.kind === 'spell' ? ' spell' : ''}${ev.crit ? ' crit' : ''}`);
         if (ev.kind === 'dot') scene.react(ev.to, 'poisonTick');
@@ -307,7 +400,7 @@ Router.register('duel', (() => {
       }
       case 'block': scene.react(ev.side, 'block'); num(ev.side, 'Blocked', 'block'); break;
       case 'typo': scene.react(ev.side, 'typo'); ringFlash(ev.side); break;
-      case 'miss': num(ev.side, 'Miss', 'miss'); ringFlash(ev.side); break;
+      case 'miss': num(ev.side, 'Miss', 'miss'); ringFlash(ev.side); scene.react(ev.side, 'miss'); break;
       case 'fizzle': num(ev.side, 'Fizzled', 'miss'); break;
       case 'locked': if (ev.side === me) flashLock(); break;
       case 'effect': effect(ev); break;
@@ -420,6 +513,17 @@ Router.register('duel', (() => {
     }
     st.sides.forEach((s, k) => {
       hpTo(k, s.hp);
+      // the other side's keys spark into its orb as they come in; live wpm sets each bot's stance
+      if (scene && st.phase === 'fight') {
+        scene.wpm(k, s.liveWpm || 0);
+        const n = (s.typed || '').length;
+        if (k !== info.you && n > typedWas[k]) {
+          const list = info.words[Math.max(1, st.round)] || info.words[1];
+          const w = s.target && s.target.kind === 'spell' ? s.target.word : list[s.idx % list.length] || '';
+          if (w.startsWith(s.typed)) scene.key(k, n / Math.max(1, w.length));
+        }
+        if (k !== info.you) typedWas[k] = n;
+      }
       const a = el.querySelector(`[data-acc="${k}"]`);
       MultiUI.setRing(a.querySelector('svg'), s.acc);
       a.querySelector('[data-combo]').textContent = s.combo;
@@ -540,6 +644,7 @@ Router.register('duel', (() => {
     if (endShown) return;
     endShown = true;
     UI.play('duel', false);
+    GameGuard.stop();
     const r = m.result || {};
     const me = info.you, P = info.players;
     if (r.cancelled) {
@@ -603,12 +708,14 @@ Router.register('duel', (() => {
         <tbody>${r.rounds.map(x => `<tr><td class="num">${x.round}</td><td>${x.winner >= 0 ? e(x.winner === me ? 'You' : P[x.winner].name) : 'Draw'}</td><td class="num">${UI.clock ? UI.clock(Math.round(x.ms / 1000)) : Math.round(x.ms / 1000) + ' s'}</td>
           ${[0, 1].map(k => `<td class="num r">${x.sides[k].dmg} dmg, ${x.sides[k].wpm} wpm, ${x.sides[k].acc}%</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : ''}
+      ${me >= 0 && r.forfeit == null ? GameGuard.shareHtml(shareLine(r, won)) : ''}
       <div class="row">
         ${me >= 0 ? `<a class="btn" href="#/duel/${info.mode === 'art' ? 'art' : info.mode === 'player' ? 'vs/' + encodeURIComponent(P[1 - me].id) : 'quick'}" data-again>${info.mode === 'art' ? 'Challenge Art again' : info.mode === 'player' ? 'Rematch' : 'Next match'}</a>` : '<a class="btn" href="#/duel/watch" data-again>Watch another</a>'}
         <a class="btn out" href="#/duel">Back to duels</a>
         ${me >= 0 && !P[1 - me].art ? `<a class="btn out" href="${MultiUI.link(P[1 - me])}">${e(P[1 - me].name)}'s profile</a>` : ''}
       </div>
     </div>`;
+    if (me >= 0 && r.forfeit == null) GameGuard.wire(box, shareLine(r, won));
     const again = box.querySelector('[data-again]');
     // the same hash again does not fire hashchange, so route by hand
     if (again) again.addEventListener('click', ev => { if (location.hash === again.getAttribute('href')) { ev.preventDefault(); update(location.hash.replace(/^#\/duel\/?/, '').split('/')); } });
@@ -616,8 +723,15 @@ Router.register('duel', (() => {
     const h = box.querySelector('h2'); h.tabIndex = -1; h.focus({ preventScroll: true });
   }
 
+  function shareLine(r, won) {
+    const me = info.you, opp = info.players[1 - me], s = (r.sides && r.sides[me]) || {};
+    return `${won ? 'I won' : 'I played'} a Clash duel on Stormtyper against ${opp.art ? 'Art' : opp.name}, ${r.wins[me]}-${r.wins[1 - me]}, at ${s.wpm || 0} wpm and ${s.acc || 0}% accuracy.`;
+  }
+
   // ---------- leaving ----------
   function stopFight() {
+    if (sd) { sd.stop(); sd = null; }
+    GameGuard.stop();
     UI.play('duel', false);
     cancelAnimationFrame(raf); raf = 0;
     if (mode === 'fight' && !endShown) Net.match.leave();
