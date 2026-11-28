@@ -794,7 +794,7 @@ window.DuelScene = (() => {
         const oc = odColOf(1 - to, Math.max(1, how.od));
         burst(at, 6 + how.od * 6, 8 + how.od * 2, oc, { shard: true, size: 0.3, life: 0.7, dir: away, up: 0.5, grav: 8, k: 1.5 });
         flare(at, oc, 1.2 + how.od * 0.4, 0.1);
-        if (!how.ring2) after(0.05, () => ringAt(to, oc, 2.8 + how.od * 0.6, 0.5));
+        if (!how.ring2 && !how.heavy) after(0.05, () => ringAt(to, oc, 2.8 + how.od * 0.6, 0.5));   // a heavy hit rings violet already
       }
       snd(p >= 3 ? 'heavy' : 'jab'); if (tier >= 1) csnd('shot' + Math.min(4, tier));
       if (p >= 3 || how.heavy) { snd('ooh'); if (opts.audio) opts.audio.swell(0.6); if (arena) arena.hype(1 - to, 0.8); }
