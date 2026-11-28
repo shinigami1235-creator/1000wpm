@@ -313,7 +313,7 @@ window.DuelScene = (() => {
       const a = STG.a.set(Math.cos(STG.th), 0, Math.sin(STG.th)), n = STG.n.set(-Math.sin(STG.th), 0, Math.cos(STG.th));
       const half = STG.sep / 2, lim = 9.8 - half;
       STG.cx = clamp(STG.cx, -lim, lim);
-      const span = Math.max(0, STG.sep - 3.5);   // how far a move carries a bot before it meets the other
+      const span = Math.max(0, STG.sep - 4.0);   // how far a move carries a bot before it meets the other
       let passing = false;
       F.forEach((f, i) => {
         const m = f.bf.motion(), d = i ? -1 : 1;
@@ -325,7 +325,7 @@ window.DuelScene = (() => {
       const g0 = F[0].bf.group.position, g1 = F[1].bf.group.position;
       _ga.subVectors(g1, g0); _ga.y = 0;
       const dd = _ga.length();
-      if (dd < 2.7 && !passing && dd > 1e-3) { _ga.multiplyScalar((2.7 - dd) / 2 / dd); g0.sub(_ga); g1.add(_ga); }
+      if (dd < 3.2 && !passing && dd > 1e-3) { _ga.multiplyScalar((3.2 - dd) / 2 / dd); g0.sub(_ga); g1.add(_ga); }
       // inside the stage's rim
       for (const g of [g0, g1]) { const r = Math.hypot(g.x, g.z); if (r > 10.6) { g.x *= 10.6 / r; g.z *= 10.6 / r; } }
       // each turns to face the other; a bot driving in squares up to it, the rest stay turned a little to the camera
@@ -864,7 +864,7 @@ window.DuelScene = (() => {
             const when = Math.max(0.1, (Math.min(meet.at, t + rel + T) - t) * 0.5);
             const ca = new THREE.Color(o.color || '#ffffff'), cb = (meet.col || WHITE).clone();
             after(when, () => { const m = new V().addVectors(fc[0], fc[1]).multiplyScalar(0.5); clashBurst(m, ca, cb); });
-            if (!warming) want('xclash', { pri: 2 });
+            if (!warming) want('xclashq', { pri: 1 });
           } else if (flying[from].some(x => x.at > t + 0.09) && t - f.dodgeAt > 0.9) {
             // their shot is on its way and this word landed first: dodge it (it only grazes) and counter
             f.dodgeAt = t;
@@ -1506,6 +1506,8 @@ window.DuelScene = (() => {
       ] },
       // two shots meeting in the middle: low and centred, slow as they burst
       xclash: { pri: 3, len: 1.3, slow: 0.45, fov: 38, omega: 5, pose(c, out) { fr(out.pos, MID, 0, 0, 1.4 + c.u * 0.5, 10.5 - c.u * 1.2); out.look.copy(MID).setY(2.7); } },
+      // Clash's clash: the same look, short and in real time, so the typing never waits on it
+      xclashq: { pri: 1, len: 0.8, fov: 38, omega: 5, pose(c, out) { fr(out.pos, MID, 0, 0, 1.6 + c.u * 0.3, 11.5 - c.u * 0.8); out.look.copy(MID).setY(2.7); } },
       ko: { pri: 4, free: true, parts: [
         { len: 1.5, cut: 1, slow: 0.28, fov: 44, pose(c, out) { const i = c.x; fr(out.pos, fp[i], i, 4.2, 1.5, 6.6); fr(out.look, fp[i], i, -1.4, 2.0, 0); } },
         { len: 1.7, cut: 1, slow: 0.7, fov: 40, omega: 2.5, pose(c, out) { const i = c.x, j = 1 - i; fr(out.pos, fp[j], j, -3.2, 3.2 + c.u * 0.6, 6.5 - c.u * 1.2); out.look.copy(MID).setY(1.8); } },
