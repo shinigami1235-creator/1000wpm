@@ -45,7 +45,7 @@ window.SuperData = (() => {
         'The heads grow back in 6 seconds and Root\'s breath needs two words to block.',
       ],
       finish: ['sever every head', 'cut the kernel loose', 'no head grows back'],
-      music: ['stage4', 'stage5', 'boss'],
+      music: ['sb-hydra-1', 'sb-hydra-2', 'sb-hydra-3'],
       pal: [
         { bg: '#010605', a: '#39ff88', b: '#167a57', c: '#3ee6ff', bloom: 0.6 },
         { bg: '#060602', a: '#f2c230', b: '#7a5d12', c: '#39ff88', bloom: 0.65 },
@@ -67,7 +67,7 @@ window.SuperData = (() => {
         'Lines compile faster and two can arrive at once.',
       ],
       finish: ['exit with code zero', 'build failed for good', 'end of program'],
-      music: ['stage2', 'stage3', 'wb-p3'],
+      music: ['sb-compiler-1', 'sb-compiler-2', 'sb-compiler-3'],
       pal: [
         { bg: '#01040a', a: '#3ee6ff', b: '#145a73', c: '#39ff88', bloom: 0.6 },
         { bg: '#05030a', a: '#b779ff', b: '#4d2a7a', c: '#3ee6ff', bloom: 0.66 },
@@ -90,7 +90,7 @@ window.SuperData = (() => {
         'The weak point windows get shorter and the tail sweep needs two words to block.',
       ],
       finish: ['drop every packet', 'close the last port', 'sink the leviathan'],
-      music: ['stage1', 'wb-p2', 'wb-p4'],
+      music: ['sb-leviathan-1', 'sb-leviathan-2', 'sb-leviathan-3'],
       pal: [
         { bg: '#010508', a: '#3ee6ff', b: '#0f5f6e', c: '#39ff88', bloom: 0.62 },
         { bg: '#01070a', a: '#39ffd2', b: '#0d6b5a', c: '#f2c230', bloom: 0.66 },

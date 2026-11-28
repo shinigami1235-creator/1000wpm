@@ -15,6 +15,9 @@
 window.SuperAudio = (() => {
   const LOOPS = { stage1: [0, 61.935], stage2: [0, 60], stage3: [0, 58.182], stage4: [0, 56.471], stage5: [0, 54.857], boss: [0, 51.892] };
   const WB = [0.5, 32 * 4 * 60 / 140];
+  // each boss's own theme, one loop per phase (tools/music/superboss.py), and the World Boss enrage: loop plus its first second again
+  [['hydra', 32, 140], ['compiler', 32, 132], ['leviathan', 48, 174]].forEach(([b, bars, bpm]) => [1, 2, 3].forEach(p => { LOOPS[`sb-${b}-${p}`] = [0.5, bars * 240 / bpm]; }));
+  LOOPS['wb-enrage'] = [0.5, 32 * 240 / 150];
   const loopOf = n => LOOPS[n] || WB;
   const MUSIC_BASE = 0.34, STING = 0.8, OUT = 0.7;
   const LEVEL = {

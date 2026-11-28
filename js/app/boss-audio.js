@@ -1,8 +1,15 @@
-// World boss sound: one music loop per phase plus an enrage loop and a victory
-// sting from audio/wb-*.mp3, and sound effects made with Web Audio.
-// The loops are 32 bars at 140 bpm and every file holds the loop plus its
-// first second again, so playback loops from 0.5 s to 0.5 s + LOOP and a phase
-// change crossfades to the next loop at the same spot in the bar.
+// World boss sound: Syntax Error's music (audio/wb-*.mp3, made by tools/boss/music.py) and the
+// sound effects, made with Web Audio.
+// The music is 150 bpm, so a beat is 0.4 s and a bar 1.6 s, and everything moves on that grid:
+//   - one loop per phase (wb-p1..p4, wb-enrage; bars in BARS). Each file holds the loop plus its
+//     first second again, so playback loops from 0.5 s to 0.5 s + the loop. A phase change starts
+//     the new loop at its first bar on the next beat of the old one.
+//   - cut(in, len) drops the music before a hit; it comes back on the hit at the top of the next
+//     bar, so the hit lands on a downbeat. uncut() brings it back now the same way.
+//   - threat(on) brings in wb-threat (a ticking 4-bar layer, locked to the loop) and lifts the top.
+//   - the beam face-off plays wb-fo against the face-off's own clock: the charge builds for 7 s, the
+//     clash lands on beat 22 (8.8 s) and the result on beat 29 (11.6 s), where wb-fo-win or
+//     wb-fo-lose plays; the phase loop comes back 4 beats later at the next 8-bar section.
 //   BossAudio.phase(p)        play the loop for phase p (0 to 4)
 //   BossAudio.victory()       fade the music and play the sting
 //   BossAudio.play(name, arg) a sound effect
@@ -12,12 +19,19 @@
 //   BossAudio.out()           { ac, bus }: the context and effects bus, for the combat sounds
 //   BossAudio.cut(in, len)    the music drops out in `in` s for `len` s and slams back, before a hit
 //   BossAudio.uncut()         brings it back now (the attack was blocked)
-//   BossAudio.threat(on)      the top end of the music goes up 8 dB while an attack word is up
+//   BossAudio.threat(on)      the threat layer and a brighter top while an attack word is up
 //   BossAudio.silence()       stops the music dead, for the kill
+//   BossAudio.faceoff(kind, dur, off)  'start' (dur s long, off s already gone), 'resolve' (win), 'end'
 window.BossAudio = (() => {
   const TRACKS = ['wb-p1', 'wb-p2', 'wb-p3', 'wb-p4', 'wb-enrage'];
-  const LOOP = 32 * 4 * 60 / 140, LOOP_AT = 0.5;
-  const MUSIC_VOL = 0.42, SFX_VOL = 1;
+  const BPM = 150, BEAT = 60 / BPM, BAR = 4 * BEAT, LOOP_AT = 0.5;
+  const BARS = { 'wb-p1': 64, 'wb-p2': 64, 'wb-p3': 64, 'wb-p4': 48, 'wb-enrage': 32, 'wb-threat': 4 };
+  const lenOf = n => (BARS[n] || 32) * BAR;
+  const LOOP = lenOf('wb-p1');
+  // the face-off cue, in beats from the face-off's start: the result at 29, the loop back 4 beats on
+  const FO_RESULT = 29, FO_BACK = 4;
+  // the new tracks are mastered to about -15 LUFS; this keeps the music where the effects were mixed against
+  const MUSIC_VOL = 0.34, SFX_VOL = 1, THREAT_DB = 4;
   // per-effect level, set from loudness measurements so hits sit about 6 dB under the music
   // and the big moments (roar, shield break, defeat) reach it
   const LEVEL = {
@@ -33,7 +47,9 @@ window.BossAudio = (() => {
     foStart: 0.8, foClash: 0.42, foEnd: 0.45, foWord: 0.5,
   };
   let ac = null, master = null, musicBus = null, sfxBus = null, shelf = null, cutG = null;
-  let on = true, want = -1, cur = null, fallback = null, token = 0;
+  let on = true, want = -1, cur = null, prev = null, fallback = null, token = 0;
+  // cur: { src, g, name, t0 (when the loop's position 0 plays), len }; prev: the one a scheduled switch replaces
+  let thr = null, threatOn = false, cutAt = 0, cutBack = 0, cutTo = 0, fo = null, lastSwitch = null;
   const buffers = {}, loading = {};
   const base = () => window.BREACH_BASE || '';
   const url = n => base() + `audio/${n}.mp3`;
@@ -54,7 +70,7 @@ window.BossAudio = (() => {
     if (ac.state === 'suspended') ac.resume().catch(() => {});
     return ac;
   }
-  function unlock() { if (!on) return; try { ctx(); if (want >= 0 && !cur && !fallback) start(want); } catch (e) {} }
+  function unlock() { if (!on) return; try { ctx(); if (want >= 0 && !cur && !fallback && !fo) start(want); } catch (e) {} }
 
   // ---------- music ----------
   function load(name) {
@@ -64,12 +80,58 @@ window.BossAudio = (() => {
       .catch(e => { delete loading[name]; throw e; });
     return loading[name];
   }
+  const mod = (a, n) => ((a % n) + n) % n;
+  const posAt = (x, t) => mod(t - x.t0, x.len);
+  // the next beat (or bar) of the playing loop at or after t
+  function nextOn(t, unit) { if (!cur) return t; return cur.t0 + Math.ceil((t - cur.t0 - 1e-4) / unit) * unit; }
+  // a loop source that plays position `pos` at time `at`
+  function source(name, at, pos, fadeIn = 0.012) {
+    const buf = buffers[name], len = lenOf(name);
+    const src = ac.createBufferSource();
+    src.buffer = buf; src.loop = true; src.loopStart = LOOP_AT; src.loopEnd = Math.min(buf.duration, LOOP_AT + len);
+    pos = mod(pos, len);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(1, at + fadeIn);
+    src.connect(g).connect(musicBus);
+    src.start(Math.max(at, ac.currentTime), pos < LOOP_AT ? pos + len : pos);
+    return { src, g, name, t0: at - pos, len };
+  }
+  function stopAt(x, at, s = 0.03) {
+    if (!x) return;
+    try {
+      const t = Math.max(ac.currentTime, at - s);
+      x.g.gain.cancelScheduledValues(t);
+      x.g.gain.setValueAtTime(Math.max(0.0001, x.g.gain.value), t);
+      x.g.gain.exponentialRampToValueAtTime(0.0001, t + s);
+      x.src.stop(t + s + 0.02);
+    } catch (e) {}
+  }
+  // play `name` from position `pos` at time `at`, replacing the loop that plays now (and the threat layer)
+  function switchTo(name, at, pos, why, fadeOld = 0.03) {
+    if (prev) { stopAt(prev, at); prev = null; }
+    const old = cur;
+    cur = source(name, at, pos, why === 'first' ? 0.05 : 0.012);
+    if (old) {
+      if (old.src !== cur.src) stopAt(old, at + fadeOld, fadeOld);
+      if (at > ac.currentTime + 0.02) prev = old;
+    }
+    lastSwitch = { name, at, pos, why };
+    syncThreat(at);
+  }
+  // the threat layer runs with the loop, silent until threat(true)
+  function syncThreat(at) {
+    if (!buffers['wb-threat'] || !cur) return;
+    if (thr) stopAt(thr, at);
+    thr = source('wb-threat', at, posAt(cur, at));
+    thr.g.gain.cancelScheduledValues(at); thr.g.gain.setValueAtTime(threatOn ? 1 : 0.0001, at);
+  }
   function phase(p) {
     want = p;
     if (!on) return;
     start(p);
     // fetch the next phase's loop early so the change is not late
     if (TRACKS[p + 1]) load(TRACKS[p + 1]).catch(() => {});
+    ['wb-threat', 'wb-fo'].forEach(n => load(n).catch(() => {}));
   }
   async function start(p) {
     const name = TRACKS[p];
@@ -79,17 +141,16 @@ window.BossAudio = (() => {
       ctx();
       const buf = await load(name);
       if (my !== token || !on || want !== p) return;
-      const t = ac.currentTime + 0.05;
-      // keep the bar position when moving from one phase loop to the next
-      const pos = cur ? ((t - cur.t0) % LOOP + LOOP) % LOOP : 0;
-      const src = ac.createBufferSource();
-      src.buffer = buf; src.loop = true; src.loopStart = LOOP_AT; src.loopEnd = Math.min(buf.duration, LOOP_AT + LOOP);
-      const g = ac.createGain();
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + (cur ? 1.6 : 1.2));
-      src.connect(g).connect(musicBus);
-      src.start(t, LOOP_AT + pos);
-      if (cur) fade(cur, 1.6);
-      cur = { src, g, name, t0: t - pos };
+      if (fo && !fo.back) return;      // the face-off cue is playing; the loop comes back after it
+      const now = ac.currentTime;
+      if (!cur) { switchTo(name, now + 0.05, 0, 'first'); return; }
+      // in a cut the new phase lands with the hit; otherwise on the next beat, from its first bar
+      if (cutBack > now) {
+        if (cutTimer) cutName = name;
+        else { if (prev) { try { cur.src.stop(); } catch (e) {} cur = prev; prev = null; } switchTo(name, cutBack, 0, 'cut'); }
+        return;
+      }
+      switchTo(name, nextOn(now + 0.06, BEAT), 0, 'phase', 0.25);
     } catch (e) {
       if (my !== token) return;
       // a page opened as a file cannot fetch, so play through an audio element
@@ -99,19 +160,10 @@ window.BossAudio = (() => {
       fallback.play().catch(() => {});
     }
   }
-  function fade(x, s) {
-    try {
-      const t = ac.currentTime;
-      x.g.gain.cancelScheduledValues(t);
-      x.g.gain.setValueAtTime(Math.max(0.0001, x.g.gain.value), t);
-      x.g.gain.exponentialRampToValueAtTime(0.0001, t + s);
-      x.src.stop(t + s + 0.05);
-    } catch (e) {}
-  }
   function stopMusic(s = 0.5) {
     token++;
-    if (cur && ac) fade(cur, s);
-    cur = null;
+    if (ac) { const t = ac.currentTime + s; stopAt(cur, t, s); stopAt(prev, t, s); stopAt(thr, t, s); if (fo) { stopAt(fo, t, s); stopAt(fo.sting, t, s); } }
+    cur = prev = thr = fo = null; cutBack = 0; clearTimeout(cutTimer); cutTimer = 0; cutName = '';
     if (fallback) { fallback.pause(); fallback = null; }
   }
   function duck(level, s) {
@@ -123,26 +175,57 @@ window.BossAudio = (() => {
     musicBus.gain.linearRampToValueAtTime(MUSIC_VOL, t + s);
   }
   // The Typing of the Dead cuts its music for 0.5 to 1.8 s before a threat and brings it back
-  // 16 to 22 dB louder on the hit, and brightens the top end while a word is up
+  // 16 to 22 dB louder on the hit, and brightens the top end while a word is up. Here the music
+  // comes back on the hit at the top of the bar after the one it was cut in, so the hit is a downbeat.
+  // The switch is scheduled a moment before the hit, so a block that comes first can call it off.
+  let cutTimer = 0, cutName = '';
   function cut(inS, lenS) {
-    if (!ac || !cutG) return;
-    const t = ac.currentTime + Math.max(0, inS), g = cutG.gain;
-    g.cancelScheduledValues(ac.currentTime);
-    g.setValueAtTime(g.value, ac.currentTime);
+    if (!ac || !cutG || fo) return;
+    const now = ac.currentTime, t = now + Math.max(0, inS), back = t + Math.max(0.1, lenS), g = cutG.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
     g.setValueAtTime(1, t);
     g.linearRampToValueAtTime(0.03, t + 0.06);
-    g.setValueAtTime(0.03, t + Math.max(0.1, lenS));
-    g.linearRampToValueAtTime(1, t + Math.max(0.1, lenS) + 0.03);
+    g.setValueAtTime(0.03, back);
+    g.linearRampToValueAtTime(1, back + 0.03);
+    cutAt = t; cutBack = back;
+    clearTimeout(cutTimer);
+    cutTimer = setTimeout(cutSwitch, Math.max(0, (back - now - 0.3) * 1000));
+  }
+  function cutSwitch() {
+    cutTimer = 0;
+    if (!cur || !ac || cutBack <= ac.currentTime) return;
+    const name = cutName || cur.name, started = lastSwitch ? lastSwitch.at : 0;
+    // a new phase starts from its first bar; the same loop from the bar after the cut
+    const pos = name !== cur.name || started > cutAt ? 0 : Math.ceil((posAt(cur, cutAt) + 0.05) / BAR) * BAR;
+    cutName = ''; cutTo = pos;
+    if (buffers[name]) switchTo(name, cutBack, pos, 'cut');
   }
   function uncut() {
     if (!ac || !cutG) return;
-    const t = ac.currentTime, g = cutG.gain;
-    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(1, t + 0.03);
+    const now = ac.currentTime, g = cutG.gain;
+    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.linearRampToValueAtTime(1, now + 0.03);
+    if (cutBack > now) {
+      const waiting = !!cutTimer;
+      clearTimeout(cutTimer); cutTimer = 0;
+      if (cutAt < now && cur) {
+        // blocked while the music was out: it comes back now, still from the top of a bar
+        const name = cutName || cur.name;
+        if (!waiting && prev) { try { cur.src.stop(); } catch (e) {} cur = prev; prev = null; }
+        const pos = waiting ? (name !== cur.name ? 0 : Math.ceil((posAt(cur, cutAt) + 0.05) / BAR) * BAR) : cutTo;
+        cutName = '';
+        if (buffers[name]) switchTo(name, now + 0.03, pos, 'uncut');
+      } else if (cutName) { const n = cutName; cutName = ''; if (buffers[n]) switchTo(n, nextOn(now + 0.06, BEAT), 0, 'phase', 0.25); }
+    }
+    cutBack = 0;
   }
   function threat(v) {
+    threatOn = !!v;
     if (!ac || !shelf) return;
     const t = ac.currentTime, g = shelf.gain;
-    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v ? 8 : 0, t + (v ? 0.15 : 0.6));
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v ? THREAT_DB : 0, t + (v ? 0.15 : 0.6));
+    if (!thr && v && cur && buffers['wb-threat']) syncThreat(t + 0.02);
+    if (thr) { const tg = thr.g.gain; tg.cancelScheduledValues(t); tg.setValueAtTime(Math.max(0.0001, tg.value), t); tg.exponentialRampToValueAtTime(v ? 1 : 0.0001, t + (v ? 0.2 : 0.8)); }
   }
   function silence() { uncut(); threat(false); stopMusic(0.06); }
   async function victory() {
@@ -159,6 +242,52 @@ window.BossAudio = (() => {
     } catch (e) {}
   }
 
+  // ---------- the face-off cue ----------
+  function oneShot(name, at, off = 0) {
+    const src = ac.createBufferSource(); src.buffer = buffers[name];
+    const g = ac.createGain(); g.gain.value = 1;
+    src.connect(g).connect(musicBus);
+    src.start(Math.max(at, ac.currentTime), off);
+    return { src, g, name };
+  }
+  // the loop comes back at the top of the 8-bar section after where it was left
+  function loopBack(at) {
+    if (want < 0 || !buffers[TRACKS[want]]) { if (want >= 0) start(want); return; }
+    const name = TRACKS[want], len = lenOf(name);
+    const pos = fo && fo.left && fo.left.name === name ? Math.ceil((fo.left.pos + 0.05) / (8 * BAR)) * 8 * BAR % len : 0;
+    cur = null;
+    switchTo(name, at, pos, 'faceoff');
+  }
+  async function foStartCue(off) {
+    const f = fo;
+    try {
+      ctx();
+      await load('wb-fo');
+      ['wb-fo-win', 'wb-fo-lose'].forEach(n => load(n).catch(() => {}));
+      if (!on || !fo || fo !== f || fo.src) return;
+      const now = ac.currentTime, t0 = fo.t0;
+      if (now - t0 > FO_RESULT * BEAT) return;
+      Object.assign(fo, oneShot('wb-fo', Math.max(now, t0), Math.max(0, now - t0)));
+    } catch (e) {}
+  }
+  async function foResult(win) {
+    if (!fo || fo.sting) return;
+    const name = win ? 'wb-fo-win' : 'wb-fo-lose';
+    fo.sting = { name };
+    try {
+      await load(name);
+      if (!fo || !on) return;
+      const now = ac.currentTime;
+      // on the result's beat, or the moment it arrives if it is late (the cue holds a chord there, so
+      // the hit goes with the picture); the loop's grid starts again from the hit
+      const at = Math.max(fo.t0 + FO_RESULT * BEAT, now + 0.02);
+      if (fo.src) stopAt(fo, at + 0.06, 0.06);
+      fo.sting = oneShot(name, at);
+      fo.back = at + FO_BACK * BEAT;
+      loopBack(fo.back);
+      lastSwitch.why = 'faceoff-' + (win ? 'win' : 'lose');
+    } catch (e) { if (fo) { fo.back = ac.currentTime; loopBack(ac.currentTime + 0.05); } }
+  }
   // ---------- sound effects ----------
   // Each voice takes a context, an output node and a start time, so the same
   // code plays live and renders offline for the loudness check.
@@ -488,10 +617,10 @@ window.BossAudio = (() => {
       v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(0.42 + 0.2 * k, t + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
       o.connect(v).connect(g); o.start(t); o.stop(t + 0.3);
     }
-    return {
+    const L = {
       set(ph, ratio = 0, u = 0) {
         const r = Math.max(0, Math.min(1.5, ratio || 0)), t = c.currentTime;
-        if (ph !== phase) { phase = ph; if (ph === 'gather') ramp(g.gain, 0.5, 0.15); if (ph === 'clash') beatAt = t; }
+        if (ph !== phase) { phase = ph; if (ph === 'gather') ramp(g.gain, L.cue ? 0.25 : 0.5, 0.15); if (ph === 'clash') beatAt = t; }
         if (ph === 'gather' || ph === 'charge') {
           const k = ph === 'gather' ? 0.15 * u : 0.15 + 0.85 * u;
           boss.forEach((b, i) => { ramp(b.v.gain, 0.05 + 0.11 * k); ramp(b.o.frequency, (55 + 55 * k) * (i ? 1.014 : 1), 0.2); });
@@ -506,22 +635,40 @@ window.BossAudio = (() => {
           ramp(cg.gain, (0.16 + 0.16 * u) * (0.8 + 0.2 * Math.random()), 0.02);
           boss.forEach(b => ramp(b.v.gain, 0.12)); team.forEach((x, i) => ramp(x.v.gain, [0.1, 0.07, 0.06][i]));
           // the heartbeat, from about 85 to 150 a minute
-          if (t >= beatAt) { thump(t + 0.01, u); thump(t + 0.2, u * 0.7); beatAt = t + 60 / (85 + 65 * u); }
+          if (t >= beatAt && !L.cue) { thump(t + 0.01, u); thump(t + 0.2, u * 0.7); beatAt = t + 60 / (85 + 65 * u); }
         } else if (ph === 'resolve' || !ph) {
           ramp(g.gain, 0.0001, ph ? 0.12 : 0.05);
         }
       },
       stop() { const t = c.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0.0001, t, 0.05); [...boss, ...team].forEach(x => x.o.stop(t + 0.4)); ns.stop(t + 0.4); setTimeout(() => { try { g.disconnect(); } catch (e) {} }, 600); },
     };
+    return L;
   }
   let foL = null;
-  function faceoff(kind, arg) {
+  // kind 'start': arg is how long the face-off lasts, off how far into it we are (the cue keeps its clock)
+  function faceoff(kind, arg, off = 0) {
     if (!on) return;
     try {
       ctx();
-      if (kind === 'start') { if (foL) foL.stop(); foL = foLayers(ac, sfxBus); duck(0.3, Math.max(2, arg || 13)); play('foStart'); }
-      else if (kind === 'resolve') play('foEnd', !!arg);
-      else if (kind === 'end') { if (foL) { foL.stop(); foL = null; } }
+      if (kind === 'start') {
+        if (foL) foL.stop();
+        foL = foLayers(ac, sfxBus); foL.cue = true;
+        play('foStart');
+        if (!fo) {
+          const now = ac.currentTime;
+          clearTimeout(cutTimer); cutTimer = 0; cutBack = 0; cutName = ''; uncut(); threat(false);
+          fo = { t0: now - Math.max(0, off || 0), left: cur ? { name: cur.name, pos: posAt(cur, now) } : null };
+          // the loop falls away under the cue's opening hit
+          if (cur) { stopAt(cur, now + 0.35, 0.35); stopAt(prev, now + 0.35, 0.35); stopAt(thr, now + 0.35, 0.35); cur = prev = thr = null; }
+          foStartCue(off);
+        }
+      } else if (kind === 'resolve') { play('foEnd', !!arg); foResult(!!arg); }
+      else if (kind === 'end') {
+        if (foL) { foL.stop(); foL = null; }
+        // no result came (a dropped connection): bring the loop back on the cue's next beat
+        if (fo && !fo.back) { const now = ac.currentTime; if (fo.src) stopAt(fo, now + 0.1, 0.1); fo.back = fo.t0 + Math.ceil((now + 0.05 - fo.t0) / BEAT) * BEAT; loopBack(fo.back); }
+        if (fo) { const f = fo; setTimeout(() => { if (fo === f) fo = null; }, Math.max(0, (f.back - ac.currentTime) * 1000) + 50); }
+      }
     } catch (e) {}
   }
   function faceoffSet(ph, ratio, u) {
@@ -565,7 +712,10 @@ window.BossAudio = (() => {
   function stop() { want = -1; stopMusic(0.25); if (foL) { foL.stop(); foL = null; } }
 
   try { on = TT.soundOn(); } catch (e) {}
-  const state = () => ({ ctx: ac ? ac.state : 'none', track: cur ? cur.name : fallback ? 'element' : '', on, want });
+  // for tests: what plays, where on the grid, the last switch (its time, position and why) and the face-off cue
+  const state = () => ({ ctx: ac ? ac.state : 'none', track: cur ? cur.name : fallback ? 'element' : '', on, want, now: ac ? ac.currentTime : 0,
+    t0: cur ? cur.t0 : null, pos: cur && ac ? posAt(cur, ac.currentTime) : null, last: lastSwitch && { ...lastSwitch }, threat: threatOn && !!thr,
+    cue: fo ? { t0: fo.t0, playing: !!fo.src, sting: fo.sting ? fo.sting.name : '', back: fo.back || 0 } : null, cutBack, BEAT, BAR });
   function out() { ctx(); return { ac, bus: sfxBus }; }
-  return { phase, victory, play, setOn, stop, unlock, renderFx, renderFaceoff, faceoff, faceoffSet, duck, state, out, cut, uncut, threat, silence, TRACKS, LOOP, LOOP_AT, get on() { return on; } };
+  return { phase, victory, play, setOn, stop, unlock, renderFx, renderFaceoff, faceoff, faceoffSet, duck, state, out, cut, uncut, threat, silence, TRACKS, LOOP, LOOP_AT, BARS, BPM, get on() { return on; } };
 })();
