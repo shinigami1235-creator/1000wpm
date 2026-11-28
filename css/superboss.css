@@ -1,8 +1,13 @@
-/* Superboss (js/app/superboss.js). The stream stage is 16:9 and every size inside it is in
-   container units, so the same layout reads at 1920x1080 in OBS and scales down on the page.
+/* Superboss (js/app/superboss.js). The streamer stage fills the window like the World Boss: the arena
+   runs edge to edge and the camera slot, hype train and chat sit on it as overlays (Gid, 29 Nov 2026:
+   "the screen is too small"). Every size inside it is in container units of its height, so the same
+   layout reads at 1920x1080 in OBS, on a laptop and on an ultrawide.
    Stream overlays are bolder than the rest of the site and stay in the terminal look. */
 .page-superboss { --scrim: rgba(var(--bg-0-rgb),.8); --amber: #f29d30; --pink: #ff4da6; --k: 1; }
-.page-superboss[data-view="stream"], .page-superboss[data-view="watch"] { max-width: 1680px; }
+.page-superboss[data-view="watch"] { max-width: 1680px; }
+.page-superboss[data-view="stream"] { max-width: none; padding: 0 0 40px; }
+/* the site's buddy sits bottom left, where Art's HP is */
+body:has(.page-superboss[data-view="stream"]) .buddy { display: none; }
 
 /* ---------- lobby ---------- */
 .sb-lede { max-width: 72ch; color: var(--ink-2); margin: -4px 0 18px; }
@@ -36,18 +41,21 @@
 .sb-go { display: flex; flex-wrap: wrap; gap: 12px; }  /* in the title row, so starting never needs a scroll */
 .sb-note { color: var(--ink-3); font-size: 14px; max-width: 80ch; }
 
-/* ---------- the stage: 16:9, the arena plus a side column for the camera and chat ---------- */
+/* ---------- the stage: the window under the site bar, the arena edge to edge ---------- */
 .sb-stage {
-  position: relative; container: stage / size; aspect-ratio: 16 / 9;
-  width: min(100%, calc((100vh - 110px) * 16 / 9)); margin: 0 auto;
-  display: grid; grid-template-columns: minmax(0, 1fr) 24.4%; background: #010302; overflow: hidden;
+  position: relative; container: stage / size; width: 100%; height: calc(100svh - 69px); min-height: 420px;
+  background: #010302; overflow: hidden;
+  --edge: 4cqh;                       /* the HUD's margin from the arena's edges */
+  --cam-w: 40cqh; --cam-top: 13cqh;   /* the camera slot, top right under the boss bar */
+  --art-w: 27cqh; --tick-w: 34cqh;
 }
-.sb-arenabox, .sb-warena { position: relative; min-width: 0; }
+.sb-arenabox { position: absolute; inset: 0; }
+.sb-warena { position: relative; min-width: 0; }
 .sb-arena { position: absolute; inset: 0; container: arena / size; overflow: hidden; background: var(--bg-0); outline: none; }
 .sb-loading { position: absolute; inset: 0; display: grid; place-items: center; font: 400 2.4cqh/1 var(--f-label); color: var(--ink-2); }
 
 /* top: name, phase pips, HP and the enrage timer */
-.sb-top { position: absolute; z-index: 3; top: 2cqh; left: 3%; right: 3%; display: grid; grid-template-columns: 1fr auto; row-gap: 1cqh; pointer-events: none; }
+.sb-top { position: absolute; z-index: 3; top: 2cqh; left: var(--edge, 3%); right: var(--edge, 3%); display: grid; grid-template-columns: 1fr auto; row-gap: 1cqh; pointer-events: none; }
 .sb-name { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 1.6cqh; }
 .sb-name b { font: 700 calc(var(--k) * 4cqh)/1 var(--f-head); letter-spacing: .05em; color: var(--ink-hi); text-shadow: 0 0 1.6cqh rgba(var(--accent-rgb),.6), 0 .3cqh 0 #000; }
 .sb-pips { display: flex; gap: 1cqh; }
@@ -65,9 +73,9 @@
 .sb-hpn span { color: rgba(255,255,255,.7); font-weight: 400; }
 
 /* the damage ticker and damage a second, top left */
-.sb-dps { position: absolute; z-index: 2; left: 2.6%; top: 13cqh; font: 400 calc(var(--k) * 1.8cqh)/1 var(--f-label); color: var(--ink-2); letter-spacing: .04em; pointer-events: none; }
+.sb-dps { position: absolute; z-index: 2; left: var(--edge, 2.6%); top: 13cqh; font: 400 calc(var(--k) * 1.8cqh)/1 var(--f-label); color: var(--ink-2); letter-spacing: .04em; pointer-events: none; }
 .sb-dps b { font: 600 calc(var(--k) * 3cqh)/1 var(--f-mono); color: var(--ink); margin-right: .6cqh; font-variant-numeric: tabular-nums; }
-.sb-ticker { position: absolute; z-index: 2; left: 2.6%; top: 17.5cqh; width: 21%; margin: 0; padding: 0; list-style: none; display: grid; gap: .5cqh; pointer-events: none; }
+.sb-ticker { position: absolute; z-index: 2; left: var(--edge, 2.6%); top: 17.5cqh; width: var(--tick-w, 21%); margin: 0; padding: 0; list-style: none; display: grid; gap: .5cqh; pointer-events: none; }
 .sb-tk { display: flex; align-items: baseline; gap: 1cqh; padding: .5cqh 1cqh; background: var(--scrim); animation: sb-tk 260ms var(--ease-out, ease-out); }
 .sb-tk:nth-child(n+4) { opacity: .65; }
 .sb-tk:nth-child(n+6) { opacity: .35; }
@@ -138,7 +146,7 @@
 .sb-finish .sb-tbar { height: .8cqh; --hc: var(--gold); }
 
 /* Art: HP, combo and buffs, bottom left */
-.sb-artbox { position: absolute; z-index: 3; left: 2.6%; bottom: 3.6cqh; width: 19%; display: grid; gap: .8cqh; padding: 1.2cqh 1.4cqh; background: var(--scrim); pointer-events: none; }
+.sb-artbox { position: absolute; z-index: 3; left: var(--edge, 2.6%); bottom: 3.6cqh; width: var(--art-w, 19%); display: grid; gap: .8cqh; padding: 1.2cqh 1.4cqh; background: var(--scrim); pointer-events: none; }
 .sb-arthead { display: flex; justify-content: space-between; align-items: baseline; font: 700 calc(var(--k) * 2.4cqh)/1 var(--f-head); letter-spacing: .06em; }
 .sb-arthead span { font: 600 calc(var(--k) * 2.4cqh)/1 var(--f-mono); color: var(--accent); }
 .sb-artbar { height: 1.6cqh; background: rgba(var(--accent-rgb),.12); position: relative; }
@@ -228,6 +236,14 @@
 .sb-card-b { display: flex; gap: 1.4cqh; }
 .sb-card .btn { font-size: 2cqh; padding: 1.2cqh 2cqh; }
 .sb-card .sb-next { justify-content: flex-start; font-size: 2cqh; color: var(--ink-2); min-height: 0; }
+/* on the full-width stage the card is wider and lays the stats beside the top supporters, so it stays
+   well inside the arena's height on a 1366x768 window too */
+.sb-stage .sb-card { width: min(94%, 108cqh); grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); column-gap: 4cqh; row-gap: 2.2cqh; }
+.sb-stage .sb-card > * { grid-column: 1 / -1; }
+.sb-stage .sb-card > .sb-stats { grid-column: 1; }
+.sb-stage .sb-card > .sb-top3 { grid-column: 2; align-self: start; }
+.sb-stage .sb-card .sb-gain { margin: 0; }
+.sb-stage .sb-alert { max-width: 84cqh; }
 
 /* the Compiler's code, laid over its screen */
 .sb-code { position: absolute; z-index: 2; display: grid; grid-template-rows: auto 1fr; gap: 1cqh; padding: 1.4cqh 2cqh; background: rgba(2,8,6,.55); pointer-events: none; overflow: hidden; }
@@ -246,11 +262,16 @@
 .sb-cl.compiled code { color: var(--red); text-decoration: line-through; animation: sb-shk 300ms; }
 @keyframes sb-shk { 25% { transform: translateX(-.6cqh); } 75% { transform: translateX(.6cqh); } }
 
-/* ---------- the side column: camera slot, hype train, chat ---------- */
-.sb-stage .sb-side { position: relative; display: flex; flex-direction: column; gap: 1.2cqh; padding: 1.4cqh; background: #030806; box-shadow: inset .15cqh 0 0 var(--line-2); min-height: 0; }
+/* ---------- on the arena, top right: the camera slot, the hype train and the chat ----------
+   They float over the arena instead of taking a column. The camera slot sits under the boss bar,
+   clear of the words, Art's HP and the attacks coming at his bot (lower left). The chat ends above
+   the word line on a 16:9 window and runs to the bottom on an ultrawide, where there is room. */
+.sb-stage .sb-side { position: absolute; z-index: 4; top: var(--cam-top); right: var(--edge); bottom: 30cqh; width: var(--cam-w); display: flex; flex-direction: column; gap: 1cqh; pointer-events: none; }
+@container stage (min-aspect-ratio: 2 / 1) { .sb-stage .sb-side { bottom: 3.6cqh; } }
 .sb-cam { position: relative; aspect-ratio: 16 / 9; background: #000; flex: none; overflow: hidden; box-shadow: 0 0 0 .22cqh var(--accent), 0 0 2.4cqh rgba(var(--accent-rgb),.3); }
+.sb-stage .sb-cam[data-slot="frame"] { background: rgba(0,0,0,.6); }
 .sb-cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.sb-camoff { position: absolute; inset: 0; display: grid; place-items: center; font: 400 2cqh/1 var(--f-label); letter-spacing: .06em; color: var(--ink-3); }
+.sb-camoff { position: absolute; inset: 0; display: grid; place-items: center; font: 400 2cqh/1 var(--f-label); letter-spacing: .06em; color: var(--ink-2); }
 .sb-cam[data-slot="green"] { background: #00ff00; }
 .sb-cam[data-slot="clear"] { background: transparent; }
 .sb-cam[data-slot="green"] .sb-camoff, .sb-cam[data-slot="clear"] .sb-camoff { display: none; }
@@ -260,6 +281,11 @@
 .sb-hype-h span { font: 400 calc(var(--k) * 1.7cqh)/1 var(--f-mono); color: var(--ink-2); }
 .sb-hypebar { display: block; height: 1.2cqh; background: rgba(242,194,48,.14); position: relative; }
 .sb-hypebar > i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--gold); box-shadow: 0 0 1.2cqh rgba(242,194,48,.7); transition: width 300ms; }
+/* the hype train on the stage: one slim row under the camera slot */
+.sb-stage .sb-hype { display: flex; align-items: center; gap: 1.2cqh; padding: .8cqh 1.2cqh; background: rgba(12,10,2,.72); }
+.sb-stage .sb-hype-h { display: contents; }
+.sb-stage .sb-hypebar { order: 1; flex: 1; height: .9cqh; }
+.sb-stage .sb-hype-h span { order: 2; white-space: nowrap; }
 .sb-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 1cqh; }
 .sb-chat-h { display: flex; justify-content: space-between; align-items: baseline; font: 400 calc(var(--k) * 1.7cqh)/1 var(--f-label); letter-spacing: .05em; color: var(--ink-2); }
 .sb-chat-h b { font-weight: 400; color: var(--ink); }
@@ -267,7 +293,22 @@
 .sb-stage .sb-msgs li { font: 400 calc(var(--k) * 2cqh)/1.3 var(--f-head); color: var(--ink); overflow-wrap: anywhere; animation: sb-tk 200ms ease-out; }
 .sb-msgs li b { font-weight: 600; color: hsl(var(--h) 80% 68%); }
 .sb-msgs li.real { background: rgba(var(--accent-rgb),.08); }
-.sb-stage.nochat .sb-chat { visibility: hidden; }
+/* the chat on the stage: a compact see-through feed at the bottom of the column, older lines fading */
+.sb-stage .sb-chat { justify-content: flex-end; gap: .6cqh; }
+.sb-stage .sb-chat-h { order: 2; padding: .5cqh .9cqh; background: rgba(0,0,0,.5); width: fit-content; gap: 1.6cqh; font-size: calc(var(--k) * 1.5cqh); }
+.sb-stage .sb-msgs { flex: 0 1 auto; max-height: 100%; overflow: clip; gap: .5cqh; mask-image: linear-gradient(transparent, #000 4cqh); }
+.sb-stage .sb-msgs li { width: fit-content; max-width: 100%; padding: .35cqh .9cqh .45cqh; background: rgba(2,6,4,.62); text-shadow: 0 .15cqh .3cqh #000; font-size: calc(var(--k) * 1.9cqh); transition: opacity 600ms; animation: sb-chatin 220ms ease-out; }
+@keyframes sb-chatin { from { transform: translateY(1.2cqh); } }
+.sb-stage .sb-msgs li:nth-last-child(n+5) { opacity: .75; }
+.sb-stage .sb-msgs li:nth-last-child(n+8) { opacity: .45; }
+.sb-stage .sb-msgs li.real { background: rgba(10,40,22,.75); }
+.sb-stage.nochat .sb-chat { display: none; }
+.sb-stage.nocam .sb-cam { display: none; }
+/* the quick toggles on the stage, shown while the mouse moves (streamer mode) */
+.sb-qt { position: absolute; z-index: 9; top: 1.2cqh; left: 50%; transform: translateX(-50%); display: none; gap: 6px; }
+.sb-qt button { font-size: 14px; padding: 6px 10px; background: rgba(0,0,0,.8); color: var(--ink); border: 1px solid var(--line); cursor: pointer; }
+.sb-qt button[aria-pressed="false"] { color: var(--ink-3); border-color: var(--line-2); }
+html.sb-streamer .sb-stage.moved .sb-qt { display: flex; }
 .sb-exit { position: absolute; z-index: 9; top: 1.2cqh; left: 1.2cqh; display: none; font-size: 14px; padding: 6px 10px; background: rgba(0,0,0,.8); color: var(--ink); border: 1px solid var(--line); cursor: pointer; }
 
 /* ---------- stream settings, under the stage ---------- */
@@ -290,12 +331,17 @@ html.sb-streamer body { background: #000; overflow: hidden; }
 html.sb-streamer body::after, html.sb-streamer #rain, html.sb-streamer .top, html.sb-streamer .foot,
 html.sb-streamer .toasts, html.sb-streamer .buddy, html.sb-streamer .sb-controls { display: none !important; }
 html.sb-streamer .page-superboss { padding: 0; max-width: none; }
-html.sb-streamer .sb-stage { position: fixed; inset: 0; margin: auto; z-index: 50; width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); --k: 1.15; }
+html.sb-streamer .sb-stage { position: fixed; inset: 0; z-index: 50; width: 100vw; height: 100vh; min-height: 0; --k: 1.15; }
 html.sb-streamer .sb-stage.moved .sb-exit { display: block; }
 /* transparent camera slot: the page shows through, so OBS can put the real camera under it */
 html.sb-streamer.sb-clear, html.sb-streamer.sb-clear body { background: transparent !important; }
-html.sb-streamer.sb-clear .sb-stage, html.sb-streamer.sb-clear .sb-stage .sb-side { background: transparent; }
-html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { background: rgba(3,8,6,.92); padding: 1cqh 1.2cqh; }
+html.sb-streamer.sb-clear .sb-stage, html.sb-streamer.sb-clear .sb-arena { background: transparent; }
+/* the arena runs under the camera slot, so the slot cuts a hole of its own size in the 3D */
+html.sb-streamer.sb-clear .sb-stage:not(.nocam) .sb-arena canvas {
+  --hole: linear-gradient(#000 0 0) 0 0 / 100% 100% no-repeat, linear-gradient(#000 0 0) right var(--edge) top var(--cam-top) / var(--cam-w) calc(var(--cam-w) * 9 / 16) no-repeat;
+  -webkit-mask: var(--hole); -webkit-mask-composite: xor;    /* older Chromium, as in OBS's browser source */
+  mask: var(--hole); mask-composite: exclude;
+}
 
 /* ---------- the viewer view ---------- */
 .sb-wbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; }
@@ -377,7 +423,7 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
   .sb-top { left: 2%; right: 2%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sb-tk, .sb-chip, .sb-alert, .sb-banner.in, .sb-count.beat, .sb-card, .sb-msgs li, .sb-cl.compiled code { animation: none; }
+  .sb-tk, .sb-chip, .sb-alert, .sb-banner.in, .sb-count.beat, .sb-card, .sb-msgs li, .sb-stage .sb-msgs li, .sb-cl.compiled code { animation: none; }
   .sb-arena .at::before { animation: none; }
   .sb-pop { animation-duration: 1ms; animation-delay: 700ms; }
 }
@@ -401,6 +447,10 @@ html.sb-streamer.sb-clear .sb-chat, html.sb-streamer.sb-clear .sb-hype { backgro
 
 /* the one line (Gid, 27 Nov 2026): Art's words as a block of lines with every special in it */
 .sb-type.inline { left: 21%; right: 7%; }
+/* on the streamer stage the words sit in the middle at the bottom, the way the World Boss has them:
+   the same width as before (98cqh) whatever the window, never under Art's box on the left */
+.sb-stage .sb-type.inline { left: 0; right: 0; margin-inline: auto; width: min(98cqh, calc(100% - 2 * (var(--edge) + var(--art-w) + 2cqh))); }
+.sb-stage .sb-type.inline .fw-lines { max-width: none; }
 .sb-type.inline .sb-line { display: block; width: 100%; background: var(--scrim); padding: 1cqh 2.4cqh 1.2cqh; }
 .sb-type.inline .fw-lines { font-size: calc(var(--k) * 3.8cqh); color: var(--ink-2); }
 .sb-type.inline .sb-next { display: none; }

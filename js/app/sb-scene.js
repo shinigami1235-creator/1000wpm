@@ -241,8 +241,13 @@ window.SuperScene = (() => {
       shafts.forEach(m => { m.visible = d > 0.62; });
       dust.visible = d > 0.48;
     }
+    // the streamer view fills the window (29 Nov 2026), so the canvas caps its pixel count: about a 1920x1080 window at
+    // 1.25, which a 2560x1440 or 3440x1440 window draws a little softer instead of costing twice the pixels
+    const PX_BUDGET = 2.6e6;
+    let aqScale = 1;
+    const prFor = (w, h) => Math.min(basePR, Math.sqrt(PX_BUDGET / Math.max(1, w * h))) * aqScale;
     const aq = window.AdaptiveQuality && !window.__sbFull ? AdaptiveQuality.create({ key: 'wpm-sb', fps: 60, minScale: 0.6, minDetail: 0.4,
-      onScale: s2 => { renderer.setPixelRatio(basePR * s2); fit(); }, onDetail: setDetail }) : null;
+      onScale: s2 => { aqScale = s2; fit(); }, onDetail: setDetail }) : null;
     function atmosphere(t, px, fogK) {
       mistMat.uniforms.uTime.value = t; mistMat.uniforms.uC.value.copy(pal.c).lerp(pal.a, 0.4).multiplyScalar(0.18); mistMat.uniforms.uFog.value = fogK;
       shaftMat.uniforms.uTime.value = t; shaftMat.uniforms.uC.value.copy(pal.c).lerp(new THREE.Color(1, 1, 1), 0.35);
@@ -545,7 +550,7 @@ window.SuperScene = (() => {
     // ---------- camera ----------
     // the broadcast camera: CamDirector plays the shots in sb-cam.js. dirSlow is the slow motion a shot asks for
     let dirSlow = 1, dirSlowUntil = 0, snapAt = 0, dirT = 0;
-    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, art: out => (bots ? bots.subject(out) : out.copy(artPos).setY(3.2)), chase: () => (bots ? bots.chase() : null), setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
+    const cam = SuperCam.create(THREE, camera, { reduce: motionOff, model: () => model, inset: () => (opts.inset ? opts.inset() : 0), art: out => (bots ? bots.subject(out) : out.copy(artPos).setY(3.2)), chase: () => (bots ? bots.chase() : null), setSlow: (k, len) => { dirSlow = k; dirSlowUntil = dirT + len; } });
     // the next moment an attack at Art lands, in real seconds: no cutaway may hide one
     const THREAT = new Set(['block', 'packet', 'weak', 'decoy', 'fix']);
     function threatAt(nowMs) {
@@ -559,6 +564,7 @@ window.SuperScene = (() => {
     const threatIn = nowMs => { const a = threatAt(nowMs); return a === Infinity ? Infinity : a - dirT; };
     function fit() {
       const w = host.clientWidth || 800, h = host.clientHeight || 600;
+      renderer.setPixelRatio(prFor(w, h));
       renderer.setSize(w, h, false);
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);

@@ -50,7 +50,10 @@ window.SuperCam = (() => {
       const m = M(), f = m && m.focus ? m.focus : v1.set(0, 7.6, -3), w = (m && m.width) || 38;
       // a longer lens from further back than the old front view: the boss keeps its size, Art's bot in the
       // foreground shrinks to something the boss towers over, and its effects stop filling the frame
-      const aspect = camera.aspect || 1.6, FOV = 36;
+      // the streamer view fills the window (29 Nov 2026) and the camera slot and chat float over its right side: the boss's
+      // width is fitted to the frame without them (o.inset, the share of the width they cover), so on a 16:9 window it
+      // keeps its old size and an ultrawide only adds arena at the sides
+      const aspect = (camera.aspect || 1.6) * (1 - Math.min(0.4, o.inset ? o.inset() : 0)), FOV = 36;
       const half = Math.tan(FOV / 2 * D2R);
       const need = Math.max(36, (w / 2) / (half * aspect) * 0.92) + (m && m.camBack || 0);
       game.push += ((c.finishing ? 1 : 0) - game.push) * Math.min(1, (c.dt || 0.016) * 1.5);
