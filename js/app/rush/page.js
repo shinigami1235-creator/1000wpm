@@ -138,7 +138,9 @@ window.RushPage = (() => {
             </div>
           </div>
         </div>`;
-      scene = RushScene.mount(q('stage'), { onImpact, sfx: (n, a) => A.titan(n, a), onGuard: k => cSfx(k === 'dodge' ? 'whiff' : 'parry') });
+      // your bot's orb sounds (js/app/orb-audio.js) on the World Boss's audio context, with the site's sound switch
+      const botSound = { ctx: () => (window.BossAudio ? BossAudio.out().ac : null), vol: 0.55, on: () => !window.BossAudio || BossAudio.on };
+      scene = RushScene.mount(q('stage'), { onImpact, botSound, sfx: (n, a) => A.titan(n, a), onGuard: k => cSfx(k === 'dodge' ? 'whiff' : 'parry') });
       scene.ready.then(ok => { const l = q('loading'); if (ok && l) l.remove(); })
         .catch(() => { const l = q('loading'); if (l) l.textContent = "The bosses can't load without an internet connection."; });
       q('quit').addEventListener('click', () => GameGuard.confirm());
@@ -275,6 +277,7 @@ window.RushPage = (() => {
       const good = typed.length <= w.length && ch === w[typed.length - 1];
       if (!good) clean = false;
       f.key(good);
+      if (scene) { if (good) scene.key(typed.length / Math.max(1, w.length), liveCps * 12); else scene.typo(); }
       TT.click(false);
       renderQueue();
     }
@@ -367,8 +370,8 @@ window.RushPage = (() => {
           if (p.move === 'fixsign') scene.setSign(p.shown);
           break;
         }
-        case 'blockWord': A.play('blockOk'); break;
-        case 'block': scene.windupEnd(); scene.react('stagger'); pop('BLOCKED', 'cyan'); A.play('stagger'); break;
+        case 'blockWord': A.play('blockOk'); scene.guard(); break;
+        case 'block': scene.windupEnd(); scene.react('stagger', 0, { block: true }); pop('BLOCKED', 'cyan'); A.play('stagger'); break;
         case 'slam': scene.slam(); flashTint(); pop('HIT', 'red'); A.play('blockFail'); break;
         case 'stun': scene.stun(p.ms); tip('stun'); break;
         case 'overheat': pop('OVERHEATED', 'amber'); A.play('shieldBreak'); break;
@@ -406,8 +409,8 @@ window.RushPage = (() => {
           break;
         case 'hurt':
           paintYou();
-          if (p.blocked) { pop(me.status('stunned-target') ? 'MISSED' : 'BLOCKED', 'cyan'); A.play('impact', true); break; }
-          if (p.kind !== 'typo') { scene.hurt(); flashTint(); A.play(p.kind === 'packet' ? 'projHit' : 'impact', false); }
+          if (p.blocked) { pop(me.status('stunned-target') ? 'MISSED' : 'BLOCKED', 'cyan'); A.play('impact', true); scene.guard(); break; }
+          if (p.kind !== 'typo') { scene.hurt(p.kind, !!p.light); flashTint(); A.play(p.kind === 'packet' ? 'projHit' : 'impact', false); }
           break;
         case 'heal': paintYou(); pop(`+${p.amount} HP`, 'cyan'); break;
         case 'typo': TT.click(true); break;
@@ -419,7 +422,7 @@ window.RushPage = (() => {
         case 'boostOffer': pop('Art sent you a boost', 'boost'); A.play('milestone'); break;
         case 'boost': scene.cast('glitch-blade', { hits: [{ at: 230, power: 70 }], effect: {} }); cSfx('glitch-blade'); break;
         case 'won': wait(0, () => won(p)); break;
-        case 'lost': A.titanStop(); wait(0, () => lost(p)); break;
+        case 'lost': A.titanStop(); scene.lose(); wait(0, () => lost(p)); break;
       }
       if (name === 'move' || name === 'windup' || name === 'block' || name === 'slam' || name === 'moveDone') paintChips(true);
     }
@@ -1000,6 +1003,7 @@ window.RushPage = (() => {
       act: a => act(a),
       end: () => endRun('quit'),
       type: w => { for (const ch of w) onChar(ch); onChar(' '); },
+      top: () => (f ? top() : ''),
       setCombo: n => me && me.debug.setCombo(n),
       cast: id => { const sp = Combat.spell(id); if (!sp || !me) return false; me.debug.offer([id]); typed = ''; target = null; castSpell(sp, true); return true; },
       fizzle: (id, how) => { if (!scene || !Combat.spell(id)) return false; cSfx('fizzle'); scene.fizzle(id, how); return true; },

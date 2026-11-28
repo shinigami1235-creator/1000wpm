@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boss 1 concepts</title>
+<script type="importmap">
+{ "imports": {
+  "three": "../../lib/three/build/three.module.min.js",
+  "three/addons/": "../../lib/three/examples/jsm/"
+} }
+</script>
+<style>
+  html, body { margin: 0; background: #060807; color: #dfe8e2; font: 600 13px system-ui, sans-serif; }
+  canvas#sheet { display: block; }
+</style>
+</head>
+<body>
+<canvas id="sheet"></canvas>
+<script type="module">
+// Concept stills for a new first boss in Boss Rush (28 Nov 2026): three directions, five moments each,
+// built quickly in three.js in the game's look (dark arena, neon grid, lit armour with glowing seams).
+// Not the game: a sheet for Gid to pick from. Open tools/rush/boss1-concepts.html on a local server.
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const CW = 520, CH = 300, COLS = 5, HEAD = 64, ROWH = CH + 40, PAD = 10;
+const MOMENTS = ['Idle', 'Wind-up', 'Signature', 'Hit', 'Defeat'];
+const V = THREE.Vector3, C = (h, k = 1) => new THREE.Color(h).multiplyScalar(k);
+const rnd = (a, b) => a + Math.random() * (b - a);
+let seed = 7; const R = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(CW, CH); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+
+function canvasTex(w, h, draw) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; }
+const glowTex = canvasTex(64, 64, (c) => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, '#fff'); g.addColorStop(0.3, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
+function textTex(text, { w = 512, h = 128, size = 64, col = '#fff', bg = null, font = 'JetBrains Mono, monospace' } = {}) {
+  return canvasTex(w, h, (c) => { if (bg) { c.fillStyle = bg; c.fillRect(0, 0, w, h); } c.fillStyle = col; c.font = `700 ${size}px ${font}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, w / 2, h / 2 + 2); });
+}
+const std = (col, o = {}) => new THREE.MeshStandardMaterial({ color: col, metalness: o.m ?? 0.55, roughness: o.r ?? 0.42, emissive: o.e ? C(o.e) : 0x000000, emissiveIntensity: o.ei ?? 1, flatShading: !!o.flat });
+const glow = (col, k = 2.2) => new THREE.MeshBasicMaterial({ color: C(col, k), toneMapped: false });
+const addM = (col, k = 1.5, op = 0.8) => new THREE.MeshBasicMaterial({ color: C(col, k), transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+const mesh = (g, m, p, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); p.add(o); return o; };
+function edges(m, col, k = 2) { const l = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), new THREE.LineBasicMaterial({ color: C(col, k), toneMapped: false })); m.add(l); return l; }
+function sprite(p, col, s, k = 2.4, op = 1) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: C(col, k), transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); sp.position.copy(p); sp.scale.setScalar(s); return sp; }
+
+// ---------- the arena, in each boss's colours ----------
+function arena(col, col2, base) {
+  const s = new THREE.Scene();
+  s.background = C(base); s.fog = new THREE.Fog(base, 18, 58);
+  const floorTex = canvasTex(256, 256, (c, w, h) => { c.fillStyle = base; c.fillRect(0, 0, w, h); const g = c.createRadialGradient(w / 2, h * 0.47, 0, w / 2, h * 0.47, w * 0.5); const cc = new THREE.Color(col); g.addColorStop(0, `rgba(${cc.r * 140},${cc.g * 140},${cc.b * 140},.55)`); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+  const fl = mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshBasicMaterial({ map: floorTex }), s, 0, -0.01, -6); fl.rotation.x = -Math.PI / 2;
+  const grid = new THREE.GridHelper(90, 60, col, col); grid.material.transparent = true; grid.material.opacity = 0.22; grid.position.z = -6; s.add(grid);
+  for (let i = 0; i < 14; i++) {
+    const a = Math.PI * (0.08 + 0.84 * i / 13), r = 24 + R() * 8, h = 4 + R() * 11, w = 1.4 + R() * 1.4;
+    const b = mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshBasicMaterial({ color: 0x020403 }), s, -Math.cos(a) * r, h / 2, -Math.sin(a) * r * 0.6 - 8);
+    edges(b, col2, 0.9);
+  }
+  s.add(new THREE.HemisphereLight('#c8d2da', '#06080a', 0.75));
+  const key = new THREE.DirectionalLight('#ffffff', 2.2); key.position.set(-6, 10, 9); s.add(key);
+  const rim = new THREE.DirectionalLight(col, 2.6); rim.position.set(5, 7, -8); s.add(rim);
+  return s;
+}
+// your bot, as it stands in the rush's game shot (a stand-in for the hangar bot)
+function botStandIn(s, at, o = {}) {
+  const g = new THREE.Group(); g.position.copy(at); s.add(g);
+  const body = mesh(new RoundedBoxGeometry(1.3, 1.1, 1.1, 4, 0.22), std('#d8dce2', { m: 0.25, r: 0.35 }), g, 0, 0, 0);
+  const scr = mesh(new THREE.PlaneGeometry(0.95, 0.7), new THREE.MeshBasicMaterial({ color: 0x0b1210 }), body, 0, 0.02, 0.56);
+  for (const x of [-0.2, 0.2]) mesh(new THREE.PlaneGeometry(0.14, 0.18), glow('#8cff58', 2.4), scr, x, 0.04, 0.01);
+  mesh(new THREE.TorusGeometry(0.42, 0.04, 8, 40), glow('#8cff58', 2), g, 0, -0.85, 0).rotation.x = Math.PI / 2;
+  g.add(sprite(new V(0, -0.85, 0), '#8cff58', 1.2, 1.6, 0.6));
+  if (o.orb) { mesh(new THREE.SphereGeometry(0.22 * o.orb, 16, 12), glow('#e8ffe0', 3), g, 0.1, -0.2, 0.95); g.add(sprite(new V(0.1, -0.2, 0.95), '#8cff58', 1.4 * o.orb, 3)); }
+  if (o.shield) { const sh = mesh(new THREE.SphereGeometry(1.2, 24, 12, 0, Math.PI * 2, 0, 1.0), addM('#3ee6ff', 1.2, 0.35), g, 0, 0, 0.2); sh.rotation.x = Math.PI / 2; edges(sh, '#3ee6ff', 2.5); }
+  if (o.hurt) { g.rotation.set(-0.5, 0.3, 0.6); for (let i = 0; i < 18; i++) g.add(sprite(new V(rnd(-1, 1), rnd(-0.6, 1), rnd(-1, 1)), '#ff4d5e', rnd(0.15, 0.35), 3)); }
+  g.lookAt(o.face || new V(0, at.y + 1, 0)); g.rotateY(-0.5);
+  return g;
+}
+// a shot from the bot to a point: a bright streak with a glow at its head
+function shot(s, from, to, col = '#8cff58') {
+  const d = new V().subVectors(to, from), L = d.length();
+  const m = mesh(new THREE.CylinderGeometry(0.04, 0.11, L * 0.28, 8), addM(col, 2.4, 0.9), s);
+  m.position.copy(from).addScaledVector(d, 0.74); m.quaternion.setFromUnitVectors(new V(0, 1, 0), d.normalize());
+  s.add(sprite(from.clone().addScaledVector(d, L * 0.9), col, 1.6, 3));
+}
+// a floor telegraph from the boss to you
+function tele(s, from, to, width, col = '#ff4d5e') {
+  const d = new V().subVectors(to, from).setY(0), L = d.length();
+  const m = mesh(new THREE.PlaneGeometry(width, L), addM(col, 1.3, 0.35), s);
+  m.rotation.x = -Math.PI / 2; m.rotation.z = -Math.atan2(d.x, d.z) + Math.PI; m.position.copy(from).addScaledVector(d, 0.5); m.position.y = 0.03;
+}
+function burst(s, p, col, n, r, k = 2.6) { for (let i = 0; i < n; i++) s.add(sprite(p.clone().add(new V(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(rnd(0.2, r))), col, rnd(0.12, 0.4), k)); }
+function ring(s, p, r, col, k = 2.2, tilt = 0) { const m = mesh(new THREE.RingGeometry(r * 0.92, r, 64), addM(col, k, 0.85), s); m.position.copy(p); m.rotation.x = -Math.PI / 2 + tilt; return m; }
+
+// ======================= A: the Inbox Serpent =======================
+// The Spam, rebuilt as a serpent of envelopes with red unread badges. Its head is a pop-up window whose
+// bottom edge is the jaw. Its signature pins pop-ups into the arena round your bot; every one you type
+// shut blows an envelope off its tail, so the body gets shorter as you win.
+function serpent(moment) {
+  const col = '#ff4fd8', col2 = '#39ff88', s = arena(col, col2, '#0b0410');
+  const g = new THREE.Group(); s.add(g);
+  const envM = std('#a99fbd', { m: 0.2, r: 0.5 }), envD = std('#6b5a86', { m: 0.3, r: 0.5 });
+  const badge = n => new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (c) => { c.fillStyle = '#ff2a4a'; c.beginPath(); c.arc(32, 32, 30, 0, 7); c.fill(); c.fillStyle = '#fff'; c.font = '700 30px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(n, 32, 34); }), toneMapped: false, transparent: true });
+  const N = moment === 'Defeat' ? 0 : moment === 'Hit' ? 9 : 12;
+  const segs = [];
+  const tWind = moment === 'Wind-up' ? 1 : 0;
+  for (let i = 0; i < N; i++) {
+    const u = i / 11;
+    const seg = new THREE.Group(); g.add(seg); segs.push(seg);
+    const w = 2.7 - u * 1.3;
+    const b = mesh(new RoundedBoxGeometry(w, w * 0.62, 0.55, 3, 0.08), envM, seg); edges(b, col, 1.3);
+    const flap = mesh(new THREE.BufferGeometry().setFromPoints([new V(-w / 2, w * 0.31, 0.26), new V(0, -w * 0.05, 0.26), new V(w / 2, w * 0.31, 0.26)]), new THREE.MeshBasicMaterial(), seg);
+    const fl = new THREE.Line(flap.geometry, new THREE.LineBasicMaterial({ color: C('#8a7aa8', 1) })); seg.add(fl); seg.remove(flap);
+    if (i % 3 === 1) mesh(new THREE.CircleGeometry(0.22, 24), badge(i > 6 ? '9' : '99+'), seg, w / 2 - 0.1, w * 0.31, 0.27);
+    // the coil: an S rising to the head, reared back and coiled hard in the wind-up
+    const a = u * 3.2 + 0.4;
+    const x = Math.sin(a) * (2.6 + u * 2.0) * (1 - 0.3 * tWind), z = -u * 6 - 0.8 + Math.cos(a) * 1.4;
+    const y = 0.5 + Math.pow(1 - u, 1.7) * (4.6 + 2.4 * tWind);
+    seg.position.set(x, y, z); seg.rotation.set(-0.25 * (1 - u) + 0.2 * tWind, Math.cos(a) * 0.4, Math.sin(a * 1.3) * 0.15);
+  }
+  // the head: a pop-up window with a title bar, two eyes and a jaw of teeth along its bottom edge
+  const head = new THREE.Group(); g.add(head); head.scale.setScalar(1.35);
+  const hy = moment === 'Defeat' ? 0.5 : 5.8 + 1.8 * tWind + (moment === 'Signature' ? -0.6 : 0), hz = moment === 'Signature' ? 1.4 : 0.6;
+  head.position.set(moment === 'Hit' ? 0.7 : 0.1, hy, hz);
+  head.rotation.set(moment === 'Defeat' ? -1.45 : moment === 'Wind-up' ? -0.35 : moment === 'Hit' ? 0.35 : -0.08, moment === 'Hit' ? -0.4 : 0.15, moment === 'Hit' ? -0.35 : 0);
+  const win = mesh(new RoundedBoxGeometry(3.6, 2.4, 0.5, 4, 0.12), std('#2a1f3a', { m: 0.6, r: 0.35 }), head); edges(win, col, 1.8);
+  mesh(new THREE.PlaneGeometry(3.4, 0.45), new THREE.MeshBasicMaterial({ map: textTex('FREE FOLLOWERS!!  x', { w: 512, h: 64, size: 34, col: '#fff', bg: '#c42bb0' }), toneMapped: false }), head, 0, 0.92, 0.26);
+  const eyeM = glow(moment === 'Hit' ? '#ffffff' : '#ff3355', 3);
+  for (const sx of [-0.75, 0.75]) { const e = mesh(new THREE.SphereGeometry(0.28, 16, 12), eyeM, head, sx, 0.15, 0.25); e.scale.set(1, moment === 'Wind-up' ? 0.55 : moment === 'Hit' ? 0.25 : 1, 0.6); head.add(sprite(new V(sx, 0.15, 0.4), '#ff3355', 0.8, 1.3)); }
+  const jaw = new THREE.Group(); jaw.position.set(0, -1.15, 0.1); head.add(jaw);
+  jaw.rotation.x = moment === 'Wind-up' ? 0.9 : moment === 'Signature' ? 0.7 : moment === 'Hit' ? 0.5 : 0.12;
+  const jb = mesh(new RoundedBoxGeometry(3.4, 0.5, 0.45, 3, 0.1), std('#2a1f3a', { m: 0.6, r: 0.35 }), jaw, 0, -0.25, 0); edges(jb, col, 1.6);
+  for (let k = 0; k < 8; k++) { const t = mesh(new THREE.ConeGeometry(0.11, 0.38, 4), glow('#ff4d6a', 2.2), jaw, -1.4 + k * 0.4, 0.12, 0.12); }
+  for (let k = 0; k < 8; k++) { const t = mesh(new THREE.ConeGeometry(0.11, 0.38, 4), glow('#ff4d6a', 2.2), head, -1.4 + k * 0.4, -1.0, 0.2); t.rotation.x = Math.PI; }
+  const you = new V(-3.6, 2.7, 7.6);
+  const camP = new V(2.4, 3.4, 17.5), camL = new V(-0.5, 4.4, 0);
+  const tags = [];
+  if (moment === 'Idle') { botStandIn(s, you, { orb: 0.6 }); shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0.1, hy, hz)); }
+  if (moment === 'Wind-up') {
+    botStandIn(s, you); tele(s, new V(0, 0, 1), you.clone().setY(0), 2.2);
+    head.add(sprite(new V(0, -1.3, 0.6), '#ff3355', 3.4, 2.4)); burst(s, new V(0.1, hy - 1.2, hz + 0.6), '#ff3355', 26, 1.6);
+    tags.push({ p: new V(0.1, hy + 1.8, hz), t: 'BLOCK BITE', w: 'report', red: true });
+  }
+  if (moment === 'Signature') {
+    botStandIn(s, you, { orb: 0.9 });
+    // pop-ups pinned in the arena round the bot, each a word; one just typed bursts and knocks a tail envelope loose
+    const pops = [[-5.6, 4.6, 5.2, 'claim'], [-0.8, 5.2, 4.6, 'gift'], [-3.0, 0.9, 5.8, 'link']];
+    for (const [x, y, z, w] of pops) {
+      const p = mesh(new RoundedBoxGeometry(2.2, 1.3, 0.12, 3, 0.06), std('#1c1430', { m: 0.3, r: 0.5, e: '#3a1450', ei: 0.6 }), s, x, y, z); edges(p, col, 2.2);
+      p.lookAt(camP); mesh(new THREE.PlaneGeometry(2.1, 0.28), new THREE.MeshBasicMaterial({ map: textTex('CLICK NOW   x', { w: 256, h: 32, size: 20, col: '#fff', bg: '#a83ad6' }), toneMapped: false }), p, 0, 0.5, 0.07);
+      tags.push({ p: new V(x, y - 0.1, z), t: '', w, pop: true });
+    }
+    shot(s, you.clone().add(new V(0.3, 0.2, -0.4)), new V(-3.0, 0.9, 5.8));
+    burst(s, new V(-3.0, 0.9, 5.8), '#ff4fd8', 30, 1.4); ring(s, new V(-3.0, 0.9, 5.8), 1.5, '#ff4fd8', 2.4, Math.PI / 2);
+    // the loosened tail envelope flying off
+    const env = mesh(new RoundedBoxGeometry(1.2, 0.75, 0.3, 3, 0.06), envM, s, 3.6, 2.4, -7.5); env.rotation.set(0.6, 0.8, 0.4); edges(env, '#ffffff', 2);
+    burst(s, new V(3.6, 2.4, -7.5), '#ffffff', 16, 1.0);
+  }
+  if (moment === 'Hit') {
+    botStandIn(s, you, { orb: 0.2 });
+    shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0.7, hy, hz), '#b6ff6a');
+    burst(s, new V(0.7, hy - 1.0, hz + 1.2), '#ffffff', 22, 1.6, 1.8); ring(s, new V(0.7, hy - 1.0, hz + 1.2), 1.6, '#ffffff', 1.8, Math.PI / 2);
+    // envelopes knocked off the body, spinning out
+    for (let i = 0; i < 5; i++) { const e = mesh(new RoundedBoxGeometry(0.9, 0.56, 0.24, 2, 0.05), envM, s, rnd(-3, 3.5), rnd(2, 6), rnd(-4, 0)); e.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3)); }
+    tags.push({ p: new V(1.6, hy + 1.6, hz), t: '-48', dmg: true });
+  }
+  if (moment === 'Defeat') {
+    botStandIn(s, you, { face: new V(0, 3, 0) });
+    // the body bursts into envelopes and confetti, the window face down on the floor, its title bar flickering
+    for (let i = 0; i < 26; i++) { const e = mesh(new RoundedBoxGeometry(0.8, 0.5, 0.2, 2, 0.04), envM, s, rnd(-6, 6), rnd(0.3, 7), rnd(-9, 2)); e.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3)); }
+    for (let i = 0; i < 70; i++) s.add(sprite(new V(rnd(-7, 7), rnd(0.5, 8), rnd(-9, 3)), ['#ff4fd8', '#39ff88', '#ffd23d', '#5cc8ff'][i % 4], rnd(0.1, 0.25), 2.6));
+    ring(s, new V(0, 0.06, -1), 6, col, 2);
+    tags.push({ p: new V(0.1, 2.6, 0.6), t: 'INBOX ZERO', big: true });
+  }
+  return { s, camP, camL, tags };
+}
+
+// ======================= B: the Jackpot =======================
+// A clickbait slot machine on stubby mech legs: a marquee that shouts YOU WON!!, three reels for a face and
+// a lever arm. Its wind-up is the lever pulled back, slow and huge, the clearest tell there is for a first
+// boss. Its signature spins the reels, and each reel stops on a word: type them before the line pays out.
+function jackpot(moment) {
+  const col = '#ffc23d', col2 = '#ff4d8a', s = arena(col, col2, '#0d0803');
+  const g = new THREE.Group(); s.add(g);
+  const body = std('#7a1c2c', { m: 0.65, r: 0.3 }), trim = std('#e8b84a', { m: 0.95, r: 0.22 }), dark = std('#1a1214', { m: 0.5, r: 0.5 });
+  const lean = moment === 'Wind-up' ? -0.12 : moment === 'Hit' ? 0.22 : moment === 'Defeat' ? 0.5 : 0;
+  g.rotation.set(lean, 0.12, moment === 'Defeat' ? 0.35 : 0);
+  if (moment === 'Defeat') g.position.set(0.4, -0.8, -0.5);
+  // legs: chunky pistons
+  for (const sx of [-1.2, 1.2]) { const l = mesh(new THREE.CylinderGeometry(0.42, 0.55, 2.2, 10), dark, g, sx, 1.1, 0); mesh(new RoundedBoxGeometry(1.3, 0.4, 1.6, 2, 0.1), trim, g, sx, 0.2, 0.25); }
+  const cab = mesh(new RoundedBoxGeometry(4.2, 5.2, 2.6, 4, 0.3), body, g, 0, 4.8, 0); edges(cab, col, 0.7);
+  for (const sx of [-2.12, 2.12]) mesh(new THREE.BoxGeometry(0.16, 5.0, 2.7), trim, g, sx, 4.8, 0);
+  // marquee with chase lights
+  const mq = mesh(new RoundedBoxGeometry(4.6, 1.3, 2.2, 3, 0.25), dark, g, 0, 7.95, 0.1);
+  mesh(new THREE.PlaneGeometry(3.9, 0.9), new THREE.MeshBasicMaterial({ map: textTex(moment === 'Defeat' ? 'TILT' : 'YOU WON!!', { w: 512, h: 120, size: 92, col: moment === 'Defeat' ? '#ff4d5e' : '#fff2b0', font: 'Impact, sans-serif' }), toneMapped: false, transparent: true }), mq, 0, 0, 1.12);
+  for (let k = 0; k < 16; k++) { const on = (k + (moment === 'Wind-up' ? 1 : 0)) % 2 === 0; const b = mesh(new THREE.SphereGeometry(0.09, 8, 6), glow(on ? '#fff2b0' : '#ff4d8a', on ? 3 : 1.6), mq, -2.15 + k * 0.287, 0.6, 1.0); }
+  // the face: three reels in a window
+  const reelSym = moment === 'Signature' ? ['claim', 'prize', 'now'] : moment === 'Hit' ? ['@', 'x', '@'] : moment === 'Defeat' ? ['0', '0', '0'] : moment === 'Wind-up' ? ['$', '$', '$'] : ['7', '7', '$'];
+  for (let i = 0; i < 3; i++) {
+    const x = -1.25 + i * 1.25;
+    const reel = mesh(new THREE.CylinderGeometry(0.62, 0.62, 1.0, 24, 1, true), new THREE.MeshStandardMaterial({ map: canvasTex(256, 128, (c, w, h) => { c.fillStyle = '#f4efe4'; c.fillRect(0, 0, w, h); c.fillStyle = moment === 'Signature' ? '#16131a' : '#c4162c'; c.font = `900 ${moment === 'Signature' ? 34 : 70}px system-ui`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(reelSym[i], w * 0.75, h / 2); }), roughness: 0.4, metalness: 0.1, emissive: C('#ffffff'), emissiveIntensity: 0.12, side: THREE.DoubleSide }), g, x, 5.6, 0.75);
+    reel.rotation.z = Math.PI / 2; reel.rotation.x = Math.PI; reel.scale.set(1, 1, 1);
+    if (moment === 'Wind-up') g.add(sprite(new V(x, 5.6, 1.4), '#fff2b0', 1.0, 1.2, 0.5));
+  }
+  const frame = mesh(new RoundedBoxGeometry(4.0, 1.7, 0.3, 3, 0.1), trim, g, 0, 5.6, 1.18); frame.scale.z = 0.3;
+  const eyeGlass = mesh(new THREE.PlaneGeometry(3.7, 1.35), addM('#ffffff', 0.25, 0.25), g, 0, 5.6, 1.4);
+  if (moment === 'Hit') { const crack = canvasTex(256, 96, (c, w, h) => { c.strokeStyle = '#fff'; c.lineWidth = 3; for (let i = 0; i < 9; i++) { c.beginPath(); c.moveTo(w * 0.55, h * 0.45); let x = w * 0.55, y = h * 0.45; for (let k = 0; k < 4; k++) { x += rnd(-40, 40); y += rnd(-25, 25); c.lineTo(x, y); } c.stroke(); } }); mesh(new THREE.PlaneGeometry(3.7, 1.35), new THREE.MeshBasicMaterial({ map: crack, transparent: true, toneMapped: false }), g, 0, 5.6, 1.42); }
+  // the coin mouth: a payout tray that spits coins on a hit
+  mesh(new RoundedBoxGeometry(2.6, 0.6, 1.0, 2, 0.12), trim, g, 0, 3.0, 1.35);
+  mesh(new THREE.PlaneGeometry(2.2, 0.35), glow('#ffb020', moment === 'Signature' ? 3 : 1.4), g, 0, 3.0, 1.86);
+  // the lever: a long arm on its right side with a red ball; pulled right back in the wind-up
+  const lev = new THREE.Group(); lev.position.set(2.3, 5.2, 0.1); g.add(lev);
+  const pull = moment === 'Wind-up' ? -1.25 : moment === 'Signature' ? 0.9 : moment === 'Hit' ? 0.35 : moment === 'Defeat' ? 1.4 : 0.15;
+  lev.rotation.x = pull; lev.rotation.z = -0.15;
+  mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.5, 14), trim, lev, 0.25, 0, 0).rotation.z = Math.PI / 2;
+  mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.0, 10), trim, lev, 0.45, 1.5, 0);
+  const ball = mesh(new THREE.SphereGeometry(0.5, 20, 14), std('#e8203a', { m: 0.2, r: 0.2, e: '#ff2040', ei: moment === 'Wind-up' ? 1.2 : 0.3 }), lev, 0.45, 3.1, 0);
+  if (moment === 'Wind-up') { lev.add(sprite(new V(0.45, 3.1, 0), '#ff2040', 2.6, 2.4)); }
+  const you = new V(-3.8, 2.7, 7.6), camP = new V(2.6, 3.4, 17.5), camL = new V(-0.4, 4.6, 0);
+  const tags = [];
+  if (moment === 'Idle') { botStandIn(s, you, { orb: 0.6 }); shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0, 5.4, 1.3)); }
+  if (moment === 'Wind-up') {
+    botStandIn(s, you); tele(s, new V(0, 0, 1.5), you.clone().setY(0), 3.4);
+    // the arc the lever will come down through, drawn as a warning sweep
+    const arc = mesh(new THREE.RingGeometry(3.0, 3.25, 48, 1, Math.PI * 0.05, Math.PI * 0.6), addM('#ff4d5e', 1.8, 0.75), g, 2.75, 5.2, 0.1); arc.rotation.y = Math.PI / 2;
+    tags.push({ p: new V(0.1, 9.3, 0), t: 'BLOCK JACKPOT', w: 'cash out', red: true });
+  }
+  if (moment === 'Signature') {
+    botStandIn(s, you, { orb: 0.8 });
+    tags.push({ p: new V(-2.6, 6.9, 1.4), t: 'REEL 1', w: 'claim', pop: true }, { p: new V(0.0, 9.6, 1.4), t: 'REEL 2', w: 'prize', pop: true }, { p: new V(2.4, 6.9, 1.4), t: 'REEL 3', w: 'now', pop: true });
+    // a payline lighting across the reels as the line fills
+    mesh(new THREE.PlaneGeometry(3.8, 0.06), glow('#ffd23d', 3), g, 0, 5.6, 1.45);
+    for (let i = 0; i < 20; i++) s.add(sprite(new V(rnd(-1.4, 1.4), rnd(2.6, 3.3), 1.8 + rnd(0, 1.2)), '#ffc23d', rnd(0.12, 0.25), 2.6));
+  }
+  if (moment === 'Hit') {
+    botStandIn(s, you, { orb: 0.2 }); shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0.4, 5.6, 1.4), '#b6ff6a');
+    burst(s, new V(0.4, 5.6, 1.6), '#ffffff', 34, 1.8); ring(s, new V(0.4, 5.6, 1.6), 1.6, '#ffffff', 2.6, Math.PI / 2);
+    // coins spilling from the tray
+    for (let i = 0; i < 14; i++) { const c = mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16), trim, s, rnd(-1.5, 1.5), rnd(0.3, 3), rnd(1.6, 3.5)); c.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3)); }
+    tags.push({ p: new V(1.8, 7.2, 1), t: '-48', dmg: true });
+  }
+  if (moment === 'Defeat') {
+    botStandIn(s, you, { face: new V(0, 3, 0) });
+    for (let i = 0; i < 40; i++) { const c = mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16), trim, s, rnd(-6, 6), rnd(0.1, 6), rnd(-6, 4)); c.rotation.set(rnd(0, 3), rnd(0, 3), rnd(0, 3)); }
+    burst(s, new V(0, 5, 0.5), '#ffd23d', 60, 4); ring(s, new V(0, 0.06, 0), 6.5, col, 2);
+    tags.push({ p: new V(0.2, 10.3, 0), t: 'JACKPOT', big: true });
+  }
+  return { s, camP, camL, tags };
+}
+
+// ======================= C: the Follower Swarm =======================
+// A cloud of fake followers: little drones with grey default-avatar faces round a giant phone, the
+// influencer at its centre. The swarm makes the shapes: a fist for its slam, a wall, and for its
+// signature it spells a word in the air with its own bodies. Type the word and they scatter.
+function swarm(moment) {
+  const col = '#5cc8ff', col2 = '#b48cff', s = arena(col, col2, '#03070d');
+  const phone = new THREE.Group(); s.add(phone);
+  const py = moment === 'Defeat' ? 0.5 : 4.4;
+  phone.position.set(0.3, py, -0.5); phone.rotation.set(moment === 'Defeat' ? -1.5 : moment === 'Hit' ? 0.25 : 0, 0.18, moment === 'Hit' ? -0.2 : 0);
+  const ph = mesh(new RoundedBoxGeometry(3.0, 5.6, 0.4, 6, 0.4), std('#1b1f27', { m: 0.8, r: 0.25 }), phone); edges(ph, col, 0.6);
+  const screen = mesh(new THREE.PlaneGeometry(2.7, 5.1), new THREE.MeshBasicMaterial({ map: canvasTex(270, 510, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#2a1a5a'); g.addColorStop(1, '#0b2a4a'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#fff'; c.font = '700 26px system-ui'; c.textAlign = 'center';
+    if (moment === 'Defeat') { c.fillStyle = '#ff4d5e'; c.font = '800 34px system-ui'; c.fillText('0 followers', w / 2, h / 2); c.strokeStyle = '#ddd'; c.lineWidth = 2; for (let i = 0; i < 10; i++) { c.beginPath(); c.moveTo(w * 0.4, h * 0.35); c.lineTo(rnd(0, w), rnd(0, h)); c.stroke(); } return; }
+    c.beginPath(); c.arc(w / 2, 120, 62, 0, 7); c.fillStyle = '#e9e4ff'; c.fill(); c.fillStyle = '#7a6ac8'; c.beginPath(); c.arc(w / 2, 105, 22, 0, 7); c.fill(); c.beginPath(); c.arc(w / 2, 170, 38, Math.PI, 0); c.fill();
+    c.fillStyle = '#fff'; c.fillText(moment === 'Hit' ? '-48 followers' : '1.2M followers', w / 2, 230);
+    c.fillStyle = moment === 'Wind-up' ? '#ff4d5e' : '#5cc8ff'; c.fillRect(40, 270, w - 80, 46); c.fillStyle = '#fff'; c.font = '800 24px system-ui'; c.fillText(moment === 'Wind-up' ? 'LIVE' : 'FOLLOW', w / 2, 302);
+    for (let i = 0; i < 5; i++) { c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(40, 340 + i * 30, w - 80 - (i % 2) * 60, 14); }
+  }), toneMapped: false }), phone, 0, 0, 0.21);
+  phone.add(sprite(new V(0, 0, 0.4), col, 5, 0.9, 0.5));
+  // the followers: small drones with a grey default-avatar face and two little rotors
+  const drone = new THREE.Group();
+  const bodyG = new THREE.SphereGeometry(0.28, 14, 10), faceTex = canvasTex(64, 64, (c) => { c.fillStyle = '#9aa3ad'; c.fillRect(0, 0, 64, 64); c.fillStyle = '#d7dce2'; c.beginPath(); c.arc(32, 26, 11, 0, 7); c.fill(); c.beginPath(); c.arc(32, 58, 20, Math.PI, 0); c.fill(); });
+  const bodyM = std('#c9ced6', { m: 0.3, r: 0.4 }), faceM = new THREE.MeshBasicMaterial({ map: faceTex }), rotM = glow(col, 1.8);
+  function oneDrone(p, look) {
+    const d = new THREE.Group(); d.position.copy(p); s.add(d);
+    mesh(bodyG, bodyM, d); const f = mesh(new THREE.CircleGeometry(0.2, 20), faceM, d, 0, 0, 0.27);
+    for (const sx of [-0.3, 0.3]) { const r = mesh(new THREE.TorusGeometry(0.14, 0.02, 6, 20), rotM, d, sx, 0.22, 0); r.rotation.x = Math.PI / 2; }
+    d.lookAt(look); return d;
+  }
+  const camP = new V(2.4, 3.4, 17.5), camL = new V(-0.5, 4.8, 0), you = new V(-3.8, 2.7, 7.6);
+  const pts = [];
+  if (moment === 'Idle' || moment === 'Hit') {
+    for (let i = 0; i < 70; i++) { const a = i * 2.39996, r = 3.2 + (i % 7) * 0.45, y = py + Math.sin(i * 1.7) * 2.6; pts.push(new V(0.3 + Math.cos(a) * r * (moment === 'Hit' ? 1.5 + R() : 1), y * (moment === 'Hit' ? rnd(0.7, 1.4) : 1), -0.5 + Math.sin(a) * r * 0.7)); }
+  } else if (moment === 'Wind-up') {
+    // a giant fist of followers, pulled back over the phone
+    for (let i = 0; i < 90; i++) { const a = i * 2.39996, k = i / 90, r = Math.sqrt(k) * 2.0; pts.push(new V(-1.6 + Math.cos(a) * r, 8.4 + Math.sin(a) * r * 0.9, -2.5 + rnd(-0.8, 0.8))); }
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) pts.push(new V(-2.8 + i * 0.8, 10.4 + j * 0.05, -1.6 + j * 0.4));
+  } else if (moment === 'Signature') {
+    // the swarm spells the word in the air: the letters are drones, sampled from the word drawn on a canvas
+    const cv = document.createElement('canvas'); cv.width = 220; cv.height = 64; const c = cv.getContext('2d'); c.fillStyle = '#fff'; c.font = '900 54px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('LIKE', 110, 34);
+    const d = c.getImageData(0, 0, 220, 64).data;
+    for (let y = 0; y < 64; y += 6) for (let x = 0; x < 220; x += 6) if (d[(y * 220 + x) * 4 + 3] > 128) pts.push(new V(-4.8 + x * 0.05, 9.8 - y * 0.05, 1.5));
+    for (let i = 0; i < 26; i++) { const a = i * 2.4; pts.push(new V(0.3 + Math.cos(a) * 3.6, py + Math.sin(i) * 2, -0.5 + Math.sin(a) * 2.4)); }
+  } else if (moment === 'Defeat') {
+    for (let i = 0; i < 60; i++) pts.push(new V(rnd(-7, 7), rnd(0.2, 0.4), rnd(-6, 3)));
+    for (let i = 0; i < 12; i++) pts.push(new V(rnd(-5, 5), rnd(1, 6), rnd(-5, 2)));
+  }
+  const ds = pts.map(p => oneDrone(p, moment === 'Defeat' ? p.clone().add(new V(0, 1, 0)) : camP));
+  if (moment === 'Defeat') ds.forEach(d => d.rotation.set(rnd(-1.6, 1.6), rnd(0, 3), rnd(-1.6, 1.6)));
+  const tags = [];
+  if (moment === 'Idle') { botStandIn(s, you, { orb: 0.6 }); shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0.3, py, -0.2)); }
+  if (moment === 'Wind-up') { botStandIn(s, you); tele(s, new V(-0.5, 0, 0), you.clone().setY(0), 3.0); s.add(sprite(new V(-1.6, 8.4, -2.5), '#ff4d5e', 6, 1.2, 0.6)); tags.push({ p: new V(-1.4, 11.6, -2), t: 'BLOCK CRUSH', w: 'unfollow', red: true }); }
+  if (moment === 'Signature') { botStandIn(s, you, { orb: 0.9 }); tags.push({ p: new V(-2.1, 7.6, 1.5), t: 'SPELLED IN THE AIR', w: 'like', pop: true }); }
+  if (moment === 'Hit') { botStandIn(s, you, { orb: 0.2 }); shot(s, you.clone().add(new V(0.4, 0, -0.5)), new V(0.3, py, 0), '#b6ff6a'); burst(s, new V(0.3, py, 0), '#ffffff', 40, 2); ring(s, new V(0.3, py, 0.2), 1.9, '#ffffff', 2.6, Math.PI / 2); tags.push({ p: new V(1.8, py + 3.3, 0), t: '-48', dmg: true }); }
+  if (moment === 'Defeat') { botStandIn(s, you, { face: new V(0, 3, 0) }); ring(s, new V(0, 0.06, 0), 6.5, col, 2); tags.push({ p: new V(0.3, 3.6, -0.5), t: 'UNFOLLOWED', big: true }); }
+  return { s, camP, camL, tags };
+}
+
+// ---------- the sheet ----------
+const DIRS = [
+  { name: 'A  The Inbox Serpent', note: 'The Spam rebuilt: envelopes with unread badges, a pop-up window head with a jaw. Pop-ups pin round your bot; each one you type shut knocks an envelope off its tail.', make: serpent, col: '#ff4fd8' },
+  { name: 'B  The Jackpot', note: 'A clickbait slot machine on mech legs. Its wind-up is the lever pulled right back; its signature stops each reel on a word to type before the line pays out.', make: jackpot, col: '#ffc23d' },
+  { name: 'C  The Follower Swarm', note: 'Fake followers round a giant phone. The swarm forms a fist to slam, and spells its signature word in the air with its own bodies; typing it scatters them.', make: swarm, col: '#5cc8ff' },
+];
+const sheet = document.getElementById('sheet');
+sheet.width = PAD * 2 + COLS * (CW + PAD); sheet.height = HEAD + DIRS.length * ROWH + PAD;
+const g2 = sheet.getContext('2d');
+g2.fillStyle = '#060807'; g2.fillRect(0, 0, sheet.width, sheet.height);
+g2.fillStyle = '#dfe8e2'; g2.font = '700 26px system-ui'; g2.fillText('Boss Rush, boss 1: three directions', PAD + 4, 36);
+g2.fillStyle = '#8a978f'; g2.font = '500 14px system-ui'; g2.fillText('Pick one. Each still is idle, wind-up, signature attack, hit reaction and defeat, with your bot where the game shot puts it.', PAD + 4, 56);
+const composer = new EffectComposer(renderer);
+const camera = new THREE.PerspectiveCamera(40, CW / CH, 0.1, 200);
+const rp = new RenderPass(new THREE.Scene(), camera); composer.addPass(rp);
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(CW, CH), 0.55, 0.4, 0.55));
+composer.addPass(new OutputPass());
+DIRS.forEach((D, r) => {
+  const y0 = HEAD + r * ROWH;
+  g2.fillStyle = D.col; g2.font = '700 17px system-ui'; g2.fillText(D.name, PAD + 4, y0 + 18);
+  g2.fillStyle = '#9fb0a6'; g2.font = '500 13px system-ui'; g2.fillText(D.note, PAD + 240, y0 + 18);
+  MOMENTS.forEach((m, k) => {
+    seed = 7 + r * 31 + k * 7;
+    const { s, camP, camL, tags } = D.make(m);
+    camera.position.copy(camP); camera.lookAt(camL); camera.updateMatrixWorld();
+    rp.scene = s; composer.render();
+    const x0 = PAD + k * (CW + PAD), yy = y0 + 28;
+    g2.drawImage(renderer.domElement, x0, yy);
+    // the words and labels, drawn the way the game draws its arena tags
+    for (const t of tags) {
+      const p = t.p.clone().project(camera); const sx = Math.max(x0 + 70, Math.min(x0 + CW - 70, x0 + (p.x * 0.5 + 0.5) * CW)), sy = Math.max(yy + 52, Math.min(yy + CH - 18, yy + (-p.y * 0.5 + 0.5) * CH));
+      g2.textAlign = 'center';
+      if (t.dmg) { g2.font = '800 28px JetBrains Mono, monospace'; g2.fillStyle = '#ffffff'; g2.fillText(t.t, sx, sy); continue; }
+      if (t.big) { g2.font = '800 24px system-ui'; g2.fillStyle = '#ffffff'; g2.shadowColor = D.col; g2.shadowBlur = 14; g2.fillText(t.t, sx, sy); g2.shadowBlur = 0; continue; }
+      const w = 18 + g2.measureText(t.w).width * 1.6;
+      g2.font = '600 17px JetBrains Mono, monospace'; const tw = g2.measureText(t.w).width + 20;
+      g2.fillStyle = 'rgba(6,8,7,.88)'; g2.fillRect(sx - tw / 2, sy - 16, tw, 28);
+      g2.strokeStyle = t.red ? '#ff4d5e' : D.col; g2.lineWidth = 1.5; g2.strokeRect(sx - tw / 2, sy - 16, tw, 28);
+      g2.fillStyle = '#ffffff'; g2.fillText(t.w, sx, sy + 4);
+      if (t.t) { g2.font = '700 11px system-ui'; g2.fillStyle = t.red ? '#ff6b78' : D.col; g2.fillText(t.t, sx, sy - 22); }
+    }
+    g2.textAlign = 'left'; g2.fillStyle = 'rgba(0,0,0,.55)'; g2.fillRect(x0 + 6, yy + 6, 96, 20);
+    g2.fillStyle = '#dfe8e2'; g2.font = '600 12px system-ui'; g2.fillText(m, x0 + 12, yy + 20);
+    s.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(mm => { if (mm.map) mm.map.dispose(); mm.dispose(); }); });
+  });
+});
+window.__done = true;
+</script>
+</body>
+</html>
